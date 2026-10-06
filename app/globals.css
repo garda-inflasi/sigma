@@ -1,0 +1,329 @@
+/* ════════════════════════════════════════════════════════════════════
+   AI GARDA INFLASI — DESIGN TOKENS (Tailwind CSS v4, konfigurasi CSS-first)
+   Di Tailwind v4 "tailwind.config" hidup di sini lewat @theme.
+   Cermin nilai untuk JS (Recharts, Mapbox) ada di lib/design/tokens.ts.
+   ════════════════════════════════════════════════════════════════════ */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── 1. Token dasar (static: selalu di-emit agar bisa dibaca var() dari JS) ── */
+@theme static {
+  /* Tipografi: Inter (UI), Plus Jakarta Sans (heading), JetBrains Mono (angka) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
+
+  /* Skala tipe — rasio 1.25, dipadatkan untuk dashboard */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-display-2xl: 4.5rem;
+  --text-display-2xl--line-height: 1;
+  --text-display-2xl--letter-spacing: -0.045em;
+  --text-display-xl: 3.25rem;
+  --text-display-xl--line-height: 1.04;
+  --text-display-xl--letter-spacing: -0.035em;
+  --text-display-lg: 2.25rem;
+  --text-display-lg--line-height: 1.1;
+  --text-display-lg--letter-spacing: -0.03em;
+  --text-display-md: 1.75rem;
+  --text-display-md--line-height: 1.18;
+  --text-display-md--letter-spacing: -0.025em;
+  --text-display-sm: 1.3125rem;
+  --text-display-sm--line-height: 1.3;
+  --text-display-sm--letter-spacing: -0.018em;
+
+  /* Navy — kepercayaan & institusi */
+  --color-navy-50: #f2f6fc;
+  --color-navy-100: #e3ebf7;
+  --color-navy-200: #c6d5ee;
+  --color-navy-300: #9ab4df;
+  --color-navy-400: #6a8dcb;
+  --color-navy-500: #4569b3;
+  --color-navy-600: #2f5096;
+  --color-navy-700: #233e7a;
+  --color-navy-800: #1a2f5e;
+  --color-navy-900: #13234a;
+  --color-navy-950: #0b1630;
+
+  /* Data — teal: sinyal informasi, sumber data, fokus */
+  --color-data-50: #effcfa;
+  --color-data-100: #cff6f1;
+  --color-data-200: #a0ece3;
+  --color-data-300: #67dbd0;
+  --color-data-400: #33c2b8;
+  --color-data-500: #14a69e;
+  --color-data-600: #0c857f;
+  --color-data-700: #0e6a67;
+  --color-data-800: #105553;
+  --color-data-900: #124745;
+  --color-data-950: #032a2a;
+
+  /* Kabut — latar dingin (bukan krem), dasar glassmorphism */
+  --color-mist-50: #f7f9fc;
+  --color-mist-100: #eff3f8;
+  --color-mist-200: #e2e9f2;
+  --color-mist-300: #cfd9e6;
+  --color-mist-400: #aebdd0;
+
+  /* Semantik siklus ekonomi & status (psikologi warna) */
+  --color-normal: #10b981;
+  --color-normal-soft: #d1fae5;
+  --color-normal-ink: #047857;
+  --color-waspada: #f59e0b;
+  --color-waspada-soft: #fef3c7;
+  --color-waspada-ink: #b45309;
+  --color-defisit: #f43f5e;
+  --color-defisit-soft: #ffe4e6;
+  --color-defisit-ink: #be123c;
+  --color-surplus: #3b82f6;
+  --color-surplus-soft: #dbeafe;
+  --color-surplus-ink: #1d4ed8;
+  --color-kritis: #e11d48;
+
+  /* Radius berjenjang: kontrol < kartu < panel < shell */
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+  --radius-4xl: 2.25rem;
+
+  /* Bayangan ambient bernuansa navy (bukan abu-abu generik) */
+  --shadow-ambient-xs: 0 1px 2px rgb(19 35 74 / 0.05);
+  --shadow-ambient-sm: 0 2px 8px -2px rgb(19 35 74 / 0.07), 0 1px 2px rgb(19 35 74 / 0.04);
+  --shadow-ambient: 0 14px 34px -14px rgb(19 35 74 / 0.14), 0 2px 6px -2px rgb(19 35 74 / 0.05);
+  --shadow-ambient-lg: 0 30px 70px -28px rgb(19 35 74 / 0.26), 0 8px 18px -10px rgb(19 35 74 / 0.1);
+  --shadow-lift: 0 24px 48px -20px rgb(19 35 74 / 0.28), 0 6px 12px -6px rgb(19 35 74 / 0.08);
+  --shadow-glow-data: 0 0 0 1px rgb(20 166 158 / 0.25), 0 10px 28px -10px rgb(20 166 158 / 0.5);
+  --shadow-glow-defisit: 0 0 0 1px rgb(244 63 94 / 0.25), 0 10px 28px -10px rgb(244 63 94 / 0.5);
+  --shadow-glow-waspada: 0 0 0 1px rgb(245 158 11 / 0.25), 0 10px 28px -10px rgb(245 158 11 / 0.45);
+
+  /* Easing */
+  --ease-garda: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring-out: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Animasi CSS (Framer/Motion menangani yang berbasis interaksi) */
+  --animate-shimmer: shimmer 1.6s var(--ease-garda) infinite;
+  --animate-spin-slow: spin 1.4s linear infinite;
+  --animate-live: live 2s ease-out infinite;
+  --animate-aurora: aurora 22s ease-in-out infinite alternate;
+}
+
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes live {
+  0% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0.55); }
+  70%, 100% { box-shadow: 0 0 0 7px rgb(16 185 129 / 0); }
+}
+@keyframes aurora {
+  0% { transform: translate3d(-6%, -4%, 0) scale(1); }
+  100% { transform: translate3d(6%, 5%, 0) scale(1.08); }
+}
+
+/* ── 2. Token semantik shadcn/ui ── */
+:root {
+  --radius: 0.75rem;
+  --background: #f1f5f9;
+  --foreground: #0f1d3d;
+  --card: rgb(255 255 255 / 0.72);
+  --card-foreground: #0f1d3d;
+  --popover: #ffffff;
+  --popover-foreground: #0f1d3d;
+  --primary: #1a2f5e;
+  --primary-foreground: #f7f9fc;
+  --secondary: #e8eef6;
+  --secondary-foreground: #13234a;
+  --muted: #eef2f7;
+  --muted-foreground: #5b6b86;
+  --accent: #e6f7f5;
+  --accent-foreground: #0e6a67;
+  --destructive: #e11d48;
+  --border: rgb(19 35 74 / 0.09);
+  --input: rgb(19 35 74 / 0.13);
+  --ring: #14a69e;
+  --chart-1: #1a2f5e;
+  --chart-2: #14a69e;
+  --chart-3: #f59e0b;
+  --chart-4: #f43f5e;
+  --chart-5: #3b82f6;
+  --sidebar: rgb(255 255 255 / 0.55);
+  --sidebar-foreground: #13234a;
+  --sidebar-primary: #1a2f5e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(26 47 94 / 0.06);
+  --sidebar-accent-foreground: #13234a;
+  --sidebar-border: rgb(19 35 74 / 0.07);
+  --sidebar-ring: #14a69e;
+}
+
+.dark {
+  --background: #08112a;
+  --foreground: #e6edf8;
+  --card: rgb(16 28 58 / 0.6);
+  --card-foreground: #e6edf8;
+  --popover: #0e1a3a;
+  --popover-foreground: #e6edf8;
+  --primary: #c6d5ee;
+  --primary-foreground: #0b1630;
+  --secondary: rgb(255 255 255 / 0.06);
+  --secondary-foreground: #e6edf8;
+  --muted: rgb(255 255 255 / 0.05);
+  --muted-foreground: #93a3bf;
+  --accent: rgb(20 166 158 / 0.14);
+  --accent-foreground: #67dbd0;
+  --destructive: #fb7185;
+  --border: rgb(255 255 255 / 0.08);
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #33c2b8;
+  --sidebar: rgb(11 22 48 / 0.6);
+  --sidebar-foreground: #e6edf8;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-border: rgb(255 255 255 / 0.06);
+}
+
+/* ── 3. Siklus ambient: seluruh UI mengikuti kondisi ekonomi wilayah ── */
+:root,
+[data-siklus="normal"] {
+  --siklus: #10b981;
+  --siklus-soft: #d1fae5;
+  --siklus-ink: #047857;
+  --siklus-glow: rgb(16 185 129 / 0.16);
+}
+[data-siklus="tekanan"] {
+  --siklus: #f43f5e;
+  --siklus-soft: #ffe4e6;
+  --siklus-ink: #be123c;
+  --siklus-glow: rgb(244 63 94 / 0.16);
+}
+[data-siklus="surplus"] {
+  --siklus: #3b82f6;
+  --siklus-soft: #dbeafe;
+  --siklus-ink: #1d4ed8;
+  --siklus-glow: rgb(59 130 246 / 0.16);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-siklus: var(--siklus);
+  --color-siklus-soft: var(--siklus-soft);
+  --color-siklus-ink: var(--siklus-ink);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ── 4. Utilitas Garda ── */
+@utility glass {
+  background-color: rgb(255 255 255 / 0.62);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.75), var(--shadow-ambient);
+  @variant dark {
+    background-color: rgb(16 28 58 / 0.55);
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 20px 44px -22px rgb(0 0 0 / 0.6);
+  }
+}
+@utility glass-strong {
+  background-color: rgb(255 255 255 / 0.82);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid rgb(255 255 255 / 0.85);
+  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.9), var(--shadow-ambient-lg);
+  @variant dark {
+    background-color: rgb(14 26 58 / 0.82);
+    border-color: rgb(255 255 255 / 0.1);
+  }
+}
+@utility glass-subtle {
+  background-color: rgb(255 255 255 / 0.4);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgb(19 35 74 / 0.06);
+  @variant dark {
+    background-color: rgb(255 255 255 / 0.03);
+    border-color: rgb(255 255 255 / 0.06);
+  }
+}
+/* Semua angka memakai JetBrains Mono dengan digit tabular */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -0.02em;
+}
+@utility shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-mist-200);
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.7), transparent);
+    animation: var(--animate-shimmer);
+  }
+  @variant dark {
+    background-color: rgb(255 255 255 / 0.06);
+    &::after { background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent); }
+  }
+}
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(19 35 74 / 0.18) transparent;
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
+
+/* ── 5. Base ── */
+@layer base {
+  * { @apply border-border outline-ring/60; }
+  html { -webkit-tap-highlight-color: transparent; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss03";
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 { @apply font-display text-balance; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  ::selection { background: rgb(20 166 158 / 0.22); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

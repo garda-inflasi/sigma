@@ -84,6 +84,12 @@ export function MasukForm({
         toast.success("Berhasil masuk", {
           description: "Mengalihkan ke ruang kerja Anda…",
         });
+        // Set cookie dev role agar resolveSession membaca role yang benar
+        const roleBaru = document.cookie
+          .split("; ")
+          .find((r) => r.startsWith("garda_dev_role="))
+          ?.split("=")[1] ?? "OPS_MAHASISWA";
+        document.cookie = `garda_dev_role=${roleBaru}; path=/; max-age=2592000; samesite=lax`;
         router.replace(redirect);
         router.refresh();
         return;

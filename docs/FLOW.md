@@ -82,32 +82,58 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
   direction LR
+  [*] --> N
+
   state "Siklus normal" as N {
+    [*] --> n1
     n1: Pantau rutin data produsen
     n2: Verifikasi silang BPS
     n3: Optimasi jadwal pengiriman
     n4: Agregasi volume reguler
-    n1 --> n2 --> n3 --> n4
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n1
   }
+
   state "Siklus tekanan harga / defisit" as T {
+    [*] --> t1
     t1: EWS terpicu
     t2: Verifikasi cepat BI/BPS
-    t3: Petakan suplai sentra surplus 🔒 Dewan Pengarah
+    t3: Petakan suplai sentra surplus
     t4: Usulan logistik kilat
-    t5: Dukungan instrumen belanja 🔒 Kanwil DJPb
-    t1 --> t2 --> t3 --> t4 --> t5
+    t5: Dukungan instrumen belanja
+    t1 --> t2
+    t2 --> t3
+    t3 --> t4
+    t4 --> t5
+    t5 --> t1
+    note right of t3
+      Perlu persetujuan
+      Dewan Pengarah
+    end note
+    note right of t5
+      Perlu dukungan
+      Kanwil DJPb
+    end note
   }
+
   state "Siklus surplus" as S {
+    [*] --> s1
     s1: Deteksi over-supply
     s2: Arahkan ke cold storage
     s3: Rekomendasi pengolahan turunan
     s4: Ekspansi pembeli antardaerah
-    s1 --> s2 --> s3 --> s4
+    s1 --> s2
+    s2 --> s3
+    s3 --> s4
+    s4 --> s1
   }
-  N --> T: EWS kritis/siaga
-  T --> N: harga kembali ke koridor
-  N --> S: over-supply terdeteksi
-  S --> N: surplus terserap
+
+  n2 --> t1: EWS kritis/siaga
+  s4 --> n1: harga kembali ke koridor
+  n4 --> s1: over-supply terdeteksi
+  t5 --> n1: surplus terserap
 ```
 
 ## 5. Dari peringatan ke keputusan

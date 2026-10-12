@@ -4,7 +4,7 @@
   "private": true,
   "description": "AI Garda Inflasi — platform pengendalian inflasi daerah (FMIPA USK × Kanwil DJPb)",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

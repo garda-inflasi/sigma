@@ -9,3 +9,7 @@ type SumberDataResponse struct {
 	FrekuensiUpdate string `json:"frekuensi_update"`
 	DibuatPada      string `json:"dibuat_pada"`
 }
+
+type BulkSumberDataResponse struct {
+	Berhasil int `json:"berhasil"`
+}

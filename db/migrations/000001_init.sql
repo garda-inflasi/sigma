@@ -182,7 +182,8 @@ CREATE TABLE IF NOT EXISTS pengguna (
     mfa_aktif BOOLEAN NOT NULL DEFAULT false,
     status status_akun NOT NULL DEFAULT 'AKTIF',
     terakhir_masuk TIMESTAMPTZ,
-    dibuat_pada TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    dibuat_pada TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    diupdate_pada TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_pengguna_peran ON pengguna(peran);
 
@@ -194,7 +195,8 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     device VARCHAR(255),
     ip VARCHAR(45),
     expires_at TIMESTAMPTZ NOT NULL,
-    revoked_at TIMESTAMPTZ
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rt_user ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_rt_family ON refresh_tokens(family_id);

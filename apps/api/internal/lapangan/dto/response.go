@@ -10,3 +10,7 @@ type TugasLapanganResponse struct {
 	Tenggat    *string `json:"tenggat,omitempty"`
 	DibuatPada string  `json:"dibuat_pada"`
 }
+
+type BulkTugasResponse struct {
+	Berhasil int `json:"berhasil"`
+}

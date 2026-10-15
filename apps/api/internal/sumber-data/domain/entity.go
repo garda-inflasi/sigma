@@ -15,3 +15,12 @@ type SumberData struct {
 func (SumberData) TableName() string {
 	return "sumber_data"
 }
+
+// BulkAction represents a bulk action on sumber data pipelines.
+type BulkAction string
+
+const (
+	BulkJalankan  BulkAction = "jalankan"
+	BulkJeda      BulkAction = "jeda"
+	BulkLanjutkan BulkAction = "lanjutkan"
+)

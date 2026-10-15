@@ -5,4 +5,5 @@ import "context"
 type Repository interface {
 	GetAllFasilitas(ctx context.Context) ([]FasilitasColdStorage, error)
 	GetAllStok(ctx context.Context) ([]StokColdStorage, error)
+	BulkAction(ctx context.Context, ids []string, action BulkAction) (int64, error)
 }

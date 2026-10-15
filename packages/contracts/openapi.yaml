@@ -511,6 +511,509 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/users/bulk:
+    post:
+      summary: Menjalankan aksi massal pada pengguna
+      operationId: bulkUsers
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkUserRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkUserResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga:
+    post:
+      summary: Mencatat entri harga baru
+      operationId: createHarga
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHargaRequest"
+      responses:
+        "201":
+          description: Entri harga dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/bulk:
+    post:
+      summary: Menjalankan aksi massal pada entri harga
+      operationId: bulkHarga
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActionRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/{id}:
+    get:
+      summary: Mendapatkan detail entri harga
+      operationId: getHarga
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID entri harga
+      responses:
+        "200":
+          description: Detail entri harga
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Entri harga tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/tren:
+    get:
+      summary: Mendapatkan tren harga per komoditas/wilayah
+      operationId: getHargaTren
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: komoditas_kode
+          in: query
+          schema:
+            type: string
+        - name: wilayah_kode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Data tren harga
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ews/{id}:
+    get:
+      summary: Mendapatkan detail alert EWS
+      operationId: getEwsAlert
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID alert
+      responses:
+        "200":
+          description: Detail alert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Alert tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ews/bulk:
+    post:
+      summary: Menjalankan aksi massal pada alert EWS
+      operationId: bulkEwsAlerts
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActionRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi:
+    post:
+      summary: Membuat intervensi baru
+      operationId: createIntervensi
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIntervensiRequest"
+      responses:
+        "201":
+          description: Intervensi dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi/bulk:
+    post:
+      summary: Menjalankan aksi massal pada intervensi
+      operationId: bulkIntervensi
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActionRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sumber-data/{id}:
+    get:
+      summary: Mendapatkan detail sumber data
+      operationId: getSumberData
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Detail sumber data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Sumber data tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sumber-data/bulk:
+    post:
+      summary: Menjalankan aksi massal pada pipeline sumber data
+      operationId: bulkSumberData
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkSumberDataRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/lapangan/tugas/{id}:
+    get:
+      summary: Mendapatkan detail tugas lapangan
+      operationId: getTugasLapangan
+      tags:
+        - Lapangan
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Detail tugas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Tugas tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/lapangan/tugas/bulk:
+    post:
+      summary: Menjalankan aksi massal pada tugas lapangan
+      operationId: bulkTugasLapangan
+      tags:
+        - Lapangan
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActionRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/wilayah:
+    get:
+      summary: Mendaftar wilayah (kabupaten/kota)
+      operationId: listWilayah
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provinsi_kode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Daftar wilayah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /v1/master/pasar:
+    get:
+      summary: Mendaftar pasar
+      operationId: listPasar
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kabupaten_kode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Daftar pasar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /v1/master/komoditas/bulk:
+    post:
+      summary: Menjalankan aksi massal pada master komoditas
+      operationId: bulkKomoditas
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkKomoditasRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/cold-storage/bulk:
+    post:
+      summary: Menjalankan aksi massal pada cold storage
+      operationId: bulkColdStorage
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActionRequest"
+      responses:
+        "200":
+          description: Aksi massal berhasil diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResultResponse"
+        "400":
+          description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -836,7 +1339,7 @@ components:
           type: string
           format: password
           minLength: 8
-          description: Password opsional (default: random)
+          description: "Password opsional (default: random)"
         peran:
           type: string
           example: OPS_MAHASISWA
@@ -872,3 +1375,150 @@ components:
             limit:
               type: integer
               example: 20
+
+    # ── Bulk Operations ────────────────────────────────────────────────
+    BulkActionRequest:
+      type: object
+      required:
+        - action
+        - ids
+      properties:
+        action:
+          type: string
+          description: Nama aksi massal (bergantung pada modul)
+          example: proses
+        ids:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+          example: [1, 2, 3]
+
+    BulkUserRequest:
+      type: object
+      required:
+        - action
+        - ids
+      properties:
+        action:
+          type: string
+          enum: [aktifkan, nonaktifkan, wajibkan_mfa, akhiri_sesi]
+        ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example: ["user-001", "user-002"]
+
+    BulkSumberDataRequest:
+      type: object
+      required:
+        - action
+        - ids
+      properties:
+        action:
+          type: string
+          enum: [jalankan, jeda, lanjutkan]
+        ids:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+          example: [1, 2]
+
+    BulkKomoditasRequest:
+      type: object
+      required:
+        - action
+        - kode
+      properties:
+        action:
+          type: string
+          enum: [ajukan_perubahan, setujui, arsipkan]
+        kode:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          example: ["BERAS", "CABAI"]
+
+    BulkResultResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            berhasil:
+              type: integer
+              example: 3
+
+    BulkUserResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            berhasil:
+              type: integer
+              example: 3
+            gagal:
+              type: integer
+              example: 0
+            errors:
+              type: array
+              items:
+                type: string
+
+    # ── Create Payloads ────────────────────────────────────────────────
+    CreateHargaRequest:
+      type: object
+      required:
+        - komoditas_kode
+        - pasar_id
+        - harga
+      properties:
+        komoditas_kode:
+          type: string
+          example: BERAS
+        pasar_id:
+          type: string
+          example: P1
+        harga:
+          type: integer
+          example: 12000
+        tipe:
+          type: string
+          example: HARIAN
+        tanggal:
+          type: string
+          format: date-time
+
+    CreateIntervensiRequest:
+      type: object
+      required:
+        - judul
+        - tipe
+      properties:
+        judul:
+          type: string
+          example: Operasi Pasar Beras
+        tipe:
+          type: string
+          example: OPERASI_PASAR
+        deskripsi:
+          type: string
+        wilayah_kode:
+          type: string
+          example: "1171"

@@ -1,13 +1,14 @@
+// Package routes provides route registration for the master module.
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/master/delivery/http"
 	"github.com/garda-inflasi/api/internal/master/repository/postgres"
 	"github.com/garda-inflasi/api/internal/master/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -26,5 +27,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	master.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("master.lihat"))
 	{
 		master.GET("/komoditas", handler.ListKomoditas)
+		master.GET("/wilayah", handler.ListWilayah)
+		master.GET("/pasar", handler.ListPasar)
+		master.POST("/komoditas/bulk", middleware.RequirePermission("master.ajukan"), handler.BulkKomoditas)
 	}
 }

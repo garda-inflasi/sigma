@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/lapangan/delivery/http"
 	"github.com/garda-inflasi/api/internal/lapangan/repository/postgres"
 	"github.com/garda-inflasi/api/internal/lapangan/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +28,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		tugas := lapangan.Group("/tugas")
 		{
 			tugas.GET("/saya", handler.ListSaya)
+			tugas.GET("/:id", handler.Get)
+			tugas.POST("/bulk", middleware.RequirePermission("tugas.kelola"), handler.Bulk)
 		}
 	}
 }

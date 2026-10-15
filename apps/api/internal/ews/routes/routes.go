@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/ews/delivery/http"
 	"github.com/garda-inflasi/api/internal/ews/repository/postgres"
 	"github.com/garda-inflasi/api/internal/ews/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -22,5 +22,11 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	uc := usecase.New(repo, deps.Logger)
 	handler := http.New(uc)
 
-	engine.GET("/ews", middleware.JWTAuth(deps.Token), middleware.RequirePermission("ews.lihat"), handler.List)
+	group := engine.Group("/ews")
+	group.Use(middleware.JWTAuth(deps.Token))
+	{
+		group.GET("", middleware.RequirePermission("ews.lihat"), handler.List)
+		group.GET("/:id", middleware.RequirePermission("ews.lihat"), handler.GetByID)
+		group.POST("/bulk", middleware.RequirePermission("ews.akui"), handler.Bulk)
+	}
 }

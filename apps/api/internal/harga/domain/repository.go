@@ -12,6 +12,9 @@ type TrenHarga struct {
 }
 
 type Repository interface {
-	List(ctx context.Context, limit int) ([]EntriHarga, error)
+	List(ctx context.Context, limit int, status string) ([]EntriHarga, error)
+	GetByID(ctx context.Context, id string) (*EntriHarga, error)
 	GetTren(ctx context.Context, komoditas, wilayah string) ([]TrenHarga, error)
+	Create(ctx context.Context, entri *EntriHarga) error
+	BulkAction(ctx context.Context, ids []string, action BulkAction, userID string) (int64, error)
 }

@@ -160,6 +160,46 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 	// Get user permissions from RBAC
 	permissions := uc.getPermissionsForRole(user.Peran)
 
+// GetUser returns a user by ID.
+func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, error) {
+	user, err := uc.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+	return user, nil
+}
+
+// BulkUserAction processes a bulk action on users.
+func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action string, ip string) (int64, error) {
+	domainAction := domain.BulkUserAction(action)
+	switch domainAction {
+	case domain.BulkAktifkan, domain.BulkNonaktifkan, domain.BulkWajibkanMFA, domain.BulkAkhiriSesi:
+		// valid
+	default:
+		return 0, fmt.Errorf("action not supported: %s", action)
+	}
+
+	count, err := uc.repo.BulkUpdateUsers(ctx, ids, domainAction)
+	if err != nil {
+		uc.log.Error("bulk user action failed", map[string]interface{}{
+			"action": action,
+			"count":  len(ids),
+			"error":  err.Error(),
+		})
+		return 0, fmt.Errorf("bulk user action: %w", err)
+	}
+
+	// Audit log for bulk action
+	uc.recordAuditLog(ctx, nil, "BULK_"+string(domainAction), "pengguna", fmt.Sprintf("%d users", len(ids)), "BERHASIL", &ip, nil)
+	uc.log.Info("bulk user action completed", map[string]interface{}{
+		"action": action,
+		"count":  count,
+	})
+	return count, nil
+}
+
+// ── RBAC Helper ───────────────────────────────────────────────────────
+
 	accessToken, err := uc.token.CreateAccessToken(user.ID, user.Peran, permissions)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("create access token: %w", err)

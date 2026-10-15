@@ -2,64 +2,76 @@ package domain
 
 import "time"
 
-// ── Entity ────────────────────────────────────────────────────────────
-
 // Pengguna maps to the pengguna table.
 type Pengguna struct {
-	ID            string     `gorm:"column:id;primaryKey"`
-	Nama          string     `gorm:"column:nama"`
-	Email         string     `gorm:"column:email;uniqueIndex"`
-	PasswordHash  *string    `gorm:"column:password_hash"`
-	Peran         string     `gorm:"column:peran;type:peran"`
-	Lapis         string     `gorm:"column:lapis;type:lapis"`
-	Lembaga       string     `gorm:"column:lembaga"`
-	KabupatenKode *string    `gorm:"column:kabupaten_kode"`
-	MfaAktif      bool       `gorm:"column:mfa_aktif;default:false"`
-	MfaSecret     *string    `gorm:"column:mfa_secret"`
-	MfaBackupCodes *string   `gorm:"column:mfa_backup_codes;type:jsonb"`
-	Status        string     `gorm:"column:status;type:status_akun;default:AKTIF"`
-	TerakhirMasuk *time.Time `gorm:"column:terakhir_masuk"`
-	DibuatPada    time.Time  `gorm:"column:dibuat_pada;default:now()"`
+	ID             string     `gorm:"column:id;primaryKey"`
+	Nama           string     `gorm:"column:nama"`
+	Email          string     `gorm:"column:email;uniqueIndex:idx_pengguna_email"`
+	PasswordHash   *string    `gorm:"column:password_hash"`
+	Peran          string     `gorm:"column:peran"`
+	Lapis          string     `gorm:"column:lapis"`
+	Lembaga        string     `gorm:"column:lembaga"`
+	KabupatenKode  *string    `gorm:"column:kabupaten_kode"`
+	MfaAktif       bool       `gorm:"column:mfa_aktif;default:false"`
+	MfaSecret      *string    `gorm:"column:mfa_secret"`
+	MfaBackupCodes *string    `gorm:"column:mfa_backup_codes"`
+	Status         string     `gorm:"column:status;default:AKTIF"`
+	TerakhirMasuk  *time.Time `gorm:"column:terakhir_masuk"`
+	DibuatPada     time.Time  `gorm:"column:dibuat_pada;default:now()"`
+	DiupdatePada   time.Time  `gorm:"column:diupdate_pada;default:now()"`
 }
 
 func (Pengguna) TableName() string {
 	return "pengguna"
 }
 
-// RefreshToken maps to the refresh_tokens table.
+// RefreshToken represents a stored refresh token.
 type RefreshToken struct {
 	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	UserID    string     `gorm:"column:user_id;index:idx_rt_user"`
-	TokenHash string     `gorm:"column:token_hash;uniqueIndex"`
-	FamilyID  string     `gorm:"column:family_id;type:uuid;index:idx_rt_family"`
-	Device    *string    `gorm:"column:device"`
+	TokenHash string     `gorm:"column:token_hash;uniqueIndex:idx_rt_hash"`
+	FamilyID  string     `gorm:"column:family_id;index:idx_rt_family"`
 	IP        *string    `gorm:"column:ip"`
 	ExpiresAt time.Time  `gorm:"column:expires_at"`
 	RevokedAt *time.Time `gorm:"column:revoked_at"`
+	CreatedAt time.Time  `gorm:"column:created_at;default:now()"`
 }
 
 func (RefreshToken) TableName() string {
 	return "refresh_tokens"
 }
 
-// LoginAttempt maps to the login_attempts table.
+// LoginAttempt represents a login attempt record.
 type LoginAttempt struct {
-	ID            int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID        *string    `gorm:"column:user_id;index:idx_la_user_time"`
-	IP            *string    `gorm:"column:ip;index:idx_la_ip_time"`
-	Success       bool       `gorm:"column:success"`
-	FailureReason *string    `gorm:"column:failure_reason"`
-	AttemptedAt   time.Time  `gorm:"column:attempted_at;default:now()"`
+	ID            int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID        *string   `gorm:"column:user_id;index:idx_la_user"`
+	IP            *string   `gorm:"column:ip"`
+	Success       bool      `gorm:"column:success"`
+	FailureReason *string   `gorm:"column:failure_reason"`
+	AttemptedAt   time.Time `gorm:"column:attempted_at;default:now()"`
 }
 
 func (LoginAttempt) TableName() string {
 	return "login_attempts"
 }
 
-// AuditLog maps to the audit_log table.
+// ResetToken represents a password reset token.
+type ResetToken struct {
+	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID    string     `gorm:"column:user_id"`
+	TokenHash string     `gorm:"column:token_hash;uniqueIndex:idx_rt_hash"`
+	ExpiresAt time.Time  `gorm:"column:expires_at"`
+	UsedAt    *time.Time `gorm:"column:used_at"`
+}
+
+func (ResetToken) TableName() string {
+	return "password_reset_tokens"
+}
+
+// AuditLog represents an audit log entry.
 type AuditLog struct {
 	ID        string    `gorm:"column:id;primaryKey"`
-	Waktu     time.Time `gorm:"column:waktu;default:now();index:idx_audit_log_waktu"`
+	Waktu     time.Time `gorm:"column:waktu;default:now()"`
 	AktorID   *string   `gorm:"column:aktor_id"`
 	Aksi      string    `gorm:"column:aksi"`
 	Entitas   string    `gorm:"column:entitas"`
@@ -73,17 +85,12 @@ func (AuditLog) TableName() string {
 	return "audit_log"
 }
 
-// ResetToken maps to the password_reset_tokens table.
-type ResetToken struct {
-	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID    string     `gorm:"column:user_id;index:idx_rt_user"`
-	TokenHash string     `gorm:"column:token_hash;uniqueIndex"`
-	ExpiresAt time.Time  `gorm:"column:expires_at"`
-	UsedAt    *time.Time `gorm:"column:used_at"`
-	CreatedAt time.Time  `gorm:"column:created_at;default:now()"`
-}
+// BulkUserAction represents a bulk action on users.
+type BulkUserAction string
 
-func (ResetToken) TableName() string {
-	return "password_reset_tokens"
-}
-
+const (
+	BulkAktifkan    BulkUserAction = "aktifkan"
+	BulkNonaktifkan BulkUserAction = "nonaktifkan"
+	BulkWajibkanMFA BulkUserAction = "wajibkan_mfa"
+	BulkAkhiriSesi  BulkUserAction = "akhiri_sesi"
+)

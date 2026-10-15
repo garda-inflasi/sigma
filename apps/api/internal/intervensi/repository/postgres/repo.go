@@ -33,6 +33,10 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (*domain.KartuInterv
 	return &kartu, nil
 }
 
+func (r *Repository) Create(ctx context.Context, kartu *domain.KartuIntervensi) error {
+	return r.db.WithContext(ctx).Create(kartu).Error
+}
+
 func (r *Repository) UpdateTahap(ctx context.Context, id int64, tahap domain.TahapEnum, urutan int) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).Model(&domain.KartuIntervensi{}).
@@ -42,4 +46,23 @@ func (r *Repository) UpdateTahap(ctx context.Context, id int64, tahap domain.Tah
 			"urutan":        urutan,
 			"diupdate_pada": now,
 		}).Error
+}
+
+func (r *Repository) BulkAction(ctx context.Context, ids []int64, action domain.BulkAction) (int64, error) {
+	tx := r.db.WithContext(ctx).Model(&domain.KartuIntervensi{}).Where("id IN ?", ids)
+
+	switch action {
+	case domain.BulkArsip:
+		tx = tx.Update("tahap", domain.TahapBatal)
+	case domain.BulkHapus:
+		tx = r.db.WithContext(ctx).Where("id IN ?", ids).Delete(&domain.KartuIntervensi{})
+	default:
+		return 0, fmt.Errorf("unknown bulk action: %s", action)
+	}
+
+	if tx.Error != nil {
+		return 0, fmt.Errorf("bulk action %s: %w", action, tx.Error)
+	}
+
+	return tx.RowsAffected, nil
 }

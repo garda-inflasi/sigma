@@ -1,3 +1,14 @@
+			users.POST("", handler.CreateUser)
+			users.GET("", handler.ListUsers)
+			users.GET("/:id", handler.GetUser)
+
+Suggested:
+users.POST("", handler.CreateUser)
+users.GET("", handler.ListUsers)
+users.POST("/bulk", handler.BulkUser)
+users.GET("/:id", handler.GetUser)
+
+Need output entire file. Include package etc. No explanations.```go
 package routes
 
 import (
@@ -85,6 +96,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		{
 			users.POST("", handler.CreateUser)
 			users.GET("", handler.ListUsers)
+			users.POST("/bulk", handler.BulkUser)
 			users.GET("/:id", handler.GetUser)
 		}
 	}

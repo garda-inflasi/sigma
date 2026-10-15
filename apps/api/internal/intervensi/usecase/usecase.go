@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("kartu intervensi tidak ditemukan")
-	ErrInvalidTahap = errors.New("tahap tidak valid")
+	ErrNotFound      = errors.New("kartu intervensi tidak ditemukan")
+	ErrInvalidTahap  = errors.New("tahap tidak valid")
+	ErrInvalidAction = errors.New("aksi tidak valid")
 )
 
 type UseCase struct {
@@ -30,6 +31,16 @@ func (uc *UseCase) List(ctx context.Context) ([]domain.KartuIntervensi, error) {
 		return nil, fmt.Errorf("list kartu intervensi: %w", err)
 	}
 	return kartu, nil
+}
+
+func (uc *UseCase) Create(ctx context.Context, kartu *domain.KartuIntervensi) error {
+	kartu.Tahap = domain.TahapUsulan
+	if err := uc.repo.Create(ctx, kartu); err != nil {
+		uc.log.Error("create kartu intervensi failed", map[string]interface{}{"error": err.Error()})
+		return fmt.Errorf("create kartu intervensi: %w", err)
+	}
+	uc.log.Info("kartu intervensi created", map[string]interface{}{"id": kartu.ID})
+	return nil
 }
 
 func (uc *UseCase) UpdateTahap(ctx context.Context, id int64, tahap string, urutan int) error {
@@ -53,4 +64,30 @@ func (uc *UseCase) UpdateTahap(ctx context.Context, id int64, tahap string, urut
 
 	uc.log.Info("tahap updated", map[string]interface{}{"id": id, "tahap": tahap, "urutan": urutan})
 	return nil
+}
+
+func (uc *UseCase) BulkAction(ctx context.Context, ids []int64, action string) (int64, error) {
+	domainAction := domain.BulkAction(action)
+	switch domainAction {
+	case domain.BulkArsip, domain.BulkHapus:
+		// valid
+	default:
+		return 0, ErrInvalidAction
+	}
+
+	count, err := uc.repo.BulkAction(ctx, ids, domainAction)
+	if err != nil {
+		uc.log.Error("intervensi bulk action failed", map[string]interface{}{
+			"action": action,
+			"count":  len(ids),
+			"error":  err.Error(),
+		})
+		return 0, fmt.Errorf("bulk action: %w", err)
+	}
+
+	uc.log.Info("intervensi bulk action completed", map[string]interface{}{
+		"action": action,
+		"count":  count,
+	})
+	return count, nil
 }

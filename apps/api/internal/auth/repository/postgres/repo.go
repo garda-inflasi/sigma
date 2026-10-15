@@ -156,3 +156,34 @@ func (r *Repository) CreateAuditLog(ctx context.Context, log *domain.AuditLog) e
 	return r.db.WithContext(ctx).Create(log).Error
 }
 
+// ── Bulk User Actions ─────────────────────────────────────────────────
+
+func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {
+	tx := r.db.WithContext(ctx).Model(&domain.Pengguna{}).Where("id IN ?", ids)
+
+	switch action {
+	case domain.BulkAktifkan:
+		tx = tx.Update("status", "AKTIF")
+	case domain.BulkNonaktifkan:
+		tx = tx.Update("status", "NONAKTIF")
+	case domain.BulkWajibkanMFA:
+		tx = tx.Update("mfa_wajib", true)
+	case domain.BulkAkhiriSesi:
+		// Revoke all refresh tokens for these users
+		now := time.Now()
+		if err := r.db.WithContext(ctx).Model(&domain.RefreshToken{}).
+			Where("user_id IN ? AND revoked_at IS NULL", ids).
+			Update("revoked_at", now).Error; err != nil {
+			return 0, fmt.Errorf("revoke sessions: %w", err)
+		}
+		return int64(len(ids)), nil
+	default:
+		return 0, fmt.Errorf("unknown bulk action: %s", action)
+	}
+
+	if tx.Error != nil {
+		return 0, fmt.Errorf("bulk action %s: %w", action, tx.Error)
+	}
+
+	return tx.RowsAffected, nil
+}

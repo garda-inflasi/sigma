@@ -3,11 +3,11 @@ package http
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/pkg/response"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
@@ -302,7 +302,25 @@ func (h *Handler) GetUser(c *gin.Context) {
 	response.Success(c, resp)
 }
 
+// POST /v1/users/bulk
+func (h *Handler) BulkUser(c *gin.Context) {
+	var req dto.BulkUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
 
+	ip := c.ClientIP()
+	count, err := h.uc.BulkUserAction(c.Request.Context(), req.IDs, req.Action, ip)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, dto.BulkUserResponse{
+		Berhasil: int(count),
+	})
+}
 
 // ── MFA Handlers ──────────────────────────────────────────────────────
 

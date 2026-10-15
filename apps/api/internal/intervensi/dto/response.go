@@ -16,6 +16,16 @@ type KartuIntervensiResponse struct {
 	DiupdatePada  string `json:"diupdate_pada"`
 }
 
+type CreateIntervensiResponse struct {
+	ID int64 `json:"id"`
+}
+
+type BulkIntervensiResponse struct {
+	Berhasil int      `json:"berhasil"`
+	Gagal    int      `json:"gagal"`
+	Errors   []string `json:"errors,omitempty"`
+}
+
 func ToKartuIntervensiResponse(k domain.KartuIntervensi) KartuIntervensiResponse {
 	return KartuIntervensiResponse{
 		ID:            k.ID,

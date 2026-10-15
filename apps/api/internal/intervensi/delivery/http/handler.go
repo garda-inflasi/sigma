@@ -3,10 +3,11 @@ package http
 import (
 	"strconv"
 
-	"github.com/gin-gonic/gin"
+	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	"github.com/garda-inflasi/api/internal/intervensi/dto"
 	"github.com/garda-inflasi/api/internal/intervensi/usecase"
 	"github.com/garda-inflasi/api/pkg/response"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
@@ -27,6 +28,34 @@ func (h *Handler) List(c *gin.Context) {
 
 	resp := dto.ToKartuIntervensiListResponse(kartu)
 	response.Success(c, resp)
+}
+
+// POST /v1/intervensi
+func (h *Handler) Create(c *gin.Context) {
+	var req dto.CreateIntervensiRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	userID := c.GetString("user_id")
+
+	kartu := &domain.KartuIntervensi{
+		Judul:         req.Judul,
+		Deskripsi:     req.Deskripsi,
+		Prioritas:     req.Prioritas,
+		PIC:           req.PIC,
+		KomoditasKode: req.KomoditasKode,
+		WilayahKode:   req.WilayahKode,
+		DibuatOlehID:  userID,
+	}
+
+	if err := h.uc.Create(c.Request.Context(), kartu); err != nil {
+		response.InternalError(c, "Gagal membuat intervensi")
+		return
+	}
+
+	response.Created(c, dto.CreateIntervensiResponse{ID: kartu.ID})
 }
 
 // PATCH /v1/intervensi/:id/tahap
@@ -57,4 +86,28 @@ func (h *Handler) UpdateTahap(c *gin.Context) {
 	}
 
 	response.Success(c, nil)
+}
+
+// POST /v1/intervensi/bulk
+func (h *Handler) Bulk(c *gin.Context) {
+	var req dto.BulkIntervensiRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	count, err := h.uc.BulkAction(c.Request.Context(), req.IDs, req.Action)
+	if err != nil {
+		switch err {
+		case usecase.ErrInvalidAction:
+			response.BadRequest(c, "Aksi tidak valid")
+		default:
+			response.InternalError(c, "Gagal memproses aksi massal")
+		}
+		return
+	}
+
+	response.Success(c, dto.BulkIntervensiResponse{
+		Berhasil: int(count),
+	})
 }

@@ -144,10 +144,12 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 
 	if err := h.uc.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword, ip); err != nil {
 		switch err {
-		case usecase.ErrInvalidCredentials:
+		case usecase.ErrWrongPassword:
 			response.Unauthorized(c, "Password lama salah")
 		case usecase.ErrWeakPassword:
 			response.BadRequest(c, "Password baru terlalu lemah")
+		case usecase.ErrPasswordReuse:
+			response.BadRequest(c, "Password baru tidak boleh sama dengan password lama")
 		default:
 			response.InternalError(c, "Gagal mengubah password")
 		}
@@ -186,7 +188,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	ip := c.ClientIP()
 	if err := h.uc.ResetPassword(c.Request.Context(), req.Token, req.Password, ip); err != nil {
 		switch err {
-		case usecase.ErrInvalidToken:
+		case usecase.ErrResetTokenInvalid, usecase.ErrResetTokenExpired:
 			response.Unauthorized(c, "Token reset tidak valid atau sudah kedaluwarsa")
 		case usecase.ErrWeakPassword:
 			response.BadRequest(c, "Password terlalu lemah")

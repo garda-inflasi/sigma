@@ -1,7 +1,18 @@
 openapi: "3.0.3"
+
 info:
   title: Garda Inflasi API
-  description: API for Garda Inflasi — platform pengendalian inflasi daerah
+  description: |
+    API untuk platform Garda Inflasi — sistem pengendalian inflasi daerah
+    terintegrasi dengan AI/ML, real-time monitoring, dan early warning system.
+
+    ## Authentication
+
+    Semua endpoint kecuali `/healthz`, `/v1/auth/login`, `/v1/auth/refresh`,
+    `/v1/auth/forgot-password`, dan `/v1/auth/reset-password` memerlukan
+    JWT Bearer token yang dikirim via header `Authorization: Bearer <token>`.
+
+    Token diperoleh dari endpoint `POST /v1/auth/login`.
   version: "1.0.0"
   contact:
     name: FMIPA USK × Kanwil DJPb
@@ -27,29 +38,489 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
+  /v1/auth/login:
+    post:
+      summary: Login pengguna
+      operationId: authLogin
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Email atau password salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akun tidak aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Akun terkunci karena terlalu banyak percobaan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/refresh:
+    post:
+      summary: Refresh token
+      operationId: authRefresh
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshTokenResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid atau kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/logout:
+    post:
+      summary: Logout pengguna
+      operationId: authLogout
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Logout berhasil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/me:
+    get:
+      summary: Mendapatkan profil pengguna saat ini
+      operationId: authMe
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Profil pengguna
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/change-password:
+    post:
+      summary: Mengubah password
+      operationId: authChangePassword
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password berhasil diubah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Password baru terlalu lemah atau sama dengan password lama
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Password lama salah atau token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/forgot-password:
+    post:
+      summary: Meminta reset password (mengirim email)
+      operationId: authForgotPassword
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "200":
+          description: |
+            Selalu mengembalikan sukses untuk mencegah email enumeration.
+            Email reset akan dikirim jika email terdaftar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/reset-password:
+    post:
+      summary: Mereset password dengan token dari email
+      operationId: authResetPassword
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          description: Password berhasil direset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Password terlalu lemah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token reset tidak valid atau sudah kedaluwarsa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/mfa/setup:
+    post:
+      summary: Memulai setup MFA (menghasilkan secret TOTP)
+      operationId: authMFASetup
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Secret TOTP berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MFASetupResponse"
+        "400":
+          description: MFA sudah aktif atau token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/mfa/verify:
+    post:
+      summary: Memverifikasi dan mengaktifkan MFA dengan kode TOTP
+      operationId: authMFAVerify
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAVerifyRequest"
+      responses:
+        "200":
+          description: MFA berhasil diaktifkan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Kode TOTP tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/mfa/validate:
+    post:
+      summary: Memvalidasi kode MFA (TOTP atau backup code)
+      operationId: authMFAValidate
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAValidateRequest"
+      responses:
+        "200":
+          description: Kode MFA valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Kode MFA tidak valid (error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Kode MFA tidak valid (unauthorized) atau token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/mfa/disable:
+    post:
+      summary: Menonaktifkan MFA
+      operationId: authMFADisable
+      tags:
+        - Multi-Factor Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFADisableRequest"
+      responses:
+        "200":
+          description: MFA berhasil dinonaktifkan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Gagal menonaktifkan MFA
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Password salah atau token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users:
+    get:
+      summary: Mendaftar semua pengguna (dengan paginasi)
+      operationId: listUsers
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Halaman
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Jumlah item per halaman
+      responses:
+        "200":
+          description: Daftar pengguna
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Membuat pengguna baru
+      operationId: createUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Pengguna berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email sudah terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}:
+    get:
+      summary: Mendapatkan detail pengguna
+      operationId: getUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: Detail pengguna
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Masukkan token JWT yang diperoleh dari endpoint login
+
   schemas:
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: ok
-        time:
-          type: string
-          format: date-time
-          example: "2026-10-15T03:00:00Z"
-
-    ErrorResponse:
-      type: object
-      properties:
-        code:
-          type: string
-          example: "400"
-        message:
-          type: string
-          example: "Bad Request"
-
+    # ── Response Envelope ──────────────────────────────────────────────
     Envelope:
       type: object
       properties:
@@ -61,3 +532,343 @@ components:
           example: "OK"
         data:
           type: object
+          nullable: true
+
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "400"
+        message:
+          type: string
+          example: "Bad Request"
+        data:
+          nullable: true
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        time:
+          type: string
+          format: date-time
+          example: "2026-10-15T03:00:00Z"
+
+    # ── Authentication ─────────────────────────────────────────────────
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@garda-inflasi.id
+        password:
+          type: string
+          format: password
+          example: "Test1234!"
+
+    LoginResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+              description: JWT access token
+            refresh_token:
+              type: string
+              description: Refresh token
+            user:
+              $ref: "#/components/schemas/UserObject"
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh token dari response login
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - old_password
+        - new_password
+      properties:
+        old_password:
+          type: string
+          format: password
+          description: Password saat ini
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          description: |
+            Password baru. Minimal 8 karakter, mengandung huruf besar,
+            angka, dan karakter spesial.
+
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email pengguna yang terdaftar
+
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+          description: Token reset password dari email
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Password baru
+
+    # ── MFA ────────────────────────────────────────────────────────────
+    MFASetupResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            secret:
+              type: string
+              description: Base32-encoded secret key untuk ditambahkan ke authenticator app
+              example: JBSWY3DPEHPK3PXP
+            provisioning_uri:
+              type: string
+              format: uri
+              description: URI untuk QR code (otpauth://)
+              example: otpauth://totp/Garda%20Inflasi:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Garda%20Inflasi
+            backup_codes:
+              type: array
+              items:
+                type: string
+              description: 8 kode cadangan sekali pakai (8 karakter alfanumerik)
+              example:
+                - F3119FBC
+                - 38F46BF0
+
+    MFAVerifyRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: Kode TOTP 6 digit dari authenticator app
+          example: "123456"
+
+    MFAValidateRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: Kode TOTP 6 digit atau backup code 8 karakter
+          example: "123456"
+
+    MFADisableRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+          description: Password saat ini untuk konfirmasi
+
+    # ── User ───────────────────────────────────────────────────────────
+    UserObject:
+      type: object
+      properties:
+        id:
+          type: string
+          example: test-user-001
+        nama:
+          type: string
+          example: Test User
+        email:
+          type: string
+          format: email
+          example: user@garda-inflasi.id
+        peran:
+          type: string
+          enum:
+            - STRATEGIS_FMIPA
+            - STRATEGIS_BI
+            - STRATEGIS_BPS
+            - STRATEGIS_DJPB
+            - MANAJER_PROGRAM
+            - MANAJER_DATA
+            - MANAJER_KEBIJAKAN
+            - MANAJER_PEMBIAYAAN
+            - MANAJER_RISIKO
+            - MANAJER_MUTU
+            - OPS_KOORDINATOR
+            - OPS_AGREGATOR
+            - OPS_MAHASISWA
+            - ADMIN_SISTEM
+          example: ADMIN_SISTEM
+        lapis:
+          type: string
+          enum:
+            - STRATEGIS
+            - MANAJERIAL
+            - OPERASIONAL
+            - SISTEM
+          example: SISTEM
+        lembaga:
+          type: string
+          example: BPPSDMP
+        kabupaten_kode:
+          type: string
+          nullable: true
+          example: "1171"
+        mfa_aktif:
+          type: boolean
+          example: false
+        status:
+          type: string
+          enum:
+            - AKTIF
+            - NONAKTIF
+            - MENUNGGU
+          example: AKTIF
+        terakhir_masuk:
+          type: string
+          format: date-time
+          nullable: true
+        dibuat_pada:
+          type: string
+          format: date-time
+
+    UserResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/UserObject"
+
+    CreateUserRequest:
+      type: object
+      required:
+        - nama
+        - email
+        - peran
+        - lapis
+        - lembaga
+      properties:
+        id:
+          type: string
+          description: ID opsional (akan digenerate jika kosong)
+        nama:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@garda-inflasi.id
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Password opsional (default: random)
+        peran:
+          type: string
+          example: OPS_MAHASISWA
+        lapis:
+          type: string
+          example: OPERASIONAL
+        lembaga:
+          type: string
+          example: BPPSDMP
+
+    UserListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/UserObject"
+            total:
+              type: integer
+              example: 42
+            page:
+              type: integer
+              example: 1
+            limit:
+              type: integer
+              example: 20

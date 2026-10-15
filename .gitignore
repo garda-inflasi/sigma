@@ -1,7 +1,48 @@
-node_modules
-.next
-out
-.env*.local
-.env
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Go ===
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+tmp/
+
+# === Node / pnpm ===
+node_modules/
+.pnpm-store
+.next/
+out/
 *.tsbuildinfo
 next-env.d.ts
+
+# === Environment ===
+.env
+.env*.local
+.env*.development
+.env*.production
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === Prisma ===
+apps/web/prisma/migrations/
+
+# === Docker ===
+.docker/
+
+# === Build artifacts ===
+dist/
+build/
+*.log
+
+# === Turbo ===
+.turbo/

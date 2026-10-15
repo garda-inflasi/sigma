@@ -1,0 +1,1037 @@
+openapi: "3.0.3"
+info:
+  title: Sistem Pemantauan Pangan dan Inflasi Aceh - API
+  description: |
+    RESTful API untuk Sistem Pemantauan Pangan dan Inflasi Aceh.
+    Sistem ini menggunakan MongoDB dengan **Analytic Bucket Pattern** untuk
+    mengoptimalkan performa query time-series pada data harga harian,
+    prediksi ML, neraca pangan, dan ruang fiskal.
+
+    **Tech Stack:**
+    - Go + Gin Framework
+    - MongoDB (MongoDB Driver v2)
+    - PostgreSQL + GORM (untuk data master/transaksional)
+    - JWT Authentication
+  version: "1.0.0"
+  contact:
+    name: Garda Inflasi Team
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Development server
+  - url: https://api.garda-inflasi.dev/v1
+    description: Staging server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Masukkan token JWT dengan format `Bearer <token>`
+
+  schemas:
+    # ── Error Response ────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: Validasi gagal: parameter 'date' wajib diisi
+
+    # ── Dashboard Summary ─────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            inflation_yoy:
+              type: number
+              format: float
+              example: 2.84
+              description: Inflasi Year-over-Year dalam persen
+            inflation_mom:
+              type: number
+              format: float
+              example: 0.41
+              description: Inflasi Month-over-Month dalam persen
+            fiscal_space:
+              type: object
+              properties:
+                total_pagu:
+                  type: number
+                  example: 186000000000
+                  description: Total pagu anggaran dalam Rupiah
+                realization_pct:
+                  type: number
+                  format: float
+                  example: 29.0
+                  description: Persentase realisasi anggaran
+                intervention_score:
+                  type: number
+                  format: float
+                  example: 72.0
+                  description: Skor kelayakan intervensi (0-100)
+            top_contributors:
+              type: array
+              items:
+                type: object
+                properties:
+                  commodity_id:
+                    type: string
+                    example: cabai_merah_keriting
+                  commodity_name:
+                    type: string
+                    example: Cabai Merah Keriting
+                  price_change_pct:
+                    type: number
+                    format: float
+                    example: 14.8
+                  contribution:
+                    type: number
+                    format: float
+                    example: 0.35
+            active_alerts_count:
+              type: integer
+              example: 12
+              description: Jumlah alert aktif hari ini
+            period:
+              type: string
+              example: "2026-10"
+              description: Periode data (YYYY-MM)
+
+    # ── Inflation Trend ───────────────────────────────────────────────
+    InflationTrend:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date-time
+          example: "2026-10-04T00:00:00Z"
+        commodity_id:
+          type: string
+          example: cabai_merah_keriting
+        avg_price:
+          type: number
+          format: float
+          example: 73900
+        inflation_mom:
+          type: number
+          format: float
+          example: 0.41
+        inflation_yoy:
+          type: number
+          format: float
+          example: 2.84
+        status:
+          type: string
+          enum: [Normal, Waspada, Defisit, Surplus]
+          example: Defisit
+
+    # ── Food Balance ──────────────────────────────────────────────────
+    FoodBalanceItem:
+      type: object
+      properties:
+        commodity_id:
+          type: string
+          example: cabai_merah_keriting
+        commodity_name:
+          type: string
+          example: Cabai Merah Keriting
+        surplus_deficit:
+          type: number
+          format: float
+          example: -1.0
+          description: "1.0 = Surplus, -1.0 = Defisit, 0 = Normal"
+        status:
+          type: string
+          enum: [Normal, Waspada, Defisit, Surplus]
+          example: Defisit
+
+    # ── Fiscal Space ──────────────────────────────────────────────────
+    FiscalSpaceSummary:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            total_pagu:
+              type: number
+              example: 186000000000
+            realization_pct:
+              type: number
+              format: float
+              example: 29.0
+            intervention_score:
+              type: number
+              format: float
+              example: 72.0
+
+    # ── Heatmap ───────────────────────────────────────────────────────
+    HeatmapItem:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date-time
+          example: "2026-10-04T00:00:00Z"
+        commodity_id:
+          type: string
+          example: cabai_merah_keriting
+        commodity_name:
+          type: string
+          example: Cabai Merah Keriting
+        region_id:
+          type: string
+          example: banda_aceh
+        region_name:
+          type: string
+          example: Kota Banda Aceh
+        price:
+          type: number
+          format: float
+          example: 73900
+        price_change_pct:
+          type: number
+          format: float
+          example: 10.2
+          description: Perubahan harga vs rata-rata 7 hari (dalam persen)
+        status:
+          type: string
+          enum: [Tekanan/defisit, Waspada, Normal, Surplus]
+          example: Normal
+
+    # ── Alert ─────────────────────────────────────────────────────────
+    AlertItem:
+      type: object
+      properties:
+        alert_id:
+          type: string
+          example: ALT-20261004-01
+        commodity_id:
+          type: string
+          example: cabai_merah_keriting
+        commodity_name:
+          type: string
+          example: Cabai Merah Keriting
+        region_id:
+          type: string
+          example: aceh_tengah
+        type:
+          type: string
+          example: Lonjakan Harga
+          description: Tipe peringatan (Lonjakan Harga, Stok Menipis, dll)
+        severity:
+          type: string
+          enum: [Kritis, Tinggi, Sedang, Rendah]
+          example: Kritis
+        price_change_pct:
+          type: number
+          format: float
+          example: 18.3
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-04T08:30:00Z"
+
+    # ── Price Trend ───────────────────────────────────────────────────
+    PriceTrendItem:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date-time
+          example: "2026-10-04T00:00:00Z"
+        price:
+          type: number
+          format: float
+          example: 73900
+        price_change_pct:
+          type: number
+          format: float
+          example: 10.2
+        avg_7day:
+          type: number
+          format: float
+          example: 68500
+          description: Rata-rata harga 7 hari terakhir
+
+    # ── Region Status Map ─────────────────────────────────────────────
+    RegionStatusMap:
+      type: object
+      properties:
+        region_id:
+          type: string
+          example: aceh_besar
+        region_name:
+          type: string
+          example: Kab. Aceh Besar
+        status:
+          type: string
+          enum: [Tekanan/defisit, Waspada, Normal, Surplus]
+          example: Tekanan/defisit
+        geojson:
+          type: object
+          description: GeoJSON Polygon untuk peta
+          example:
+            type: Polygon
+            coordinates:
+              - - [95.0, 5.0]
+                - [95.5, 5.0]
+                - [95.5, 5.5]
+                - [95.0, 5.5]
+                - [95.0, 5.0]
+
+    # ── Forecast ──────────────────────────────────────────────────────
+    ForecastResult:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            commodity_id:
+              type: string
+              example: cabai_merah_keriting
+            commodity_name:
+              type: string
+              example: Cabai Merah Keriting
+            current_price:
+              type: number
+              format: float
+              example: 73900
+            forecast_14d_price:
+              type: number
+              format: float
+              example: 90306
+            forecast_change_pct:
+              type: number
+              format: float
+              example: 22.2
+            confidence_interval_80:
+              type: object
+              properties:
+                lower:
+                  type: number
+                  format: float
+                  example: 76200
+                upper:
+                  type: number
+                  format: float
+                  example: 104300
+            mape:
+              type: number
+              format: float
+              example: 6.8
+              description: Mean Absolute Percentage Error
+            model_version:
+              type: string
+              example: v2.3.1
+
+    # ── Feature Importance ────────────────────────────────────────────
+    FeatureImportance:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            commodity_id:
+              type: string
+              example: cabai_merah_keriting
+            features:
+              type: array
+              items:
+                type: object
+                properties:
+                  feature:
+                    type: string
+                    example: Curah hujan sentra Gayo
+                  contribution_score:
+                    type: number
+                    format: float
+                    example: 9.3
+                    description: Skor kontribusi (positif = menaikkan harga, negatif = menurunkan)
+
+    # ── Simulation ────────────────────────────────────────────────────
+    SimulationRequest:
+      type: object
+      required:
+        - commodity_id
+      properties:
+        commodity_id:
+          type: string
+          example: cabai_merah_keriting
+        rainfall_pct:
+          type: number
+          format: float
+          example: 20.0
+          description: Perubahan curah hujan dalam persen (positif = meningkat)
+        supply_increase_pct:
+          type: number
+          format: float
+          example: 15.0
+          description: Peningkatan pasokan dalam persen
+        transport_subsidy_pct:
+          type: number
+          format: float
+          example: 10.0
+          description: Subsidi ongkos angkut dalam persen
+
+    SimulationResult:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            commodity_id:
+              type: string
+              example: cabai_merah_keriting
+            current_price:
+              type: number
+              format: float
+              example: 73900
+            projected_price:
+              type: number
+              format: float
+              example: 82500
+            projected_change_pct:
+              type: number
+              format: float
+              example: 11.6
+            scenario:
+              $ref: '#/components/schemas/SimulationRequest'
+
+    # ── All Commodities Forecast ──────────────────────────────────────
+    AllCommoditiesForecast:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastResult'
+
+    # ── Validation Queue ──────────────────────────────────────────────
+    ValidationQueueItem:
+      type: object
+      properties:
+        entry_id:
+          type: string
+          example: ENT-20261004-089
+        commodity_id:
+          type: string
+          example: beras_premium
+        market_id:
+          type: string
+          example: pasar_bina_usaha_meulaboh
+        region_id:
+          type: string
+          example: aceh_barat
+        price:
+          type: number
+          format: float
+          example: 24900
+        price_deviation_pct:
+          type: number
+          format: float
+          example: 56.8
+          description: Deviasi harga dari rata-rata nasional dalam persen
+        recorded_by:
+          type: string
+          example: user_surveyor_123
+        recorded_at:
+          type: string
+          format: date-time
+          example: "2026-10-04T14:00:00Z"
+        status:
+          type: string
+          enum: [Menunggu validasi, Divalidasi, Ditolak]
+          example: Menunggu validasi
+
+    ValidationQueueResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationQueueItem'
+        total:
+          type: integer
+          example: 150
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 8
+
+    # ── Batch Approve ─────────────────────────────────────────────────
+    BatchApproveRequest:
+      type: object
+      required:
+        - entry_ids
+      properties:
+        entry_ids:
+          type: array
+          items:
+            type: string
+          example:
+            - ENT-20261004-089
+            - ENT-20261004-090
+
+    BatchApproveResponse:
+      type: object
+      properties:
+        approved:
+          type: integer
+          example: 2
+          description: Jumlah entri yang berhasil divalidasi
+
+    # ── Field Activity Progress ───────────────────────────────────────
+    FieldActivityProgress:
+      type: object
+      properties:
+        region_id:
+          type: string
+          example: aceh_besar
+        region_name:
+          type: string
+          example: Kab. Aceh Besar
+        total_entries:
+          type: integer
+          example: 45
+        validated:
+          type: integer
+          example: 32
+        pending:
+          type: integer
+          example: 10
+        rejected:
+          type: integer
+          example: 3
+        date:
+          type: string
+          format: date
+          example: "2026-10-04"
+
+    # ── Model Registry ────────────────────────────────────────────────
+    ModelRegistryItem:
+      type: object
+      properties:
+        commodity_id:
+          type: string
+          example: cabai_merah_keriting
+        version:
+          type: string
+          example: v2.3.1
+        algorithm:
+          type: string
+          example: Ensemble LightGBM + SARIMAX
+        metrics:
+          type: object
+          properties:
+            mape:
+              type: number
+              format: float
+              example: 7.6
+            drift_psi:
+              type: number
+              format: float
+              example: 0.06
+        status:
+          type: string
+          enum: [Produksi, Kandidat, Arsip]
+          example: Produksi
+        trained_at:
+          type: string
+          format: date-time
+          example: "2026-09-28T00:00:00Z"
+        deployed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-09-29T00:00:00Z"
+
+paths:
+  # ═════════════════════════════════════════════════════════════════════
+  # DOMAIN 1: EXECUTIVE SUMMARY & DASHBOARD UTAMA
+  # ═════════════════════════════════════════════════════════════════════
+
+  /dashboard/summary:
+    get:
+      tags:
+        - Executive Dashboard
+      summary: Ringkasan Dashboard Eksekutif
+      description: |
+        Mengembalikan ringkasan inflasi (YoY, MoM), status ruang fiskal,
+        top contributors komoditas, dan jumlah alert aktif.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: periode
+          in: query
+          schema:
+            type: string
+            example: "2026-10"
+          description: Periode data (YYYY-MM), default bulan berjalan
+      responses:
+        "200":
+          description: Ringkasan dashboard berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+
+  /inflation/trends:
+    get:
+      tags:
+        - Executive Dashboard
+      summary: Data Grafik Inflasi 12 Bulan
+      description: |
+        Mengembalikan data inflasi bulanan untuk grafik 12 bulan terakhir.
+        Data mencakup rata-rata harga, inflasi MoM, dan inflasi YoY per komoditas.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 2026
+          description: Tahun data inflasi
+        - name: region
+          in: query
+          schema:
+            type: string
+            example: aceh
+          description: Filter wilayah (default: seluruh Aceh)
+      responses:
+        "200":
+          description: Data tren inflasi berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InflationTrend'
+
+  /food-balance:
+    get:
+      tags:
+        - Executive Dashboard
+      summary: Neraca Pangan per Komoditas
+      description: |
+        Mengembalikan data neraca pangan (surplus/defisit) untuk setiap komoditas.
+        Status ditentukan dari provincial_metrics.status pada bucket harian terbaru.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: monthly
+          description: Periode agregasi (default: monthly)
+      responses:
+        "200":
+          description: Data neraca pangan berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FoodBalanceItem'
+
+  /fiscal-space:
+    get:
+      tags:
+        - Executive Dashboard
+      summary: Data Ruang Fiskal & Intervensi
+      description: |
+        Mengembalikan data pagu anggaran, realisasi, dan skor kelayakan intervensi
+        dari fiscal_space_buckets periode terbaru.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data ruang fiskal berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FiscalSpaceSummary'
+
+  # ═════════════════════════════════════════════════════════════════════
+  # DOMAIN 2: OPERATIONAL MONITORING
+  # ═════════════════════════════════════════════════════════════════════
+
+  /operations/heatmap:
+    get:
+      tags:
+        - Operational Monitoring
+      summary: Peta Panas Harga
+      description: |
+        Mengembalikan data heatmap perubahan harga semua komoditas di seluruh wilayah.
+        Data di-extract dari array regional_breakdown menggunakan $unwind.
+        price_change_pct adalah perubahan harga vs rata-rata 7 hari.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: "2026-10-04"
+          description: Tanggal data heatmap (YYYY-MM-DD)
+      responses:
+        "200":
+          description: Data heatmap berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HeatmapItem'
+
+  /operations/alerts:
+    get:
+      tags:
+        - Operational Monitoring
+      summary: Daftar Peringatan Dini
+      description: |
+        Mengembalikan daftar peringatan dini (lonjakan harga, stok menipis) yang aktif.
+        Data di-extract dari array alerts menggunakan $unwind.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            example: active
+          description: Filter status alert (default: active)
+      responses:
+        "200":
+          description: Data alert berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AlertItem'
+
+  /operations/trends:
+    get:
+      tags:
+        - Operational Monitoring
+      summary: Tren Harga 45 Hari
+      description: |
+        Mengembalikan data tren harga harian untuk komoditas dan wilayah tertentu.
+        Menghitung moving average 7 hari dari data harga.
+        Menggunakan aggregation pipeline: $match → $sort → $unwind → $match → $project.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commodity
+          in: query
+          required: true
+          schema:
+            type: string
+            example: cabai_merah_keriting
+          description: ID komoditas
+        - name: region
+          in: query
+          required: true
+          schema:
+            type: string
+            example: banda_aceh
+          description: ID wilayah
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 45
+            example: 45
+          description: Jumlah hari data yang diminta
+      responses:
+        "200":
+          description: Data tren harga berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PriceTrendItem'
+
+  /regions/status-map:
+    get:
+      tags:
+        - Operational Monitoring
+      summary: Peta Status Wilayah (GeoJSON)
+      description: |
+        Mengembalikan data status wilayah yang diperkaya dengan data GeoJSON
+        dari collection region_master untuk visualisasi peta.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data peta status wilayah berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RegionStatusMap'
+
+  # ═════════════════════════════════════════════════════════════════════
+  # DOMAIN 3: PREDIKSI & EXPLAINABLE AI
+  # ═════════════════════════════════════════════════════════════════════
+
+  /predictions/forecast:
+    get:
+      tags:
+        - Predictions & XAI
+      summary: Proyeksi Harga 14 Hari
+      description: |
+        Mengembalikan proyeksi harga 14 hari ke depan dengan confidence interval 80%
+        berdasarkan snapshot ai_predictions pada bucket harian terbaru.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commodity
+          in: query
+          required: true
+          schema:
+            type: string
+            example: cabai_merah_keriting
+          description: ID komoditas
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 14
+            example: 14
+          description: Jumlah hari proyeksi
+      responses:
+        "200":
+          description: Data prediksi berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastResult'
+
+  /predictions/features:
+    get:
+      tags:
+        - Predictions & XAI
+      summary: Kontribusi Faktor (Feature Importance)
+      description: |
+        Mengembalikan daftar faktor yang mempengaruhi harga beserta skor kontribusinya.
+        Skor positif = menaikkan harga, skor negatif = menurunkan harga.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commodity
+          in: query
+          required: true
+          schema:
+            type: string
+            example: cabai_merah_keriting
+          description: ID komoditas
+      responses:
+        "200":
+          description: Data feature importance berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureImportance'
+
+  /predictions/simulate:
+    post:
+      tags:
+        - Predictions & XAI
+      summary: Simulasi Skenario
+      description: |
+        Menjalankan simulasi skenario berdasarkan perubahan curah hujan, pasokan,
+        dan subsidi ongkos angkut. Menggunakan model heuristik sederhana:
+        - Curah hujan meningkat → harga naik (koefisien 0.3)
+        - Pasokan meningkat → harga turun (koefisien 0.5)
+        - Subsidi angkut → harga turun (koefisien 0.2)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimulationRequest'
+      responses:
+        "200":
+          description: Hasil simulasi berhasil dihitung
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimulationResult'
+
+  /predictions/all-commodities:
+    get:
+      tags:
+        - Predictions & XAI
+      summary: Tabel Proyeksi Seluruh Komoditas
+      description: |
+        Mengembalikan proyeksi harga 14 hari untuk seluruh komoditas yang memiliki
+        data prediksi. Menggunakan $group aggregation untuk mengambil data terbaru
+        per komoditas.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data proyeksi seluruh komoditas berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllCommoditiesForecast'
+
+  # ═════════════════════════════════════════════════════════════════════
+  # DOMAIN 4: VALIDASI & AKTIVITAS LAPANGAN
+  # ═════════════════════════════════════════════════════════════════════
+
+  /validations/queue:
+    get:
+      tags:
+        - Validations & Field Activities
+      summary: Antrean Validasi Entri Lapangan
+      description: |
+        Mengembalikan antrean entri lapangan yang menunggu validasi (status = "Menunggu validasi").
+        Data diambil dari collection field_entries dengan index { status: 1, recorded_at: -1 }.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            example: 1
+          description: Halaman data
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 8
+            example: 8
+          description: Jumlah data per halaman
+      responses:
+        "200":
+          description: Antrean validasi berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationQueueResponse'
+
+  /validations/batch-approve:
+    post:
+      tags:
+        - Validations & Field Activities
+      summary: Validasi Massal Entri Lapangan
+      description: |
+        Memvalidasi beberapa entri lapangan sekaligus. Mengubah status entri
+        dari "Menunggu validasi" menjadi "Divalidasi".
+        User yang memvalidasi diambil dari JWT claims.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchApproveRequest'
+      responses:
+        "200":
+          description: Validasi massal berhasil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchApproveResponse'
+
+  /field-activities/progress:
+    get:
+      tags:
+        - Validations & Field Activities
+      summary: Capaian Entri Harian Tim Lapangan
+      description: |
+        Mengembalikan capaian entri harian tim lapangan per Kabupaten/Kota.
+        Menggunakan aggregation pipeline $group dengan $cond untuk menghitung
+        status (validated, pending, rejected) per region.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data progres lapangan berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FieldActivityProgress'
+
+  # ═════════════════════════════════════════════════════════════════════
+  # DOMAIN 5: MANAJEMEN MODEL
+  # ═════════════════════════════════════════════════════════════════════
+
+  /models/registry:
+    get:
+      tags:
+        - Model Management
+      summary: Daftar Model ML
+      description: |
+        Mengembalikan daftar model machine learning yang terdaftar, termasuk
+        versi, algoritma, metrik (MAPE, Drift/PSI), dan status deployment.
+        Data diambil dari collection model_registry.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data registry model berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelRegistryItem'

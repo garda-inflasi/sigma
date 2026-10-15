@@ -14,6 +14,7 @@ import (
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
+	"github.com/garda-inflasi/api/pkg/swagger"
 	"github.com/garda-inflasi/api/pkg/token"
 )
 
@@ -40,6 +41,15 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("database connected", map[string]interface{}{"host": dbCfg.Host, "db": dbCfg.DBName})
+
+	// MongoDB
+	mongoCfg := database.DefaultMongoConfig()
+	mongoClient, err := database.NewMongo(mongoCfg)
+	if err != nil {
+		log.Error("mongodb connection failed", map[string]interface{}{"error": err.Error()})
+		os.Exit(1)
+	}
+	log.Info("mongodb connected", map[string]interface{}{"uri": mongoCfg.URI, "db": mongoCfg.DBName})
 
 	// Token manager
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -71,6 +81,9 @@ func main() {
 		})
 	})
 
+	// Swagger UI (development only)
+	swagger.Register(router)
+
 	// API v1
 	v1 := router.Group("/v1")
 
@@ -82,7 +95,7 @@ func main() {
 	})
 
 	// Register all other modules
-	modules.RegisterAll(v1, db, log, tokenMgr)
+	modules.RegisterAll(v1, db, log, tokenMgr, mongoClient)
 
 	srv := &http.Server{
 		Addr:         addr,

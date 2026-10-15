@@ -123,7 +123,7 @@ func setupSuite(t *testing.T) *Suite {
 		Logger: log,
 	})
 
-	modules.RegisterAll(v1, db, log, tokenMgr)
+	modules.RegisterAll(v1, db, log, tokenMgr, nil)
 
 	return &Suite{
 		db:       db,
@@ -142,6 +142,8 @@ func runMigrations(t *testing.T, db *gorm.DB) {
 		"../../../../../db/migrations/000002_tables.sql",
 		"../../../../../db/migrations/000003_auth_tables.sql",
 		"../../../../../db/migrations/000004_mfa_tables.sql",
+		"../../../../../db/migrations/000005_analytics_tables.sql",
+		"../../../../../db/migrations/000006_seed_data.sql",
 	}
 
 	sqlDB, err := db.DB()

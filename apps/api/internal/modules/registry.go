@@ -2,6 +2,7 @@ package modules
 
 import (
 	"github.com/gin-gonic/gin"
+	analyticsRoutes "github.com/garda-inflasi/api/internal/analytics/routes"
 	auditRoutes "github.com/garda-inflasi/api/internal/audit/routes"
 	coldStorageRoutes "github.com/garda-inflasi/api/internal/cold-storage/routes"
 	dashboardRoutes "github.com/garda-inflasi/api/internal/dashboard/routes"
@@ -17,11 +18,12 @@ import (
 	sumberDataRoutes "github.com/garda-inflasi/api/internal/sumber-data/routes"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"gorm.io/gorm"
 )
 
 // RegisterAll registers all module routes under the given router group.
-func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr *token.Manager) {
+func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr *token.Manager, mongoClient *mongo.Client) {
 	siklusRoutes.Register(v1, &siklusRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	dashboardRoutes.Register(v1, &dashboardRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	hargaRoutes.Register(v1, &hargaRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
@@ -35,4 +37,5 @@ func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr 
 	lapanganRoutes.Register(v1, &lapanganRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	masterRoutes.Register(v1, &masterRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	spasialRoutes.Register(v1, &spasialRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	analyticsRoutes.Register(v1, &analyticsRoutes.Dependencies{DB: db, Mongo: mongoClient, Logger: log, Token: tokenMgr})
 }

@@ -1,0 +1,68 @@
+# Garda Inflasi — .dockerignore
+# ============================================
+# Exclude everything from build context except what's needed
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node / pnpm
+node_modules
+apps/web/node_modules
+packages/*/node_modules
+.pnpm-store
+.pnpm-debug.log
+
+# Next.js
+.next
+apps/web/.next
+
+# Go
+apps/api/bin
+apps/api/tmp
+
+# Build artifacts
+dist
+build
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files — use .env at runtime
+.env
+.env.*
+!env.example
+!apps/web/env.local.example
+
+# npm lockfile (we use pnpm)
+apps/web/package-lock.json
+
+# Docker
+.docker
+
+# Logs
+*.log
+
+# Turbo
+.turbo
+
+# Coverage
+coverage
+coverage.out
+
+# Temp
+/tmp
+/temp

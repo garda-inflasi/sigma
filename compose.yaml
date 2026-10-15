@@ -1,65 +1,90 @@
-name: garda-inflasi
+# Garda Inflasi — Backend (API) + Frontend (Next.js) + Caddy Reverse Proxy
+# ==========================================================================
+# Compose file untuk layanan aplikasi. Membutuhkan infra (compose.infra.yaml)
+# berjalan terlebih dahulu agar network garda_inflasi_net tersedia.
+#
+# Jalankan:
+#   docker compose -f compose.infra.yaml up -d
+#   docker compose up -d
+#
+# Atau via Makefile:
+#   make docker/infra/up
+#   make docker/up
+#
+# Caddy menyediakan:
+#   http://localhost/       → Next.js frontend
+#   http://localhost/api/*  → Go backend API (strips /api prefix)
+#   http://localhost/healthz → Go backend health check
+
+name: garda-app
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: garda_inflasi
-      POSTGRES_USER: garda
-      POSTGRES_PASSWORD: garda_secret
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U garda -d garda_inflasi"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   api:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    ports:
-      - "8080:8080"
+    container_name: garda-api
+    restart: unless-stopped
     environment:
       APP_ADDR: ":8080"
-      DATABASE_URL: "postgres://garda:garda_secret@postgres:5432/garda_inflasi?sslmode=disable"
+      GIN_MODE: "${GIN_MODE:-release}"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: "${DB_USER:-garda}"
+      DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
+      DB_NAME: "${DB_NAME:-garda_inflasi}"
+      DB_SSLMODE: disable
+      DATABASE_URL: "postgres://${DB_USER:-garda}:${DB_PASSWORD:-garda_secret}@postgres:5432/${DB_NAME:-garda_inflasi}?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "ganti-dengan-secret-minimal-32-karakter"
-      AES_KEY: "0123456789abcdef0123456789abcdef"
-      GIN_MODE: release
+      JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
+      AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
+    networks:
+      - garda_inflasi_net
 
   web:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-    ports:
-      - "3000:3000"
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=https://localhost/api
+        - NEXT_PUBLIC_APP_URL=https://localhost
+    container_name: garda-web
+    restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: "http://api:8080"
-      GARDA_JWT_SECRET: "ganti-dengan-secret-minimal-32-karakter"
+      NODE_ENV: production
+      # BFF (server-only) — internal URL to Go API
+      GO_API_BASE_URL: "http://api:8080/v1"
+      # Must match JWT_SECRET in api service
+      GARDA_JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
     depends_on:
       - api
-    profiles:
-      - web
+    networks:
+      - garda_inflasi_net
 
-volumes:
-  postgres_data:
+  caddy:
+    build:
+      context: .
+      dockerfile: docker/caddy.Dockerfile
+    container_name: garda-caddy
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    depends_on:
+      - api
+      - web
+    networks:
+      - garda_inflasi_net
+
+networks:
+  garda_inflasi_net:
+    name: garda_inflasi_net
+    external: true
+

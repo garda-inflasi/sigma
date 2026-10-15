@@ -1,0 +1,63 @@
+# Garda Inflasi — Caddy Reverse Proxy Configuration
+# ====================================================
+# Caddy serves as the single entry point:
+#   /          → Next.js frontend (port 3000)
+#   /api/*     → Go backend API (port 8080) — strips /api prefix
+#   /healthz   → Go backend health check
+#   /_next/*   → Next.js static assets (passthrough)
+
+{
+  # Global options
+  admin off
+}
+
+# Bind to port 80 (HTTP) — TLS handled externally or via Caddy's automatic HTTPS
+:80, :443 {
+  # ── TLS for local development (self-signed) ────────────────────
+  # Comment out for production with real TLS
+  tls internal
+
+  # ── Request logging ─────────────────────────────────────────────
+  log {
+    output stdout
+    format json
+  }
+
+  # ── Security headers ───────────────────────────────────────────
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
+    -Server
+  }
+
+  # ── Health check passthrough ───────────────────────────────────
+  handle_path /healthz {
+    reverse_proxy api:8080 {
+      header_up Host {host}
+    }
+  }
+
+  # ── API reverse proxy (/api/* → Go backend) ────────────────────
+  # handle_path strips /api prefix, so /api/v1/... becomes /v1/...
+  handle_path /api/* {
+    reverse_proxy api:8080 {
+      header_up Host {host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
+  # ── Frontend (Next.js) ─────────────────────────────────────────
+  handle {
+    reverse_proxy web:3000 {
+      header_up Host {host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
+}
+
+

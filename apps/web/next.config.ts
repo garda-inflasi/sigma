@@ -14,6 +14,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],

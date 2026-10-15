@@ -148,7 +148,7 @@ flowchart TB
         GW["go.work — use ./apps/api"]
         WF["pnpm-workspace.yaml + turbo.json"]
         MK["Makefile — help/dev/test/build/gen-module"]
-        ENV[".env.example — JWT_SECRET, AES_KEY, APP_ADDR, …"]
+        ENV["env.example → .env — JWT_SECRET, AES_KEY, APP_ADDR, DATABASE_URL, SMTP_*, …"]
         CMP["compose.yaml — postgres+redis+nats+api (+web profile)"]
         CMPE["compose.e2e.yaml — integration/E2E"]
         DKR["docker/ — api.Dockerfile · web.Dockerfile · postgres/init.sql"]
@@ -1738,7 +1738,9 @@ grada-inflasi/
 ├── compose.e2e.yaml           # environment integration/E2E
 ├── go.work                    # use ./apps/api
 ├── Makefile · pnpm-workspace.yaml · turbo.json
-└── .env.example               # satu file env (JWT_SECRET, AES_KEY, APP_ADDR, …)
+├── env.example                # TEMPLATE env root (backend Go + Docker) — `make setup/env`
+├── .env                       # hasil salin lokal (git-ignored)
+└── apps/web/env.local.example # TEMPLATE env frontend → apps/web/.env.local
 ```
 
 ```mermaid
@@ -2064,42 +2066,4 @@ components/
 
 ```
 USER ACTION
-    │
-    ▼
-Server Component (page.tsx)        ← Metadata, Suspense boundary
-    │
-    ▼
-Client Component (*-page.tsx)      ← Interaktivitas
-    │
-    ├── useQuery / useMutation     ← TanStack Query
-    │       │
-    │       ▼
-    │   api.* (endpoints.ts)       ← Satu fungsi per sumber
-    │       │
-    │       ├── MODE_MOCK? → mock.ts  ← Data deterministik
-    │       └── real → apiFetch()     ← fetch → API Go
-    │
-    ├── Zustand stores             ← State UI lokal
-    │       └── persist (ui-store) ← localStorage
-    │
-    ├── SSE stream (use-ews-stream)← Real-time EWS
-    │       └── Zustand ews-store  ← unread count
-    │
-    └── Offline queue              ← IndexedDB + sync engine
-            └── Service Worker     ← sw.js
-```
-
-### Pola Kunci
-
-| Pola | Implementasi |
-|---|---|
-| **Server Component tipis** | Setiap `page.tsx` hanya metadata + `<Suspense>`; logika di `components/*/-page.tsx` |
-| **RBAC seragam** | Sumber kebenaran `lib/rbac/permissions.ts` dipakai oleh sidebar, proxy, command palette, bulk actions |
-| **Mock-first** | Tanpa `NEXT_PUBLIC_API_BASE_URL` → mode mock otomatis; transisi mulus ke produksi |
-| **Optimistic updates** | `useBulkAction` dengan rollback otomatis via `onMutate`/`onError` |
-| **Siklus ambient** | `data-siklus` di `<html>` menggerakkan warna seluruh UI via CSS |
-| **Offline-first (PWA)** | IndexedDB + queue idempoten + service worker untuk input lapangan |
-| **Real-time** | SSE `/v1/ews/stream` → Zustand → toast + badge + feed |
-| **Query key hierarkis** | `qk.operasional.kpi()` → `["operasional", "kpi"]`; invalidasi per domain |
-| **Gerak terpusat** | Semua preset di `lib/motion/presets.ts`, dihormati oleh `MotionConfig reducedMotion="user"` |
-| **Aksesibilitas** | Skip link, `aria-live`, target ≥44px PWA, kontras ≥4.5:1, gerak bisa dimatikan |
+    �

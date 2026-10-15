@@ -9,9 +9,13 @@ Design system + implementasi UI platform pengendalian inflasi daerah (FMIPA USK 
 ```bash
 npm install
 npm run ui:add            # memasang primitif shadcn (checkbox, command, dialog, sheet, select, …)
-cp .env.example .env.local
+cp env.local.example .env.local   # atau dari root: make setup/env
 npm run dev               # http://localhost:3000 — mode mock aktif bila NEXT_PUBLIC_API_BASE_URL kosong
 ```
+
+> **Konfigurasi env:** template kanonik ada di root repo (`env.example`). Frontend membaca
+> `apps/web/.env.local` — salin `apps/web/env.local.example` atau jalankan `make setup/env`
+> dari root untuk mengisi keduanya (root `.env` + `apps/web/.env.local`) sekaligus.
 
 Di mode pengembangan, gunakan **"Lihat sebagai"** di topbar untuk berpindah antar 14 peran dan meninjau RBAC di setiap halaman. Tekan **⌘K / Ctrl+K** untuk palet perintah; pilih *Simulasikan alert EWS kritis* untuk melihat toast berdenyut.
 

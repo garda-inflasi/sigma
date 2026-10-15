@@ -1,0 +1,83 @@
+# Garda Inflasi — Infrastruktur (PostgreSQL, MongoDB, Redis)
+# ================================================================
+# Compose file terpisah untuk layanan data/infra.
+# Port diekspos ke host agar bisa diakses untuk remote data access / tooling.
+#
+# Jalankan:
+#   docker compose -f compose.infra.yaml up -d
+#
+# Network: garda_inflasi_net (dibuat otomatis, digunakan oleh compose.yaml)
+
+name: garda-infra
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: garda-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-garda_inflasi}
+      POSTGRES_USER: ${POSTGRES_USER:-garda}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-garda_secret}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-garda} -d ${POSTGRES_DB:-garda_inflasi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - garda_inflasi_net
+
+  mongodb:
+    image: mongo:8
+    container_name: garda-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-garda}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-garda_secret}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-garda_inflasi}
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - garda_inflasi_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: garda-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - garda_inflasi_net
+
+volumes:
+  postgres_data:
+    name: garda_postgres_data
+  mongo_data:
+    name: garda_mongo_data
+  redis_data:
+    name: garda_redis_data
+
+networks:
+  garda_inflasi_net:
+    name: garda_inflasi_net
+    driver: bridge
+    attachable: true

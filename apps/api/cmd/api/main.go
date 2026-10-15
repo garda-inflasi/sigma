@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/garda-inflasi/api/internal/auth/routes"
+	"github.com/garda-inflasi/api/internal/auth"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"

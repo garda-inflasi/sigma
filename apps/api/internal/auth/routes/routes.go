@@ -1,21 +1,9 @@
-			users.POST("", handler.CreateUser)
-			users.GET("", handler.ListUsers)
-			users.GET("/:id", handler.GetUser)
-
-Suggested:
-users.POST("", handler.CreateUser)
-users.GET("", handler.ListUsers)
-users.POST("/bulk", handler.BulkUser)
-users.GET("/:id", handler.GetUser)
-
-Need output entire file. Include package etc. No explanations.```go
 package routes
 
 import (
 	"os"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/auth/delivery/http"
 	"github.com/garda-inflasi/api/internal/auth/repository/postgres"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
@@ -23,6 +11,7 @@ import (
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -101,4 +90,3 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		}
 	}
 }
-

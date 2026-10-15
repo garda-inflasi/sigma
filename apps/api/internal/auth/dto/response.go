@@ -1,6 +1,64 @@
-We need to apply the suggested edit to the original code. The suggested edit shows the ListResponse struct (which already exists in original) and a new BulkUserResponse struct. The instruction: "Apply the SUGGESTED EDIT to the ORIGINAL CODE." The suggested edit block contains both ListResponse (same as original) and BulkUserResponse (new). So we need to add the BulkUserResponse struct. The ListResponse is already present, so no change there. The edit likely implies adding BulkUserResponse after ListResponse. We should output the complete modified file, preserving everything else.
+package dto
 
-Let's examine the original code carefully.
+import "time"
 
-Original:
+// ── Auth Responses ────────────────────────────────────────────────────
 
+type LoginResponse struct {
+	AccessToken  string       `json:"access_token"`
+	RefreshToken string       `json:"refresh_token"`
+	User         UserResponse `json:"user"`
+}
+
+type RefreshTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type MeResponse struct {
+	User UserResponse `json:"user"`
+}
+
+// ── User Responses ────────────────────────────────────────────────────
+
+type UserResponse struct {
+	ID            string     `json:"id"`
+	Nama          string     `json:"nama"`
+	Email         string     `json:"email"`
+	Peran         string     `json:"peran"`
+	Lapis         string     `json:"lapis"`
+	Lembaga       string     `json:"lembaga"`
+	KabupatenKode *string    `json:"kabupaten_kode,omitempty"`
+	MfaAktif      bool       `json:"mfa_aktif"`
+	Status        string     `json:"status"`
+	TerakhirMasuk *time.Time `json:"terakhir_masuk,omitempty"`
+	DibuatPada    time.Time  `json:"dibuat_pada"`
+}
+
+type ListResponse struct {
+	Items interface{} `json:"items"`
+	Total int64       `json:"total"`
+	Page  int         `json:"page"`
+	Limit int         `json:"limit"`
+}
+
+type BulkUserResponse struct {
+	Berhasil int      `json:"berhasil"`
+	Gagal    int      `json:"gagal"`
+	Errors   []string `json:"errors,omitempty"`
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+
+func ToUserResponse(u interface{}) UserResponse {
+	// Type assertion handled by caller
+	return UserResponse{}
+}
+
+// ── MFA Responses ─────────────────────────────────────────────────────
+
+type MFASetupResponse struct {
+	Secret          string   `json:"secret"`
+	ProvisioningURI string   `json:"provisioning_uri"`
+	BackupCodes     []string `json:"backup_codes"`
+}

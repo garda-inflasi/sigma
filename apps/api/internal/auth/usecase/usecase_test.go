@@ -127,6 +127,11 @@ func (m *mockRepository) CreateAuditLog(ctx context.Context, log *domain.AuditLo
 	return args.Error(0)
 }
 
+func (m *mockRepository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {
+	args := m.Called(ctx, ids, action)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 // ── Test Helpers ──────────────────────────────────────────────────────
 
 func newTestUseCase(repo *mockRepository) *UseCase {

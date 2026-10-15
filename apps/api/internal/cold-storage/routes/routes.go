@@ -6,12 +6,15 @@ import (
 	"github.com/garda-inflasi/api/internal/cold-storage/repository/postgres"
 	"github.com/garda-inflasi/api/internal/cold-storage/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/middleware"
+	"github.com/garda-inflasi/api/pkg/token"
 	"gorm.io/gorm"
 )
 
 type Dependencies struct {
 	DB     *gorm.DB
 	Logger *logger.Logger
+	Token  *token.Manager
 }
 
 type Options struct {
@@ -23,5 +26,5 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	uc := usecase.New(repo, deps.Logger)
 	handler := http.New(uc)
 
-	engine.GET("/cold-storage", handler.GetAll)
+	engine.GET("/cold-storage", middleware.JWTAuth(deps.Token), middleware.RequirePermission("coldstorage.lihat"), handler.GetAll)
 }

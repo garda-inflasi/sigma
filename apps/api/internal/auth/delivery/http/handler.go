@@ -19,6 +19,7 @@ func New(uc *usecase.UseCase) *Handler {
 }
 
 // POST /v1/auth/login
+// Returns user profile only. Tokens are returned in response body for the BFF to set as HttpOnly cookies.
 func (h *Handler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -64,6 +65,7 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 // POST /v1/auth/refresh
+// Returns new tokens in response body for the BFF to set as HttpOnly cookies.
 func (h *Handler) Refresh(c *gin.Context) {
 	var req dto.RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -95,7 +97,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 // POST /v1/auth/logout
 func (h *Handler) Logout(c *gin.Context) {
 	userID := c.GetString("user_id")
-	if err := h.uc.Logout(c.Request.Context(), userID); err != nil {
+	jti := c.GetString("jti")
+	ip := c.ClientIP()
+	if err := h.uc.Logout(c.Request.Context(), userID, jti, ip); err != nil {
 		response.InternalError(c, "Gagal logout")
 		return
 	}
@@ -125,6 +129,74 @@ func (h *Handler) Me(c *gin.Context) {
 		DibuatPada:    user.DibuatPada,
 	}
 	response.Success(c, resp)
+}
+
+// POST /v1/auth/change-password
+func (h *Handler) ChangePassword(c *gin.Context) {
+	var req dto.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	userID := c.GetString("user_id")
+	ip := c.ClientIP()
+
+	if err := h.uc.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword, ip); err != nil {
+		switch err {
+		case usecase.ErrInvalidCredentials:
+			response.Unauthorized(c, "Password lama salah")
+		case usecase.ErrWeakPassword:
+			response.BadRequest(c, "Password baru terlalu lemah")
+		default:
+			response.InternalError(c, "Gagal mengubah password")
+		}
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// POST /v1/auth/forgot-password
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req dto.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	ip := c.ClientIP()
+	if err := h.uc.ForgotPassword(c.Request.Context(), req.Email, ip); err != nil {
+		// Always return success to prevent email enumeration
+		response.Success(c, nil)
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// POST /v1/auth/reset-password
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req dto.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	ip := c.ClientIP()
+	if err := h.uc.ResetPassword(c.Request.Context(), req.Token, req.Password, ip); err != nil {
+		switch err {
+		case usecase.ErrInvalidToken:
+			response.Unauthorized(c, "Token reset tidak valid atau sudah kedaluwarsa")
+		case usecase.ErrWeakPassword:
+			response.BadRequest(c, "Password terlalu lemah")
+		default:
+			response.InternalError(c, "Gagal mereset password")
+		}
+		return
+	}
+
+	response.Success(c, nil)
 }
 
 // POST /v1/users
@@ -229,3 +301,84 @@ func (h *Handler) GetUser(c *gin.Context) {
 }
 
 
+
+// ── MFA Handlers ──────────────────────────────────────────────────────
+
+// POST /v1/auth/mfa/setup
+func (h *Handler) SetupMFA(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	secret, uri, backupCodes, err := h.uc.SetupMFA(c.Request.Context(), userID)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, dto.MFASetupResponse{
+		Secret:          secret,
+		ProvisioningURI: uri,
+		BackupCodes:     backupCodes,
+	})
+}
+
+// POST /v1/auth/mfa/verify
+func (h *Handler) VerifyMFA(c *gin.Context) {
+	var req dto.MFAVerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	userID := c.GetString("user_id")
+	if err := h.uc.VerifyMFA(c.Request.Context(), userID, req.Code); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// POST /v1/auth/mfa/validate
+func (h *Handler) ValidateMFA(c *gin.Context) {
+	var req dto.MFAValidateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	userID := c.GetString("user_id")
+	valid, err := h.uc.ValidateMFACode(c.Request.Context(), userID, req.Code)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if !valid {
+		response.Unauthorized(c, "Kode MFA tidak valid")
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// POST /v1/auth/mfa/disable
+func (h *Handler) DisableMFA(c *gin.Context) {
+	var req dto.MFADisableRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	userID := c.GetString("user_id")
+	if err := h.uc.DisableMFA(c.Request.Context(), userID, req.Password); err != nil {
+		switch err {
+		case usecase.ErrWrongPassword:
+			response.Unauthorized(c, "Password salah")
+		default:
+			response.BadRequest(c, err.Error())
+		}
+		return
+	}
+
+	response.Success(c, nil)
+}

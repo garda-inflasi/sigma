@@ -16,7 +16,7 @@ export interface SessionUser {
   kabupatenKode?: string;
 }
 
-export const SESSION_COOKIE = "garda_session";
+export const SESSION_COOKIE = "__Host-access";
 export const DEV_ROLE_COOKIE = "garda_dev_role";
 const DEV = process.env.NODE_ENV !== "production";
 

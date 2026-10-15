@@ -95,14 +95,13 @@ export function MasukForm({
         return;
       }
 
-      const res = await fetch(`${API_BASE}/v1/auth/login`, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({ email: email.trim(), password: sandi, ingat }),
+        body: JSON.stringify({ email: email.trim(), password: sandi }),
       });
 
       if (!res.ok) {
@@ -113,19 +112,13 @@ export function MasukForm({
         try {
           const data = (await res.json()) as {
             message?: string;
-            mfa_required?: boolean;
-            mfa_url?: string;
           };
-          if (data.mfa_required && data.mfa_url) {
-            window.location.assign(data.mfa_url);
-            return;
-          }
           if (data.message) pesan = data.message;
         } catch {}
         throw new ApiError(res.status, pesan);
       }
 
-      // Cookie sesi sudah disetel server → muat ulang penuh agar SSR membaca sesi baru.
+      // Cookies are set by the BFF — reload to let SSR read the new session
       toast.success("Berhasil masuk");
       window.location.assign(redirect);
     } catch (err) {

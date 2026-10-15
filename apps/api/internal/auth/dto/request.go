@@ -59,3 +59,17 @@ type AssignRoleRequest struct {
 type ResetPasswordAdminRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
+
+// ── MFA Requests ──────────────────────────────────────────────────────
+
+type MFAVerifyRequest struct {
+	Code string `json:"code" binding:"required,len=6"`
+}
+
+type MFAValidateRequest struct {
+	Code string `json:"code" binding:"required"`
+}
+
+type MFADisableRequest struct {
+	Password string `json:"password" binding:"required"`
+}

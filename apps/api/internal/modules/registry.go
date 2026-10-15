@@ -16,22 +16,23 @@ import (
 	spasialRoutes "github.com/garda-inflasi/api/internal/spasial/routes"
 	sumberDataRoutes "github.com/garda-inflasi/api/internal/sumber-data/routes"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/token"
 	"gorm.io/gorm"
 )
 
 // RegisterAll registers all module routes under the given router group.
-func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger) {
-	siklusRoutes.Register(v1, &siklusRoutes.Dependencies{DB: db, Logger: log})
-	dashboardRoutes.Register(v1, &dashboardRoutes.Dependencies{DB: db, Logger: log})
-	hargaRoutes.Register(v1, &hargaRoutes.Dependencies{DB: db, Logger: log})
-	ewsRoutes.Register(v1, &ewsRoutes.Dependencies{DB: db, Logger: log})
-	prediksiRoutes.Register(v1, &prediksiRoutes.Dependencies{DB: db, Logger: log})
-	intervensiRoutes.Register(v1, &intervensiRoutes.Dependencies{DB: db, Logger: log})
-	coldStorageRoutes.Register(v1, &coldStorageRoutes.Dependencies{DB: db, Logger: log})
-	sumberDataRoutes.Register(v1, &sumberDataRoutes.Dependencies{DB: db, Logger: log})
-	auditRoutes.Register(v1, &auditRoutes.Dependencies{DB: db, Logger: log})
-	policyBriefRoutes.Register(v1, &policyBriefRoutes.Dependencies{DB: db, Logger: log})
-	lapanganRoutes.Register(v1, &lapanganRoutes.Dependencies{DB: db, Logger: log})
-	masterRoutes.Register(v1, &masterRoutes.Dependencies{DB: db, Logger: log})
-	spasialRoutes.Register(v1, &spasialRoutes.Dependencies{DB: db, Logger: log})
+func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr *token.Manager) {
+	siklusRoutes.Register(v1, &siklusRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	dashboardRoutes.Register(v1, &dashboardRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	hargaRoutes.Register(v1, &hargaRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	ewsRoutes.Register(v1, &ewsRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	prediksiRoutes.Register(v1, &prediksiRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	intervensiRoutes.Register(v1, &intervensiRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	coldStorageRoutes.Register(v1, &coldStorageRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	sumberDataRoutes.Register(v1, &sumberDataRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	auditRoutes.Register(v1, &auditRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	policyBriefRoutes.Register(v1, &policyBriefRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	lapanganRoutes.Register(v1, &lapanganRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	masterRoutes.Register(v1, &masterRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	spasialRoutes.Register(v1, &spasialRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 }

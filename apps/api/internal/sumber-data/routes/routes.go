@@ -6,12 +6,15 @@ import (
 	"github.com/garda-inflasi/api/internal/sumber-data/repository/postgres"
 	"github.com/garda-inflasi/api/internal/sumber-data/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/middleware"
+	"github.com/garda-inflasi/api/pkg/token"
 	"gorm.io/gorm"
 )
 
 type Dependencies struct {
 	DB     *gorm.DB
 	Logger *logger.Logger
+	Token  *token.Manager
 }
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
@@ -19,5 +22,5 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	uc := usecase.New(repo)
 	handler := http.New(uc)
 
-	engine.GET("/sumber-data", handler.List)
+	engine.GET("/sumber-data", middleware.JWTAuth(deps.Token), middleware.RequirePermission("sumber.lihat"), handler.List)
 }

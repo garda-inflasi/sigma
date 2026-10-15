@@ -15,6 +15,8 @@ type Pengguna struct {
 	Lembaga       string     `gorm:"column:lembaga"`
 	KabupatenKode *string    `gorm:"column:kabupaten_kode"`
 	MfaAktif      bool       `gorm:"column:mfa_aktif;default:false"`
+	MfaSecret     *string    `gorm:"column:mfa_secret"`
+	MfaBackupCodes *string   `gorm:"column:mfa_backup_codes;type:jsonb"`
 	Status        string     `gorm:"column:status;type:status_akun;default:AKTIF"`
 	TerakhirMasuk *time.Time `gorm:"column:terakhir_masuk"`
 	DibuatPada    time.Time  `gorm:"column:dibuat_pada;default:now()"`
@@ -69,5 +71,19 @@ type AuditLog struct {
 
 func (AuditLog) TableName() string {
 	return "audit_log"
+}
+
+// ResetToken maps to the password_reset_tokens table.
+type ResetToken struct {
+	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID    string     `gorm:"column:user_id;index:idx_rt_user"`
+	TokenHash string     `gorm:"column:token_hash;uniqueIndex"`
+	ExpiresAt time.Time  `gorm:"column:expires_at"`
+	UsedAt    *time.Time `gorm:"column:used_at"`
+	CreatedAt time.Time  `gorm:"column:created_at;default:now()"`
+}
+
+func (ResetToken) TableName() string {
+	return "password_reset_tokens"
 }
 

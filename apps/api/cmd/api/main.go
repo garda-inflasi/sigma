@@ -13,6 +13,7 @@ import (
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
 )
 
@@ -52,6 +53,16 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
+	// ── Global middleware chain ──────────────────────────────────────
+	router.Use(
+		middleware.RequestID(),
+		middleware.SecurityHeaders(ginMode == "release"),
+		middleware.CSP(),
+		middleware.CORSMiddleware(),
+		middleware.AccessLog(log),
+		middleware.RateLimit(100, time.Minute),
+	)
+
 	// Health check
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -71,7 +82,7 @@ func main() {
 	})
 
 	// Register all other modules
-	modules.RegisterAll(v1, db, log)
+	modules.RegisterAll(v1, db, log, tokenMgr)
 
 	srv := &http.Server{
 		Addr:         addr,

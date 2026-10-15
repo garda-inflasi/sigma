@@ -6,12 +6,15 @@ import (
 	"github.com/garda-inflasi/api/internal/intervensi/repository/postgres"
 	"github.com/garda-inflasi/api/internal/intervensi/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/middleware"
+	"github.com/garda-inflasi/api/pkg/token"
 	"gorm.io/gorm"
 )
 
 type Dependencies struct {
 	DB     *gorm.DB
 	Logger *logger.Logger
+	Token  *token.Manager
 }
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
@@ -20,6 +23,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	handler := http.New(uc)
 
 	group := engine.Group("/intervensi")
+	group.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("intervensi.lihat"))
 	{
 		group.GET("", handler.List)
 		group.PATCH("/:id/tahap", handler.UpdateTahap)

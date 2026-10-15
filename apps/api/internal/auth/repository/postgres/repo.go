@@ -98,6 +98,58 @@ func (r *Repository) CountRecentFailedAttempts(ctx context.Context, userID strin
 	return count, err
 }
 
+// ── JWT Blacklist ──────────────────────────────────────────────────────
+
+func (r *Repository) BlacklistJWT(ctx context.Context, jti string, ttl time.Duration) error {
+	expiresAt := time.Now().Add(ttl)
+	return r.db.WithContext(ctx).Exec(
+		"INSERT INTO jwt_blacklist (jti, expires_at) VALUES (?, ?) ON CONFLICT (jti) DO NOTHING",
+		jti, expiresAt,
+	).Error
+}
+
+func (r *Repository) IsJWTBlacklisted(ctx context.Context, jti string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&struct{}{}).
+		Table("jwt_blacklist").
+		Where("jti = ? AND expires_at > now()", jti).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// ── Password Reset Token ──────────────────────────────────────────────
+
+func (r *Repository) SaveResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	return r.db.WithContext(ctx).Exec(
+		"INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+		userID, tokenHash, expiresAt,
+	).Error
+}
+
+func (r *Repository) GetResetToken(ctx context.Context, tokenHash string) (*domain.ResetToken, error) {
+	var rt domain.ResetToken
+	if err := r.db.WithContext(ctx).Where("token_hash = ?", tokenHash).First(&rt).Error; err != nil {
+		return nil, fmt.Errorf("get reset token: %w", err)
+	}
+	return &rt, nil
+}
+
+func (r *Repository) MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error {
+	return r.db.WithContext(ctx).Exec(
+		"UPDATE password_reset_tokens SET used_at = ? WHERE id = ?",
+		usedAt, id,
+	).Error
+}
+
+// ── Revoke All User Refresh Tokens ────────────────────────────────────
+
+func (r *Repository) RevokeAllUserRefreshTokens(ctx context.Context, userID string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).Model(&domain.RefreshToken{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Update("revoked_at", now).Error
+}
+
 // ── Audit Log ─────────────────────────────────────────────────────────
 
 func (r *Repository) CreateAuditLog(ctx context.Context, log *domain.AuditLog) error {

@@ -48,3 +48,11 @@ func ToUserResponse(u interface{}) UserResponse {
 	// Type assertion handled by caller
 	return UserResponse{}
 }
+
+// ── MFA Responses ─────────────────────────────────────────────────────
+
+type MFASetupResponse struct {
+	Secret          string   `json:"secret"`
+	ProvisioningURI string   `json:"provisioning_uri"`
+	BackupCodes     []string `json:"backup_codes"`
+}

@@ -1,0 +1,61 @@
+package dto
+
+// ── Auth Requests ─────────────────────────────────────────────────────
+
+type LoginRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required,min=8"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+// ── User Requests ─────────────────────────────────────────────────────
+
+type CreateUserRequest struct {
+	ID       string `json:"id" binding:"required"`
+	Nama     string `json:"nama" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+	Peran    string `json:"peran" binding:"required"`
+	Lapis    string `json:"lapis" binding:"required"`
+	Lembaga  string `json:"lembaga" binding:"required"`
+}
+
+type UpdateUserRequest struct {
+	Nama     *string `json:"nama"`
+	Email    *string `json:"email" binding:"omitempty,email"`
+	Peran    *string `json:"peran"`
+	Lapis    *string `json:"lapis"`
+	Lembaga  *string `json:"lembaga"`
+	Status   *string `json:"status"`
+}
+
+type ListUserRequest struct {
+	Page  int    `form:"page" binding:"min=1"`
+	Limit int    `form:"limit" binding:"min=1,max=100"`
+	Search string `form:"search"`
+}
+
+type AssignRoleRequest struct {
+	RoleID int64 `json:"role_id" binding:"required"`
+}
+
+type ResetPasswordAdminRequest struct {
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}

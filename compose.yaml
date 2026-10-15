@@ -1,0 +1,65 @@
+name: garda-inflasi
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: garda_inflasi
+      POSTGRES_USER: garda
+      POSTGRES_PASSWORD: garda_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U garda -d garda_inflasi"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ADDR: ":8080"
+      DATABASE_URL: "postgres://garda:garda_secret@postgres:5432/garda_inflasi?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "ganti-dengan-secret-minimal-32-karakter"
+      AES_KEY: "0123456789abcdef0123456789abcdef"
+      GIN_MODE: release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://api:8080"
+      GARDA_JWT_SECRET: "ganti-dengan-secret-minimal-32-karakter"
+    depends_on:
+      - api
+    profiles:
+      - web
+
+volumes:
+  postgres_data:

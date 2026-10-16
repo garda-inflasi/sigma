@@ -61,6 +61,15 @@ export async function validateCSRF(
 /**
  * Validates Origin/Referer header as a second layer of CSRF defense.
  * Only for state-changing requests (POST, PUT, PATCH, DELETE).
+ *
+ * The browser sets `Origin` to the origin the user actually visited, which is
+ * the public origin terminated by the reverse proxy (e.g. `http://localhost`),
+ * NOT the internal Next.js origin. We therefore accept:
+ *   1. the request's own host, as forwarded by the proxy (`X-Forwarded-Host` /
+ *      `Host`), which is inherently same-origin; and
+ *   2. an explicit allowlist from `APP_ALLOWED_ORIGINS` (comma-separated) or
+ *      `NEXT_PUBLIC_APP_URL`, for deployments where the public origin differs
+ *      from the forwarded host.
  */
 export function validateOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
@@ -72,18 +81,45 @@ export function validateOrigin(request: Request): boolean {
     return false;
   }
 
+  let sourceOrigin: string;
   try {
-    const url = new URL(source);
-    // Allow only the application's own origin
-    const allowedOrigins = [
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    ];
-    return allowedOrigins.some(
-      (allowed) => url.origin === allowed
-    );
+    sourceOrigin = new URL(source).origin;
   } catch {
     return false;
   }
+
+  const allowed = new Set<string>();
+
+  // Same-origin check against the host the browser actually addressed.
+  const forwardedHost =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (forwardedHost) {
+    const proto =
+      request.headers.get("x-forwarded-proto") ??
+      new URL(request.url).protocol.replace(":", "");
+    // The proxy terminates TLS, so the browser may be on either scheme for the
+    // same host; both are same-origin and therefore safe to accept.
+    allowed.add(`${proto}://${forwardedHost}`);
+    allowed.add(`http://${forwardedHost}`);
+    allowed.add(`https://${forwardedHost}`);
+  }
+
+  // Explicit allowlist from configuration.
+  const configured =
+    process.env.APP_ALLOWED_ORIGINS ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    "http://localhost:3000";
+  for (const entry of configured.split(",")) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    try {
+      allowed.add(new URL(trimmed).origin);
+    } catch {
+      // Ignore malformed allowlist entries rather than failing open.
+    }
+  }
+
+  return allowed.has(sourceOrigin);
 }
 
 /**

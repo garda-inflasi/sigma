@@ -10,7 +10,13 @@ import { qk } from "./keys";
 
 const LIVE = 30_000;
 
-export const useSiklusAktif = () => useQuery({ queryKey: qk.siklus(), queryFn: api.siklus.aktif, staleTime: 5 * 60_000 });
+/**
+ * Siklus aktif menggerakkan tema ambient. Hanya boleh dipanggil bila peran
+ * memiliki `dashboard.operasional`; shell meneruskan hasil `can()` sebagai
+ * `enabled` supaya peran tanpa izin tidak memicu 403 di setiap halaman.
+ */
+export const useSiklusAktif = (enabled = true) =>
+  useQuery({ queryKey: qk.siklus(), queryFn: api.siklus.aktif, staleTime: 5 * 60_000, enabled });
 export const useKpiOperasional = () => useQuery({ queryKey: qk.operasional.kpi(), queryFn: api.operasional.kpi, refetchInterval: LIVE });
 export const useHeatmap = () => useQuery({ queryKey: qk.operasional.heatmap(), queryFn: api.operasional.heatmap, refetchInterval: LIVE * 2 });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
@@ -18,7 +24,8 @@ export const useTrenHarga = (kode: string, kab: string) =>
   useQuery({ queryKey: qk.operasional.tren(kode, kab), queryFn: () => api.operasional.tren(kode, kab), placeholderData: (prev) => prev });
 export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.ringkasan(), queryFn: api.eksekutif.ringkasan });
 export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
-export const useEntriHarga = () => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list });
+/** Daftar entri harga; `enabled` dipakai sidebar agar peran tanpa `harga.lihat` tidak memicu 403. */
+export const useEntriHarga = (enabled = true) => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list, enabled });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useIntervensi = () => useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity });
 export const useColdStorage = () => useQuery({ queryKey: qk.coldStorage.ringkasan(), queryFn: api.coldStorage.ringkasan });

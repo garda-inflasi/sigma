@@ -18,13 +18,11 @@ export function applySecurityHeaders(response: NextResponse): NextResponse {
     "camera=(), microphone=(), geolocation=()"
   );
 
-  // HSTS only in production
-  if (process.env.NODE_ENV === "production") {
-    response.headers.set(
-      "Strict-Transport-Security",
-      "max-age=63072000; includeSubDomains; preload"
-    );
-  }
+  // Strict-Transport-Security is deliberately omitted here. Next.js cannot
+  // tell whether the request arrived over TLS (Caddy terminates it), so
+  // emitting HSTS would also send it over plain HTTP — which makes the
+  // browser rewrite http://localhost to https://localhost and breaks the
+  // app. Caddy owns this header and emits it for HTTPS requests only.
 
   return response;
 }

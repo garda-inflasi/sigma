@@ -1,76 +1,97 @@
 # Garda Inflasi — Caddy Reverse Proxy Configuration
 # ====================================================
 # Caddy serves as the single entry point:
-#   /          → Next.js frontend (port 3000)
-#   /api/*     → Go backend API (port 8080) — strips /api prefix
-#   /healthz   → Go backend health check
-#   /_next/*   → Next.js static assets (passthrough)
-
+#   /            → Next.js frontend (port 3000)
+#   /api/v1/*    → Go backend API (port 8080) — strips /api prefix (direct/legacy)
+#   /api/*       → Next.js BFF Route Handlers (port 3000) — prefix preserved
+#   /healthz     → Go backend health check
+#   /swagger/*   → Go backend API docs
+#   /_next/*     → Next.js static assets (passthrough)
+#
+# ROUTING CONTRACT (do not break):
+#   Browser → /api/*        → Next.js BFF → Go /v1/*   (BFF pattern, default)
+#   Browser → /api/v1/*     → Go /v1/*                 (direct pattern, legacy)
+#   The BFF pattern is the default; only /api/v1/* bypasses Next.js.
+#
+# TLS CONTRACT:
+#   The site address MUST name the host explicitly (`localhost`). A bare
+#   `:443` catch-all gives Caddy no name to issue a certificate for, so
+#   automatic HTTPS silently fails and every https:// request dies with
+#   ERR_SSL_PROTOCOL_ERROR. `local_certs` forces the internal CA for all
+#   certificates (no ACME), which is what local development needs.
+#
+# HSTS CONTRACT:
+#   Strict-Transport-Security is emitted ONLY for requests that arrived over
+#   TLS (RFC 6797 §7.2 forbids it over plain HTTP). Sending it over HTTP makes
+#   the browser rewrite every subsequent http://localhost request to
+#   https://localhost — which breaks the whole app when TLS is unavailable.
+#   Caddy owns this header because it is the only layer that knows the scheme.
 {
-  # Global options
-  admin off
+	# Global options
+	admin off
+
+	# Issue all certificates from Caddy's internal CA (local development).
+	# Remove this when terminating real TLS in production.
+	local_certs
 }
 
-# Bind to port 80 (HTTP) — TLS handled externally or via Caddy's automatic HTTPS
-:80, :443 {
-  # ── TLS for local development (self-signed) ────────────────────
-  # Comment out for production with real TLS
-  tls internal
+# Explicit hostname (not a bare `:80, :443`) so Caddy can issue a cert.
+localhost:80, localhost:443 {
+	# ── TLS for local development (self-signed, internal CA) ───────
+	tls internal
 
-  # ── Request logging ─────────────────────────────────────────────
-  log {
-    output stdout
-    format json
-  }
+	# ── Request logging ─────────────────────────────────────────────
+	log {
+		output stdout
+		format json
+	}
 
-  # ── Security headers ───────────────────────────────────────────
-  header {
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
-    -Server
-  }
+	# ── Security headers ───────────────────────────────────────────
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
+		-Server
+	}
 
-  # ── Health check passthrough ───────────────────────────────────
-  handle /healthz {
-    reverse_proxy api:8080 {
-      header_up Host {host}
-    }
-  }
+	# ── HSTS — HTTPS only ──────────────────────────────────────────
+	# Never sent over plain HTTP: doing so would force the browser to
+	# upgrade http://localhost to https://localhost and break the app
+	# whenever TLS is not available.
+	@https protocol https
+	header @https Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 
-  # ── Swagger UI (API docs) ──────────────────────────────────────
-  handle /swagger/* {
-    reverse_proxy api:8080 {
-      header_up Host {host}
-    }
-  }
+	# ── Health check passthrough ───────────────────────────────────
+	handle /healthz {
+		reverse_proxy api:8080
+	}
 
-  # ── BFF routes (Next.js API routes) ────────────────────────────
-  # Auth routes go through Next.js BFF for cookie management
-  # Must use handle (not handle_path) to preserve /api/auth/ prefix
-  handle /api/auth/* {
-    reverse_proxy web:3000 {
-      header_up Host {host}
-    }
-  }
+	# ── Swagger UI (API docs) ──────────────────────────────────────
+	handle /swagger/* {
+		reverse_proxy api:8080
+	}
 
-  # ── API reverse proxy (/api/* → Go backend) ────────────────────
-  # Non-auth API routes go directly to Go backend
-  handle_path /api/* {
-    reverse_proxy api:8080 {
-      header_up Host {host}
-    }
-  }
+	# ── Direct Go API access (legacy) ──────────────────────────────
+	# /api/v1/* → Go /v1/*  (strips the /api prefix).
+	# Declared before the general /api/* rule for readability; Caddy
+	# evaluates handle directives by most-specific-path match, so
+	# /api/v1/* always wins over /api/* regardless of order.
+	handle_path /api/v1/* {
+		reverse_proxy api:8080
+	}
 
-  # ── Frontend (Next.js) ─────────────────────────────────────────
-  handle {
-    reverse_proxy web:3000 {
-      header_up Host {host}
-      header_up X-Forwarded-For {remote_host}
-      header_up X-Forwarded-Proto {scheme}
-    }
-  }
+	# ── BFF routes (Next.js API Route Handlers) ────────────────────
+	# IMPORTANT: /api/* must reach Next.js with the /api prefix intact.
+	# Next.js owns the BFF contract (browser → /api/* → BFF → Go /v1/*).
+	# Using handle_path here would strip /api and send /pengguna to Go,
+	# which is NOT a registered Go route → Go returns 404 page not found.
+	handle /api/* {
+		reverse_proxy web:3000
+	}
+
+	# ── Frontend (Next.js) ─────────────────────────────────────────
+	handle {
+		reverse_proxy web:3000
+	}
 }
-
-

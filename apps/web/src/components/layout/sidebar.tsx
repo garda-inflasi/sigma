@@ -24,7 +24,7 @@ export function useVisibleNav() {
 function useBadges() {
   const { role } = useSession();
   const unread = useEwsStore((s) => s.unread);
-  const { data } = useEntriHarga();
+  const { data } = useEntriHarga(can(role, "harga.lihat"));
   const validasi = can(role, "harga.validasi") || can(role, "harga.publikasi") ? (data?.filter((e) => e.status === "DIAJUKAN").length ?? 0) : 0;
   return { ews: unread, validasi };
 }

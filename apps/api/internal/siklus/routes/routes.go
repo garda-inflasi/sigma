@@ -23,7 +23,10 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	handler := http.New(uc)
 
 	siklus := engine.Group("/siklus")
-	siklus.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("siklus.lihat"))
+	// Siklus drives the ambient UI theme for every console page, so it is gated
+	// on the same permission as the operational dashboard rather than a
+	// dedicated one (no role is granted "siklus.lihat").
+	siklus.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("dashboard.operasional"))
 	{
 		siklus.GET("/aktif", handler.GetAktif)
 	}

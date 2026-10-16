@@ -1001,7 +1001,7 @@ interface AuthState {
 - `pharmacy:read`, `pharmacy:write`, `pharmacy:dispense`
 - `finance:read`, `finance:write`, `finance:billing`
 
-**1 Superadmin User:** username `superadmin`, bcrypt hash untuk `Password123!` (dev)
+**1 Superadmin User:** username `superadmin@garda-inflasi.id`, kata sandi dev `Garda2024!` (lihat `db/migrations/000006_seed_data.sql`)
 
 ---
 

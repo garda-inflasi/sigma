@@ -31,7 +31,14 @@ export async function apiFetch<T>(path: string, init: RequestInit & { idempotenc
     const msg = (payload as { message?: string } | undefined)?.message ?? `Permintaan gagal (${res.status})`;
     throw new ApiError(res.status, msg, payload);
   }
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+  if (res.status === 204) return undefined as T;
+  const body = (await res.json()) as unknown;
+  // Backend Go membungkus semua respons sebagai { code, message, data }.
+  // Envelope di-unwrap di satu tempat ini agar pemanggil menerima payload langsung.
+  if (body && typeof body === "object" && "code" in body && "data" in body) {
+    return (body as { data: T }).data;
+  }
+  return body as T;
 }
 
 /**

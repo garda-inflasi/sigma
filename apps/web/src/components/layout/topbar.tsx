@@ -44,7 +44,7 @@ export function Topbar() {
   const unread = useEwsStore((s) => s.unread);
   const bacaSemua = useEwsStore((s) => s.bacaSemua);
   const stream = useEwsStore((s) => s.status);
-  const { data: siklus } = useSiklusAktif();
+  const { data: siklus } = useSiklusAktif(can(user.role, "dashboard.operasional"));
   const { resolvedTheme, setTheme } = useTheme();
   const title = activeNav(pathname, NAV_FLAT)?.label ?? "Garda Inflasi";
   const meta = siklus ? siklusMeta[siklus.siklus] : null;

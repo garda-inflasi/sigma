@@ -42,10 +42,13 @@ build
 .DS_Store
 
 # Environment files — use .env at runtime
-.env
-.env.*
-!env.example
-!apps/web/env.local.example
+# NOTE: patterns must be recursive (`**/`) — a bare `.env.*` only matches the
+# repository root, which let `apps/web/.env.local` leak into the build context
+# and bake dev-only NEXT_PUBLIC_* values into the production client bundle.
+**/.env
+**/.env.*
+!**/env.example
+!**/env.local.example
 
 # npm lockfile (we use pnpm)
 apps/web/package-lock.json

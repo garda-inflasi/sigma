@@ -18,6 +18,16 @@ COPY packages/ ./packages/
 # Copy the web app
 COPY apps/web/ ./apps/web/
 
+# Public (browser-visible) configuration. These MUST be declared as ARG and
+# promoted to ENV before `next build`, otherwise Next.js cannot inline them
+# into the client bundle and the app silently falls back to mock mode.
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_MAPBOX_TOKEN
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
+
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 

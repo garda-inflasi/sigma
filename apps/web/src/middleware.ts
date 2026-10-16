@@ -104,12 +104,10 @@ export async function middleware(request: NextRequest) {
   response.headers.set("X-XSS-Protection", "0");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
 
-  if (process.env.NODE_ENV === "production") {
-    response.headers.set(
-      "Strict-Transport-Security",
-      "max-age=63072000; includeSubDomains; preload"
-    );
-  }
+  // Strict-Transport-Security is deliberately omitted: the edge cannot know
+  // whether the request arrived over TLS (Caddy terminates it), and sending
+  // HSTS over plain HTTP forces the browser to upgrade http://localhost to
+  // https://localhost. Caddy emits HSTS for HTTPS requests only.
 
   return response;
 }

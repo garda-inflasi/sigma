@@ -11,10 +11,19 @@ import (
 
 // JWTAuth returns a Gin middleware that validates JWT access tokens
 // and sets user_id, role, and permissions in the Gin context.
+//
+// The token is read from the `Authorization: Bearer <token>` header first
+// (service-to-service and API clients), then from the `garda_access` cookie.
+// The cookie fallback is required because the browser never sees the access
+// token: the Next.js BFF stores it in an HttpOnly cookie, so direct-to-Go
+// calls from the browser (e.g. /api/v1/*) can only authenticate via cookie.
 func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		bearer := c.GetHeader("Authorization")
-		if bearer == "" || len(bearer) < 7 || !strings.EqualFold(bearer[:7], "Bearer ") {
+		tokenStr := bearerToken(c)
+		if tokenStr == "" {
+			tokenStr = accessTokenCookie(c)
+		}
+		if tokenStr == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code":    "401",
 				"message": "Unauthorized",
@@ -22,7 +31,6 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			return
 		}
 
-		tokenStr := bearer[7:]
 		claims, err := tokenMgr.VerifyToken(tokenStr)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
@@ -38,6 +46,27 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 		c.Set("jti", claims.ID)
 		c.Next()
 	}
+}
+
+// bearerToken extracts the token from an `Authorization: Bearer <token>` header.
+func bearerToken(c *gin.Context) string {
+	bearer := c.GetHeader("Authorization")
+	if len(bearer) < 7 || !strings.EqualFold(bearer[:7], "Bearer ") {
+		return ""
+	}
+	return bearer[7:]
+}
+
+// accessTokenCookie extracts the access token from the BFF-issued cookie.
+// The cookie name mirrors the frontend (see apps/web/src/lib/bff/cookies.ts):
+// `garda_access` in development, `__Host-access` in production.
+func accessTokenCookie(c *gin.Context) string {
+	for _, name := range []string{"garda_access", "__Host-access"} {
+		if v, err := c.Cookie(name); err == nil && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // RequirePermission returns a Gin middleware that checks if the authenticated

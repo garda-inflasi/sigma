@@ -1,7 +1,7 @@
 package dto
 
 type AuditRowResponse struct {
-	ID        int64   `json:"id"`
+	ID        string  `json:"id"`
 	Waktu     string  `json:"waktu"`
 	AktorID   *string `json:"aktor_id,omitempty"`
 	Aksi      string  `json:"aksi"`

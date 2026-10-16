@@ -1,8 +1,9 @@
 import { apiFetch, mockDelay, MODE_MOCK } from "./client";
+import { toAuditRow, type AuditLogResponse } from "./audit";
 import { penggunaApi } from "./pengguna";
 import * as m from "./mock";
 import type {
-  AuditRow, EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
+  EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -41,7 +42,7 @@ export const api = {
   coldStorage: { ringkasan: () => get<{ fasilitas: FasilitasColdStorage[]; stok: StokColdStorage[] }>("/v1/cold-storage", m.mockColdStorage) },
   sumber: { list: () => get<SumberData[]>("/v1/sumber-data", m.mockSumber) },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
-  audit: { list: () => get<AuditRow[]>("/v1/audit?limit=500", m.mockAudit) },
+  audit: { list: () => (MODE_MOCK ? mockDelay(m.mockAudit) : apiFetch<AuditLogResponse[]>("/v1/audit?limit=500").then((rows) => rows.map(toAuditRow))) },
   brief: {
     list: () => get<PolicyBrief[]>("/v1/policy-brief", m.mockBriefs),
     susun: (periode: string) =>

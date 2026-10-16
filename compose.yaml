@@ -50,7 +50,10 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
       args:
-        - NEXT_PUBLIC_API_BASE_URL=https://localhost/api
+        # Relative base so the browser always calls the same origin it loaded
+        # from (http://localhost or https://localhost). An absolute URL here
+        # would make the two schemes different origins → CORS failures.
+        - NEXT_PUBLIC_API_BASE_URL=/api
         - NEXT_PUBLIC_APP_URL=https://localhost
     container_name: garda-web
     restart: unless-stopped
@@ -58,6 +61,10 @@ services:
       NODE_ENV: production
       # BFF (server-only) — internal URL to Go API
       GO_API_BASE_URL: "http://api:8080/v1"
+      # Public origins allowed to issue state-changing BFF requests (CSRF
+      # origin check). Comma-separated. Must include the origin the browser
+      # actually visits (Caddy's public origin), not the internal Next.js one.
+      APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
       # Must match JWT_SECRET in api service
       GARDA_JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
     depends_on:

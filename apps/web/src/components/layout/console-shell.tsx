@@ -3,14 +3,17 @@
 import { useEffect, type ReactNode } from "react";
 import { CommandPalette } from "@/components/command/command-palette";
 import { EwsStreamMount } from "@/components/ews/use-ews-stream";
+import { useSession } from "@/lib/auth/session-context";
 import { useSiklusAktif } from "@/lib/query/hooks";
+import { can } from "@/lib/rbac/permissions";
 import { useUi } from "@/lib/stores/ui-store";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
 /** Cangkang konsol: sidebar kaca, topbar, palet ⌘K, aliran EWS, siklus ambient. */
 export function ConsoleShell({ children }: { children: ReactNode }) {
-  const { data } = useSiklusAktif();
+  const { role } = useSession();
+  const { data } = useSiklusAktif(can(role, "dashboard.operasional"));
   useEffect(() => {
     useUi.persist.rehydrate();
   }, []);

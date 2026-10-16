@@ -3,7 +3,7 @@ package domain
 import "time"
 
 type AuditLog struct {
-	ID        int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID        string    `gorm:"column:id;primaryKey"`
 	Waktu     time.Time `gorm:"column:waktu;default:now();index:idx_audit_waktu"`
 	AktorID   *string   `gorm:"column:aktor_id"`
 	Aksi      string    `gorm:"column:aksi"`

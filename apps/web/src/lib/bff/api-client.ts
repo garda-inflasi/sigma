@@ -5,6 +5,9 @@
 
 import "server-only";
 
+import type { BulkColdStorageWire, ColdStorageWire } from "@/lib/api/cold-storage";
+import { toQueryString, type ColdStorageBulkAction, type ColdStorageParams } from "@/lib/api/cold-storage-query";
+
 const API_BASE = process.env.GO_API_BASE_URL || "http://localhost:8080/v1";
 
 interface ApiResponse<T> {
@@ -313,5 +316,31 @@ export const userApi = {
     apiFetch<PermissionResponse[]>("/permissions", {
       method: "GET",
       headers: bearer(accessToken),
+    }),
+};
+
+// ── Cold Storage API ──────────────────────────────────────────────────
+
+export interface BulkColdStorageRequest {
+  action: ColdStorageBulkAction;
+  ids: string[];
+}
+
+export const coldStorageApi = {
+  /** GET /v1/cold-storage — kartu fasilitas, satu halaman stok, dan ringkasan. */
+  list: (accessToken: string, params: ColdStorageParams = {}) => {
+    const query = toQueryString(params);
+    return apiFetch<ColdStorageWire>(`/cold-storage${query ? `?${query}` : ""}`, {
+      method: "GET",
+      headers: bearer(accessToken),
+    });
+  },
+
+  /** POST /v1/cold-storage/bulk — aksi massal pada lot stok. */
+  bulk: (accessToken: string, data: BulkColdStorageRequest) =>
+    apiFetch<BulkColdStorageWire>("/cold-storage/bulk", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
     }),
 };

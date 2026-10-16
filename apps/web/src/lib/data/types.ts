@@ -1,4 +1,5 @@
 import type { Severity, Siklus } from "@/lib/design/tokens";
+import type { IkonKomoditas } from "./reference";
 
 export type TipeHarga = "PRODUSEN" | "KONSUMEN";
 export type Kualitas = "PREMIUM" | "MEDIUM" | "ASALAN";
@@ -88,9 +89,12 @@ export interface StokColdStorage {
   fasilitasNama: string;
   komoditasKode: string;
   komoditasNama: string;
+  /** Ikon komoditas bila sudah diketahui; bila kosong ditelusuri dari `komoditasKode`. */
+  ikon?: IkonKomoditas;
   volumeTon: number;
   masuk: string;
   sisaShelfLifeHari: number;
+  /** Pecahan 0–1. */
   risikoFoodLoss: number;
   pemilik: string;
 }
@@ -103,10 +107,40 @@ export interface FasilitasColdStorage {
   kapasitasTon: number;
   terisiTon: number;
   suhuTargetC: number;
-  suhuAktualC: number;
+  /** Kosong bila fasilitas belum memiliki telemetri (mis. berstatus rencana). */
+  suhuAktualC: number | null;
   status: "OPERASIONAL" | "PERAWATAN" | "RENCANA";
   lat: number;
   lng: number;
+}
+
+/** Halaman stok yang sedang ditampilkan. */
+export interface HalamanStok {
+  page: number;
+  limit: number;
+  /** Jumlah lot yang cocok dengan filter (semua halaman). */
+  total: number;
+  totalPages: number;
+  /** Total volume seluruh hasil filter (semua halaman). */
+  volumeHasilTon: number;
+}
+
+/** Agregat seluruh stok; tidak terpengaruh filter tabel. */
+export interface RingkasanStok {
+  totalLot: number;
+  totalVolumeTon: number;
+  risikoTinggiLot: number;
+  risikoTinggiTon: number;
+  /** Lot dengan risiko di atas nilai ini (pecahan 0–1) dihitung berisiko tinggi. */
+  ambangRisikoTinggi: number;
+}
+
+/** Data satu layar Cold storage & food loss. */
+export interface ColdStorageView {
+  fasilitas: FasilitasColdStorage[];
+  stok: StokColdStorage[];
+  halaman: HalamanStok;
+  ringkasan: RingkasanStok;
 }
 
 export interface SumberData {

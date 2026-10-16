@@ -1,9 +1,11 @@
 import { apiFetch, mockDelay, MODE_MOCK } from "./client";
 import { toAuditRow, type AuditLogResponse } from "./audit";
+import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
+import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import { penggunaApi } from "./pengguna";
 import * as m from "./mock";
 import type {
-  EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
+  ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -17,6 +19,10 @@ export function bulk(sumber: string, aksi: string, ids: string[]): Promise<BulkR
   if (MODE_MOCK) return mockDelay({ berhasil: ids.length, gagal: 0 }, 500, 1100);
   return apiFetch<BulkResult>(`/v1/${sumber}/bulk`, { method: "POST", body: JSON.stringify({ aksi, ids }), idempotencyKey: crypto.randomUUID() });
 }
+
+/** Satu halaman cold storage: BFF bila backend aktif, data mock bila tidak. */
+const listColdStorage = (params: ColdStorageParams = {}): Promise<ColdStorageView> =>
+  MODE_MOCK ? mockDelay(() => queryMockColdStorage(m.mockColdStorage(), params)) : coldStorageClient.list(params);
 
 export const api = {
   /** Siklus ekonomi dominan wilayah — menggerakkan warna ambient seluruh UI */
@@ -39,7 +45,23 @@ export const api = {
     pindah: (id: string, tahap: string, urutan: number) =>
       MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan }) }),
   },
-  coldStorage: { ringkasan: () => get<{ fasilitas: FasilitasColdStorage[]; stok: StokColdStorage[] }>("/v1/cold-storage", m.mockColdStorage) },
+  coldStorage: {
+    list: listColdStorage,
+    /** Seluruh lot yang cocok dengan filter (semua halaman), mis. untuk "pilih semua hasil". */
+    semua: async (params: Omit<ColdStorageParams, "page" | "limit"> = {}): Promise<StokColdStorage[]> => {
+      const rows: StokColdStorage[] = [];
+      for (let page = 1, last = 1; page <= last; page++) {
+        const v = await listColdStorage({ ...params, page, limit: COLD_STORAGE_MAX_LIMIT });
+        rows.push(...v.stok);
+        last = v.halaman.totalPages;
+      }
+      return rows;
+    },
+    bulk: (action: ColdStorageBulkAction, rows: StokColdStorage[]): Promise<BulkColdStorageResult> =>
+      MODE_MOCK
+        ? mockDelay({ berhasil: rows.length, gagal: 0, volumeTon: Math.round(rows.reduce((a, r) => a + r.volumeTon, 0) * 10) / 10 }, 500, 1100)
+        : coldStorageClient.bulk(action, rows.map((r) => r.id)),
+  },
   sumber: { list: () => get<SumberData[]>("/v1/sumber-data", m.mockSumber) },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
   audit: { list: () => (MODE_MOCK ? mockDelay(m.mockAudit) : apiFetch<AuditLogResponse[]>("/v1/audit?limit=500").then((rows) => rows.map(toAuditRow))) },

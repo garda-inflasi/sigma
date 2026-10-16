@@ -1,3 +1,5 @@
+import type { ColdStorageParams } from "@/lib/api/cold-storage-query";
+
 /** Pabrik query key — hierarkis agar invalidasi dapat dilakukan per domain. */
 export const qk = {
   siklus: () => ["siklus"] as const,
@@ -15,7 +17,10 @@ export const qk = {
   harga: { list: () => ["harga", "list"] as const },
   ews: { list: () => ["ews", "list"] as const },
   intervensi: { list: () => ["intervensi", "list"] as const },
-  coldStorage: { ringkasan: () => ["cold-storage"] as const },
+  coldStorage: {
+    all: () => ["cold-storage"] as const,
+    list: (params: ColdStorageParams) => ["cold-storage", "list", params] as const,
+  },
   sumber: { list: () => ["sumber-data"] as const },
   pengguna: {
     all: () => ["pengguna"] as const,

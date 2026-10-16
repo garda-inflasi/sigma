@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
+	coldstorage "github.com/garda-inflasi/api/internal/cold-storage/seeder"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -25,7 +28,14 @@ func main() {
 	// Run migrations via Goose (external), seed data here
 	log.Println("Database connected, running seed...")
 
-	// TODO: Add seed data
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cs, err := coldstorage.Seed(ctx, db, time.Now())
+	if err != nil {
+		log.Fatalf("Seed cold storage failed: %v", err)
+	}
+	log.Printf("cold storage: %d fasilitas, %d lot stok, %d komoditas baru", cs.Fasilitas, cs.Stok, cs.Komoditas)
 
 	log.Println("Seed completed")
 

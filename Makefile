@@ -1,4 +1,6 @@
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api lint/api lint/web gen-module db/migrate db/seed docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down clean
+SHELL := /bin/bash
+
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/seed docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -34,7 +36,10 @@ test/api/short: ## Run short Go tests (no integration)
 	cd apps/api && go test ./... -v -count=1 -short
 
 test/api/integration: ## Run Go integration tests (requires Docker)
-	cd apps/api && go test ./tests/integration/... -v -count=1 -tags=integration
+	cd apps/api && go test ./internal/auth/integration/... ./internal/cold-storage/integration/... -v -count=1
+
+test/web: ## Run web unit tests (node:test + tsx)
+	cd apps/web && pnpm test
 
 lint/api: ## Lint Go code
 	cd apps/api && golangci-lint run ./...
@@ -98,4 +103,38 @@ docker/rebuild: ## Rebuild and restart all services
 clean: ## Clean build artifacts
 	rm -rf apps/api/bin
 	rm -rf apps/web/.next
+
+# ── Deploy targets (build di Mac → transfer → jalankan di VM) ───────────
+# Semua target memakai scripts/deploy/*.sh. Lihat docs/DEPLOYMENT.md.
+
+deploy: ## Full deploy: build → save → transfer → up (ARGS=--skip-build dsb)
+	@bash scripts/deploy/deploy.sh $(ARGS)
+
+deploy/build: ## Build image lokal (ARGS=--only=api,web,caddy --no-cache)
+	@bash scripts/deploy/build-local.sh $(ARGS)
+
+deploy/save: ## Save image ke dist/garda-images-<sha>.tar.gz
+	@bash scripts/deploy/save-images.sh $(ARGS)
+
+deploy/transfer: ## Transfer artefak ke VM via rsync/SSH
+	@bash scripts/deploy/transfer.sh $(ARGS)
+
+deploy/init-env: ## Buat .env.deploy dari template
+	@test -f .env.deploy || cp .env.deploy.example .env.deploy
+	@echo "✓ .env.deploy siap — edit nilainya lalu jalankan: make deploy"
+
+deploy/remote: ## Jalankan deploy di VM saja (tanpa build/transfer)
+	@bash scripts/deploy/deploy.sh --skip-build --skip-transfer $(ARGS)
+
+deploy/prune: ## Prune image & tarball lama (keep N terakhir)
+	@bash scripts/rollback/keep-last-n-images.sh $(ARGS)
+
+rollback: ## Rollback ke deploy sebelumnya (ARGS=--to=<sha>)
+	@bash scripts/deploy/rollback.sh $(ARGS)
+
+status: ## Status service di VM + resource usage
+	@bash scripts/deploy/status.sh $(ARGS)
+
+logs: ## Tail logs dari VM (SERVICE=api|web|caddy TAIL=200)
+	@SERVICE=$(SERVICE) TAIL=$(TAIL) bash scripts/deploy/logs.sh $(ARGS)
 

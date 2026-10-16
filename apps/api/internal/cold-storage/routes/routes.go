@@ -27,5 +27,6 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	handler := http.New(uc)
 
 	engine.GET("/cold-storage", middleware.JWTAuth(deps.Token), middleware.RequirePermission("coldstorage.lihat"), handler.GetAll)
-	engine.POST("/cold-storage/bulk", middleware.JWTAuth(deps.Token), middleware.RequirePermission("coldstorage.kelola"), handler.Bulk)
+	// Izin per aksi (logistik.kelola / coldstorage.kelola) diperiksa di handler.
+	engine.POST("/cold-storage/bulk", middleware.JWTAuth(deps.Token), middleware.RequireAnyPermission("coldstorage.kelola", "logistik.kelola"), handler.Bulk)
 }

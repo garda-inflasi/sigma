@@ -44,5 +44,12 @@ dist/
 build/
 *.log
 
+# === Deploy (build di Mac → transfer ke VM) ===
+.env.deploy
+.buildx-cache/
+.deploy.lock
+.last-build-sha
+.last-tarball
+
 # === Turbo ===
 .turbo/

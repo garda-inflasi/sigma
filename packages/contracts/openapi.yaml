@@ -986,9 +986,106 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/cold-storage:
+    get:
+      summary: Ringkasan cold storage — fasilitas, stok tersimpan, dan agregat food loss
+      description: |
+        Satu permintaan memuat seluruh data layar Cold storage & food loss:
+        kartu fasilitas (selalu semua fasilitas), satu halaman stok yang dapat
+        disaring/diurutkan, dan ringkasan seluruh stok.
+
+        `stok` mengikuti filter, urutan, dan halaman. `meta.volume_hasil_ton`
+        menjumlahkan seluruh hasil filter. `ringkasan` mencakup seluruh stok dan
+        **tidak** terpengaruh filter. Urutan bawaan adalah sisa masa simpan
+        tersingkat lebih dulu; id lot menjadi pemutus seri agar urutan antar-halaman stabil.
+
+        Memerlukan izin `coldstorage.lihat`.
+      operationId: getColdStorage
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      parameters: 
+        - name: cold_storage_id
+          in: query
+          schema:
+            type: string
+            maxLength: 255
+          description: Hanya stok pada fasilitas ini
+          example: CS-03
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+          description: Cari pada nama komoditas atau pemilik (tanpa membedakan huruf besar/kecil)
+          example: tomat
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [sisa_masa_simpan, komoditas, fasilitas, volume, masuk, risiko, pemilik]
+            default: sisa_masa_simpan
+          description: Kolom pengurutan stok
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Jumlah lot stok per halaman
+      responses:
+        "200":
+          description: Data cold storage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ColdStorageResponse"
+        "400":
+          description: Parameter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `coldstorage.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/cold-storage/bulk:
     post:
-      summary: Menjalankan aksi massal pada cold storage
+      summary: Menjalankan aksi massal pada lot stok cold storage
+      description: |
+        Aksi bersifat advisori: tidak mengubah stok, tetapi tercatat di audit trail
+        (`BULK_<aksi>`). Lot yang tidak ditemukan dihitung pada `gagal`.
+
+        Izin yang diperlukan bergantung pada aksi:
+
+        | Aksi | Izin |
+        |---|---|
+        | `rencanakan_distribusi` | `logistik.kelola` |
+        | `rekomendasi_olahan` | `coldstorage.kelola` |
       operationId: bulkColdStorage
       tags:
         - Cold Storage
@@ -999,16 +1096,28 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BulkActionRequest"
+              $ref: "#/components/schemas/BulkColdStorageRequest"
       responses:
         "200":
           description: Aksi massal berhasil diproses
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BulkResultResponse"
+                $ref: "#/components/schemas/BulkColdStorageResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Validasi gagal, aksi tidak valid, atau tidak ada lot yang dipilih
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Peran tidak memiliki izin untuk aksi ini
           content:
             application/json:
               schema:
@@ -1522,3 +1631,218 @@ components:
         wilayah_kode:
           type: string
           example: "1171"
+
+    # ── Cold Storage ───────────────────────────────────────────────────
+    ColdStorageResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/ColdStorageData"
+
+    ColdStorageData:
+      type: object
+      properties:
+        fasilitas:
+          type: array
+          description: Seluruh fasilitas; operasional lebih dulu, lalu perawatan, lalu rencana
+          items:
+            $ref: "#/components/schemas/FasilitasColdStorage"
+        stok:
+          type: array
+          description: Satu halaman lot stok menurut filter dan urutan
+          items:
+            $ref: "#/components/schemas/StokColdStorage"
+        meta:
+          $ref: "#/components/schemas/ColdStoragePageMeta"
+        ringkasan:
+          $ref: "#/components/schemas/ColdStorageRingkasan"
+
+    FasilitasColdStorage:
+      type: object
+      properties:
+        id:
+          type: string
+          example: CS-01
+        nama:
+          type: string
+          example: Cold Storage Lambaro
+        kabupaten_kode:
+          type: string
+          example: "1106"
+        kabupaten_nama:
+          type: string
+          description: Nama pada master wilayah
+          example: KABUPATEN ACEH BESAR
+        lat:
+          type: number
+          format: double
+          example: 5.505
+        lng:
+          type: number
+          format: double
+          example: 95.37
+        kapasitas_ton:
+          type: integer
+          example: 400
+        terisi_ton:
+          type: number
+          format: double
+          description: Jumlah volume seluruh lot di fasilitas
+          example: 347.0
+        utilisasi_persen:
+          type: number
+          format: double
+          description: terisi_ton / kapasitas_ton × 100, satu desimal
+          example: 86.8
+        suhu_target_c:
+          type: number
+          format: double
+          example: 4
+        suhu_aktual_c:
+          type: number
+          format: double
+          nullable: true
+          description: Pembacaan sensor terakhir; null bila belum ada telemetri
+          example: 3.5
+        status:
+          type: string
+          enum: [OPERASIONAL, PERAWATAN, RENCANA]
+
+    StokColdStorage:
+      type: object
+      properties:
+        id:
+          type: string
+          example: STK-CS01-01
+        cold_storage_id:
+          type: string
+          example: CS-01
+        cold_storage_nama:
+          type: string
+          example: Cold Storage Lambaro
+        komoditas_kode:
+          type: string
+          example: cabai_merah_keriting
+        komoditas_nama:
+          type: string
+          example: Cabai Merah Keriting
+        volume_ton:
+          type: number
+          format: double
+          example: 34.9
+        masuk_pada:
+          type: string
+          format: date-time
+        kedaluwarsa_pada:
+          type: string
+          format: date-time
+        sisa_masa_simpan_hari:
+          type: integer
+          description: Dibulatkan ke atas; 0 berarti sudah melewati batas
+          example: 5
+        risiko_food_loss:
+          type: number
+          format: double
+          description: Pecahan 0–1
+          example: 0.68
+        pemilik:
+          type: string
+          example: KUD Pidie Jaya
+
+    ColdStoragePageMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          format: int64
+          description: Jumlah lot yang cocok dengan filter
+          example: 23
+        total_pages:
+          type: integer
+          example: 3
+        volume_hasil_ton:
+          type: number
+          format: double
+          description: Total volume seluruh hasil filter (semua halaman)
+          example: 813.0
+
+    ColdStorageRingkasan:
+      type: object
+      description: Agregat seluruh stok; tidak terpengaruh filter tabel
+      properties:
+        total_lot:
+          type: integer
+          format: int64
+          example: 23
+        total_volume_ton:
+          type: number
+          format: double
+          example: 813.0
+        risiko_tinggi_lot:
+          type: integer
+          format: int64
+          example: 4
+        risiko_tinggi_ton:
+          type: number
+          format: double
+          example: 172.7
+        ambang_risiko_tinggi:
+          type: number
+          format: double
+          description: Lot dengan risiko di atas nilai ini dihitung berisiko tinggi
+          example: 0.6
+
+    BulkColdStorageRequest:
+      type: object
+      required:
+        - action
+        - ids
+      properties:
+        action:
+          type: string
+          enum: [rencanakan_distribusi, rekomendasi_olahan]
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+          example: ["STK-CS01-01", "STK-CS03-01"]
+
+    BulkColdStorageResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            berhasil:
+              type: integer
+              description: Lot yang ditemukan dan diproses
+              example: 2
+            gagal:
+              type: integer
+              description: Id yang tidak ditemukan
+              example: 0
+            volume_ton:
+              type: number
+              format: double
+              description: Total volume lot yang diproses
+              example: 65.9

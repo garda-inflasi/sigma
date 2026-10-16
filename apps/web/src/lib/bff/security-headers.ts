@@ -51,3 +51,16 @@ export function errorResponse(
   );
   return applySecurityHeaders(response);
 }
+
+/**
+ * JSON untuk data per-pengguna (dibatasi izin): tidak boleh disimpan cache
+ * bersama maupun peramban, supaya hasil satu peran tidak bocor ke peran lain.
+ */
+export function privateJsonResponse<T>(
+  data: T,
+  status: number = 200
+): NextResponse {
+  const response = jsonResponse(data, status);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+}

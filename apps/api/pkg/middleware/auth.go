@@ -2,11 +2,12 @@ package middleware
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 )
 
 // JWTAuth returns a Gin middleware that validates JWT access tokens
@@ -69,45 +70,46 @@ func accessTokenCookie(c *gin.Context) string {
 	return ""
 }
 
+// HasPermission reports whether the authenticated user holds the given
+// permission. Must be used after JWTAuth middleware; it is false when no
+// permissions were set on the context.
+func HasPermission(c *gin.Context, permission string) bool {
+	perms, exists := c.Get("permissions")
+	if !exists {
+		return false
+	}
+
+	permList, ok := perms.([]string)
+	if !ok {
+		return false
+	}
+
+	return slices.Contains(permList, permission)
+}
+
 // RequirePermission returns a Gin middleware that checks if the authenticated
 // user has the specified permission. Must be used after JWTAuth middleware.
 func RequirePermission(permission string) gin.HandlerFunc {
+	return RequireAnyPermission(permission)
+}
+
+// RequireAnyPermission returns a Gin middleware that allows the request when
+// the authenticated user holds at least one of the given permissions. Use it
+// for routes whose finer-grained check happens in the handler (e.g. an action
+// that needs a different permission per payload). Must be used after JWTAuth.
+func RequireAnyPermission(permissions ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		perms, exists := c.Get("permissions")
-		if !exists {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    "403",
-				"message": "Akses ditolak",
-			})
-			return
-		}
-
-		permList, ok := perms.([]string)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    "403",
-				"message": "Akses ditolak",
-			})
-			return
-		}
-
-		hasPermission := false
-		for _, p := range permList {
-			if p == permission {
-				hasPermission = true
-				break
+		for _, p := range permissions {
+			if HasPermission(c, p) {
+				c.Next()
+				return
 			}
 		}
 
-		if !hasPermission {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"code":    "403",
-				"message": "Akses ditolak",
-			})
-			return
-		}
-
-		c.Next()
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"code":    "403",
+			"message": "Akses ditolak",
+		})
 	}
 }
 

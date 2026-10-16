@@ -90,51 +90,51 @@ BEGIN
 
 -- 1. Superadmin
 INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status) VALUES
-    ('superadmin', 'Super Admin', 'superadmin@garda-inflasi.id', pwd_hash, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', 'AKTIF')
+    ('superadmin', 'Super Admin', 'superadmin@gardainflasi.id', pwd_hash, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', 'AKTIF')
 ON CONFLICT (id) DO NOTHING;
 
--- 2. Strategis (Eksekutif)
+-- 2. Strategis (Eksekutif) - Pimpinan FMIPA USK 2026
 INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status) VALUES
-    ('strategis_fmipa', 'Dr. Teuku Ahmad, M.Si', 'strategis.fmipa@garda-inflasi.id', pwd_hash, 'STRATEGIS_FMIPA', 'STRATEGIS', 'FMIPA USK', 'AKTIF'),
-    ('strategis_bi', 'Dr. Muhammad Rizal', 'strategis.bi@garda-inflasi.id', pwd_hash, 'STRATEGIS_BI', 'STRATEGIS', 'Bank Indonesia', 'AKTIF'),
-    ('strategis_bps', 'Ir. Cut Putri, M.Ec.Dev', 'strategis.bps@garda-inflasi.id', pwd_hash, 'STRATEGIS_BPS', 'STRATEGIS', 'BPS Aceh', 'AKTIF'),
-    ('strategis_djpb', 'Drs. Syahrul, M.M.', 'strategis.djpb@garda-inflasi.id', pwd_hash, 'STRATEGIS_DJPB', 'STRATEGIS', 'DJPb Aceh', 'AKTIF')
+    ('strategis_fmipa', 'Prof. Dr.rer.nat. Ilham Maulana, S.Si.', 'fmipa@usk.ac.id', pwd_hash, 'STRATEGIS_FMIPA', 'STRATEGIS', 'FMIPA USK', 'AKTIF'),
+    ('strategis_bi', 'Dr. Muhammad Rizal', 'strategis.bi@gardainflasi.id', pwd_hash, 'STRATEGIS_BI', 'STRATEGIS', 'Bank Indonesia', 'AKTIF'),
+    ('strategis_bps', 'Ir. Cut Putri, M.Ec.Dev', 'strategis.bps@gardainflasi.id', pwd_hash, 'STRATEGIS_BPS', 'STRATEGIS', 'BPS Aceh', 'AKTIF'),
+    ('strategis_djpb', 'Drs. Syahrul, M.M.', 'strategis.djpb@gardainflasi.id', pwd_hash, 'STRATEGIS_DJPB', 'STRATEGIS', 'DJPb Aceh', 'AKTIF')
 ON CONFLICT (id) DO NOTHING;
 
 -- 3. Manajer
 INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status) VALUES
-    ('manajer_program', 'Rina Safitri, S.T., M.T.', 'manajer.program@garda-inflasi.id', pwd_hash, 'MANAJER_PROGRAM', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
-    ('manajer_data', 'Bambang Wijaya, S.Kom., M.Cs.', 'manajer.data@garda-inflasi.id', pwd_hash, 'MANAJER_DATA', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
-    ('manajer_kebijakan', 'Dr. Nurul Aini, S.E., M.E.', 'manajer.kebijakan@garda-inflasi.id', pwd_hash, 'MANAJER_KEBIJAKAN', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
-    ('manajer_pembiayaan', 'Fauzan, S.E., M.Si.', 'manajer.pembiayaan@garda-inflasi.id', pwd_hash, 'MANAJER_PEMBIAYAAN', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
-    ('manajer_risiko', 'Dian Permata, S.Si., M.M.', 'manajer.risiko@garda-inflasi.id', pwd_hash, 'MANAJER_RISIKO', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
-    ('manajer_mutu', 'Hendra Gunawan, S.T., M.T.', 'manajer.mutu@garda-inflasi.id', pwd_hash, 'MANAJER_MUTU', 'MANAJERIAL', 'BPPSDMP', 'AKTIF')
+    ('manajer_program', 'Rina Safitri, S.T., M.T.', 'manajer.program@gardainflasi.id', pwd_hash, 'MANAJER_PROGRAM', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
+    ('manajer_data', 'Bambang Wijaya, S.Kom., M.Cs.', 'manajer.data@gardainflasi.id', pwd_hash, 'MANAJER_DATA', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
+    ('manajer_kebijakan', 'Dr. Nurul Aini, S.E., M.E.', 'manajer.kebijakan@gardainflasi.id', pwd_hash, 'MANAJER_KEBIJAKAN', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
+    ('manajer_pembiayaan', 'Fauzan, S.E., M.Si.', 'manajer.pembiayaan@gardainflasi.id', pwd_hash, 'MANAJER_PEMBIAYAAN', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
+    ('manajer_risiko', 'Dian Permata, S.Si., M.M.', 'manajer.risiko@gardainflasi.id', pwd_hash, 'MANAJER_RISIKO', 'MANAJERIAL', 'BPPSDMP', 'AKTIF'),
+    ('manajer_mutu', 'Hendra Gunawan, S.T., M.T.', 'manajer.mutu@gardainflasi.id', pwd_hash, 'MANAJER_MUTU', 'MANAJERIAL', 'BPPSDMP', 'AKTIF')
 ON CONFLICT (id) DO NOTHING;
 
 -- 4. Operasional (Lapangan)
 INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, kabupaten_kode, status) VALUES
-    ('koordinator_lapangan', 'Zulkifli, S.P.', 'koordinator.lapangan@garda-inflasi.id', pwd_hash, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', '1171', 'AKTIF'),
-    ('agregator_data', 'Maya Sari, S.Stat.', 'agregator.data@garda-inflasi.id', pwd_hash, 'OPS_AGREGATOR', 'OPERASIONAL', 'BPPSDMP', '1171', 'AKTIF'),
-    ('mahasiswa_1', 'Aulia Rahman', 'mahasiswa.1@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1171', 'AKTIF'),
-    ('mahasiswa_2', 'Cut Nanda', 'mahasiswa.2@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1106', 'AKTIF'),
-    ('mahasiswa_3', 'Teuku Irfan', 'mahasiswa.3@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1105', 'AKTIF'),
-    ('mahasiswa_4', 'Siti Rahmah', 'mahasiswa.4@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1107', 'AKTIF'),
-    ('mahasiswa_5', 'Muhammad Rizki', 'mahasiswa.5@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1104', 'AKTIF'),
-    ('mahasiswa_6', 'Nurul Fajri', 'mahasiswa.6@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1103', 'AKTIF'),
-    ('mahasiswa_7', 'Rahmat Hidayat', 'mahasiswa.7@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1102', 'AKTIF'),
-    ('mahasiswa_8', 'Dewi Sartika', 'mahasiswa.8@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1101', 'AKTIF'),
-    ('mahasiswa_9', 'Rizky Pratama', 'mahasiswa.9@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1173', 'AKTIF'),
-    ('mahasiswa_10', 'Fitriani', 'mahasiswa.10@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1174', 'AKTIF')
+    ('koordinator_lapangan', 'Zulkifli, S.P.', 'koordinator.lapangan@gardainflasi.id', pwd_hash, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', '1171', 'AKTIF'),
+    ('agregator_data', 'Maya Sari, S.Stat.', 'agregator.data@gardainflasi.id', pwd_hash, 'OPS_AGREGATOR', 'OPERASIONAL', 'BPPSDMP', '1171', 'AKTIF'),
+    ('mahasiswa_1', 'Aulia Rahman', 'mahasiswa.1@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1171', 'AKTIF'),
+    ('mahasiswa_2', 'Cut Nanda', 'mahasiswa.2@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1106', 'AKTIF'),
+    ('mahasiswa_3', 'Teuku Irfan', 'mahasiswa.3@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1105', 'AKTIF'),
+    ('mahasiswa_4', 'Siti Rahmah', 'mahasiswa.4@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1107', 'AKTIF'),
+    ('mahasiswa_5', 'Muhammad Rizki', 'mahasiswa.5@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1104', 'AKTIF'),
+    ('mahasiswa_6', 'Nurul Fajri', 'mahasiswa.6@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1103', 'AKTIF'),
+    ('mahasiswa_7', 'Rahmat Hidayat', 'mahasiswa.7@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1102', 'AKTIF'),
+    ('mahasiswa_8', 'Dewi Sartika', 'mahasiswa.8@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1101', 'AKTIF'),
+    ('mahasiswa_9', 'Rizky Pratama', 'mahasiswa.9@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1173', 'AKTIF'),
+    ('mahasiswa_10', 'Fitriani', 'mahasiswa.10@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', '1174', 'AKTIF')
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. User nonaktif untuk testing
 INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status) VALUES
-    ('user_nonaktif', 'User Nonaktif', 'nonaktif@garda-inflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', 'NONAKTIF')
+    ('user_nonaktif', 'User Nonaktif', 'nonaktif@gardainflasi.id', pwd_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'FMIPA USK', 'NONAKTIF')
 ON CONFLICT (id) DO NOTHING;
 
 -- 6. User dengan MFA aktif untuk testing
 INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret, mfa_backup_codes) VALUES
-    ('user_mfa', 'User MFA', 'mfa@garda-inflasi.id', pwd_hash, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, 'JBSWY3DPEHPK3PXP', '["BACKUP01","BACKUP02","BACKUP03"]'::jsonb)
+    ('user_mfa', 'User MFA', 'mfa@gardainflasi.id', pwd_hash, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, 'JBSWY3DPEHPK3PXP', '["BACKUP01","BACKUP02","BACKUP03"]'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 END $$;

@@ -6,7 +6,8 @@ const MAP: Record<IkonKomoditas, LucideIcon> = {
   beras: Wheat, cabai: Flame, bawang: Sprout, telur: Egg, ayam: Drumstick, sapi: Beef, ikan: Fish, minyak: Droplets, gula: Box, sayur: Carrot,
 };
 
-export function KomoditasIcon({ kode, className }: { kode: string; className?: string }) {
-  const Icon = MAP[komoditasByKode[kode]?.ikon ?? "sayur"];
+/** `ikon` didahulukan; bila kosong ikon ditelusuri dari `kode` master acuan. */
+export function KomoditasIcon({ kode, ikon, className }: { kode: string; ikon?: IkonKomoditas; className?: string }) {
+  const Icon = MAP[ikon ?? komoditasByKode[kode]?.ikon ?? "sayur"];
   return <Icon className={cn("size-4", className)} aria-hidden />;
 }

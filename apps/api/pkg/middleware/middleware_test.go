@@ -438,6 +438,77 @@ func TestRequirePermission_MultiplePermissions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// ── HasPermission / RequireAnyPermission ──────────────────────────────
+
+func TestHasPermission(t *testing.T) {
+	cases := []struct {
+		name  string
+		perms any // nil = tidak diset di konteks
+		want  bool
+	}{
+		{"izin dimiliki", []string{"harga.lihat", "coldstorage.kelola"}, true},
+		{"izin tidak dimiliki", []string{"harga.lihat"}, false},
+		{"daftar kosong", []string{}, false},
+		{"tidak diset", nil, false},
+		{"tipe salah", "coldstorage.kelola", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			if tc.perms != nil {
+				c.Set("permissions", tc.perms)
+			}
+
+			assert.Equal(t, tc.want, HasPermission(c, "coldstorage.kelola"))
+		})
+	}
+}
+
+func TestRequireAnyPermission_HoldsOne(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("permissions", []string{"logistik.kelola"})
+
+	RequireAnyPermission("coldstorage.kelola", "logistik.kelola")(c)
+
+	assert.False(t, c.IsAborted())
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireAnyPermission_HoldsNone(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("permissions", []string{"harga.lihat"})
+
+	RequireAnyPermission("coldstorage.kelola", "logistik.kelola")(c)
+
+	assert.True(t, c.IsAborted())
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "Akses ditolak")
+}
+
+func TestRequireAnyPermission_NoPermissionsSet(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	RequireAnyPermission("coldstorage.kelola")(c)
+
+	assert.True(t, c.IsAborted())
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRequireAnyPermission_NoneRequiredDenies(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("permissions", []string{"harga.lihat"})
+
+	// Tanpa izin yang disyaratkan, middleware gagal tertutup (tolak), bukan lolos.
+	RequireAnyPermission()(c)
+
+	assert.True(t, c.IsAborted())
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 // ── AccessLog ─────────────────────────────────────────────────────────
 
 func TestAccessLog(t *testing.T) {

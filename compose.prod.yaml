@@ -1,0 +1,63 @@
+# ==============================================================================
+#  Garda Inflasi — compose.prod.yaml
+#  Production override for the VM.
+#
+#  Purpose: force every service to run a PRE-BUILT image that was transferred
+#  from the Mac. The VM must never build anything, so `build: !reset null`
+#  removes the build section inherited from compose.yaml / compose.infra.yaml.
+#  (`!reset` is the Compose override tag for deleting an inherited key; a plain
+#  `build: null` is rejected by Compose v2.20+ with "must be a string".)
+#
+#  Usage (on the VM):
+#      IMAGE_TAG=<git-sha> docker compose \
+#        -f compose/compose.infra.yaml -f compose/compose.prod.yaml up -d --no-build
+#      IMAGE_TAG=<git-sha> docker compose \
+#        -f compose/compose.yaml -f compose/compose.prod.yaml up -d --no-build
+#
+#  IMAGE_TAG defaults to `latest` so a bare `docker compose up` still works.
+# ==============================================================================
+
+services:
+  # ── Application stack (compose.yaml) ────────────────────────────────────
+  api:
+    image: garda-api:${IMAGE_TAG:-latest}
+    build: !reset null
+    environment:
+      GIN_MODE: release
+      APP_ADDR: ":8080"
+    restart: unless-stopped
+
+  web:
+    image: garda-web:${IMAGE_TAG:-latest}
+    build: !reset null
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+
+  caddy:
+    image: garda-caddy:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+
+  # ── Infrastructure stack (compose.infra.yaml) ───────────────────────────
+  # These services use upstream images and are pulled, never built. They are
+  # listed here only to pin restart policy and keep the override symmetric.
+  postgres:
+    image: postgres:16-alpine
+    build: !reset null
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8
+    build: !reset null
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    build: !reset null
+    restart: unless-stopped
+
+networks:
+  garda_inflasi_net:
+    name: garda_inflasi_net
+    external: true

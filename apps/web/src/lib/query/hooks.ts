@@ -1,10 +1,13 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
+import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
+import type { StokColdStorage } from "@/lib/data/types";
+import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
 import { qk } from "./keys";
 
@@ -28,7 +31,20 @@ export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(ko
 export const useEntriHarga = (enabled = true) => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list, enabled });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useIntervensi = () => useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity });
-export const useColdStorage = () => useQuery({ queryKey: qk.coldStorage.ringkasan(), queryFn: api.coldStorage.ringkasan });
+/**
+ * Satu layar cold storage. `keepPreviousData` menahan tampilan lama saat
+ * pindah halaman/urutan/filter agar tabel tidak berkedip; kartu fasilitas
+ * ikut disegarkan tiap menit untuk telemetri suhu.
+ */
+export const useColdStorage = (params: ColdStorageParams) =>
+  useQuery({
+    queryKey: qk.coldStorage.list(params),
+    queryFn: () => api.coldStorage.list(params),
+    placeholderData: keepPreviousData,
+    // Berhenti memuat ulang otomatis setelah galat (mis. sesi berakhir) agar tidak
+    // menembak BFF tiap menit; dilanjutkan begitu "Coba lagi" atau perubahan kriteria berhasil.
+    refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
+  });
 export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
 export const usePengguna = (search?: string) =>
   useQuery({
@@ -176,6 +192,28 @@ export function useAssignRolePengguna() {
     },
     onError: (err) => {
       toast.error("Gagal memperbarui peran", {
+        description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    },
+  });
+}
+
+// ── Mutasi cold storage ───────────────────────────────────────────────
+
+/** Aksi massal pada lot stok — memanggil BFF lalu menyegarkan data layar. */
+export function useColdStorageBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, rows }: { action: ColdStorageBulkAction; rows: StokColdStorage[]; label: string }) =>
+      api.coldStorage.bulk(action, rows),
+    onSuccess: (res, { label }) => {
+      qc.invalidateQueries({ queryKey: qk.coldStorage.all() });
+      toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} lot (${formatAngka(res.volumeTon, 1)} ton)`, {
+        description: res.gagal ? `${res.gagal} lot tidak ditemukan — muat ulang halaman untuk melihat data terbaru.` : "Tercatat di audit trail.",
+      });
+    },
+    onError: (err) => {
+      toast.error("Aksi massal gagal", {
         description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
       });
     },

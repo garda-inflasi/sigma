@@ -1,17 +1,21 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
 import {
   setAccessTokenCookie,
   setRefreshTokenCookie,
   getRefreshToken,
 } from "@/lib/bff/cookies";
-import { jsonResponse, errorResponse } from "@/lib/bff/security-headers";
+import { applySecurityHeaders } from "@/lib/bff/security-headers";
 
 export async function POST(request: NextRequest) {
   try {
     const refreshToken = await getRefreshToken();
     if (!refreshToken) {
-      return errorResponse("Refresh token tidak ditemukan.", 401);
+      const resp = NextResponse.json(
+        { error: true, message: "Refresh token tidak ditemukan." },
+        { status: 401 }
+      );
+      return applySecurityHeaders(resp);
     }
 
     // Call Go backend
@@ -19,16 +23,25 @@ export async function POST(request: NextRequest) {
       refresh_token: refreshToken,
     });
 
-    // Set new HttpOnly cookies
-    await setAccessTokenCookie(result.access_token);
-    await setRefreshTokenCookie(result.refresh_token);
+    // Build response and set cookies on it
+    const response = NextResponse.json({ success: true });
+    setAccessTokenCookie(response, result.access_token);
+    setRefreshTokenCookie(response, result.refresh_token);
 
-    return jsonResponse({ success: true });
+    return applySecurityHeaders(response);
   } catch (error) {
     if (error instanceof Error && "status" in error) {
       const apiError = error as { status: number; message: string };
-      return errorResponse(apiError.message, apiError.status);
+      const resp = NextResponse.json(
+        { error: true, message: apiError.message },
+        { status: apiError.status }
+      );
+      return applySecurityHeaders(resp);
     }
-    return errorResponse("Kesalahan server internal.", 500);
+    const resp = NextResponse.json(
+      { error: true, message: "Kesalahan server internal." },
+      { status: 500 }
+    );
+    return applySecurityHeaders(resp);
   }
 }

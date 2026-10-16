@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/internal/auth/domain"
+)
 
 // ── Auth Responses ────────────────────────────────────────────────────
 
@@ -48,11 +52,46 @@ type BulkUserResponse struct {
 	Errors   []string `json:"errors,omitempty"`
 }
 
+// ── RBAC Responses ────────────────────────────────────────────────────
+
+type RoleResponse struct {
+	ID          string   `json:"id"`
+	Permissions []string `json:"permissions"`
+}
+
+type PermissionResponse struct {
+	ID string `json:"id"`
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
-func ToUserResponse(u interface{}) UserResponse {
-	// Type assertion handled by caller
-	return UserResponse{}
+// ToUserResponse maps a domain user onto its API representation.
+func ToUserResponse(u *domain.Pengguna) UserResponse {
+	if u == nil {
+		return UserResponse{}
+	}
+	return UserResponse{
+		ID:            u.ID,
+		Nama:          u.Nama,
+		Email:         u.Email,
+		Peran:         u.Peran,
+		Lapis:         u.Lapis,
+		Lembaga:       u.Lembaga,
+		KabupatenKode: u.KabupatenKode,
+		MfaAktif:      u.MfaAktif,
+		Status:        u.Status,
+		TerakhirMasuk: u.TerakhirMasuk,
+		DibuatPada:    u.DibuatPada,
+	}
+}
+
+// ToUserResponses maps a slice of domain users onto API representations.
+func ToUserResponses(users []domain.Pengguna) []UserResponse {
+	items := make([]UserResponse, len(users))
+	for i := range users {
+		items[i] = ToUserResponse(&users[i])
+	}
+	return items
 }
 
 // ── MFA Responses ─────────────────────────────────────────────────────

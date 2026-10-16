@@ -85,7 +85,7 @@ ON CONFLICT (kode) DO NOTHING;
 -- Hash bcrypt dari 'Garda2024!'
 DO $$
 DECLARE
-    pwd_hash VARCHAR(255) := '$2a$10$8K1p/a0dL1LXMIgoEDFrwOfMQkfAjkMBcGmF0xGJ0qF0xGJ0qF0xG';
+    pwd_hash VARCHAR(255) := '$2b$12$oMNxZPfOYtSKzOgpaw8cIOXK.XC3zprOgW7uDEpHNzPtSFbB9I.I2';
 BEGIN
 
 -- 1. Superadmin

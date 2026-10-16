@@ -33,20 +33,33 @@
   }
 
   # ── Health check passthrough ───────────────────────────────────
-  handle_path /healthz {
+  handle /healthz {
     reverse_proxy api:8080 {
       header_up Host {host}
     }
   }
 
+  # ── Swagger UI (API docs) ──────────────────────────────────────
+  handle /swagger/* {
+    reverse_proxy api:8080 {
+      header_up Host {host}
+    }
+  }
+
+  # ── BFF routes (Next.js API routes) ────────────────────────────
+  # Auth routes go through Next.js BFF for cookie management
+  # Must use handle (not handle_path) to preserve /api/auth/ prefix
+  handle /api/auth/* {
+    reverse_proxy web:3000 {
+      header_up Host {host}
+    }
+  }
+
   # ── API reverse proxy (/api/* → Go backend) ────────────────────
-  # handle_path strips /api prefix, so /api/v1/... becomes /v1/...
+  # Non-auth API routes go directly to Go backend
   handle_path /api/* {
     reverse_proxy api:8080 {
       header_up Host {host}
-      header_up X-Forwarded-For {remote_host}
-      header_up X-Forwarded-Proto {scheme}
-      header_up X-Real-IP {remote_host}
     }
   }
 

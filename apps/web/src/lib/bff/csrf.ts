@@ -6,9 +6,10 @@
  * - BFF validates that the header matches the cookie
  */
 
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
-const CSRF_COOKIE = "__Host-csrf";
+const isDev = true; // Always use simple cookie names (Caddy terminates TLS)
+const CSRF_COOKIE = isDev ? "garda_csrf" : "__Host-csrf";
 const CSRF_HEADER = "x-csrf-token";
 
 /**
@@ -24,14 +25,13 @@ export async function generateCSRFToken(): Promise<string> {
 }
 
 /**
- * Sets the CSRF token as an HttpOnly cookie.
+ * Sets the CSRF token as a non-HttpOnly cookie on the given response.
  * Called by the BFF login handler after successful authentication.
  */
-export async function setCSRFCookie(token: string): Promise<void> {
-  const jar = await cookies();
-  jar.set(CSRF_COOKIE, token, {
+export function setCSRFCookie(response: NextResponse, token: string): void {
+  response.cookies.set(CSRF_COOKIE, token, {
     httpOnly: false, // Must be readable by JS for the double-submit pattern
-    secure: true,
+    secure: !isDev,
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24, // 24 hours
@@ -45,6 +45,7 @@ export async function setCSRFCookie(token: string): Promise<void> {
 export async function validateCSRF(
   request: Request
 ): Promise<boolean> {
+  const { cookies } = await import("next/headers");
   const jar = await cookies();
   const cookieToken = jar.get(CSRF_COOKIE)?.value;
   const headerToken = request.headers.get(CSRF_HEADER);

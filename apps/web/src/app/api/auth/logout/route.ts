@@ -1,10 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
 import {
   getAccessToken,
   clearTokenCookies,
 } from "@/lib/bff/cookies";
-import { jsonResponse, errorResponse } from "@/lib/bff/security-headers";
+import { applySecurityHeaders } from "@/lib/bff/security-headers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,11 +18,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Clear cookies regardless of backend result
-    await clearTokenCookies();
+    // Build response and clear cookies on it
+    const response = NextResponse.json({ success: true });
+    clearTokenCookies(response);
 
-    return jsonResponse({ success: true });
+    return applySecurityHeaders(response);
   } catch {
-    return errorResponse("Gagal logout.", 500);
+    const resp = NextResponse.json(
+      { error: true, message: "Gagal logout." },
+      { status: 500 }
+    );
+    return applySecurityHeaders(resp);
   }
 }

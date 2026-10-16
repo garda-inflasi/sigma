@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -99,7 +100,23 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      router,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Rewrite paths for Caddy reverse proxy compatibility
+			// Caddy strips /api prefix, so /api/auth/login becomes /auth/login
+			// We need to add /v1 prefix back
+			path := r.URL.Path
+			switch {
+			case strings.HasPrefix(path, "/api/"):
+				// Caddy didn't strip /api (direct access)
+				r.URL.Path = "/v1" + path[4:]
+			case path == "/healthz" || path == "/":
+				// Health check or root — pass through as-is
+			case !strings.HasPrefix(path, "/v1") && !strings.HasPrefix(path, "/swagger"):
+				// Caddy stripped /api prefix, add /v1
+				r.URL.Path = "/v1" + path
+			}
+			router.ServeHTTP(w, r)
+		}),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

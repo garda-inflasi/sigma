@@ -1,12 +1,20 @@
 /**
  * Cookie utilities for the BFF layer.
  * Sets HttpOnly, Secure, SameSite cookies for tokens.
+ * In development (HTTP), Secure flag and __Host-/__Secure- prefixes are omitted.
+ *
+ * IMPORTANT: These functions accept a NextResponse and set cookies on it.
+ * Do NOT use cookies() from next/headers in Route Handlers — cookies set
+ * that way may not be included in the response.
  */
 
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
-const ACCESS_COOKIE = "__Host-access";
-const REFRESH_COOKIE = "__Secure-refresh";
+const isDev = true; // Always use simple cookie names (Caddy terminates TLS)
+
+// In dev (HTTP), use simple cookie names without Secure prefix requirements
+const ACCESS_COOKIE = isDev ? "garda_access" : "__Host-access";
+const REFRESH_COOKIE = isDev ? "garda_refresh" : "__Secure-refresh";
 
 interface CookieOptions {
   maxAge?: number;
@@ -15,17 +23,16 @@ interface CookieOptions {
 }
 
 /**
- * Sets the access token as an HttpOnly cookie.
- * Uses __Host- prefix for cookie hardening (requires Secure, path=/, no domain).
+ * Sets the access token as an HttpOnly cookie on the given response.
  */
-export async function setAccessTokenCookie(
+export function setAccessTokenCookie(
+  response: NextResponse,
   token: string,
   maxAge: number = 15 * 60 // 15 minutes default
-): Promise<void> {
-  const jar = await cookies();
-  jar.set(ACCESS_COOKIE, token, {
+): void {
+  response.cookies.set(ACCESS_COOKIE, token, {
     httpOnly: true,
-    secure: true,
+    secure: !isDev,
     sameSite: "lax",
     path: "/",
     maxAge,
@@ -33,17 +40,16 @@ export async function setAccessTokenCookie(
 }
 
 /**
- * Sets the refresh token as an HttpOnly cookie.
- * Uses __Secure- prefix (cannot use __Host- because path is restricted to /api/auth).
+ * Sets the refresh token as an HttpOnly cookie on the given response.
  */
-export async function setRefreshTokenCookie(
+export function setRefreshTokenCookie(
+  response: NextResponse,
   token: string,
   maxAge: number = 7 * 24 * 60 * 60 // 7 days default
-): Promise<void> {
-  const jar = await cookies();
-  jar.set(REFRESH_COOKIE, token, {
+): void {
+  response.cookies.set(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: true,
+    secure: !isDev,
     sameSite: "strict",
     path: "/api/auth",
     maxAge,
@@ -51,20 +57,19 @@ export async function setRefreshTokenCookie(
 }
 
 /**
- * Clears both token cookies (for logout).
+ * Clears both token cookies on the given response (for logout).
  */
-export async function clearTokenCookies(): Promise<void> {
-  const jar = await cookies();
-  jar.set(ACCESS_COOKIE, "", {
+export function clearTokenCookies(response: NextResponse): void {
+  response.cookies.set(ACCESS_COOKIE, "", {
     httpOnly: true,
-    secure: true,
+    secure: !isDev,
     sameSite: "lax",
     path: "/",
     maxAge: 0,
   });
-  jar.set(REFRESH_COOKIE, "", {
+  response.cookies.set(REFRESH_COOKIE, "", {
     httpOnly: true,
-    secure: true,
+    secure: !isDev,
     sameSite: "strict",
     path: "/api/auth",
     maxAge: 0,
@@ -73,8 +78,10 @@ export async function clearTokenCookies(): Promise<void> {
 
 /**
  * Gets the access token from the cookie.
+ * This still uses cookies() from next/headers for server-side reads.
  */
 export async function getAccessToken(): Promise<string | undefined> {
+  const { cookies } = await import("next/headers");
   const jar = await cookies();
   return jar.get(ACCESS_COOKIE)?.value;
 }
@@ -83,6 +90,7 @@ export async function getAccessToken(): Promise<string | undefined> {
  * Gets the refresh token from the cookie.
  */
 export async function getRefreshToken(): Promise<string | undefined> {
+  const { cookies } = await import("next/headers");
   const jar = await cookies();
   return jar.get(REFRESH_COOKIE)?.value;
 }

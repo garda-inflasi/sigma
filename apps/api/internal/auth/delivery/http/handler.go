@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
@@ -246,31 +247,14 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		req.Limit = 20
 	}
 
-	users, total, err := h.uc.ListUsers(c.Request.Context(), req.Page, req.Limit)
+	users, total, err := h.uc.ListUsers(c.Request.Context(), req.Page, req.Limit, req.Search)
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data")
 		return
 	}
 
-	items := make([]dto.UserResponse, len(users))
-	for i, u := range users {
-		items[i] = dto.UserResponse{
-			ID:            u.ID,
-			Nama:          u.Nama,
-			Email:         u.Email,
-			Peran:         u.Peran,
-			Lapis:         u.Lapis,
-			Lembaga:       u.Lembaga,
-			KabupatenKode: u.KabupatenKode,
-			MfaAktif:      u.MfaAktif,
-			Status:        u.Status,
-			TerakhirMasuk: u.TerakhirMasuk,
-			DibuatPada:    u.DibuatPada,
-		}
-	}
-
 	response.Success(c, dto.ListResponse{
-		Items: items,
+		Items: dto.ToUserResponses(users),
 		Total: total,
 		Page:  req.Page,
 		Limit: req.Limit,
@@ -286,20 +270,150 @@ func (h *Handler) GetUser(c *gin.Context) {
 		return
 	}
 
-	resp := dto.UserResponse{
-		ID:            user.ID,
-		Nama:          user.Nama,
-		Email:         user.Email,
-		Peran:         user.Peran,
-		Lapis:         user.Lapis,
-		Lembaga:       user.Lembaga,
-		KabupatenKode: user.KabupatenKode,
-		MfaAktif:      user.MfaAktif,
-		Status:        user.Status,
-		TerakhirMasuk: user.TerakhirMasuk,
-		DibuatPada:    user.DibuatPada,
+	response.Success(c, dto.ToUserResponse(user))
+}
+
+// PATCH /v1/users/:id
+func (h *Handler) UpdateUser(c *gin.Context) {
+	id := c.Param("id")
+
+	var req dto.UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
 	}
-	response.Success(c, resp)
+
+	actorID := c.GetString("user_id")
+	ip := c.ClientIP()
+
+	user, err := h.uc.UpdateUser(c.Request.Context(), id, usecase.UserPatch{
+		Nama:          req.Nama,
+		Email:         req.Email,
+		Peran:         req.Peran,
+		Lapis:         req.Lapis,
+		Lembaga:       req.Lembaga,
+		KabupatenKode: req.KabupatenKode,
+		Status:        req.Status,
+	}, actorID, ip)
+	if err != nil {
+		switch err {
+		case usecase.ErrUserNotFound:
+			response.NotFound(c, "Pengguna tidak ditemukan")
+		case usecase.ErrEmailExists:
+			response.Conflict(c, "Email sudah terdaftar")
+		case usecase.ErrRoleNotFound:
+			response.BadRequest(c, "Peran tidak dikenal")
+		default:
+			response.InternalError(c, "Gagal memperbarui pengguna")
+		}
+		return
+	}
+
+	response.Success(c, dto.ToUserResponse(user))
+}
+
+// DELETE /v1/users/:id
+func (h *Handler) DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+	actorID := c.GetString("user_id")
+	ip := c.ClientIP()
+
+	if err := h.uc.DeleteUser(c.Request.Context(), id, actorID, ip); err != nil {
+		switch err {
+		case usecase.ErrUserNotFound:
+			response.NotFound(c, "Pengguna tidak ditemukan")
+		case usecase.ErrCannotDeleteSelf:
+			response.BadRequest(c, "Tidak dapat menghapus akun sendiri")
+		case usecase.ErrUserHasReferences:
+			response.Conflict(c, "Pengguna masih memiliki data terkait (tugas, entri harga, atau audit). Nonaktifkan akun sebagai gantinya.")
+		default:
+			response.InternalError(c, "Gagal menghapus pengguna")
+		}
+		return
+	}
+
+	response.Success(c, gin.H{"id": id})
+}
+
+// POST /v1/users/:id/reset-password
+func (h *Handler) ResetPasswordAdmin(c *gin.Context) {
+	id := c.Param("id")
+
+	var req dto.ResetPasswordAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	actorID := c.GetString("user_id")
+	ip := c.ClientIP()
+
+	if err := h.uc.ResetPasswordAdmin(c.Request.Context(), id, req.NewPassword, actorID, ip); err != nil {
+		switch err {
+		case usecase.ErrUserNotFound:
+			response.NotFound(c, "Pengguna tidak ditemukan")
+		case usecase.ErrWeakPassword:
+			response.BadRequest(c, err.Error())
+		default:
+			if errors.Is(err, usecase.ErrWeakPassword) {
+				response.BadRequest(c, err.Error())
+				return
+			}
+			response.InternalError(c, "Gagal mengatur ulang kata sandi")
+		}
+		return
+	}
+
+	response.Success(c, gin.H{"id": id})
+}
+
+// PUT /v1/users/:id/roles
+func (h *Handler) AssignRole(c *gin.Context) {
+	id := c.Param("id")
+
+	var req dto.AssignRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	actorID := c.GetString("user_id")
+	ip := c.ClientIP()
+
+	user, err := h.uc.AssignRole(c.Request.Context(), id, req.Peran, actorID, ip)
+	if err != nil {
+		switch err {
+		case usecase.ErrUserNotFound:
+			response.NotFound(c, "Pengguna tidak ditemukan")
+		case usecase.ErrRoleNotFound:
+			response.BadRequest(c, "Peran tidak dikenal")
+		default:
+			response.InternalError(c, "Gagal mengubah peran")
+		}
+		return
+	}
+
+	response.Success(c, dto.ToUserResponse(user))
+}
+
+// GET /v1/roles
+func (h *Handler) ListRoles(c *gin.Context) {
+	roles := h.uc.ListRoles()
+	items := make([]dto.RoleResponse, len(roles))
+	for i, r := range roles {
+		items[i] = dto.RoleResponse{ID: r.ID, Permissions: r.Permissions}
+	}
+	response.Success(c, items)
+}
+
+// GET /v1/permissions
+func (h *Handler) ListPermissions(c *gin.Context) {
+	perms := h.uc.ListPermissions()
+	items := make([]dto.PermissionResponse, len(perms))
+	for i, p := range perms {
+		items[i] = dto.PermissionResponse{ID: p}
+	}
+	response.Success(c, items)
 }
 
 // POST /v1/users/bulk

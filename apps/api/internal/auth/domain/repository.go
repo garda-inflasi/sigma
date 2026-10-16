@@ -10,7 +10,8 @@ type Repository interface {
 	GetUserByEmail(ctx context.Context, email string) (*Pengguna, error)
 	CreateUser(ctx context.Context, user *Pengguna) error
 	UpdateUser(ctx context.Context, user *Pengguna) error
-	ListUsers(ctx context.Context, page, limit int) ([]Pengguna, int64, error)
+	DeleteUser(ctx context.Context, id string) error
+	ListUsers(ctx context.Context, page, limit int, search string) ([]Pengguna, int64, error)
 	CreateRefreshToken(ctx context.Context, token *RefreshToken) error
 	GetRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id int64) error

@@ -21,25 +21,30 @@ func Register(router *gin.Engine) {
 		return
 	}
 
-	// Serve the OpenAPI YAML file
-	router.GET("/swagger/openapi.yaml", func(c *gin.Context) {
-		data, err := openapiFS.ReadFile("openapi.yaml")
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-				"error": "OpenAPI spec not found",
-			})
-			return
-		}
-		c.Header("Content-Type", "application/x-yaml")
-		c.String(http.StatusOK, string(data))
-	})
-
-	// Serve Swagger UI
+	// Redirect /swagger to /swagger/
 	router.GET("/swagger", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/swagger/")
 	})
 
+	// Single wildcard route handles both the YAML file and the UI
 	router.GET("/swagger/*any", func(c *gin.Context) {
+		path := c.Param("any")
+
+		// Serve the OpenAPI YAML file
+		if path == "/openapi.yaml" {
+			data, err := openapiFS.ReadFile("openapi.yaml")
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"error": "OpenAPI spec not found",
+				})
+				return
+			}
+			c.Header("Content-Type", "application/x-yaml")
+			c.String(http.StatusOK, string(data))
+			return
+		}
+
+		// Serve Swagger UI for all other paths under /swagger/
 		scheme := "http"
 		if c.Request.TLS != nil {
 			scheme = "https"

@@ -36,15 +36,12 @@ services:
       DB_SSLMODE: disable
       DATABASE_URL: "postgres://${DB_USER:-garda}:${DB_PASSWORD:-garda_secret}@postgres:5432/${DB_NAME:-garda_inflasi}?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
+      MONGO_URI: "mongodb://garda:garda_secret@mongodb:27017/garda_inflasi?authSource=admin"
+      MONGO_DB: "garda_inflasi"
       JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
-    depends_on:
-      postgres:
-        condition: service_healthy
-        required: false
-      redis:
-        condition: service_healthy
-        required: false
+    # depends_on dihapus karena postgres, redis, dan mongodb
+    # sudah berjalan di compose.infra.yaml secara terpisah
     networks:
       - garda_inflasi_net
 

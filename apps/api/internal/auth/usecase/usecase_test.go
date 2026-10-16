@@ -51,9 +51,14 @@ func (m *mockRepository) UpdateUser(ctx context.Context, user *domain.Pengguna) 
 	return args.Error(0)
 }
 
-func (m *mockRepository) ListUsers(ctx context.Context, page, limit int) ([]domain.Pengguna, int64, error) {
-	args := m.Called(ctx, page, limit)
+func (m *mockRepository) ListUsers(ctx context.Context, page, limit int, search string) ([]domain.Pengguna, int64, error) {
+	args := m.Called(ctx, page, limit, search)
 	return args.Get(0).([]domain.Pengguna), args.Get(1).(int64), args.Error(2)
+}
+
+func (m *mockRepository) DeleteUser(ctx context.Context, id string) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
 }
 
 func (m *mockRepository) CreateRefreshToken(ctx context.Context, token *domain.RefreshToken) error {

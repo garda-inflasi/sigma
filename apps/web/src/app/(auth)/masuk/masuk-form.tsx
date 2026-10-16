@@ -8,8 +8,9 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { API_BASE, ApiError, MODE_MOCK } from "@/lib/api/client";
+import { API_BASE, MODE_MOCK } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
+import { loginAction, loginFormAction } from "@/lib/actions/login";
 
 /** Logo "G" Google empat warna — SVG inline agar tidak bergantung aset eksternal. */
 function GoogleGlyph({ className }: { className?: string }) {
@@ -95,35 +96,25 @@ export function MasukForm({
         return;
       }
 
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ email: email.trim(), password: sandi }),
-      });
+      // Gunakan server action untuk login — cookies di-set di server, redirect via browser
+      const formData = new FormData();
+      formData.append("email", email.trim());
+      formData.append("password", sandi);
+      formData.append("redirect", redirect);
 
-      if (!res.ok) {
-        let pesan =
-          res.status === 401
-            ? "Email atau kata sandi salah."
-            : `Gagal masuk (${res.status}).`;
-        try {
-          const data = (await res.json()) as {
-            message?: string;
-          };
-          if (data.message) pesan = data.message;
-        } catch {}
-        throw new ApiError(res.status, pesan);
+      const result = await loginAction(formData);
+
+      // Jika result ada, berarti error (redirect tidak terjadi)
+      if (result && "error" in result) {
+        throw new Error(result.error);
       }
 
-      // Cookies are set by the BFF — reload to let SSR read the new session
-      toast.success("Berhasil masuk");
+      // Seharusnya tidak sampai sini karena redirect() melempar error
+      // Tapi untuk jaga-jaga, lakukan redirect manual
       window.location.assign(redirect);
     } catch (err) {
       const pesan =
-        err instanceof ApiError
+        err instanceof Error
           ? err.message
           : "Tidak dapat terhubung ke server. Coba lagi.";
       setGalat(pesan);
@@ -136,7 +127,14 @@ export function MasukForm({
   // membuangnya bila di-override dengan `pl-*`/`pr-*`. Hanya `px-*` simetris yang
   // menang, jadi ruang ikon dibuat via px-10 / px-11 (terverifikasi di browser).
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3.5" noValidate>
+    <form
+      action={MODE_MOCK ? undefined : "/api/auth/login"}
+      onSubmit={MODE_MOCK ? onSubmit : undefined}
+      method="POST"
+      className="mt-6 space-y-3.5"
+      noValidate
+    >
+      <input type="hidden" name="redirect" value={redirect} />
       {/* Email */}
       <div className="space-y-2">
         <Label htmlFor="email">Email institusi</Label>
@@ -225,22 +223,12 @@ export function MasukForm({
       {/* Tombol masuk — CTA utama bergaya navy sesuai desain Garda */}
       <button
         type="submit"
-        disabled={loading}
         className={cn(
           "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
           "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-          "disabled:cursor-not-allowed disabled:opacity-70",
         )}
       >
-        {loading ? (
-          <>
-            <Loader2 className="size-4 animate-spin" /> Memverifikasi…
-          </>
-        ) : (
-          <>
-            Masuk <ArrowRight className="size-4" />
-          </>
-        )}
+        Masuk <ArrowRight className="size-4" />
       </button>
 
       {/* Pemisah */}

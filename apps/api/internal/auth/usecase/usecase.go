@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/garda-inflasi/api/pkg/totp"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // ── Errors ────────────────────────────────────────────────────────────
@@ -37,6 +39,9 @@ var (
 	ErrResetTokenInvalid  = errors.New("token atur ulang tidak valid")
 	ErrResetTokenExpired  = errors.New("token atur ulang sudah kedaluwarsa")
 	ErrInvalidAction      = errors.New("aksi tidak valid")
+	ErrRoleNotFound       = errors.New("peran tidak dikenal")
+	ErrCannotDeleteSelf   = errors.New("tidak dapat menghapus akun sendiri")
+	ErrUserHasReferences  = errors.New("pengguna masih memiliki data terkait")
 )
 
 // ── Password Policy ───────────────────────────────────────────────────
@@ -423,6 +428,24 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 
 // ── User Use Cases ────────────────────────────────────────────────────
 
+// UserPatch carries the optional fields of a partial user update.
+// A nil pointer means "leave unchanged".
+type UserPatch struct {
+	Nama          *string
+	Email         *string
+	Peran         *string
+	Lapis         *string
+	Lembaga       *string
+	KabupatenKode *string
+	Status        *string
+}
+
+// RoleInfo describes a role and the permissions granted to it.
+type RoleInfo struct {
+	ID          string   `json:"id"`
+	Permissions []string `json:"permissions"`
+}
+
 // CreateUser creates a new user.
 func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, password string) error {
 	if err := ValidatePassword(password); err != nil {
@@ -449,9 +472,9 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 	return nil
 }
 
-// ListUsers returns a paginated list of users.
-func (uc *UseCase) ListUsers(ctx context.Context, page, limit int) ([]domain.Pengguna, int64, error) {
-	return uc.repo.ListUsers(ctx, page, limit)
+// ListUsers returns a paginated list of users, optionally filtered by a search term.
+func (uc *UseCase) ListUsers(ctx context.Context, page, limit int, search string) ([]domain.Pengguna, int64, error) {
+	return uc.repo.ListUsers(ctx, page, limit, search)
 }
 
 // GetUser returns a user by ID.
@@ -461,6 +484,168 @@ func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, er
 		return nil, ErrUserNotFound
 	}
 	return user, nil
+}
+
+// UpdateUser applies a partial update to an existing user.
+func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, actorID, ip string) (*domain.Pengguna, error) {
+	user, err := uc.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	if patch.Email != nil && *patch.Email != user.Email {
+		if existing, _ := uc.repo.GetUserByEmail(ctx, *patch.Email); existing != nil && existing.ID != id {
+			return nil, ErrEmailExists
+		}
+		user.Email = *patch.Email
+	}
+	if patch.Nama != nil {
+		user.Nama = *patch.Nama
+	}
+	if patch.Peran != nil {
+		if _, ok := rolePermissions[*patch.Peran]; !ok {
+			return nil, ErrRoleNotFound
+		}
+		user.Peran = *patch.Peran
+		// Keep lapis consistent with peran unless the caller overrides it.
+		if patch.Lapis == nil {
+			if lapis, ok := roleLapis[*patch.Peran]; ok {
+				user.Lapis = lapis
+			}
+		}
+	}
+	if patch.Lapis != nil {
+		user.Lapis = *patch.Lapis
+	}
+	if patch.Lembaga != nil {
+		user.Lembaga = *patch.Lembaga
+	}
+	if patch.KabupatenKode != nil {
+		user.KabupatenKode = patch.KabupatenKode
+	}
+	if patch.Status != nil {
+		user.Status = *patch.Status
+	}
+
+	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+
+	// Deactivating an account must also terminate its active sessions.
+	if patch.Status != nil && *patch.Status != "AKTIF" {
+		_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
+	}
+
+	uc.recordAuditLog(ctx, &actorID, "UPDATE_USER", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	return user, nil
+}
+
+// DeleteUser removes a user and terminates all of its sessions.
+func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID, ip string) error {
+	if id == actorID {
+		return ErrCannotDeleteSelf
+	}
+
+	if _, err := uc.repo.GetUserByID(ctx, id); err != nil {
+		return ErrUserNotFound
+	}
+
+	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, id)
+
+	if err := uc.repo.DeleteUser(ctx, id); err != nil {
+		// Baris terkait (tugas lapangan, entri harga, audit log, dsb.) memakai
+		// ON DELETE NO ACTION, sehingga penghapusan gagal di level basis data.
+		if errors.Is(err, gorm.ErrForeignKeyViolated) {
+			return ErrUserHasReferences
+		}
+		return fmt.Errorf("delete user: %w", err)
+	}
+
+	uc.recordAuditLog(ctx, &actorID, "DELETE_USER", "pengguna", id, "BERHASIL", &ip, nil)
+	return nil
+}
+
+// ResetPasswordAdmin sets a new password for a user without knowing the old one.
+func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, actorID, ip string) error {
+	if err := ValidatePassword(newPassword); err != nil {
+		return err
+	}
+
+	user, err := uc.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	hash, err := crypto.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	user.PasswordHash = &hash
+
+	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("reset password: %w", err)
+	}
+
+	// Force re-authentication everywhere after an administrative reset.
+	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
+
+	uc.recordAuditLog(ctx, &actorID, "RESET_PASSWORD_ADMIN", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	return nil
+}
+
+// AssignRole changes a user's role and revokes existing sessions so the new
+// permission set takes effect on the next login.
+func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID, ip string) (*domain.Pengguna, error) {
+	if _, ok := rolePermissions[role]; !ok {
+		return nil, ErrRoleNotFound
+	}
+
+	user, err := uc.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	user.Peran = role
+	if lapis, ok := roleLapis[role]; ok {
+		user.Lapis = lapis
+	}
+	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+		return nil, fmt.Errorf("assign role: %w", err)
+	}
+
+	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
+
+	uc.recordAuditLog(ctx, &actorID, "ASSIGN_ROLE", "pengguna", user.ID, "BERHASIL", &ip, map[string]interface{}{"peran": role})
+	return user, nil
+}
+
+// ListRoles returns the hardcoded RBAC role catalogue.
+func (uc *UseCase) ListRoles() []RoleInfo {
+	roles := make([]RoleInfo, 0, len(rolePermissions))
+	for _, r := range roleOrder {
+		perms, ok := rolePermissions[r]
+		if !ok {
+			continue
+		}
+		roles = append(roles, RoleInfo{ID: r, Permissions: perms})
+	}
+	return roles
+}
+
+// ListPermissions returns every permission known to the RBAC matrix.
+func (uc *UseCase) ListPermissions() []string {
+	seen := make(map[string]bool)
+	perms := make([]string, 0, 64)
+	for _, r := range roleOrder {
+		for _, p := range rolePermissions[r] {
+			if !seen[p] {
+				seen[p] = true
+				perms = append(perms, p)
+			}
+		}
+	}
+	sort.Strings(perms)
+	return perms
 }
 
 // BulkUserAction processes a bulk action on users.
@@ -494,84 +679,122 @@ func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action stri
 
 // ── RBAC Helper ───────────────────────────────────────────────────────
 
-// getPermissionsForRole returns the permission list for a given role.
-// This mirrors the frontend RBAC matrix in lib/rbac/permissions.ts.
-func (uc *UseCase) getPermissionsForRole(role string) []string {
-	// Map of role -> permissions (mirrors frontend ROLE_PERMISSIONS)
-	perms := map[string][]string{
-		"STRATEGIS_FMIPA": {
-			"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
-			"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
-			"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "brief.lihat",
-			"brief.setujui", "kpi.lihat", "master.lihat", "master.setujui", "sumber.lihat", "audit.lihat",
-		},
-		"STRATEGIS_BI": {
-			"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
-			"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
-			"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "brief.lihat",
-			"brief.setujui", "kpi.lihat", "master.lihat", "sumber.lihat", "audit.lihat",
-		},
-		"STRATEGIS_BPS": {
-			"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
-			"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
-			"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "brief.lihat",
-			"brief.setujui", "kpi.lihat", "master.lihat", "master.setujui", "sumber.lihat", "audit.lihat",
-		},
-		"STRATEGIS_DJPB": {
-			"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
-			"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
-			"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "intervensi.setujui_fiskal",
-			"brief.lihat", "brief.setujui", "kpi.lihat", "master.lihat", "sumber.lihat", "audit.lihat",
-		},
-		"MANAJER_PROGRAM": {
-			"dashboard.operasional", "dashboard.eksekutif", "harga.lihat", "harga.ekspor",
-			"tugas.kelola", "ews.lihat", "ews.akui", "ews.eskalasi", "prediksi.lihat",
-			"spasial.lihat", "logistik.kelola", "coldstorage.lihat", "fiskal.lihat",
-			"intervensi.lihat", "intervensi.kelola", "brief.lihat", "brief.susun",
-			"kpi.lihat", "master.lihat", "master.ajukan", "sumber.lihat", "audit.lihat",
-		},
-		"MANAJER_DATA": {
-			"dashboard.operasional", "harga.lihat", "harga.publikasi", "harga.ekspor",
-			"ews.lihat", "ews.akui", "ews.eskalasi", "ews.atur_ambang", "prediksi.lihat",
-			"model.kelola", "spasial.lihat", "intervensi.lihat", "brief.lihat",
-			"kpi.lihat", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat",
-		},
-		"MANAJER_KEBIJAKAN": {
-			"dashboard.operasional", "dashboard.eksekutif", "harga.lihat", "ews.lihat",
-			"prediksi.lihat", "spasial.lihat", "fiskal.lihat", "intervensi.lihat",
-			"intervensi.kelola", "brief.lihat", "brief.susun", "kpi.lihat",
-		},
-		"MANAJER_PEMBIAYAAN": {
-			"dashboard.operasional", "dashboard.eksekutif", "harga.lihat", "spasial.lihat",
-			"coldstorage.lihat", "fiskal.lihat", "intervensi.lihat", "brief.lihat", "kpi.lihat",
-		},
-		"MANAJER_RISIKO": {
-			"dashboard.operasional", "harga.lihat", "harga.publikasi", "harga.ekspor",
-			"ews.lihat", "ews.akui", "ews.eskalasi", "coldstorage.lihat",
-			"intervensi.lihat", "kpi.lihat", "master.lihat", "audit.lihat",
-		},
-		"MANAJER_MUTU": {
-			"dashboard.operasional", "harga.lihat", "ews.lihat", "prediksi.lihat",
-			"coldstorage.lihat", "coldstorage.kelola", "intervensi.lihat", "intervensi.kelola", "kpi.lihat",
-		},
-		"OPS_KOORDINATOR": {
-			"dashboard.operasional", "harga.input", "harga.lihat", "harga.validasi",
-			"tugas.kelola", "tugas.lihat_sendiri", "ews.lihat", "ews.akui",
-			"spasial.lihat", "intervensi.lihat", "master.lihat",
-		},
-		"OPS_AGREGATOR": {
-			"dashboard.operasional", "harga.input", "harga.lihat", "tugas.lihat_sendiri",
-			"ews.lihat", "coldstorage.lihat", "coldstorage.kelola", "logistik.kelola", "intervensi.lihat",
-		},
-		"OPS_MAHASISWA": {
-			"harga.input", "tugas.lihat_sendiri",
-		},
-		"ADMIN_SISTEM": {
-			"pengguna.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat",
-		},
-	}
+// roleOrder preserves the canonical role ordering used by the frontend
+// (lib/rbac/roles.ts ROLE_IDS) so API consumers render a stable list.
+var roleOrder = []string{
+	"STRATEGIS_FMIPA",
+	"STRATEGIS_BI",
+	"STRATEGIS_BPS",
+	"STRATEGIS_DJPB",
+	"MANAJER_PROGRAM",
+	"MANAJER_DATA",
+	"MANAJER_KEBIJAKAN",
+	"MANAJER_PEMBIAYAAN",
+	"MANAJER_RISIKO",
+	"MANAJER_MUTU",
+	"OPS_KOORDINATOR",
+	"OPS_AGREGATOR",
+	"OPS_MAHASISWA",
+	"ADMIN_SISTEM",
+}
 
-	if p, ok := perms[role]; ok {
+// roleLapis maps each role to its layer. The pengguna table stores both
+// columns, so they must stay in sync whenever a role changes.
+var roleLapis = map[string]string{
+	"STRATEGIS_FMIPA":    "STRATEGIS",
+	"STRATEGIS_BI":       "STRATEGIS",
+	"STRATEGIS_BPS":      "STRATEGIS",
+	"STRATEGIS_DJPB":     "STRATEGIS",
+	"MANAJER_PROGRAM":    "MANAJERIAL",
+	"MANAJER_DATA":       "MANAJERIAL",
+	"MANAJER_KEBIJAKAN":  "MANAJERIAL",
+	"MANAJER_PEMBIAYAAN": "MANAJERIAL",
+	"MANAJER_RISIKO":     "MANAJERIAL",
+	"MANAJER_MUTU":       "MANAJERIAL",
+	"OPS_KOORDINATOR":    "OPERASIONAL",
+	"OPS_AGREGATOR":      "OPERASIONAL",
+	"OPS_MAHASISWA":      "OPERASIONAL",
+	"ADMIN_SISTEM":       "SISTEM",
+}
+
+// rolePermissions is the single source of truth for RBAC on the backend.
+// It mirrors the frontend matrix in lib/rbac/permissions.ts.
+var rolePermissions = map[string][]string{
+	"STRATEGIS_FMIPA": {
+		"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
+		"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
+		"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "brief.lihat",
+		"brief.setujui", "kpi.lihat", "master.lihat", "master.setujui", "sumber.lihat", "audit.lihat",
+	},
+	"STRATEGIS_BI": {
+		"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
+		"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
+		"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "brief.lihat",
+		"brief.setujui", "kpi.lihat", "master.lihat", "sumber.lihat", "audit.lihat",
+	},
+	"STRATEGIS_BPS": {
+		"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
+		"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
+		"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "brief.lihat",
+		"brief.setujui", "kpi.lihat", "master.lihat", "master.setujui", "sumber.lihat", "audit.lihat",
+	},
+	"STRATEGIS_DJPB": {
+		"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",
+		"ews.lihat", "prediksi.lihat", "spasial.lihat", "coldstorage.lihat",
+		"fiskal.lihat", "intervensi.lihat", "intervensi.setujui", "intervensi.setujui_fiskal",
+		"brief.lihat", "brief.setujui", "kpi.lihat", "master.lihat", "sumber.lihat", "audit.lihat",
+	},
+	"MANAJER_PROGRAM": {
+		"dashboard.operasional", "dashboard.eksekutif", "harga.lihat", "harga.ekspor",
+		"tugas.kelola", "ews.lihat", "ews.akui", "ews.eskalasi", "prediksi.lihat",
+		"spasial.lihat", "logistik.kelola", "coldstorage.lihat", "fiskal.lihat",
+		"intervensi.lihat", "intervensi.kelola", "brief.lihat", "brief.susun",
+		"kpi.lihat", "master.lihat", "master.ajukan", "sumber.lihat", "audit.lihat",
+	},
+	"MANAJER_DATA": {
+		"dashboard.operasional", "harga.lihat", "harga.publikasi", "harga.ekspor",
+		"ews.lihat", "ews.akui", "ews.eskalasi", "ews.atur_ambang", "prediksi.lihat",
+		"model.kelola", "spasial.lihat", "intervensi.lihat", "brief.lihat",
+		"kpi.lihat", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat",
+	},
+	"MANAJER_KEBIJAKAN": {
+		"dashboard.operasional", "dashboard.eksekutif", "harga.lihat", "ews.lihat",
+		"prediksi.lihat", "spasial.lihat", "fiskal.lihat", "intervensi.lihat",
+		"intervensi.kelola", "brief.lihat", "brief.susun", "kpi.lihat",
+	},
+	"MANAJER_PEMBIAYAAN": {
+		"dashboard.operasional", "dashboard.eksekutif", "harga.lihat", "spasial.lihat",
+		"coldstorage.lihat", "fiskal.lihat", "intervensi.lihat", "brief.lihat", "kpi.lihat",
+	},
+	"MANAJER_RISIKO": {
+		"dashboard.operasional", "harga.lihat", "harga.publikasi", "harga.ekspor",
+		"ews.lihat", "ews.akui", "ews.eskalasi", "coldstorage.lihat",
+		"intervensi.lihat", "kpi.lihat", "master.lihat", "audit.lihat",
+	},
+	"MANAJER_MUTU": {
+		"dashboard.operasional", "harga.lihat", "ews.lihat", "prediksi.lihat",
+		"coldstorage.lihat", "coldstorage.kelola", "intervensi.lihat", "intervensi.kelola", "kpi.lihat",
+	},
+	"OPS_KOORDINATOR": {
+		"dashboard.operasional", "harga.input", "harga.lihat", "harga.validasi",
+		"tugas.kelola", "tugas.lihat_sendiri", "ews.lihat", "ews.akui",
+		"spasial.lihat", "intervensi.lihat", "master.lihat",
+	},
+	"OPS_AGREGATOR": {
+		"dashboard.operasional", "harga.input", "harga.lihat", "tugas.lihat_sendiri",
+		"ews.lihat", "coldstorage.lihat", "coldstorage.kelola", "logistik.kelola", "intervensi.lihat",
+	},
+	"OPS_MAHASISWA": {
+		"harga.input", "tugas.lihat_sendiri",
+	},
+	"ADMIN_SISTEM": {
+		"pengguna.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat",
+	},
+}
+
+// getPermissionsForRole returns the permission list for a given role.
+func (uc *UseCase) getPermissionsForRole(role string) []string {
+	if p, ok := rolePermissions[role]; ok {
 		return p
 	}
 	return []string{}

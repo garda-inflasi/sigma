@@ -17,7 +17,10 @@ export const qk = {
   intervensi: { list: () => ["intervensi", "list"] as const },
   coldStorage: { ringkasan: () => ["cold-storage"] as const },
   sumber: { list: () => ["sumber-data"] as const },
-  pengguna: { list: () => ["pengguna"] as const },
+  pengguna: {
+    all: () => ["pengguna"] as const,
+    list: (search?: string) => ["pengguna", "list", search ?? ""] as const,
+  },
   audit: { list: () => ["audit"] as const },
   brief: { list: () => ["policy-brief"] as const },
   tugas: { saya: () => ["tugas", "saya"] as const },

@@ -87,6 +87,18 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.GET("", handler.ListUsers)
 			users.POST("/bulk", handler.BulkUser)
 			users.GET("/:id", handler.GetUser)
+			users.PATCH("/:id", handler.UpdateUser)
+			users.DELETE("/:id", handler.DeleteUser)
+			users.POST("/:id/reset-password", handler.ResetPasswordAdmin)
+			users.PUT("/:id/roles", handler.AssignRole)
+		}
+
+		// RBAC catalogue — read-only, requires pengguna.kelola permission
+		rbac := protected.Group("")
+		rbac.Use(middleware.RequirePermission("pengguna.kelola"))
+		{
+			rbac.GET("/roles", handler.ListRoles)
+			rbac.GET("/permissions", handler.ListPermissions)
 		}
 	}
 }

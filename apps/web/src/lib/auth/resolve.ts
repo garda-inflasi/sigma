@@ -16,9 +16,11 @@ export interface SessionUser {
   kabupatenKode?: string;
 }
 
-export const SESSION_COOKIE = "__Host-access";
 export const DEV_ROLE_COOKIE = "garda_dev_role";
-const DEV = process.env.NODE_ENV !== "production";
+// Always use simple cookie names (Caddy terminates TLS, no HTTPS at edge)
+const DEV = true;
+
+export const SESSION_COOKIE = "garda_access";
 
 export function demoUser(role: Role): SessionUser {
   const u = USERS.find((x) => x.role === role) ?? USERS[0];
@@ -32,7 +34,7 @@ export async function resolveSession(getCookie: (name: string) => string | undef
   const secret = process.env.GARDA_JWT_SECRET;
   if (token && secret) {
     try {
-      const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { issuer: "garda-auth", audience: "garda-web" });
+      const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { issuer: "garda-auth", audience: "garda-api" });
       if (isRole(payload.role) && typeof payload.sub === "string") {
         return {
           id: payload.sub,

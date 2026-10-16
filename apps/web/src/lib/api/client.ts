@@ -34,6 +34,47 @@ export async function apiFetch<T>(path: string, init: RequestInit & { idempotenc
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+/**
+ * Klien ke BFF (Route Handlers di origin yang sama). Selalu memakai path
+ * relatif sehingga cookie sesi httpOnly ikut terkirim, dan menyertakan
+ * header `x-csrf-token` untuk permintaan yang mengubah state.
+ */
+export async function bffFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const mutating = method !== "GET" && method !== "HEAD";
+
+  const res = await fetch(path, {
+    credentials: "same-origin",
+    ...init,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(mutating ? { "x-csrf-token": readCsrfToken() } : {}),
+      ...init.headers,
+    },
+  });
+
+  if (!res.ok) {
+    let payload: unknown;
+    try {
+      payload = await res.json();
+    } catch {}
+    const msg =
+      (payload as { message?: string } | undefined)?.message ??
+      `Permintaan gagal (${res.status})`;
+    throw new ApiError(res.status, msg, payload);
+  }
+
+  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}
+
+/** Membaca token CSRF dari cookie non-httpOnly (pola double-submit). */
+function readCsrfToken(): string {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)garda_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 /** Latensi buatan di mode mock agar skeleton shimmer & transisi dapat ditinjau. */
 export function mockDelay<T>(value: T | (() => T), min = 380, max = 900): Promise<T> {
   const ms = min + Math.random() * (max - min);

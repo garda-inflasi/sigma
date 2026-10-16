@@ -7,6 +7,12 @@ import "server-only";
 
 const API_BASE = process.env.GO_API_BASE_URL || "http://localhost:8080/v1";
 
+interface ApiResponse<T> {
+  code: string;
+  message: string;
+  data: T;
+}
+
 interface ApiErrorResponse {
   error?: boolean;
   code?: string;
@@ -61,7 +67,12 @@ async function apiFetch<T>(
     return undefined as T;
   }
 
-  return res.json() as Promise<T>;
+  // Unwrap Go API response: { code, message, data: T } → T
+  const body: ApiResponse<T> = await res.json();
+  if (body.code !== "200" && body.code !== "201") {
+    throw new BffApiError(res.status, body.message || "Unknown error", body.code);
+  }
+  return body.data;
 }
 
 // ── Auth API ──────────────────────────────────────────────────────────
@@ -112,6 +123,61 @@ export interface ForgotPasswordRequest {
 export interface ResetPasswordRequest {
   token: string;
   password: string;
+}
+
+// ── User Management Types ─────────────────────────────────────────────
+
+export interface ListUsersParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
+export interface ListUsersResponse {
+  items: UserResponse[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface CreateUserRequest {
+  id: string;
+  nama: string;
+  email: string;
+  password: string;
+  peran: string;
+  lapis: string;
+  lembaga: string;
+}
+
+export interface UpdateUserRequest {
+  nama?: string;
+  email?: string;
+  peran?: string;
+  lapis?: string;
+  lembaga?: string;
+  kabupaten_kode?: string;
+  status?: string;
+}
+
+export interface BulkUserRequest {
+  action: "aktifkan" | "nonaktifkan" | "wajibkan_mfa" | "akhiri_sesi";
+  ids: string[];
+}
+
+export interface BulkUserResponse {
+  berhasil: number;
+  gagal: number;
+  errors?: string[];
+}
+
+export interface RoleResponse {
+  id: string;
+  permissions: string[];
+}
+
+export interface PermissionResponse {
+  id: string;
 }
 
 export const authApi = {
@@ -165,5 +231,87 @@ export const authApi = {
     apiFetch<void>("/auth/reset-password", {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+};
+
+// ── User Management API ───────────────────────────────────────────────
+
+const bearer = (accessToken: string) => ({
+  Authorization: `Bearer ${accessToken}`,
+});
+
+export const userApi = {
+  list: (accessToken: string, params: ListUsersParams = {}) => {
+    const qs = new URLSearchParams();
+    if (params.page) qs.set("page", String(params.page));
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.search) qs.set("search", params.search);
+    const query = qs.toString();
+    return apiFetch<ListUsersResponse>(`/users${query ? `?${query}` : ""}`, {
+      method: "GET",
+      headers: bearer(accessToken),
+    });
+  },
+
+  get: (accessToken: string, id: string) =>
+    apiFetch<UserResponse>(`/users/${encodeURIComponent(id)}`, {
+      method: "GET",
+      headers: bearer(accessToken),
+    }),
+
+  create: (accessToken: string, data: CreateUserRequest) =>
+    apiFetch<void>("/users", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
+    }),
+
+  update: (accessToken: string, id: string, data: UpdateUserRequest) =>
+    apiFetch<UserResponse>(`/users/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
+    }),
+
+  remove: (accessToken: string, id: string) =>
+    apiFetch<{ id: string }>(`/users/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: bearer(accessToken),
+    }),
+
+  resetPassword: (accessToken: string, id: string, newPassword: string) =>
+    apiFetch<{ id: string }>(
+      `/users/${encodeURIComponent(id)}/reset-password`,
+      {
+        method: "POST",
+        headers: bearer(accessToken),
+        body: JSON.stringify({ new_password: newPassword }),
+      }
+    ),
+
+  assignRole: (accessToken: string, id: string, peran: string) =>
+    apiFetch<UserResponse>(`/users/${encodeURIComponent(id)}/roles`, {
+      method: "PUT",
+      headers: bearer(accessToken),
+      body: JSON.stringify({ peran }),
+    }),
+
+  bulk: (accessToken: string, data: BulkUserRequest) =>
+    apiFetch<BulkUserResponse>("/users/bulk", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
+    }),
+
+  listRoles: (accessToken: string) =>
+    apiFetch<RoleResponse[]>("/roles", {
+      method: "GET",
+      headers: bearer(accessToken),
+    }),
+
+  listPermissions: (accessToken: string) =>
+    apiFetch<PermissionResponse[]>("/permissions", {
+      method: "GET",
+      headers: bearer(accessToken),
     }),
 };

@@ -38,22 +38,23 @@ type CreateUserRequest struct {
 }
 
 type UpdateUserRequest struct {
-	Nama    *string `json:"nama"`
-	Email   *string `json:"email" binding:"omitempty,email"`
-	Peran   *string `json:"peran"`
-	Lapis   *string `json:"lapis"`
-	Lembaga *string `json:"lembaga"`
-	Status  *string `json:"status"`
+	Nama          *string `json:"nama"`
+	Email         *string `json:"email" binding:"omitempty,email"`
+	Peran         *string `json:"peran"`
+	Lapis         *string `json:"lapis"`
+	Lembaga       *string `json:"lembaga"`
+	KabupatenKode *string `json:"kabupaten_kode"`
+	Status        *string `json:"status" binding:"omitempty,oneof=AKTIF NONAKTIF MENUNGGU"`
 }
 
 type ListUserRequest struct {
-	Page   int    `form:"page" binding:"min=1"`
-	Limit  int    `form:"limit" binding:"min=1,max=100"`
+	Page   int    `form:"page" binding:"omitempty,min=1"`
+	Limit  int    `form:"limit" binding:"omitempty,min=1,max=100"`
 	Search string `form:"search"`
 }
 
 type AssignRoleRequest struct {
-	RoleID int64 `json:"role_id" binding:"required"`
+	Peran string `json:"peran" binding:"required"`
 }
 
 type BulkUserRequest struct {

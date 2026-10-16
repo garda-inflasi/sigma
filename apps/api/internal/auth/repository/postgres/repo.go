@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
@@ -43,17 +44,31 @@ func (r *Repository) UpdateUser(ctx context.Context, user *domain.Pengguna) erro
 	return r.db.WithContext(ctx).Save(user).Error
 }
 
-func (r *Repository) ListUsers(ctx context.Context, page, limit int) ([]domain.Pengguna, int64, error) {
+func (r *Repository) DeleteUser(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&domain.Pengguna{}).Error
+}
+
+func (r *Repository) ListUsers(ctx context.Context, page, limit int, search string) ([]domain.Pengguna, int64, error) {
 	var users []domain.Pengguna
 	var total int64
 
 	offset := (page - 1) * limit
 
-	if err := r.db.WithContext(ctx).Model(&domain.Pengguna{}).Count(&total).Error; err != nil {
+	query := r.db.WithContext(ctx).Model(&domain.Pengguna{})
+	if search != "" {
+		pattern := "%" + strings.ToLower(search) + "%"
+		// peran bertipe enum PostgreSQL, jadi harus di-cast ke text sebelum LOWER().
+		query = query.Where(
+			"LOWER(nama) LIKE ? OR LOWER(email) LIKE ? OR LOWER(peran::text) LIKE ? OR LOWER(lembaga) LIKE ?",
+			pattern, pattern, pattern, pattern,
+		)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count users: %w", err)
 	}
 
-	if err := r.db.WithContext(ctx).Offset(offset).Limit(limit).Order("dibuat_pada DESC").Find(&users).Error; err != nil {
+	if err := query.Offset(offset).Limit(limit).Order("dibuat_pada DESC").Find(&users).Error; err != nil {
 		return nil, 0, fmt.Errorf("list users: %w", err)
 	}
 

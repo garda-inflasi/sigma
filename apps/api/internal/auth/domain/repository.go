@@ -6,6 +6,8 @@ import (
 )
 
 type Repository interface {
+	// KunciRepository menyimpan lockout login: satu-satunya mekanisme penghitung percobaan gagal.
+	KunciRepository
 	GetUserByID(ctx context.Context, id string) (*Pengguna, error)
 	GetUserByEmail(ctx context.Context, email string) (*Pengguna, error)
 	CreateUser(ctx context.Context, user *Pengguna) error
@@ -20,7 +22,6 @@ type Repository interface {
 	BlacklistJWT(ctx context.Context, jti string, ttl time.Duration) error
 	IsJWTBlacklisted(ctx context.Context, jti string) (bool, error)
 	CreateLoginAttempt(ctx context.Context, attempt *LoginAttempt) error
-	CountRecentFailedAttempts(ctx context.Context, userID string, since time.Time) (int64, error)
 	SaveResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
 	GetResetToken(ctx context.Context, tokenHash string) (*ResetToken, error)
 	// ConsumeResetToken memakai token satu kali secara atomik: berhasil hanya bila token belum dipakai dan

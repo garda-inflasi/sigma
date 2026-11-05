@@ -5,13 +5,15 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { KolomSandi } from "@/components/auth/kolom-sandi";
-import { ApiError, bffFetch } from "@/lib/api/client";
+import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
+import { bffFetch } from "@/lib/api/client";
 import { evaluatePassword } from "@/lib/auth/password-policy";
 import {
-  galatReset,
-  validasiFormReset,
-  type GalatReset,
-} from "@/lib/auth/reset-password";
+  galatLokal,
+  masukanDariError,
+  pesanTampil,
+} from "@/lib/auth/pesan-login";
+import { galatReset, validasiFormReset } from "@/lib/auth/reset-password";
 import { cn } from "@/lib/utils";
 
 const TOMBOL =
@@ -22,7 +24,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
   const [baru, setBaru] = useState("");
   const [konfirmasi, setKonfirmasi] = useState("");
   const [loading, setLoading] = useState(false);
-  const [galat, setGalat] = useState<GalatReset | null>(null);
+  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
   const [selesai, setSelesai] = useState(false);
 
   const aturan = evaluatePassword(baru);
@@ -32,7 +34,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
     if (loading) return;
 
     const salah = validasiFormReset(baru, konfirmasi);
-    if (salah) return setGalat({ pesan: salah, tautanBaru: false });
+    if (salah) return setGalat(galatLokal(salah));
 
     setGalat(null);
     setLoading(true);
@@ -46,13 +48,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
         description: "Silakan masuk dengan kata sandi baru.",
       });
     } catch (err) {
-      const status = err instanceof ApiError ? err.status : undefined;
-      const hasil = galatReset(
-        status,
-        err instanceof Error ? err.message : undefined,
-      );
+      const m = masukanDariError(err);
+      const hasil = galatReset(m.status, m.pesan, {
+        kode: m.kode,
+        detik: m.detik,
+      });
       setGalat(hasil);
-      toast.error("Gagal mengatur ulang", { description: hasil.pesan });
+      toast.error("Gagal mengatur ulang", { description: pesanTampil(hasil) });
     } finally {
       setLoading(false);
     }
@@ -114,8 +116,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       />
 
       {galat && (
-        <div role="alert" className="space-y-1 text-sm">
-          <p className="font-medium text-destructive">{galat.pesan}</p>
+        <KotakGalatAuth galat={galat} sekarang={sekarang}>
           {galat.tautanBaru && (
             <Link
               href="/lupa-password"
@@ -124,10 +125,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
               Minta tautan baru
             </Link>
           )}
-        </div>
+        </KotakGalatAuth>
       )}
 
-      <button type="submit" disabled={loading} className={TOMBOL}>
+      <button type="submit" disabled={loading || tertahan} className={TOMBOL}>
         {loading ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (

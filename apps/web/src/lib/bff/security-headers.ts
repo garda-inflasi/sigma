@@ -43,12 +43,19 @@ export function jsonResponse<T>(
  */
 export function errorResponse(
   message: string,
-  status: number = 400
+  status: number = 400,
+  extra: { kode?: string; sisaDetik?: number } = {}
 ): NextResponse {
   const response = NextResponse.json(
-    { error: true, message },
+    {
+      error: true,
+      message,
+      ...(extra.kode ? { kode: extra.kode } : {}),
+      ...(extra.sisaDetik ? { sisa_detik: extra.sisaDetik } : {}),
+    },
     { status }
   );
+  if (extra.sisaDetik) response.headers.set("Retry-After", String(extra.sisaDetik));
   return applySecurityHeaders(response);
 }
 

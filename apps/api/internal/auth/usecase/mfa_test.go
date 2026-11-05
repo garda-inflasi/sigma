@@ -49,7 +49,6 @@ func TestLogin_MFAActiveReturnsChallengeWithoutSession(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user, _ := userMFA(t, uc)
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 
 	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -84,7 +83,6 @@ func TestLogin_MandatoryRoleWithoutMFAGetsSetupOnlySession(t *testing.T) {
 			user := activeUser()
 			user.Peran, user.MfaWajib = tc.peran, tc.wajib
 			repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-			repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 			repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 			repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 			repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
@@ -180,7 +178,6 @@ func TestVerifyMFA_ActivatesIssuesBackupCodesAndReplacesSession(t *testing.T) {
 	require.NoError(t, err)
 	user.MfaSecret = &sealed
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	var tersimpan []string
 	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) { tersimpan = args.Get(2).([]string) }).Return(nil)
@@ -212,7 +209,6 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 		sealed, _ := uc.cfg.MFAKey.Seal(totp.GenerateSecret())
 		user.MfaSecret = &sealed
 		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-		repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 		repo.On("CreateLoginAttempt", mock.Anything, mock.MatchedBy(func(a *domain.LoginAttempt) bool {
 			return !a.Success && a.FailureReason != nil && *a.FailureReason == "mfa_setup_invalid"
 		})).Return(nil)
@@ -248,7 +244,7 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 		sealed, _ := uc.cfg.MFAKey.Seal(totp.GenerateSecret())
 		user.MfaSecret = &sealed
 		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-		repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(99), nil)
+		repo.kunciTerkunci("test@example.com")
 
 		_, err := uc.VerifyMFA(context.Background(), "user-123", "123456", "ip")
 
@@ -265,7 +261,6 @@ func siapMFALogin(t *testing.T, repo *mockRepository) (*UseCase, *audittest.Reco
 	challenge, err := uc.token.CreateMFAChallengeToken(user.ID)
 	require.NoError(t, err)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
@@ -376,8 +371,7 @@ func TestValidateMFALogin_LockedAccount(t *testing.T) {
 	user, _ := userMFA(t, uc)
 	challenge, _ := uc.token.CreateMFAChallengeToken(user.ID)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(5), nil)
-	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
+	repo.kunciTerkunci("test@example.com")
 
 	_, err := uc.ValidateMFALogin(context.Background(), challenge, "123456", "ip")
 

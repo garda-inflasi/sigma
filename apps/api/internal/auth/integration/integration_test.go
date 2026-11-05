@@ -245,6 +245,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
 		result := s.parseResponse(t, w)
 		assert.Contains(t, result["message"], "Email atau password salah")
+		assert.Equal(t, "INVALID_CREDENTIALS", result["code"])
 	})
 
 	t.Run("Login Inactive Account", func(t *testing.T) {
@@ -256,6 +257,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		result := s.parseResponse(t, w)
 		assert.Contains(t, result["message"], "Akun tidak aktif, hubungi administrator")
+		assert.Equal(t, "ACCOUNT_INACTIVE", result["code"])
 	})
 
 	t.Run("Login Nonexistent Email", func(t *testing.T) {
@@ -464,9 +466,10 @@ func TestIntegration_AccountLockout(t *testing.T) {
 			"email":    "test@gardainflasi.id",
 			"password": "Test1234!",
 		}, nil)
-		assert.Equal(t, http.StatusTooManyRequests, w.Code)
+		assert.Equal(t, http.StatusLocked, w.Code)
 		result := s.parseResponse(t, w)
-		assert.Contains(t, result["message"], "Akun terkunci, coba lagi nanti")
+		assert.Equal(t, "ACCOUNT_LOCKED", result["code"])
+		assert.Contains(t, result["message"], "Akun terkunci")
 	})
 }
 

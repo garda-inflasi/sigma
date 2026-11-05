@@ -587,6 +587,28 @@ export function useResetPasswordPengguna() {
   });
 }
 
+/** Membuka kunci login pengguna (lockout) lalu menyegarkan daftar agar lencana "Terkunci" hilang. */
+export function useBukaKunciPengguna() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; nama: string }) =>
+      MODE_MOCK
+        ? mockDelay({ id, terkunci_sebelumnya: true }, 300, 700)
+        : penggunaApi.bukaKunci(id),
+    onSuccess: (_res, { nama }) => {
+      qc.invalidateQueries({ queryKey: qk.pengguna.all() });
+      toast.success("Kunci dibuka", {
+        description: `${nama} dapat masuk lagi. Tercatat di audit trail.`,
+      });
+    },
+    onError: (err) => {
+      toast.error("Gagal membuka kunci", {
+        description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    },
+  });
+}
+
 export function useAssignRolePengguna() {
   const qc = useQueryClient();
   return useMutation({

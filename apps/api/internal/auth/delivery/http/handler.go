@@ -35,11 +35,11 @@ func (h *Handler) Login(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidCredentials):
-			response.Unauthorized(c, "Email atau password salah")
+			response.Error(c, http.StatusUnauthorized, dto.KodeKredensialSalah, dto.PesanKredensialSalah)
 		case errors.Is(err, usecase.ErrAccountLocked):
-			response.Error(c, http.StatusTooManyRequests, "429", "Akun terkunci, coba lagi nanti")
+			jawabAkunTerkunci(c, err)
 		case errors.Is(err, usecase.ErrAccountInactive):
-			response.Forbidden(c, "Akun tidak aktif, hubungi administrator")
+			response.Error(c, http.StatusForbidden, dto.KodeAkunNonaktif, dto.PesanAkunNonaktif)
 		default:
 			response.InternalError(c, "Kesalahan server")
 		}
@@ -138,6 +138,8 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	accessToken, refreshToken, err := h.uc.ChangePassword(audit.RequestContext(c), userID, req.OldPassword, req.NewPassword, ip)
 	if err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrAccountLocked):
+			jawabAkunTerkunci(c, err)
 		case errors.Is(err, usecase.ErrWrongPassword):
 			response.Unauthorized(c, "Password lama salah")
 		case errors.Is(err, usecase.ErrWeakPassword):
@@ -248,8 +250,14 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		return
 	}
 
+	items, err := h.penggunaDenganKunci(c, users)
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil data")
+		return
+	}
+
 	response.Success(c, dto.ListResponse{
-		Items: dto.ToUserResponses(users),
+		Items: items,
 		Total: total,
 		Page:  req.Page,
 		Limit: req.Limit,
@@ -269,7 +277,13 @@ func (h *Handler) GetUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.ToUserResponse(user))
+	item, err := h.penggunaDenganKunci(c, []domain.Pengguna{*user})
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil pengguna")
+		return
+	}
+
+	response.Success(c, item[0])
 }
 
 // PATCH /v1/users/:id
@@ -438,10 +452,12 @@ func mfaError(c *gin.Context, err error) bool {
 	case err == nil:
 		return false
 	case errors.Is(err, usecase.ErrMFAChallengeInvalid):
-		response.Unauthorized(c, err.Error())
+		response.Error(c, http.StatusUnauthorized, dto.KodeMFASesiBerakhir, err.Error())
 	case errors.Is(err, usecase.ErrAccountLocked):
-		response.Error(c, http.StatusTooManyRequests, "429", "Terlalu banyak percobaan, coba lagi nanti")
-	case errors.Is(err, usecase.ErrMFACodeInvalid), errors.Is(err, usecase.ErrMFANotSetup):
+		jawabAkunTerkunci(c, err)
+	case errors.Is(err, usecase.ErrMFACodeInvalid):
+		response.Error(c, http.StatusBadRequest, dto.KodeMFAKodeSalah, dto.PesanMFAKodeSalah)
+	case errors.Is(err, usecase.ErrMFANotSetup):
 		response.BadRequest(c, err.Error())
 	case errors.Is(err, usecase.ErrMFAAlreadyActive):
 		response.Conflict(c, err.Error())
@@ -502,7 +518,7 @@ func (h *Handler) ValidateMFA(c *gin.Context) {
 	res, err := h.uc.ValidateMFALogin(audit.RequestContext(c), req.MFAToken, req.Code, c.ClientIP())
 	if err != nil {
 		if errors.Is(err, usecase.ErrMFACodeInvalid) {
-			response.Unauthorized(c, "Kode tidak valid")
+			response.Error(c, http.StatusUnauthorized, dto.KodeMFAKodeSalah, dto.PesanMFAKodeSalah)
 			return
 		}
 		mfaError(c, err)

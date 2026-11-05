@@ -269,6 +269,8 @@ export interface PenggunaRow {
   status: "AKTIF" | "NONAKTIF" | "MENUNGGU";
   mfa: boolean;
   terakhirMasuk: string;
+  /** Akhir kunci login (ISO 8601) bila akun sedang terkunci karena percobaan gagal berulang; kosong bila tidak. */
+  terkunciSampai?: string;
 }
 
 export interface AuditRow {

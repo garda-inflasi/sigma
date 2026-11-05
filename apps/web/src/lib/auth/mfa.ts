@@ -3,6 +3,7 @@
  * wajib MFA tetapi belum setup, dan token tantangan untuk akun ber-MFA); di sini hanya mengalihkan
  * pengguna ke halaman yang tepat dan merapikan masukan.
  */
+import { galatAuth, type GalatAuth } from "./pesan-login";
 import { PASSWORD_CHANGE_PATH, postLoginDestination } from "./password-change";
 
 export const MFA_SETUP_PATH = "/mfa";
@@ -51,21 +52,19 @@ export function validasiKode(input: string): string | null {
   return kode.length > 32 ? "Kode terlalu panjang." : null;
 }
 
-export interface GalatMfa {
-  pesan: string;
-  /** True bila sesi verifikasi tak bisa dilanjutkan dan pengguna harus mengulang dari kata sandi. */
-  ulangMasuk: boolean;
-}
+/** Galat langkah OTP: bentuk umum galat auth (pesan, ulangMasuk, dan kode/waktu tunggu bila ada). */
+export type GalatMfa = Pick<GalatAuth, "pesan" | "ulangMasuk" | "kode" | "sampaiMs">;
 
-/** Menerjemahkan jawaban gagal BFF langkah OTP menjadi pesan dan tindakan lanjut. */
-export function galatLangkahOtp(status: number | undefined, pesan: string | undefined): GalatMfa {
-  if (status === 401 && /masuk ulang/i.test(pesan ?? "")) {
-    return { pesan: "Sesi verifikasi berakhir. Masuk ulang dengan kata sandi Anda.", ulangMasuk: true };
-  }
-  if (status === 401) return { pesan: "Kode tidak valid. Periksa kode atau tunggu kode berikutnya.", ulangMasuk: false };
-  if (status === 429) return { pesan: "Terlalu banyak percobaan. Akun terkunci sementara, coba lagi nanti.", ulangMasuk: false };
-  if (status !== undefined && status < 500 && pesan) return { pesan, ulangMasuk: false };
-  return { pesan: "Tidak dapat terhubung ke server. Coba lagi.", ulangMasuk: false };
+/**
+ * Menerjemahkan jawaban gagal BFF langkah OTP menjadi pesan dan tindakan lanjut. Kode stabil
+ * (`info.kode`, dari body BFF) menang; `info.detik` adalah sisa kunci akun / batas laju.
+ */
+export function galatLangkahOtp(
+  status: number | undefined,
+  pesan: string | undefined,
+  info: { kode?: string; detik?: number } = {},
+): GalatAuth {
+  return galatAuth({ status, pesan, ...info }, "mfa");
 }
 
 /** Teks unduhan kode cadangan: satu kode per baris dengan catatan penyimpanan. */

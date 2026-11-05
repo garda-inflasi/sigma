@@ -12,7 +12,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
 import { bffFetch, MODE_MOCK } from "@/lib/api/client";
+import {
+  galatAuth,
+  galatLokal,
+  masukanDariError,
+  pesanTampil,
+} from "@/lib/auth/pesan-login";
 import { cn } from "@/lib/utils";
 
 /** Form permintaan tautan atur ulang kata sandi. */
@@ -20,7 +27,7 @@ export function LupaPasswordForm() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [terkirim, setTerkirim] = useState(false);
-  const [galat, setGalat] = useState<string | null>(null);
+  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,7 +35,7 @@ export function LupaPasswordForm() {
     setGalat(null);
 
     if (!email.trim()) {
-      setGalat("Email wajib diisi.");
+      setGalat(galatLokal("Email wajib diisi."));
       return;
     }
 
@@ -44,10 +51,11 @@ export function LupaPasswordForm() {
       toast.success("Tautan dikirim", {
         description: "Periksa kotak masuk email institusi Anda.",
       });
-    } catch {
-      const pesan = "Tidak dapat terhubung ke server. Coba lagi.";
-      setGalat(pesan);
-      toast.error("Gagal mengirim", { description: pesan });
+    } catch (err) {
+      // 429 dari BFF membawa sisa waktu; selebihnya pesan jaringan umum (tidak membocorkan keberadaan akun).
+      const hasil = galatAuth(masukanDariError(err), "lupa");
+      setGalat(hasil);
+      toast.error("Gagal mengirim", { description: pesanTampil(hasil) });
     } finally {
       setLoading(false);
     }
@@ -97,15 +105,11 @@ export function LupaPasswordForm() {
         </div>
       </div>
 
-      {galat && (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {galat}
-        </p>
-      )}
+      {galat && <KotakGalatAuth galat={galat} sekarang={sekarang} />}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || tertahan}
         className={cn(
           "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
           "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",

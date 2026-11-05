@@ -2,13 +2,15 @@
 
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { KotakGalatAuth, useSekarang } from "@/components/auth/galat-auth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { API_BASE, MODE_MOCK } from "@/lib/api/client";
+import { galatDariParam, masihMenunggu } from "@/lib/auth/pesan-login";
 import { cn } from "@/lib/utils";
 
 // Akun demo (mode mock, tanpa backend) — satu-satunya kredensial yang diterima.
@@ -34,7 +36,19 @@ export function MasukForm({
   const [lihat, setLihat] = useState(false);
   const [ingat, setIngat] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [galat, setGalat] = useState<string | null>(galatAwal ?? null);
+  const [galat, setGalat] = useState<string | null>(null);
+  // Galat dari BFF setelah kiriman form (?error=&kode=&sampai=): pesan dari tabel tunggal (lib/auth/pesan-login)
+  // dengan hitung mundur untuk akun terkunci dan batas laju; tombol kirim tertahan selama hitung mundur.
+  const params = useSearchParams();
+  const [galatServer] = useState(() =>
+    galatDariParam({
+      error: galatAwal ?? params.get("error") ?? undefined,
+      kode: params.get("kode") ?? undefined,
+      sampai: params.get("sampai") ?? undefined,
+    }),
+  );
+  const sekarang = useSekarang(galatServer?.sampaiMs !== undefined);
+  const tertahan = sekarang !== null && masihMenunggu(galatServer, sekarang);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,7 +123,7 @@ export function MasukForm({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
-            aria-invalid={!!galat}
+            aria-invalid={!!(galat || galatServer)}
             className="h-11 px-10"
             required
           />
@@ -138,7 +152,7 @@ export function MasukForm({
             value={sandi}
             onChange={(e) => setSandi(e.target.value)}
             disabled={loading}
-            aria-invalid={!!galat}
+            aria-invalid={!!(galat || galatServer)}
             className="h-11 px-11"
             required
           />
@@ -173,18 +187,22 @@ export function MasukForm({
         </Label>
       </div>
 
-      {galat && (
+      {galat ? (
         <p role="alert" className="text-sm font-medium text-destructive">
           {galat}
         </p>
+      ) : (
+        galatServer && <KotakGalatAuth galat={galatServer} sekarang={sekarang} />
       )}
 
       {/* Tombol masuk — CTA utama bergaya navy sesuai desain Garda */}
       <button
         type="submit"
+        disabled={tertahan}
         className={cn(
           "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
           "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+          "disabled:cursor-not-allowed disabled:opacity-60",
         )}
       >
         Masuk <ArrowRight className="size-4" />

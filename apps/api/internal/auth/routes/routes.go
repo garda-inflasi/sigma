@@ -97,6 +97,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.PATCH("/:id", handler.UpdateUser)
 			users.DELETE("/:id", handler.DeleteUser)
 			users.POST("/:id/reset-password", handler.ResetPasswordAdmin)
+			users.POST("/:id/buka-kunci", handler.BukaKunci)
 			users.PUT("/:id/roles", handler.AssignRole)
 		}
 

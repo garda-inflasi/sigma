@@ -60,6 +60,9 @@ type UserResponse struct {
 	// WajibGantiPassword true berarti seluruh endpoint selain ganti kata sandi,
 	// keluar, dan profil menjawab 403 PASSWORD_CHANGE_REQUIRED.
 	WajibGantiPassword bool `json:"wajib_ganti_password"`
+	// TerkunciSampai hanya ada pada daftar dan detail pengguna (pengguna.kelola) untuk akun yang login-nya
+	// sedang terkunci; kosong bila tidak terkunci.
+	TerkunciSampai *time.Time `json:"terkunci_sampai,omitempty"`
 }
 
 type ListResponse struct {

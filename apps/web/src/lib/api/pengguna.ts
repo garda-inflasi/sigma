@@ -21,6 +21,8 @@ export interface UserResponse {
   status: string;
   terakhir_masuk?: string;
   dibuat_pada: string;
+  /** Akhir kunci login (lockout); hanya ada selama akun terkunci. */
+  terkunci_sampai?: string;
 }
 
 export interface ListUsersResponse {
@@ -89,7 +91,22 @@ export function toPenggunaRow(u: UserResponse): PenggunaRow {
     status: toStatus(u.status),
     mfa: u.mfa_aktif,
     terakhirMasuk: toTerakhirMasuk(u.terakhir_masuk),
+    terkunciSampai: u.terkunci_sampai,
   };
+}
+
+/** True bila kunci login masih berlaku pada `sekarangMs` (kunci yang sudah lewat tidak ditampilkan). */
+export function masihTerkunci(sampai: string | undefined, sekarangMs: number = Date.now()): boolean {
+  if (!sampai) return false;
+  const waktu = Date.parse(sampai);
+  return !Number.isNaN(waktu) && waktu > sekarangMs;
+}
+
+/** Hasil POST /v1/users/{id}/buka-kunci. */
+export interface BukaKunciResult {
+  id: string;
+  /** True bila akun memang sedang terkunci ketika dibuka. */
+  terkunci_sebelumnya: boolean;
 }
 
 /** Pengguna lengkap dari GET /v1/users/{id}: baris daftar ditambah kolom yang tidak ditampilkan di tabel. */
@@ -178,6 +195,13 @@ export const penggunaApi = {
     );
     return toPenggunaRow(res);
   },
+
+  /** Membuka kunci login (lockout) satu pengguna; tercatat di audit. */
+  bukaKunci: (id: string) =>
+    bffFetch<BukaKunciResult>(
+      `/api/pengguna/${encodeURIComponent(id)}/buka-kunci`,
+      { method: "POST" }
+    ),
 
   bulk: (aksi: BulkAksi, ids: string[]) =>
     bffFetch<BulkResult>("/api/pengguna/bulk", {

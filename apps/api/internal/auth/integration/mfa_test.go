@@ -114,7 +114,7 @@ func TestIntegration_MFALogin_WrongCodesLockTheAccount(t *testing.T) {
 
 	w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate",
 		map[string]any{"mfa_token": challenge, "code": kodeOTP(t, mfaSecretUji, time.Now())}, nil)
-	assert.Equal(t, http.StatusTooManyRequests, w.Code, "kode benar pun ditolak saat akun terkunci")
+	assert.Equal(t, http.StatusLocked, w.Code, "kode benar pun ditolak saat akun terkunci")
 }
 
 func TestIntegration_MFALogin_BackupCodes(t *testing.T) {

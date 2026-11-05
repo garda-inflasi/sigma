@@ -157,30 +157,34 @@ type LoginResult struct {
 
 // Login authenticates a user. Akun dengan MFA aktif menerima token tantangan, bukan sesi.
 func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*LoginResult, error) {
+	// Lockout dihitung per email (lihat lockout.go): email tak terdaftar mendapat jawaban yang sama
+	// persis dengan email terdaftar, jadi kunci diperiksa sebelum akun dicari.
+	kunci, err := uc.mulaiPercobaan(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrAccountLocked) {
+			uc.auditTerkunci(ctx, email)
+		}
+		return nil, err
+	}
+
 	user, err := uc.repo.GetUserByEmail(ctx, email)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			uc.kembalikanPercobaan(ctx, kunci)
+			return nil, fmt.Errorf("get user by email: %w", err)
+		}
 		uc.log.Warn("login: user not found", map[string]interface{}{"email": email, "ip": ip})
 		uc.recordLoginAttempt(ctx, nil, ip, false, "user_not_found")
 		uc.recordFailedLogin(ctx, "", email, "user_not_found")
+		perlambatPalsu(password)
 		return nil, ErrInvalidCredentials
-	}
-
-	if user.Status != "AKTIF" {
-		uc.log.Warn("login: inactive account", map[string]interface{}{"user_id": user.ID, "status": user.Status})
-		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "account_inactive")
-		uc.recordFailedLogin(ctx, user.ID, email, "account_inactive")
-		return nil, ErrAccountInactive
-	}
-
-	if user.PasswordHash != nil && uc.accountLocked(ctx, user.ID) {
-		uc.recordFailedLogin(ctx, user.ID, email, "account_locked")
-		return nil, ErrAccountLocked
 	}
 
 	if user.PasswordHash == nil {
 		uc.log.Warn("login: no password set (SSO only)", map[string]interface{}{"user_id": user.ID})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "no_password")
 		uc.recordFailedLogin(ctx, user.ID, email, "no_password")
+		perlambatPalsu(password)
 		return nil, ErrInvalidCredentials
 	}
 
@@ -191,7 +195,20 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*Logi
 		return nil, ErrInvalidCredentials
 	}
 
+	// Status akun baru diperiksa setelah kata sandi terbukti benar: email dengan kata sandi salah mendapat
+	// 401 yang sama baik akunnya aktif maupun tidak. Kata sandi benar bukan tebakan, jadi tidak dihitung.
+	if user.Status != "AKTIF" {
+		uc.kembalikanPercobaan(ctx, kunci)
+		uc.log.Warn("login: inactive account", map[string]interface{}{"user_id": user.ID, "status": user.Status})
+		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "account_inactive")
+		uc.recordFailedLogin(ctx, user.ID, email, "account_inactive")
+		return nil, ErrAccountInactive
+	}
+
 	if user.MfaAktif {
+		// Kata sandi benar bukan tebakan gagal, dan juga tidak menghapus hitungan: itu baru terjadi saat
+		// OTP lolos (completeLogin), supaya kata sandi yang bocor tidak memberi tebakan OTP tanpa batas.
+		uc.kembalikanPercobaan(ctx, kunci)
 		challenge, err := uc.token.CreateMFAChallengeToken(user.ID)
 		if err != nil {
 			return nil, fmt.Errorf("create mfa challenge: %w", err)
@@ -200,19 +217,6 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*Logi
 		return &LoginResult{User: user, MFARequired: true, MFAToken: challenge}, nil
 	}
 	return uc.completeLogin(ctx, user, ip, "")
-}
-
-// accountLocked melaporkan apakah percobaan gagal terbaru sudah mencapai batas kunci akun.
-func (uc *UseCase) accountLocked(ctx context.Context, userID string) bool {
-	fails, err := uc.repo.CountRecentFailedAttempts(ctx, userID, time.Now().Add(-uc.cfg.LockoutDuration))
-	if err != nil {
-		return false
-	}
-	if fails >= int64(uc.cfg.MaxFailedAttempts) {
-		uc.log.Warn("login: account locked", map[string]interface{}{"user_id": userID, "fails": fails})
-		return true
-	}
-	return false
 }
 
 // completeLogin menerbitkan sesi untuk pengguna yang seluruh faktornya sudah terbukti. metodeMFA
@@ -225,6 +229,7 @@ func (uc *UseCase) completeLogin(ctx context.Context, user *domain.Pengguna, ip,
 
 	now := time.Now()
 	uc.recordLoginAttempt(ctx, &user.ID, ip, true, "")
+	uc.resetKunci(ctx, user.Email)
 
 	user.TerakhirMasuk = &now
 	_ = uc.repo.UpdateUser(ctx, user)
@@ -327,10 +332,16 @@ func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newP
 		return "", "", ErrWrongPassword
 	}
 
+	kunci, err := uc.mulaiPercobaan(ctx, user.Email)
+	if err != nil {
+		return "", "", err
+	}
+
 	if !crypto.VerifyPassword(oldPassword, *user.PasswordHash) {
 		uc.recordLoginAttempt(ctx, &userID, ip, false, "wrong_password_change")
 		return "", "", ErrWrongPassword
 	}
+	uc.kembalikanPercobaan(ctx, kunci)
 
 	if err := ValidatePassword(newPassword); err != nil {
 		return "", "", err

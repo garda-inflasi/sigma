@@ -5,7 +5,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
 import { bffFetch } from "@/lib/api/client";
+import {
+  galatAuth,
+  galatLokal,
+  masukanDariError,
+  pesanTampil,
+} from "@/lib/auth/pesan-login";
 import { evaluatePassword, isPasswordValid } from "@/lib/auth/password-policy";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +22,7 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
   const [baru, setBaru] = useState("");
   const [konfirmasi, setKonfirmasi] = useState("");
   const [loading, setLoading] = useState(false);
-  const [galat, setGalat] = useState<string | null>(null);
+  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
 
   const aturan = evaluatePassword(baru);
   const cocok = baru !== "" && baru === konfirmasi;
@@ -25,10 +32,12 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
     if (loading) return;
     setGalat(null);
 
-    if (!lama) return setGalat("Kata sandi saat ini wajib diisi.");
+    if (!lama) return setGalat(galatLokal("Kata sandi saat ini wajib diisi."));
     if (!isPasswordValid(baru))
-      return setGalat("Kata sandi baru belum memenuhi semua aturan.");
-    if (!cocok) return setGalat("Konfirmasi kata sandi tidak sama.");
+      return setGalat(
+        galatLokal("Kata sandi baru belum memenuhi semua aturan."),
+      );
+    if (!cocok) return setGalat(galatLokal("Konfirmasi kata sandi tidak sama."));
 
     setLoading(true);
     try {
@@ -41,12 +50,12 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
       });
       window.location.assign(redirect);
     } catch (err) {
-      const pesan =
-        err instanceof Error
-          ? err.message
-          : "Tidak dapat terhubung ke server. Coba lagi.";
-      setGalat(pesan);
-      toast.error("Gagal mengganti kata sandi", { description: pesan });
+      // Kata sandi lama yang salah dijawab server apa adanya; kunci akun (423) membawa hitung mundur.
+      const hasil = galatAuth(masukanDariError(err), "ganti");
+      setGalat(hasil);
+      toast.error("Gagal mengganti kata sandi", {
+        description: pesanTampil(hasil),
+      });
       setLoading(false);
     }
   }
@@ -100,15 +109,11 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
         autoComplete="new-password"
       />
 
-      {galat && (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {galat}
-        </p>
-      )}
+      {galat && <KotakGalatAuth galat={galat} sekarang={sekarang} />}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || tertahan}
         className={cn(
           "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
           "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-70",

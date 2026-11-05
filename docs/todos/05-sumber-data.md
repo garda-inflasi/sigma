@@ -1,6 +1,6 @@
 # 05 — Sumber data & akuisisi (API, scraping, pipeline)
 
-**Prioritas:** P0/P1 (PRD §1.3–1.4) · **Status:** UI ✅ · Backend 🟡 (hanya katalog) · Terhubung 🟡 · Skema & seed ⬜ · Tes 🟡
+**Prioritas:** P0/P1 (PRD §1.3–1.4) · **Status:** UI ✅ · Backend 🟡 (katalog; pengambilan data di 05-B) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -18,10 +18,10 @@
 **Bergantung pada:** 04-A.
 
 1. **MIG**
-   - [ ] Selaraskan dengan entity (D1: migrasi menang): tambah hanya yang dibutuhkan, mis. `url_dasar`, `konfigurasi JSONB`. Entity memakai `id` string; buang kolom entity yang tidak ada.
+   - [x] Selaraskan dengan entity (D1: migrasi menang): tambah hanya yang dibutuhkan, mis. `url_dasar`, `konfigurasi JSONB`. Entity memakai `id` string; buang kolom entity yang tidak ada.
 2. **SEED**
-   - [ ] `reference`: katalog sumber (BPS, BI, BMKG, Bapanas/PIHPS, DJPb, OpenWeather, scraper portal daerah) dengan `jadwal_cron`, `atribusi`, `robots_txt_patuh`. Status awal **jujur** (belum dikonfigurasi/nonaktif), bukan `SEHAT` sebelum pernah berjalan.
-   - [ ] `demo`: `terakhir_jalan`, `keberhasilan_7h`, `latensi_ms` agar tampilan sama dengan `mockSumber`.
+   - [x] `reference`: katalog sumber (BPS, BI, BMKG, Bapanas/PIHPS, DJPb, OpenWeather, scraper portal daerah) dengan `jadwal_cron`, `atribusi`, `robots_txt_patuh`. Status awal **jujur** (belum dikonfigurasi/nonaktif), bukan `SEHAT` sebelum pernah berjalan.
+   - [x] `demo`: `terakhir_jalan`, `keberhasilan_7h`, `latensi_ms` agar tampilan sama dengan `mockSumber`.
 3. **API**: selaraskan entity/DTO/handler; `bulk` untuk jeda/aktifkan (mengubah metadata dulu; efek nyata di 05-B).
 4. **FE**: `useSumberData` sudah ada; cocokkan bentuk dengan `SumberData`.
 5. **TES**: handler + kontrak; hapus `sumber-data` dari `belumSelaras`.

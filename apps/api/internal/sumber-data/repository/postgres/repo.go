@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
@@ -19,37 +20,48 @@ func New(db *gorm.DB) *Repository {
 func (r *Repository) List(ctx context.Context) ([]domain.SumberData, error) {
 	var items []domain.SumberData
 	if err := r.db.WithContext(ctx).Order("id ASC").Find(&items).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list sumber data: %w", err)
 	}
 	return items, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id int64) (*domain.SumberData, error) {
+func (r *Repository) GetByID(ctx context.Context, id string) (*domain.SumberData, error) {
 	var item domain.SumberData
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&item).Error; err != nil {
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
 		return nil, fmt.Errorf("get sumber data by id: %w", err)
 	}
 	return &item, nil
 }
 
-func (r *Repository) BulkAction(ctx context.Context, ids []int64, action domain.BulkAction) (int64, error) {
-	var status string
+// Dilanjutkan, sumber yang pernah berjalan menunggu eksekusi berikutnya (TERTUNDA);
+// yang belum pernah berjalan kembali BELUM_AKTIF. Status SEHAT tidak dipulihkan
+// karena tidak ada eksekusi yang membuktikannya.
+const (
+	sqlJeda = `UPDATE sumber_data SET status = 'DIJEDA'
+		WHERE id IN ? AND status <> 'DIJEDA' RETURNING id`
+	sqlLanjutkan = `UPDATE sumber_data
+		SET status = (CASE WHEN terakhir_jalan IS NULL THEN 'BELUM_AKTIF' ELSE 'TERTUNDA' END)::status_sumber
+		WHERE id IN ? AND status = 'DIJEDA' RETURNING id`
+)
+
+func (r *Repository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction) ([]string, error) {
+	var query string
 	switch action {
-	case domain.BulkJalankan:
-		status = "AKTIF"
 	case domain.BulkJeda:
-		status = "JEDA"
+		query = sqlJeda
 	case domain.BulkLanjutkan:
-		status = "AKTIF"
+		query = sqlLanjutkan
 	default:
-		return 0, fmt.Errorf("unknown bulk action: %s", action)
+		return nil, fmt.Errorf("aksi tidak dikenal: %s", action)
 	}
 
-	tx := r.db.WithContext(ctx).Model(&domain.SumberData{}).
-		Where("id IN ?", ids).
-		Update("status", status)
-	if tx.Error != nil {
-		return 0, fmt.Errorf("bulk action %s: %w", action, tx.Error)
+	changed := []string{}
+	if err := r.db.WithContext(ctx).Raw(query, ids).Scan(&changed).Error; err != nil {
+		return nil, fmt.Errorf("bulk %s: %w", action, err)
 	}
-	return tx.RowsAffected, nil
+	return changed, nil
 }

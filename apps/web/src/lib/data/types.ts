@@ -150,11 +150,12 @@ export interface SumberData {
   jenis: "API" | "SCRAPER";
   cakupan: string;
   jadwal: string;
-  terakhir: string;
-  status: "SEHAT" | "TERTUNDA" | "GAGAL" | "DIJEDA";
-  keberhasilan7h: number;
+  /** Waktu eksekusi terakhir; null bila sumber belum pernah dijalankan. */
+  terakhir: string | null;
+  status: "BELUM_AKTIF" | "SEHAT" | "TERTUNDA" | "GAGAL" | "DIJEDA";
+  /** Persen 0-100; null bila belum ada eksekusi untuk dihitung. */
+  keberhasilan7h: number | null;
   latensiMs: number;
-  rekamTerakhir: number;
 }
 
 export interface PenggunaRow {

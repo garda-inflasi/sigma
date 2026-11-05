@@ -35,27 +35,28 @@ describe("validasiFormReset", () => {
 
 describe("galatReset", () => {
   it("401 berarti tautan tak bisa dipakai lagi dan menawarkan tautan baru", () => {
-    assert.deepEqual(
-      galatReset(
-        401,
-        "Tautan atur ulang sudah kedaluwarsa. Minta tautan baru.",
-      ),
-      {
-        pesan: "Tautan atur ulang sudah kedaluwarsa. Minta tautan baru.",
-        tautanBaru: true,
-      },
+    const hasil = galatReset(
+      401,
+      "Tautan atur ulang sudah kedaluwarsa. Minta tautan baru.",
     );
+    assert.equal(
+      hasil.pesan,
+      "Tautan atur ulang sudah kedaluwarsa. Minta tautan baru.",
+    );
+    assert.equal(hasil.tautanBaru, true);
     assert.equal(galatReset(401, undefined).tautanBaru, true);
   });
 
   it("galat isian (400) menampilkan pesan server tanpa menawarkan tautan baru", () => {
-    assert.deepEqual(
-      galatReset(400, "kata sandi terlalu lemah: harus mengandung angka"),
-      {
-        pesan: "kata sandi terlalu lemah: harus mengandung angka",
-        tautanBaru: false,
-      },
+    const hasil = galatReset(
+      400,
+      "kata sandi terlalu lemah: harus mengandung angka",
     );
+    assert.equal(
+      hasil.pesan,
+      "kata sandi terlalu lemah: harus mengandung angka",
+    );
+    assert.equal(hasil.tautanBaru, false);
   });
 
   it("429 dan galat server dijelaskan ramah", () => {
@@ -65,5 +66,12 @@ describe("galatReset", () => {
       galatReset(undefined, undefined).pesan,
       /Tidak dapat terhubung/,
     );
+  });
+
+  it("429 dari BFF membawa sisa detik untuk hitung mundur", () => {
+    const hasil = galatReset(429, "x", { kode: "RATE_LIMITED", detik: 30 });
+    assert.equal(hasil.kode, "RATE_LIMITED");
+    assert.ok(hasil.sampaiMs !== undefined && hasil.sampaiMs > Date.now());
+    assert.equal(hasil.tautanBaru, false);
   });
 });

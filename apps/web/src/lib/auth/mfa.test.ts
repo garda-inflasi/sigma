@@ -90,16 +90,36 @@ describe("galatLangkahOtp", () => {
       "sesi verifikasi MFA tidak valid atau sudah kedaluwarsa, masuk ulang",
     );
     assert.equal(hasil.ulangMasuk, true);
+    const stabil = galatLangkahOtp(401, "apa saja", {
+      kode: "MFA_CHALLENGE_EXPIRED",
+    });
+    assert.equal(stabil.ulangMasuk, true);
+    assert.match(stabil.pesan, /Masuk ulang/);
   });
 
   it("kode salah tetap di langkah OTP", () => {
     const hasil = galatLangkahOtp(401, "Kode tidak valid");
     assert.equal(hasil.ulangMasuk, false);
-    assert.match(hasil.pesan, /Kode tidak valid/);
+    assert.match(hasil.pesan, /Kode verifikasi tidak valid/);
+    assert.equal(
+      galatLangkahOtp(401, "x", { kode: "MFA_CODE_INVALID" }).pesan,
+      hasil.pesan,
+    );
+  });
+
+  it("akun terkunci (423) membawa kode dan hitung mundur", () => {
+    const hasil = galatLangkahOtp(423, "x", {
+      kode: "ACCOUNT_LOCKED",
+      detik: 600,
+    });
+    assert.equal(hasil.kode, "ACCOUNT_LOCKED");
+    assert.equal(hasil.ulangMasuk, false);
+    assert.ok(hasil.sampaiMs !== undefined && hasil.sampaiMs > Date.now());
+    assert.match(hasil.pesan, /terkunci/);
   });
 
   it("429 dan galat jaringan dijelaskan ramah", () => {
-    assert.match(galatLangkahOtp(429, "x").pesan, /terkunci/);
+    assert.match(galatLangkahOtp(429, "x").pesan, /Terlalu banyak percobaan/);
     assert.match(galatLangkahOtp(500, "x").pesan, /Tidak dapat terhubung/);
     assert.match(
       galatLangkahOtp(undefined, undefined).pesan,

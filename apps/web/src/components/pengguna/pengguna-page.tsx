@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, Download, KeyRound, LogOut, MoreHorizontal, Pencil, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
+import { Check, Download, KeyRound, LockOpen, LogOut, MoreHorizontal, Pencil, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
@@ -17,9 +17,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { exportCsv } from "@/lib/csv";
 import type { PenggunaRow } from "@/lib/data/types";
 import { formatRelatif, formatTanggal } from "@/lib/format";
-import type { PenggunaDetail } from "@/lib/api/pengguna";
+import { masihTerkunci, type PenggunaDetail } from "@/lib/api/pengguna";
+import { useCan } from "@/lib/auth/session-context";
+import { LencanaTerkunci } from "./lencana-terkunci";
 import {
-  useAssignRolePengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
+  useAssignRolePengguna, useBukaKunciPengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
 } from "@/lib/query/hooks";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
@@ -225,6 +227,8 @@ export function PenggunaPage() {
   const bulkMut = usePenggunaBulk();
   const hapus = useDeletePengguna();
   const assignRole = useAssignRolePengguna();
+  const bukaKunci = useBukaKunciPengguna();
+  const bolehKelola = useCan("pengguna.kelola");
 
   const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset"; user: PenggunaRow | null } | null>(null);
 
@@ -236,7 +240,7 @@ export function PenggunaPage() {
     { accessorKey: "wilayah", header: "Cakupan", cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{getValue<string>()}</span> },
     { accessorKey: "mfa", header: "MFA", cell: ({ getValue }) => (getValue<boolean>() ? <ShieldCheck className="size-4 text-normal" aria-label="MFA aktif" /> : <span className="text-xs text-waspada-ink">Belum</span>) },
     { accessorKey: "terakhirMasuk", header: "Terakhir masuk", cell: ({ getValue }) => { const v = getValue<string>(); return <span className="whitespace-nowrap text-muted-foreground">{v ? formatRelatif(v) : "Belum pernah"}</span>; } },
-    { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ getValue }) => { const s = STATUS[getValue<PenggunaRow["status"]>()]; return <StatusBadge tone={s.tone}>{s.label}</StatusBadge>; } },
+    { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ row: { original: u }, getValue }) => { const s = STATUS[getValue<PenggunaRow["status"]>()]; return <div className="flex flex-wrap items-center gap-1.5"><StatusBadge tone={s.tone}>{s.label}</StatusBadge><LencanaTerkunci sampai={u.terkunciSampai} /></div>; } },
     {
       id: "_aksi", header: "", enableSorting: false, size: 48,
       cell: ({ row: { original: u } }) => (
@@ -247,6 +251,9 @@ export function PenggunaPage() {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onSelect={() => setDialog({ mode: "ubah", user: u })}><Pencil /> Ubah data</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setDialog({ mode: "reset", user: u })}><KeyRound /> Reset kata sandi</DropdownMenuItem>
+            {bolehKelola && masihTerkunci(u.terkunciSampai) && (
+              <DropdownMenuItem onSelect={() => bukaKunci.mutate({ id: u.id, nama: u.nama })}><LockOpen /> Buka kunci</DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => assignRole.mutate({ id: u.id, peran: u.role === "ADMIN_SISTEM" ? "OPS_MAHASISWA" : "ADMIN_SISTEM" })}>
               <ShieldCheck /> {u.role === "ADMIN_SISTEM" ? "Cabut admin sistem" : "Jadikan admin sistem"}
@@ -257,7 +264,7 @@ export function PenggunaPage() {
         </DropdownMenu>
       ),
     },
-  ], [assignRole, hapus]);
+  ], [assignRole, hapus, bukaKunci, bolehKelola]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">

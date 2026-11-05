@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
+import { tanggapiGalatApi } from "@/lib/bff/galat-auth";
 import { jsonResponse, errorResponse } from "@/lib/bff/security-headers";
 
 export async function POST(request: NextRequest) {
@@ -17,10 +18,6 @@ export async function POST(request: NextRequest) {
       message: "Password berhasil direset. Silakan login dengan password baru.",
     });
   } catch (error) {
-    if (error instanceof Error && "status" in error) {
-      const apiError = error as { status: number; message: string };
-      return errorResponse(apiError.message, apiError.status);
-    }
-    return errorResponse("Kesalahan server internal.", 500);
+    return tanggapiGalatApi(error, "reset");
   }
 }

@@ -1,16 +1,13 @@
 import { NextRequest } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
-import { checkRateLimit, getRateLimitKey } from "@/lib/bff/rate-limit";
+import { responsBatasLaju } from "@/lib/bff/galat-auth";
+import { getRateLimitKey, ukurBatasLaju } from "@/lib/bff/rate-limit";
 import { jsonResponse, errorResponse } from "@/lib/bff/security-headers";
 
 export async function POST(request: NextRequest) {
   // Rate limiting
-  if (!checkRateLimit(getRateLimitKey(request), 3, 60_000)) {
-    return errorResponse(
-      "Terlalu banyak permintaan reset password. Coba lagi nanti.",
-      429
-    );
-  }
+  const batas = ukurBatasLaju(getRateLimitKey(request), 3, 60_000);
+  if (!batas.diizinkan) return responsBatasLaju(batas.tungguDetik, "lupa");
 
   try {
     const body = await request.json();

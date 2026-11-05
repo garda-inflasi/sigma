@@ -6,13 +6,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, bffFetch } from "@/lib/api/client";
-import {
-  galatLangkahOtp,
-  rapikanKode,
-  validasiKode,
-  type GalatMfa,
-} from "@/lib/auth/mfa";
+import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
+import { bffFetch } from "@/lib/api/client";
+import { galatLangkahOtp, rapikanKode, validasiKode } from "@/lib/auth/mfa";
+import { galatLokal, masukanDariError, pesanTampil } from "@/lib/auth/pesan-login";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,14 +19,14 @@ import { cn } from "@/lib/utils";
 export function MfaOtpForm({ redirect }: { redirect: string }) {
   const [kode, setKode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [galat, setGalat] = useState<GalatMfa | null>(null);
+  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
 
     const salah = validasiKode(kode);
-    if (salah) return setGalat({ pesan: salah, ulangMasuk: false });
+    if (salah) return setGalat(galatLokal(salah));
 
     setGalat(null);
     setLoading(true);
@@ -46,12 +43,13 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
       });
       window.location.assign(hasil.tujuan);
     } catch (err) {
-      const hasil = galatLangkahOtp(
-        err instanceof ApiError ? err.status : undefined,
-        err instanceof Error ? err.message : undefined,
-      );
+      const m = masukanDariError(err);
+      const hasil = galatLangkahOtp(m.status, m.pesan, {
+        kode: m.kode,
+        detik: m.detik,
+      });
       setGalat(hasil);
-      toast.error("Verifikasi gagal", { description: hasil.pesan });
+      toast.error("Verifikasi gagal", { description: pesanTampil(hasil) });
       setLoading(false);
     }
   }
@@ -80,8 +78,7 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
       </div>
 
       {galat && (
-        <div role="alert" className="space-y-1 text-sm">
-          <p className="font-medium text-destructive">{galat.pesan}</p>
+        <KotakGalatAuth galat={galat} sekarang={sekarang}>
           {galat.ulangMasuk && (
             <Link
               href="/masuk"
@@ -90,12 +87,12 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
               Kembali ke halaman masuk
             </Link>
           )}
-        </div>
+        </KotakGalatAuth>
       )}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || tertahan}
         className={cn(
           "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
           "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-70",

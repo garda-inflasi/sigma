@@ -20,13 +20,17 @@ interface ApiErrorResponse {
   error?: boolean;
   code?: string;
   message?: string;
+  /** Galat 423 ACCOUNT_LOCKED memuat `sisa_detik` di sini. */
+  data?: { sisa_detik?: number } | null;
 }
 
 export class BffApiError extends Error {
   constructor(
     public status: number,
     message: string,
-    public code?: string
+    public code?: string,
+    /** Sisa waktu tunggu dalam detik (kunci akun), dari `data.sisa_detik` atau header Retry-After. */
+    public detik?: number
   ) {
     super(message);
   }
@@ -58,10 +62,18 @@ async function apiFetch<T>(
     } catch {
       // ignore parse errors
     }
+    const retryAfter = Number(res.headers?.get("Retry-After"));
+    const detik =
+      typeof errorBody?.data?.sisa_detik === "number"
+        ? errorBody.data.sisa_detik
+        : Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter
+          : undefined;
     throw new BffApiError(
       res.status,
       errorBody?.message || `Backend error (${res.status})`,
-      errorBody?.code
+      errorBody?.code,
+      detik
     );
   }
 
@@ -145,6 +157,8 @@ export interface UserResponse {
   mfa_wajib?: boolean;
   /** Hanya pada GET /auth/me: sisa kode cadangan bila MFA aktif. */
   kode_cadangan_tersisa?: number;
+  /** Hanya pada daftar/detail pengguna: akhir kunci login (lockout) selama akun terkunci. */
+  terkunci_sampai?: string;
 }
 
 export interface ChangePasswordRequest {
@@ -362,6 +376,16 @@ export const userApi = {
         method: "POST",
         headers: bearer(accessToken),
         body: JSON.stringify({ new_password: newPassword }),
+      }
+    ),
+
+  /** Membuka kunci login (lockout) satu pengguna. */
+  bukaKunci: (accessToken: string, id: string) =>
+    apiFetch<{ id: string; terkunci_sebelumnya: boolean }>(
+      `/users/${encodeURIComponent(id)}/buka-kunci`,
+      {
+        method: "POST",
+        headers: bearer(accessToken),
       }
     ),
 

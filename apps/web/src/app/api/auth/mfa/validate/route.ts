@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
 import { clearMfaChallengeCookie, getMfaChallenge } from "@/lib/bff/cookies";
-import { checkLoginRateLimit } from "@/lib/bff/rate-limit";
+import { ukurBatasLogin } from "@/lib/bff/rate-limit";
 import { validateRedirectUrl } from "@/lib/bff/safe-redirect";
+import { KODE_GALAT } from "@/lib/auth/pesan-login";
+import {
+  masukanDariGalatApi,
+  responsBatasLaju,
+  responsGalat,
+  susunJawabanGalat,
+} from "@/lib/bff/galat-auth";
 import { errorResponse, jsonResponse } from "@/lib/bff/security-headers";
 import {
   adalahSesi,
@@ -15,9 +22,8 @@ import {
  * kode cadangan dengan sesi penuh. Setara dengan login, jadi dibatasi laju yang sama.
  */
 export async function POST(request: NextRequest) {
-  if (!checkLoginRateLimit(request)) {
-    return errorResponse("Terlalu banyak percobaan. Coba lagi nanti.", 429);
-  }
+  const batas = ukurBatasLogin(request);
+  if (!batas.diizinkan) return responsBatasLaju(batas.tungguDetik, "mfa");
 
   try {
     const { code, redirect } = (await request.json()) as {
@@ -30,7 +36,9 @@ export async function POST(request: NextRequest) {
 
     const challenge = await getMfaChallenge();
     if (!challenge) {
-      return errorResponse("Sesi verifikasi berakhir, masuk ulang.", 401);
+      return responsGalat(
+        susunJawabanGalat({ status: 401, kode: KODE_GALAT.MFA_SESI_BERAKHIR }, "mfa"),
+      );
     }
 
     const result = await authApi.mfaValidate({
@@ -50,14 +58,10 @@ export async function POST(request: NextRequest) {
     clearMfaChallengeCookie(response);
     return response;
   } catch (error) {
-    if (error instanceof Error && "status" in error) {
-      const apiError = error as { status: number; message: string };
-      const response = errorResponse(apiError.message, apiError.status);
-      // Token tantangan yang tidak berlaku lagi tidak berguna: paksa masuk ulang.
-      if (apiError.status === 401 && /masuk ulang/i.test(apiError.message))
-        clearMfaChallengeCookie(response);
-      return response;
-    }
-    return errorResponse("Kesalahan server internal.", 500);
+    const jawaban = susunJawabanGalat(masukanDariGalatApi(error), "mfa");
+    const response = responsGalat(jawaban);
+    // Token tantangan yang tidak berlaku lagi tidak berguna: paksa masuk ulang.
+    if (jawaban.galat.ulangMasuk) clearMfaChallengeCookie(response);
+    return response;
   }
 }

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
 import { setMfaChallengeCookie } from "@/lib/bff/cookies";
-import { checkLoginRateLimit } from "@/lib/bff/rate-limit";
+import { ukurBatasLogin } from "@/lib/bff/rate-limit";
+import {
+  masukanBatasLaju,
+  masukanDariGalatApi,
+  responsGalat,
+  susunJawabanGalat,
+} from "@/lib/bff/galat-auth";
+import { paramDariGalat, type MasukanGalat } from "@/lib/auth/pesan-login";
 import { validateRedirectUrl } from "@/lib/bff/safe-redirect";
 import { applySecurityHeaders } from "@/lib/bff/security-headers";
 import {
@@ -18,33 +25,26 @@ function urlPublik(request: NextRequest, path: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  // Rate limiting
-  if (!checkLoginRateLimit(request)) {
-    const resp = NextResponse.json(
-      {
-        error: true,
-        message: "Terlalu banyak percobaan login. Coba lagi nanti.",
-      },
-      { status: 429 },
-    );
-    return applySecurityHeaders(resp);
-  }
-
   const contentType = request.headers.get("content-type") || "";
   const isFormPost = !contentType.includes("application/json");
 
-  const gagal = (message: string, status: number) => {
+  // Semua kegagalan memakai tabel pesan dan kode tunggal (lib/auth/pesan-login): JSON untuk fetch, alihan
+  // /masuk?error=…&kode=…&sampai=… untuk kiriman form (halaman masuk menampilkan hitung mundurnya).
+  const gagal = (masukan: MasukanGalat) => {
+    const jawaban = susunJawabanGalat(masukan, "masuk");
     if (isFormPost) {
       return applySecurityHeaders(
         NextResponse.redirect(
-          urlPublik(request, `/masuk?error=${encodeURIComponent(message)}`),
+          urlPublik(request, `/masuk?${paramDariGalat(jawaban.galat)}`),
         ),
       );
     }
-    return applySecurityHeaders(
-      NextResponse.json({ error: true, message }, { status }),
-    );
+    return responsGalat(jawaban);
   };
+
+  // Rate limiting
+  const batas = ukurBatasLogin(request);
+  if (!batas.diizinkan) return gagal(masukanBatasLaju(batas.tungguDetik));
 
   try {
     // Handle both JSON and form data
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!email || !password) {
-      return gagal("Email dan password wajib diisi.", 400);
+      return gagal({ status: 400, pesan: "Email dan password wajib diisi." });
     }
 
     const redirectTo = validateRedirectUrl(redirectParam) ?? "/";
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       return applySecurityHeaders(response);
     }
     if (!adalahSesi(result)) {
-      return gagal("Kesalahan server internal.", 500);
+      return gagal({ status: 500, pesan: "Kesalahan server internal." });
     }
 
     const destination = tujuanSesi(result, redirectTo);
@@ -100,10 +100,6 @@ export async function POST(request: NextRequest) {
 
     return applySecurityHeaders(response);
   } catch (error) {
-    if (error instanceof Error && "status" in error) {
-      const apiError = error as { status: number; message: string };
-      return gagal(apiError.message, apiError.status);
-    }
-    return gagal("Kesalahan server internal.", 500);
+    return gagal(masukanDariGalatApi(error));
   }
 }

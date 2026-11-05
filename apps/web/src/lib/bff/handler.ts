@@ -6,6 +6,7 @@
 
 import type { NextRequest } from "next/server";
 import type { NextResponse } from "next/server";
+import { kodeStabil } from "@/lib/auth/pesan-login";
 import { getAccessToken } from "./cookies";
 import { validateCSRF, validateOrigin } from "./csrf";
 import { errorResponse } from "./security-headers";
@@ -39,8 +40,12 @@ export async function requireSession(
 /** Maps a thrown backend error onto a BFF error response. */
 export function handleRouteError(error: unknown): NextResponse {
   if (error instanceof Error && "status" in error) {
-    const apiError = error as { status: number; message: string };
-    return errorResponse(apiError.message, apiError.status);
+    const apiError = error as { status: number; message: string; code?: string; detik?: number };
+    // Kode mesin dari API Go (mis. PASSWORD_CHANGE_REQUIRED) diteruskan tanpa diubah.
+    return errorResponse(apiError.message, apiError.status, {
+      kode: kodeStabil(apiError.code),
+      sisaDetik: apiError.detik,
+    });
   }
   return errorResponse("Kesalahan server internal.", 500);
 }

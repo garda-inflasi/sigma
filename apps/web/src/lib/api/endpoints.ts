@@ -10,6 +10,12 @@ import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type Ew
 import { toKartu, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
+import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
+import {
+  toBarisModel, toBarisProyeksi, toProyeksiXai,
+  type BarisModel, type BarisProyeksi, type ModelResponse, type ProyeksiResponse, type RingkasanResponse,
+} from "./prediksi";
+import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -45,7 +51,16 @@ export const api = {
   },
   eksekutif: {
     ringkasan: () => get<RingkasanEksekutif>("/v1/dashboard/eksekutif", m.mockEksekutif),
-    xai: (kode: string) => get<ProyeksiXai>(`/v1/prediksi/${kode}`, () => m.mockXai(kode)),
+    xai: (kode: string): Promise<ProyeksiXai> =>
+      MODE_MOCK ? mockDelay(() => m.mockXai(kode)) : apiFetch<ProyeksiResponse>(`/v1/prediksi/${encodeURIComponent(kode)}`).then(toProyeksiXai),
+  },
+  prediksi: {
+    /** Proyeksi 14 hari seluruh komoditas (Kota Banda Aceh). */
+    ringkasan: (): Promise<BarisProyeksi[]> =>
+      MODE_MOCK ? mockDelay(mockBarisProyeksi) : apiFetch<RingkasanResponse[]>("/v1/prediksi").then((rows) => rows.map(toBarisProyeksi)),
+    /** Registri model seluruh komoditas. */
+    model: (): Promise<BarisModel[]> =>
+      MODE_MOCK ? mockDelay(mockBarisModel) : apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel)),
   },
   spasial: {
     rute: (): Promise<Rute[]> =>
@@ -95,9 +110,13 @@ export const api = {
         : apiFetch<AuditPageResponse>(`/v1/audit${toAuditQuery(filter, cursor)}`).then(toAuditPage),
   },
   brief: {
-    list: () => get<PolicyBrief[]>("/v1/policy-brief", m.mockBriefs),
-    susun: (periode: string) =>
-      MODE_MOCK ? mockDelay({ id: "PB-2026-10" }, 2200, 3200) : apiFetch<{ id: string }>("/v1/policy-brief/generate", { method: "POST", body: JSON.stringify({ periode }) }),
+    list: (): Promise<PolicyBrief[]> =>
+      MODE_MOCK ? mockDelay(m.mockBriefs) : apiFetch<PolicyBriefResponse[]>("/v1/policy-brief").then((rows) => rows.map(toPolicyBrief)),
+    /** Menyimpan draf brief untuk periode YYYY-MM; kembaliannya brief yang tersimpan. */
+    susun: (periode: string): Promise<PolicyBrief> =>
+      MODE_MOCK
+        ? mockDelay(() => m.mockBriefs()[0], 1200, 1800)
+        : apiFetch<PolicyBriefResponse>("/v1/policy-brief/generate", { method: "POST", body: JSON.stringify({ periode }) }).then(toPolicyBrief),
   },
   tugas: { saya: () => get<TugasLapangan[]>("/v1/lapangan/tugas/saya", m.mockTugas) },
   master: {

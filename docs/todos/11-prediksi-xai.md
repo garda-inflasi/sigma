@@ -1,6 +1,6 @@
 # 11 — Prediksi harga & XAI
 
-**Prioritas:** P0 (PRD §2.1) · **Status:** UI ✅ · Backend ⬜ (membaca tabel) · Terhubung ⬜ · Skema & seed ⬜ · Tes ⬜
+**Prioritas:** P0 (PRD §2.1) · **Status:** UI ✅ · Backend 🟡 (membaca tabel; model nyata di 11-B) · Terhubung ✅ · Skema & seed ✅ · Tes ✅ (11-A selesai)
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -20,17 +20,17 @@
 **Bergantung pada:** 06-A. Putuskan D4 (registri Postgres vs MongoDB) sebelum mulai.
 
 1. **MIG**
-   - [ ] `prediksi_harga`: `UNIQUE (komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, model_versi)`; FK komposit ke `model_registry (komoditas_kode, versi)`.
-   - [ ] **Arahkan entity ke `prediksi_harga`** (jangan membuat tabel baru). Registri model hidup di satu tempat (D4); hapus duplikatnya.
+   - [x] Migrasi `000051`: `prediksi_harga` mendapat `UNIQUE (komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, model_versi)`, FK komposit ke `model_registry (komoditas_kode, versi)`, `CHECK bawah <= nilai <= atas`, kolom `harga_dasar` (pembagi persen perubahan) dan `sumber` (`MODEL`|`DEMO`); `model_registry.sumber` dan indeks unik satu model `PRODUKSI` per komoditas.
+   - [x] Entity diarahkan ke `prediksi_harga` dan `model_registry` (tidak membuat tabel baru). Registri hidup di satu tempat (Postgres, D4); duplikat Mongo sudah hilang bersama modul `analytics`.
 2. **SEED** (`demo`)
-   - [ ] `model_registry` (versi, MAPE, status) dan `prediksi_harga` untuk komoditas pilot × kabupaten × horizon 7/14/30 hari dengan `faktor` ala SHAP yang deterministik, bentuk sama dengan `mockXai`. Model ditandai `DEMO`. **Produksi tidak di-seed**; diisi pipeline ML.
+   - [x] `prediksi.demo` (`DependsOn master.reference`, `After harga.demo`): per komoditas satu model `PRODUKSI` (v2.3.1) dan satu `KANDIDAT` (v2.4.0-rc1), semua `sumber = DEMO`; proyeksi horizon 7/14/30 hari untuk semua komoditas di Kota Banda Aceh dan komoditas pilot di 22 kabupaten lain (240 baris), `faktor` ala SHAP yang jumlahnya sama dengan perubahan proyeksi. Id baris tetap (tanpa tanggal): menjalankan ulang di hari lain menggeser `tanggal_target`, tidak menambah baris. Produksi tidak di-seed.
 3. **API**
-   - [ ] Entity → `prediksi_harga`, DTO ke `ProyeksiXai`; `GET /v1/prediksi`, `/:kode`, `/:kode/export`; endpoint daftar model untuk "registri model".
-   - [ ] Perbaiki izin yatim `prediksi.baca` ([02-A](02-pengguna-rbac.md)).
+   - [x] `GET /v1/prediksi?kabupaten=&horizon=` (ringkasan semua komoditas), `/:kode` (seri riwayat + proyeksi, faktor, narasi, rekomendasi, model), `/:kode/export`, dan `GET /v1/prediksi/registri`. Hanya model `PRODUKSI` yang dipakai. Riwayat aktual dibaca dari `entri_harga` (konsumen, tervalidasi/terpublikasi) bila ada. Narasi dan rekomendasi dari templat aturan, bukan LLM.
+   - [x] Izin yatim `prediksi.baca` hilang bersama modul `analytics`; semua route memakai `prediksi.lihat`.
 4. **FE**
-   - [ ] Ganti `mockXai` di `prediksi-page.tsx` dan `brief-page.tsx` dengan `useXai`/hook baru (proyeksi semua komoditas, registri model).
-   - [ ] "Simulasi skenario" tetap dihitung di klien dari `faktor` pada slice ini (diberi label); endpoint simulasi di 11-C.
-5. **TES**: tiap komoditas pilot punya proyeksi demo dengan `bawah <= nilai <= atas`; `faktor` sesuai kontrak web; hapus `prediksi` dari `belumSelaras`.
+   - [x] `prediksi-page.tsx` dan `xai-panel.tsx` memakai `useProyeksiRingkasan`, `useModelPrediksi`, `useXai` (API nyata, mapper `lib/api/prediksi.ts`); tidak ada `mockXai` di komponen (hanya di lapisan mode mock). Data seed berlabel "Data demo".
+   - [x] "Simulasi skenario" tetap dihitung di klien dari perubahan proyeksi cabai dan diberi label koefisien contoh. Aksi "Promosikan"/"Arsipkan" di registri dihapus dari UI karena tidak tersimpan; kembali di 11-C dengan endpoint dan izin `model.kelola`.
+5. **TES**: [x] tiap komoditas pilot punya proyeksi demo di semua kabupaten dengan `bawah <= nilai <= atas`; jumlah `faktor` = perubahan proyeksi; seeder idempoten lintas hari; endpoint 200/401/403/400/404 pada DB hasil migrasi; `prediksi` keluar dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md). Khusus: tidak ada `import … mockXai` yang tersisa di komponen.
 
 ---

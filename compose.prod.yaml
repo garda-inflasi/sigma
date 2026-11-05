@@ -25,6 +25,9 @@
 #
 # Service `mailpit` di compose.yaml (penangkap email dev/demo) berada di profil `mailpit` dan sengaja
 # tidak disebut di sini: tanpa COMPOSE_PROFILES=mailpit ia tidak pernah ikut berjalan di VM.
+# Hal yang sama berlaku untuk `sso-mock` (penyedia OIDC palsu untuk masuk dengan Google di dev/demo/e2e,
+# profil `sso-mock`): jangan pernah mengisi COMPOSE_PROFILES=sso-mock di .env VM. SSO produksi memakai Google
+# sungguhan lewat SSO_GOOGLE_* (lihat docs/DEPLOYMENT.md); prodcheck menolak penerbit/redirect non-https.
 #
 # Variabel bertanda ":?" WAJIB ada di .env VM; compose berhenti dengan pesan jelas
 # bila kosong, sehingga produksi tidak pernah jatuh ke nilai bawaan pengembangan.

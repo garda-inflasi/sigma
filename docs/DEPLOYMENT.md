@@ -75,6 +75,7 @@ VM **tidak pernah** build apa pun (`--no-build` wajib di semua `docker compose u
 | Migrasi nyata | Service `migrate` (image API berisi `./migrate` + `db/migrations`) jalan sebelum aplikasi naik; kegagalannya menghentikan deploy |
 | Tanpa data demo | Service `seed` di produksi hanya `reference` dan `admin`; seeder `demo` menolak `APP_ENV=production` |
 | Tanpa penangkap email | Service `mailpit` (dev/demo) berada di profil compose `mailpit` yang hanya dinyalakan `make docker/demo/up`; skrip deploy tidak pernah menyebutnya dan `SMTP_*` di `compose.yaml` kosong secara bawaan |
+| Tanpa penyedia SSO palsu | Service `sso-mock` (mock OIDC untuk "Masuk dengan Google" di dev/demo/e2e) berada di profil compose `sso-mock` yang hanya dinyalakan `make docker/demo/up`; produksi memakai Google sungguhan lewat `SSO_GOOGLE_*` (§3.7), dan `prodcheck` menolak penerbit/redirect non-https |
 | Secret tidak bocor | `.env` **tidak pernah** ditransfer; `mask_secret` di semua log |
 
 ---
@@ -197,6 +198,12 @@ CADDY_TLS=admin@garda.id
 # JOB_DASHBOARD_REFRESH_INTERVAL=5m    # interval job worker (off = nonaktif)
 # JOB_KPI_HITUNG_INTERVAL=1h
 # JOB_AUTH_PEMBERSIHAN_INTERVAL=1h     # pembersihan baris auth kedaluwarsa (lihat tabel di bawah)
+
+# ── Masuk dengan Google (opsional, lihat §3.7) ──────────────────────────
+# SSO_GOOGLE_CLIENT_ID=123456789012-xxxxxxxx.apps.googleusercontent.com
+# SSO_GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
+# SSO_GOOGLE_REDIRECT_URL=https://app.garda.id/api/auth/sso/google/callback
+# SSO_GOOGLE_HOSTED_DOMAIN=kemenkeu.go.id   # opsional: hanya akun Workspace domain ini
 ENVEOF
 
 ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 'chmod 600 ~/garda-inflasi/.env'
@@ -212,6 +219,45 @@ openssl rand -hex 16   # AES_KEY
 `APP_ENV=production` dipasang compose.prod.yaml. Dalam mode itu API menolak start bila
 `JWT_SECRET`/`AES_KEY` bawaan atau lemah, `DB_PASSWORD` bawaan, atau `APP_ALLOWED_ORIGINS`
 hanya localhost; `remote-deploy.sh` memeriksa hal yang sama sebelum memuat image.
+
+### 3.7 Masuk dengan Google (SSO, opsional)
+
+Tombol "Masuk dengan Google" di `/masuk` memakai OpenID Connect (Authorization Code + PKCE S256) dan
+**hanya dipetakan ke akun yang sudah ada** (tidak ada pendaftaran mandiri). Tanpa konfigurasi di bawah,
+tombolnya tidak tampil dan rute SSO menjawab `503 SSO_NOT_CONFIGURED`; login kata sandi tidak terpengaruh.
+
+1. **Google Cloud Console** → pilih/buat proyek → *APIs & Services* → *OAuth consent screen*:
+   tipe **Internal** bila semua pengguna berada di satu Google Workspace (otomatis membatasi ke organisasi),
+   selain itu **External**. Scope yang dipakai hanya `openid`, `email`, `profile`.
+2. *Credentials* → *Create credentials* → *OAuth client ID* → tipe **Web application**.
+   - **Authorized redirect URIs**: `https://<domain publik>/api/auth/sso/google/callback` (tepat sama, termasuk
+     skema dan tanpa garis miring penutup). *Authorized JavaScript origins* tidak diperlukan: alur seluruhnya
+     lewat pengalihan server.
+3. Salin *Client ID* dan *Client secret* ke `.env` di VM (jangan di-commit):
+
+   | Variable | Nilai |
+   |---|---|
+   | `SSO_GOOGLE_CLIENT_ID` | Client ID (menyalakan SSO; kosong = SSO mati) |
+   | `SSO_GOOGLE_CLIENT_SECRET` | Client secret |
+   | `SSO_GOOGLE_REDIRECT_URL` | `https://<domain publik>/api/auth/sso/google/callback` (harus sama dengan yang didaftarkan di Google dan berasal dari salah satu origin di `APP_ALLOWED_ORIGINS`) |
+   | `SSO_GOOGLE_ISSUER` | Kosong = `https://accounts.google.com` (jangan diubah untuk Google) |
+   | `SSO_GOOGLE_HOSTED_DOMAIN` | Opsional, mis. `kemenkeu.go.id`: hanya akun Workspace dengan klaim `hd` itu yang diterima (akun Google pribadi ditolak) |
+
+4. Jalankan ulang `api` (`make deploy`). `prodcheck` menolak start bila SSO dinyalakan tetapi secret/redirect
+   kosong, redirect bukan `https` atau bukan `…/api/auth/sso/google/callback`, atau origin-nya tidak ada di
+   `APP_ALLOWED_ORIGINS`. Verifikasi: `curl https://<domain>/api/v1/auth/sso/status` → `{"google":true}`.
+5. **Akun harus sudah ada dan AKTIF** (dibuat admin di halaman Pengguna). Masuk SSO pertama menautkan akun ke
+   identitas Google (`pengguna.sso_provider`, `sso_subject`); selanjutnya dicocokkan menurut `sub`, bukan email.
+   Email milik akun yang sudah tertaut ke identitas lain ditolak dan tercatat di audit (`LOGIN` ditolak,
+   alasan `sso_subjek_berbeda`). Untuk memindahkan akun ke akun Google lain, lepas tautan lebih dulu:
+   `UPDATE pengguna SET sso_provider = NULL, sso_subject = NULL, sso_terhubung_pada = NULL WHERE email = '…';`
+6. MFA tetap berlaku: akun dengan MFA aktif melanjutkan ke langkah kode OTP; akun yang wajib MFA mendapat
+   sesi yang hanya membuka halaman setup, sama dengan login kata sandi.
+
+Penyedia tidak harus terjangkau saat API start (penemuan konfigurasi malas, diulang dengan jeda); bila Google
+sedang tidak terjangkau, halaman masuk menampilkan pesan "tidak dapat dihubungi" dan API tetap melayani login
+kata sandi. **Jangan pernah** mengisi `COMPOSE_PROFILES=sso-mock` di VM: itu penyedia palsu yang menerima
+identitas apa pun.
 
 ---
 
@@ -532,6 +578,10 @@ sudo ufw enable
 | 20 | Login gagal / redirect loop setelah deploy | HSTS aktif di HTTP, atau `NEXT_PUBLIC_API_BASE_URL` absolut | Pastikan akses via HTTPS; set `NEXT_PUBLIC_API_BASE_URL=/api` (relatif) |
 | 21 | `CORS error` di browser | Origin tidak cocok (http vs https) | Set `APP_ALLOWED_ORIGINS` di `.env` VM; pakai URL relatif di frontend |
 | 22 | `502 Bad Gateway` dari Caddy | Container `api`/`web` belum siap | `make logs SERVICE=web`; tunggu healthcheck; cek `docker compose ps` |
+| 23 | `redirect_uri_mismatch` di halaman Google | `SSO_GOOGLE_REDIRECT_URL` tidak sama persis dengan URI yang didaftarkan | Samakan skema, host, dan path `/api/auth/sso/google/callback` di Google Console dan `.env` (§3.7) |
+| 24 | `/masuk?error=sso_akun_tidak_ditemukan` | Email Google tidak punya akun | Admin membuat akun dengan email itu di halaman Pengguna; SSO tidak mendaftarkan akun |
+| 25 | `/masuk?error=sso_akun_bentrok` | Akun sudah tertaut ke identitas Google lain | Lepas tautan lama dengan SQL di §3.7 butir 5 bila memang akun Google-nya berganti |
+| 26 | API menolak start dengan pesan `SSO_GOOGLE_…` (prodcheck) | SSO dinyalakan dengan konfigurasi tidak aman/lengkap | Perbaiki variabel yang disebut pesan (namanya saja, nilainya tidak dicetak) atau kosongkan semua `SSO_GOOGLE_*` |
 
 ---
 
@@ -607,6 +657,8 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `APP_ENV` | `production` di server (dipasang compose.prod.yaml): menolak rahasia bawaan dan menyalakan penegakan MFA |
 | `MFA_ENFORCE` | Menimpa penegakan MFA (`true`/`false`); kosong = ikut `APP_ENV` |
 | `APP_PUBLIC_URL` | Origin publik untuk tautan di email (reset kata sandi) |
+| `SSO_GOOGLE_CLIENT_ID` / `SSO_GOOGLE_CLIENT_SECRET` / `SSO_GOOGLE_REDIRECT_URL` | Masuk dengan Google (opsional; kosong = nonaktif, tombol disembunyikan). Redirect URL = `https://<domain>/api/auth/sso/google/callback`. Lihat §3.7 |
+| `SSO_GOOGLE_ISSUER` / `SSO_GOOGLE_HOSTED_DOMAIN` | Penerbit OIDC (kosong = `https://accounts.google.com`) dan pembatas domain Workspace (opsional) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM` | Relay email produksi. `SMTP_HOST` kosong = email tidak dikirim. `SMTP_USERNAME` kosong = tanpa autentikasi (relay internal tepercaya); isi untuk memakai AUTH PLAIN. **Jangan** memakai `COMPOSE_PROFILES=mailpit` di VM: Mailpit hanya untuk dev/demo (`make docker/demo/up`, UI di `127.0.0.1:${MAILPIT_PORT:-8025}`) |
 | `API_RATE_LIMIT_PER_MENIT` | Batas permintaan API per menit per IP klien (bawaan 600) |
 | `TRUSTED_PROXIES` | CIDR proxy tepercaya untuk `X-Forwarded-For` (bawaan jaringan privat tempat Caddy berada) |

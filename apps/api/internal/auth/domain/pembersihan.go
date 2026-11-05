@@ -26,4 +26,6 @@ type PembersihanRepository interface {
 	// HapusKunciLoginUsang menghapus kunci_login yang terakhir diperbarui sebelum `sebelum` dan tidak sedang
 	// terkunci pada `sekarang`.
 	HapusKunciLoginUsang(ctx context.Context, sebelum, sekarang time.Time, batas int) (int64, error)
+	// HapusSSOStateKedaluwarsa menghapus sso_login_state dengan expires_at < sebelum (alur SSO yang ditinggalkan).
+	HapusSSOStateKedaluwarsa(ctx context.Context, sebelum time.Time, batas int) (int64, error)
 }

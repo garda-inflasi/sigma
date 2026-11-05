@@ -155,15 +155,21 @@ DEMO_CADDY_HTTPS_PORT ?= 8453
 DEMO_POSTGRES_VOLUME ?= garda_demo_postgres_data
 DEMO_REDIS_VOLUME ?= garda_demo_redis_data
 DEMO_MAILPIT_PORT ?= 8025
-# Profil mailpit ditambahkan ke profil yang sudah disetel (mis. backup), bukan menggantinya.
+# Mock OIDC (profil sso-mock) untuk "Masuk dengan Google" di demo/e2e. Penerbit http://sso.localhost:<port>/default
+# harus sama bagi browser (loopback host) dan container api (alias jaringan); lihat compose.yaml.
+DEMO_SSO_MOCK_PORT ?= 8089
+# Profil mailpit dan sso-mock ditambahkan ke profil yang sudah disetel (mis. backup), bukan menggantinya.
 comma := ,
-DEMO_PROFILES = $(if $(COMPOSE_PROFILES),$(COMPOSE_PROFILES)$(comma))mailpit
+DEMO_PROFILES = $(if $(COMPOSE_PROFILES),$(COMPOSE_PROFILES)$(comma))mailpit$(comma)sso-mock
 DEMO_ENV = POSTGRES_VOLUME=$(DEMO_POSTGRES_VOLUME) REDIS_VOLUME=$(DEMO_REDIS_VOLUME) POSTGRES_PORT=$(DEMO_POSTGRES_PORT) REDIS_PORT=$(DEMO_REDIS_PORT) \
 	CADDY_HTTP_PORT=$(DEMO_CADDY_HTTP_PORT) CADDY_HTTPS_PORT=$(DEMO_CADDY_HTTPS_PORT) \
 	APP_ALLOWED_ORIGINS=http://localhost:$(DEMO_CADDY_HTTP_PORT),https://localhost:$(DEMO_CADDY_HTTPS_PORT) \
 	APP_PUBLIC_URL=http://localhost:$(DEMO_CADDY_HTTP_PORT) \
 	COMPOSE_PROFILES=$(DEMO_PROFILES) MAILPIT_PORT=$(DEMO_MAILPIT_PORT) \
 	SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_USERNAME= SMTP_PASSWORD= SMTP_FROM=noreply@gardainflasi.id \
+	SSO_MOCK_PORT=$(DEMO_SSO_MOCK_PORT) SSO_GOOGLE_CLIENT_ID=garda-demo SSO_GOOGLE_CLIENT_SECRET=garda-demo-secret \
+	SSO_GOOGLE_ISSUER=http://sso.localhost:$(DEMO_SSO_MOCK_PORT)/default SSO_GOOGLE_HOSTED_DOMAIN= \
+	SSO_GOOGLE_REDIRECT_URL=http://localhost:$(DEMO_CADDY_HTTP_PORT)/api/auth/sso/google/callback \
 	COOKIE_SECURE=false
 
 docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu aplikasi
@@ -171,10 +177,11 @@ docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu ap
 	$(DEMO_ENV) docker compose build
 	$(DEMO_ENV) docker compose run --rm migrate
 	$(DEMO_ENV) docker compose run --rm seed
-	$(DEMO_ENV) docker compose up -d api worker ml web caddy mailpit
+	$(DEMO_ENV) docker compose up -d api worker ml web caddy mailpit sso-mock
 	@echo ""
 	@echo "✓ Demo berjalan: http://localhost:$(DEMO_CADDY_HTTP_PORT)  (login: superadmin@gardainflasi.id / Garda2024!)"
 	@echo "  Kotak masuk email (Mailpit): http://localhost:$(DEMO_MAILPIT_PORT)"
+	@echo "  Masuk dengan Google (mock OIDC): tombol di halaman masuk; isi username apa saja dan klaim {\"email\":\"superadmin@gardainflasi.id\",\"email_verified\":true}"
 
 docker/demo/down: ## Matikan demo (data tetap di volume)
 	$(DEMO_ENV) docker compose down

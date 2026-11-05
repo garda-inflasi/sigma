@@ -63,6 +63,27 @@ API-nya di `http://localhost:8025/api/v1/messages` (dipakai e2e `auth.spec.ts`, 
 Tautan reset memakai `APP_PUBLIC_URL` (`http://localhost:8090`). Produksi tidak menjalankan Mailpit:
 profilnya tidak pernah diaktifkan oleh `compose.prod.yaml` maupun skrip deploy.
 
+**Masuk dengan Google (mock OIDC).** `make docker/demo/up` juga menyalakan penyedia OIDC palsu
+([mock-oauth2-server](https://github.com/navikt/mock-oauth2-server), service `sso-mock`, profil compose
+`sso-mock`) dan mengisi `SSO_GOOGLE_*` API untuknya, sehingga tombol "Masuk dengan Google" tampil di
+`/masuk`. Penerbitnya `http://sso.localhost:8089/default` (ubah port dengan `DEMO_SSO_MOCK_PORT`) dan harus
+identik bagi browser dan API: browser memetakan `*.localhost` ke loopback lalu port host `127.0.0.1:8089`
+yang dipublikasikan, sedangkan container API menjangkaunya lewat alias jaringan `sso.localhost` pada port
+yang sama. Cara masuk:
+
+1. Buka `http://localhost:8090/masuk`, klik **Masuk dengan Google**.
+2. Di halaman login mock isi *username* dengan nilai bebas (menjadi identitas Google / klaim `sub`) dan, pada
+   kolom klaim, JSON dengan email akun demo yang sudah ada, mis.
+   `{"email": "superadmin@gardainflasi.id", "email_verified": true}`, lalu **Sign-in**.
+3. Masuk pertama menautkan akun itu ke `sub` tadi; selanjutnya gunakan *username* yang sama. Email yang
+   tidak punya akun, `email_verified` salah/hilang, atau akun yang sudah tertaut ke `sub` lain ditolak
+   dengan pesan di `/masuk`. Akun ber-MFA (`mfa@gardainflasi.id`) lanjut ke langkah kode OTP.
+
+E2E-nya `apps/web/e2e/sso.spec.ts` (melepas tautan akun seed lewat `jalankanSql` sesudahnya). Produksi tidak
+pernah menjalankan mock ini: profil `sso-mock` tidak diaktifkan `compose.prod.yaml` maupun skrip deploy
+(`docker compose -f compose.yaml -f compose.prod.yaml config --services` tidak memuatnya). Google sungguhan:
+[docs/DEPLOYMENT.md §3.7](docs/DEPLOYMENT.md).
+
 `docker compose up` biasa (port bawaan, setelah `make docker/infra/up`) juga menjalankan service
 `migrate` lalu `seed`; API baru naik setelah migrasi sukses.
 
@@ -79,7 +100,7 @@ make test/e2e                          # Playwright terhadap stack demo yang sed
 ```
 
 E2E (`apps/web/e2e`) berjalan terhadap stack Docker yang hidup, bukan server sementara: nyalakan
-`make docker/demo/up` dulu (termasuk Mailpit dan layanan ML). Alamat web diatur `E2E_BASE_URL`
+`make docker/demo/up` dulu (termasuk Mailpit, mock OIDC `sso-mock`, dan layanan ML). Alamat web diatur `E2E_BASE_URL`
 (bawaan `http://localhost:8090`), Mailpit `E2E_MAILPIT_URL` (bawaan `http://localhost:8025`), container
 Postgres `E2E_PG_CONTAINER` (bawaan `garda-postgres`). Tes berjalan berurutan, memulihkan data yang
 diubahnya, dan aman diulang. Data uji yang tidak punya endpoint hapus dibersihkan lewat SQL.

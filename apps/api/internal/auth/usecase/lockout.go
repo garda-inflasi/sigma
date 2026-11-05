@@ -108,6 +108,22 @@ func (uc *UseCase) mulaiPercobaan(ctx context.Context, email string) (string, er
 	return hash, nil
 }
 
+// periksaKunci melaporkan kunci login yang sedang berlaku untuk email tanpa memesan percobaan. Dipakai
+// jalur masuk yang tidak memeriksa rahasia di sini (SSO): identitasnya sudah dibuktikan penyedia, jadi tidak
+// ada tebakan yang perlu dihitung, tetapi akun yang sedang terkunci tetap ditolak seperti login kata sandi.
+func (uc *UseCase) periksaKunci(ctx context.Context, email string) error {
+	hash := HashEmailKunci(email)
+	now := jam()
+	aktif, err := uc.repo.KunciAktif(ctx, []string{hash}, now)
+	if err != nil {
+		return fmt.Errorf("baca kunci login: %w", err)
+	}
+	if sampai, ok := aktif[hash]; ok {
+		return &AkunTerkunciError{Sampai: sampai, SisaDetik: max(1, sisaDetik(sampai, now))}
+	}
+	return nil
+}
+
 // kembalikanPercobaan membatalkan percobaan yang dipesan tetapi ternyata bukan tebakan gagal. Kegagalan
 // hanya dilaporkan di log: paling buruk hitungan lebih tinggi satu.
 func (uc *UseCase) kembalikanPercobaan(ctx context.Context, hash string) {

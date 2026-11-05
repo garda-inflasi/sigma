@@ -130,6 +130,15 @@ services:
       LLM_MODEL: "${LLM_MODEL:-claude-opus-5-5}"
       # production mewajibkan MFA bagi peran wajib; lokal/demo tidak dipaksa (MFA_ENFORCE menimpa).
       MFA_ENFORCE: "${MFA_ENFORCE:-}"
+      # Masuk dengan Google (OIDC). SSO aktif hanya bila SSO_GOOGLE_CLIENT_ID terisi; kosong = tombol
+      # disembunyikan dan rute SSO menjawab 503 SSO_NOT_CONFIGURED. ISSUER kosong = https://accounts.google.com.
+      # REDIRECT_URL = <origin publik>/api/auth/sso/google/callback (didaftarkan di Google Cloud Console).
+      # Demo (make docker/demo/up) mengisinya untuk mock OIDC lokal (service sso-mock); lihat docs/DEPLOYMENT.md.
+      SSO_GOOGLE_CLIENT_ID: "${SSO_GOOGLE_CLIENT_ID:-}"
+      SSO_GOOGLE_CLIENT_SECRET: "${SSO_GOOGLE_CLIENT_SECRET:-}"
+      SSO_GOOGLE_ISSUER: "${SSO_GOOGLE_ISSUER:-}"
+      SSO_GOOGLE_REDIRECT_URL: "${SSO_GOOGLE_REDIRECT_URL:-}"
+      SSO_GOOGLE_HOSTED_DOMAIN: "${SSO_GOOGLE_HOSTED_DOMAIN:-}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
     depends_on:
@@ -215,6 +224,31 @@ services:
       retries: 5
     networks:
       - garda_inflasi_net
+
+  # Penyedia OIDC palsu untuk dev/demo/e2e (profil "sso-mock"): menggantikan Google pada masuk dengan Google.
+  # TIDAK ikut berjalan tanpa profil; produksi (compose.prod.yaml, COMPOSE_PROFILES tidak pernah berisi
+  # sso-mock) tidak pernah menjalankannya. `make docker/demo/up` menyalakannya dan mengisi SSO_GOOGLE_*.
+  #
+  # Penerbit (issuer) harus IDENTIK bagi browser dan container api, karena mock menurunkannya dari header
+  # Host dan ID token memuat iss yang sama:  http://sso.localhost:${SSO_MOCK_PORT}/default
+  #  - browser: *.localhost selalu dipetakan ke loopback (Chromium/Firefox), lalu port host yang dipublikasikan
+  #    di bawah (hanya 127.0.0.1) meneruskan ke container;
+  #  - api: alias jaringan `sso.localhost` mengarah ke container ini, dan container mendengarkan di port
+  #    yang sama (SERVER_PORT = SSO_MOCK_PORT), sehingga host:port yang sama tersambung dari dalam jaringan.
+  # Halaman login interaktifnya menerima sembarang username (menjadi klaim sub) dan klaim JSON tambahan.
+  sso-mock:
+    image: ghcr.io/navikt/mock-oauth2-server:6.1.4
+    container_name: garda-sso-mock
+    profiles: ["sso-mock"]
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: "${SSO_MOCK_PORT:-8089}"
+    ports:
+      - "127.0.0.1:${SSO_MOCK_PORT:-8089}:${SSO_MOCK_PORT:-8089}"
+    networks:
+      garda_inflasi_net:
+        aliases:
+          - sso.localhost
 
   web:
     build:

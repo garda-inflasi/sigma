@@ -168,6 +168,13 @@ func langkahBawaan(repo domain.PembersihanRepository, cfg KonfigPembersihan) []L
 		},
 	}
 	langkah = append(langkah, Langkah{
+		Nama: "sso_login_state",
+		// State yang belum kedaluwarsa bisa sedang menunggu callback penyedia SSO; hanya yang lewat dihapus.
+		HapusBatch: func(ctx context.Context, now time.Time, batas int) (int64, error) {
+			return repo.HapusSSOStateKedaluwarsa(ctx, now, batas)
+		},
+	})
+	langkah = append(langkah, Langkah{
 		Nama: "kunci_login",
 		// Kunci yang masih berlaku tidak pernah dihapus, berapa pun umurnya.
 		HapusBatch: func(ctx context.Context, now time.Time, batas int) (int64, error) {

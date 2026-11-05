@@ -60,6 +60,13 @@ func (r *Repository) HapusKunciLoginUsang(ctx context.Context, sebelum, sekarang
 		sebelum, sekarang, batas)
 }
 
+func (r *Repository) HapusSSOStateKedaluwarsa(ctx context.Context, sebelum time.Time, batas int) (int64, error) {
+	return r.hapusBatch(ctx, batas,
+		`DELETE FROM sso_login_state WHERE state_hash IN (
+			SELECT state_hash FROM sso_login_state WHERE expires_at < ? ORDER BY expires_at LIMIT ? FOR UPDATE SKIP LOCKED)`,
+		sebelum, batas)
+}
+
 // hapusBatch menjalankan satu DELETE berbatas waktu dalam transaksi pendek dan mengembalikan jumlah baris terhapus.
 func (r *Repository) hapusBatch(ctx context.Context, batas int, query string, args ...any) (int64, error) {
 	if batas < 1 {

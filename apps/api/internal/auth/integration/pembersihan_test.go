@@ -114,6 +114,40 @@ func TestPembersihan_JwtBlacklist_HanyaYangKedaluwarsa(t *testing.T) {
 	assert.True(t, cabut)
 }
 
+func TestPembersihan_SSOState_HanyaYangKedaluwarsa(t *testing.T) {
+	db := pbrDB(t)
+	simpan := func(nama string, expiresAt time.Time) {
+		t.Helper()
+		require.NoError(t, db.Exec(`INSERT INTO sso_login_state (state_hash, binding_hash, provider, nonce, code_verifier, expires_at)
+			VALUES (?, 'b', 'google', 'n', 'v', ?)`, nama, expiresAt).Error)
+	}
+	simpan("ditinggalkan", pbrAcuan.Add(-time.Minute))
+	simpan("tepat-sekarang", pbrAcuan)
+	simpan("menunggu-callback", pbrAcuan.Add(9*time.Minute))
+
+	_, err := pbrPembersih(db, usecase.DefaultKonfigPembersihan()).JalankanPada(context.Background(), pbrAcuan)
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"tepat-sekarang", "menunggu-callback"}, pbrSisa(t, db, "SELECT state_hash FROM sso_login_state"))
+}
+
+func TestPembersihan_KunciLogin_HanyaUsangDanTidakTerkunci(t *testing.T) {
+	db := pbrDB(t)
+	simpan := func(nama string, diperbarui time.Time, sampai *time.Time) {
+		t.Helper()
+		require.NoError(t, db.Exec(`INSERT INTO kunci_login (email_hash, gagal, jendela_mulai, terkunci_sampai, diperbarui_pada)
+			VALUES (?, 1, ?, ?, ?)`, nama, diperbarui, sampai, diperbarui).Error)
+	}
+	simpan("usang", pbrAcuan.Add(-2*time.Hour), nil)
+	simpan("baru", pbrAcuan.Add(-10*time.Minute), nil)
+	simpan("usang-tapi-terkunci", pbrAcuan.Add(-2*time.Hour), pbrWaktu(pbrAcuan.Add(5*time.Minute)))
+
+	_, err := pbrPembersih(db, usecase.DefaultKonfigPembersihan()).JalankanPada(context.Background(), pbrAcuan)
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"baru", "usang-tapi-terkunci"}, pbrSisa(t, db, "SELECT email_hash FROM kunci_login"))
+}
+
 func TestPembersihan_RefreshTokens_HapusKedaluwarsa_SimpanDicabutYangMasihBerlaku(t *testing.T) {
 	db := pbrDB(t)
 	pbrRefresh(t, db, "kedaluwarsa-1s-aktif", pbrUserA, pbrAcuan.Add(-time.Second), false)

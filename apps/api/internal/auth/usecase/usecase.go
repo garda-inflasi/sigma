@@ -243,6 +243,7 @@ func (uc *UseCase) completeLogin(ctx context.Context, user *domain.Pengguna, ip,
 	if metodeMFA != "" {
 		entry.Metadata = map[string]any{"mfa": metodeMFA}
 	}
+	entry.Metadata = withLoginMethodMetadata(ctx, entry.Metadata)
 	uc.writeAudit(ctx, entry)
 	uc.log.Info("login success", map[string]interface{}{"user_id": user.ID, "email": user.Email, "ip": ip})
 	return &LoginResult{User: user, AccessToken: accessToken, RefreshToken: rawRefresh, MFASetupRequired: uc.mfaSetupRequired(user)}, nil

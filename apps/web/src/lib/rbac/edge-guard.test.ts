@@ -94,6 +94,8 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
     "/healthz",
     "/api/auth/login",
     "/api/auth/mfa/validate",
+    "/api/auth/sso/google",
+    "/api/auth/sso/google/callback",
     "/api/auth/refresh",
     "/_next/static/chunk.js",
   ]) {
@@ -108,6 +110,10 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
 
   it("/daftar tidak lagi publik (halamannya tidak ada)", () => {
     assert.equal(isPublicRoute("/daftar"), false);
+  });
+
+  it("batas prefiks SSO: /api/auth/sso-palsu bukan rute publik", () => {
+    assert.equal(isPublicRoute("/api/auth/sso-palsu"), false);
   });
 
   it("hanya langkah OTP yang publik di /api/auth/mfa; setup dan verifikasi butuh sesi", () => {

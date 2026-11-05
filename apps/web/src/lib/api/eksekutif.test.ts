@@ -68,6 +68,7 @@ describe("toRingkasanEksekutif", () => {
     assert.deepEqual(r.inflasi, {
       periode: "2026-10-01T12:00:00",
       sumber: "DEMO",
+      diimporPada: "2026-11-05T01:00:00Z",
       yoy: 2.84,
       mtm: 0.41,
       ytd: 2.13,

@@ -72,6 +72,7 @@ export function toRingkasanEksekutif(
     inflasi: r.inflasi && {
       periode: tanggalLokal(r.inflasi.periode),
       sumber: toSumber(r.inflasi.sumber),
+      diimporPada: r.inflasi.diimpor_pada,
       yoy: r.inflasi.yoy,
       mtm: r.inflasi.mtm,
       ytd: r.inflasi.ytd,

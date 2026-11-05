@@ -404,7 +404,7 @@ export function mockEksekutif(): RingkasanEksekutif {
   return {
     demo: true,
     inflasi: {
-      periode: "2026-09-01T12:00:00", sumber: "DEMO",
+      periode: "2026-09-01T12:00:00", sumber: "DEMO", diimporPada: "2026-10-01T01:00:00Z",
       yoy: 2.84, mtm: 0.41, ytd: 1.92, sasaran: { bawah: 1.5, atas: 3.5 },
       seri: bulan.map((b, i) => ({ bulan: b, yoy: yoy[i] })),
       penyumbang: [

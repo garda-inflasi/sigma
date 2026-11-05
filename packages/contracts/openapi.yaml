@@ -1477,7 +1477,14 @@ paths:
 
         **Setiap angka membawa `sumber`.** `DEMO` berarti data contoh, bukan angka
         resmi; `demo` bernilai true bila ada blok ber-sumber DEMO dan UI wajib
-        menampilkan label demo. Angka resmi (BPS, BI, DJPB) hanya masuk lewat impor.
+        menampilkan label demo. Angka resmi (BPS, BI, DJPB, BAPANAS) hanya masuk lewat impor
+        (ingestion BPS: `POST /v1/sumber-data/SRC-BPS/jalankan`).
+
+        **Angka resmi didahulukan.** Bila sebuah blok punya baris resmi, baris contoh
+        (DEMO) tidak dipakai sama sekali, walau lebih baru; seri 12 bulan dan penyumbang
+        hanya dari golongan yang sama dengan bulan terbaru, jadi satu blok tidak pernah
+        mencampur angka resmi dan contoh. Blok lain boleh tetap contoh (label demo tetap
+        menyala untuk blok itu saja). `inflasi.diimpor_pada` menunjukkan kapan angka masuk.
 
         Blok yang datanya belum ada bernilai `null` (bukan galat). `fiskal` juga
         `null` untuk peran tanpa izin `fiskal.lihat`.

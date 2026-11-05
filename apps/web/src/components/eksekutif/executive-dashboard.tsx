@@ -6,6 +6,7 @@ import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { PanelSkeleton, Shimmer } from "@/components/garda/shimmer";
 import { SpringLink } from "@/components/garda/spring-button";
 import { useCan } from "@/lib/auth/session-context";
+import type { RingkasanEksekutif, SumberAngka } from "@/lib/data/types";
 import { useRingkasanEksekutif } from "@/lib/query/hooks";
 import { EwsSummary, InterventionSummary, LatestBrief } from "./exec-side";
 import { FiscalSpace } from "./fiscal-space";
@@ -21,6 +22,17 @@ function Kosong({ judul, pesan }: { judul: string; pesan: string }) {
     </section>
   );
 }
+
+/** Blok ringkasan beserta nama tampilnya; sumber DEMO = contoh, selain itu angka resmi. */
+function blokBerSumber(d: RingkasanEksekutif) {
+  return [
+    { nama: "inflasi", sumber: d.inflasi?.sumber },
+    { nama: "neraca pangan", sumber: d.neraca?.sumber },
+    { nama: "ruang fiskal", sumber: d.fiskal?.sumber },
+  ].filter((b): b is { nama: string; sumber: SumberAngka } => !!b.sumber);
+}
+const blokDemo = (d: RingkasanEksekutif) => blokBerSumber(d).filter((b) => b.sumber === "DEMO").map((b) => `angka ${b.nama}`);
+const blokResmi = (d: RingkasanEksekutif) => blokBerSumber(d).filter((b) => b.sumber !== "DEMO").map((b) => `${b.nama} (${b.sumber})`);
 
 export function ExecutiveDashboard() {
   const { data, isLoading } = useRingkasanEksekutif();
@@ -38,7 +50,8 @@ export function ExecutiveDashboard() {
       />
       {data?.demo && (
         <p role="status" className="rounded-xl border border-dashed border-waspada/50 bg-waspada/10 px-4 py-3 text-sm text-waspada-ink">
-          Data demo: angka inflasi, neraca pangan, dan ruang fiskal di halaman ini adalah contoh, bukan angka resmi BPS, BI, atau DJPb.
+          Data demo: {blokDemo(data).join(", ")} di halaman ini adalah contoh, bukan angka resmi BPS, BI, atau DJPb.
+          {blokResmi(data).length > 0 && ` Angka resmi: ${blokResmi(data).join(", ")}.`}
         </p>
       )}
       {isLoading || !data ? (
@@ -50,7 +63,7 @@ export function ExecutiveDashboard() {
       )}
       <div className="grid gap-6 xl:grid-cols-12">
         <div className={lihatFiskal ? "xl:col-span-7" : "xl:col-span-12"}>
-          {!data ? <PanelSkeleton /> : data.neraca ? <FoodBalance data={data.neraca.items} /> : <Kosong judul="Neraca pangan" pesan="Belum ada data neraca pangan." />}
+          {!data ? <PanelSkeleton /> : data.neraca ? <FoodBalance data={data.neraca.items} sumber={data.neraca.sumber} /> : <Kosong judul="Neraca pangan" pesan="Belum ada data neraca pangan." />}
         </div>
         {lihatFiskal && (
           <div className="xl:col-span-5">

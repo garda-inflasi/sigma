@@ -299,6 +299,8 @@ export interface RingkasanEksekutif {
     /** Bulan data, ISO lokal (siang hari agar aman dari pergeseran zona waktu). */
     periode: string;
     sumber: SumberAngka;
+    /** Waktu angka masuk ke sistem (ISO), untuk label "data per tanggal/jam". */
+    diimporPada: string;
     yoy: number;
     mtm: number;
     ytd: number;

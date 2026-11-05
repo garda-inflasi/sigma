@@ -24,18 +24,22 @@ type fakeRepo struct {
 	Err        error
 
 	fiskalDipanggil bool
+	// golongan (demo atau resmi) yang diminta usecase untuk seri dan penyumbang.
+	seriDemo, penyumbangDemo *bool
 }
 
 func (f *fakeRepo) InflasiTerbaru(context.Context, string) (*domain.InflasiBulanan, error) {
 	return f.inflasi, f.Err
 }
-func (f *fakeRepo) SeriInflasi(context.Context, string, time.Time, int) ([]domain.InflasiBulanan, error) {
+func (f *fakeRepo) SeriInflasi(_ context.Context, _ string, _ time.Time, _ int, demo bool) ([]domain.InflasiBulanan, error) {
+	f.seriDemo = &demo
 	return f.seri, f.Err
 }
 func (f *fakeRepo) TargetBerlaku(context.Context, int) (*domain.TargetInflasi, error) {
 	return f.target, f.Err
 }
-func (f *fakeRepo) Penyumbang(context.Context, string, time.Time, int) ([]domain.Penyumbang, error) {
+func (f *fakeRepo) Penyumbang(_ context.Context, _ string, _ time.Time, _ int, demo bool) ([]domain.Penyumbang, error) {
+	f.penyumbangDemo = &demo
 	return f.penyumbang, f.Err
 }
 func (f *fakeRepo) NeracaTerbaru(context.Context, string) ([]domain.NeracaItem, error) {
@@ -226,4 +230,20 @@ func TestRingkasan_UnknownCycleIsAnError(t *testing.T) {
 	_, err := New(repo).Ringkasan(t.Context(), true)
 
 	assert.Error(t, err)
+}
+
+// Seri dan penyumbang harus dari golongan yang sama dengan baris inflasi terbaru, supaya satu blok
+// tidak mencampur angka resmi dengan angka contoh.
+func TestRingkasan_SeriDanPenyumbangMengikutiGolonganBarisTerbaru(t *testing.T) {
+	for sumber, wantDemo := range map[string]bool{domain.SumberBPS: false, domain.SumberDemo: true} {
+		repo := repoLengkap(sumber)
+
+		_, err := New(repo).Ringkasan(t.Context(), false)
+
+		require.NoError(t, err)
+		require.NotNil(t, repo.seriDemo, sumber)
+		require.NotNil(t, repo.penyumbangDemo, sumber)
+		assert.Equal(t, wantDemo, *repo.seriDemo, sumber)
+		assert.Equal(t, wantDemo, *repo.penyumbangDemo, sumber)
+	}
 }

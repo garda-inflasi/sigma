@@ -59,6 +59,26 @@ func TestCreateAccessToken(t *testing.T) {
 	assert.True(t, claims.IssuedAt.Time.Before(time.Now().Add(time.Second)))
 }
 
+func TestCreateAccessToken_ProfileClaims(t *testing.T) {
+	m := NewManager("test-secret-key-32-chars!!")
+
+	tokenStr, err := m.CreateAccessToken("mahasiswa_1", "OPS_MAHASISWA", nil,
+		WithProfile("Aulia Rahman", "mahasiswa.1@gardainflasi.id", "FMIPA USK", "1171"))
+	require.NoError(t, err)
+	claims, err := m.VerifyToken(tokenStr)
+	require.NoError(t, err)
+	assert.Equal(t, "Aulia Rahman", claims.Name)
+	assert.Equal(t, "mahasiswa.1@gardainflasi.id", claims.Email)
+	assert.Equal(t, "FMIPA USK", claims.Org)
+	assert.Equal(t, "1171", claims.Kab)
+
+	tanpa, err := m.CreateAccessToken("superadmin", "ADMIN_SISTEM", nil, WithProfile("Super Admin", "a@x.id", "BPPSDMP", ""))
+	require.NoError(t, err)
+	raw, _, err := jwt.NewParser().ParseUnverified(tanpa, jwt.MapClaims{})
+	require.NoError(t, err)
+	assert.NotContains(t, raw.Claims.(jwt.MapClaims), "kab", "kabupaten kosong tidak dikirim")
+}
+
 func TestVerifyToken_InvalidSignature(t *testing.T) {
 	m1 := NewManager("secret-one-1234567890123456")
 	m2 := NewManager("secret-two-1234567890123456")

@@ -36,6 +36,12 @@ type Claims struct {
 	// MFASetupRequired menandai sesi akun yang wajib mengaktifkan MFA tetapi belum; middleware hanya
 	// membuka endpoint setup MFA, keluar, dan profil selama klaim ini aktif.
 	MFASetupRequired bool `json:"wajib_setup_mfa,omitempty"`
+	// Profil untuk tampilan (nama, email, lembaga, kabupaten tugas); dibaca sesi server web.
+	// Otorisasi tidak pernah bergantung pada klaim ini.
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+	Org   string `json:"org,omitempty"`
+	Kab   string `json:"kab,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -123,6 +129,14 @@ func WithPasswordChangeRequired(required bool) ClaimOption {
 func WithMFASetupRequired(required bool) ClaimOption {
 	return func(c *Claims) {
 		c.MFASetupRequired = required
+	}
+}
+
+// WithProfile mengisi klaim profil tampilan: nama, email, lembaga, dan kode kabupaten tugas
+// (kosong untuk pengguna tingkat provinsi).
+func WithProfile(nama, email, lembaga, kabupatenKode string) ClaimOption {
+	return func(c *Claims) {
+		c.Name, c.Email, c.Org, c.Kab = nama, email, lembaga, kabupatenKode
 	}
 }
 

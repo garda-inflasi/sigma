@@ -764,9 +764,14 @@ func userSnapshot(u *domain.Pengguna) map[string]any {
 // issueSession menerbitkan access token (membawa penanda wajib ganti kata sandi
 // bila aktif) dan refresh token baru dalam keluarga familyID.
 func (uc *UseCase) issueSession(ctx context.Context, user *domain.Pengguna, familyID, ip string) (accessToken, refreshToken string, err error) {
+	kabupaten := ""
+	if user.KabupatenKode != nil {
+		kabupaten = *user.KabupatenKode
+	}
 	accessToken, err = uc.token.CreateAccessToken(user.ID, user.Peran, uc.getPermissionsForRole(user.Peran),
 		token.WithPasswordChangeRequired(user.WajibGantiPassword),
-		token.WithMFASetupRequired(uc.mfaSetupRequired(user)))
+		token.WithMFASetupRequired(uc.mfaSetupRequired(user)),
+		token.WithProfile(user.Nama, user.Email, user.Lembaga, kabupaten))
 	if err != nil {
 		return "", "", fmt.Errorf("create access token: %w", err)
 	}

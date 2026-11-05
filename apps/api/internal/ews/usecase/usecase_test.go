@@ -2,215 +2,206 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/ews/domain"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
-
-// ── Mock Repository ───────────────────────────────────────────────────
 
 type mockRepository struct {
 	mock.Mock
 }
 
-func (m *mockRepository) List(ctx context.Context, limit int) ([]domain.EwsAlert, error) {
-	args := m.Called(ctx, limit)
-	return args.Get(0).([]domain.EwsAlert), args.Error(1)
+func (m *mockRepository) List(ctx context.Context, q domain.ListQuery) ([]domain.Alert, int64, error) {
+	args := m.Called(ctx, q)
+	return args.Get(0).([]domain.Alert), args.Get(1).(int64), args.Error(2)
 }
 
-func (m *mockRepository) GetByID(ctx context.Context, id int64) (*domain.EwsAlert, error) {
+func (m *mockRepository) GetByID(ctx context.Context, id string) (*domain.Alert, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*domain.EwsAlert), args.Error(1)
+	return args.Get(0).(*domain.Alert), args.Error(1)
 }
 
-func (m *mockRepository) BulkAction(ctx context.Context, ids []int64, action domain.BulkAction, userID string) (int64, error) {
+func (m *mockRepository) ListAturan(ctx context.Context) ([]domain.Aturan, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]domain.Aturan), args.Error(1)
+}
+
+func (m *mockRepository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction, userID string) ([]string, error) {
 	args := m.Called(ctx, ids, action, userID)
-	return args.Get(0).(int64), args.Error(1)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
 }
 
-// ── Test Helpers ──────────────────────────────────────────────────────
-
-func newTestUseCase(repo *mockRepository) *UseCase {
-	return New(repo, logger.NewDefault())
+func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
+	recorder := &audittest.Recorder{}
+	return New(repo, recorder, logger.NewDefault()), recorder
 }
 
-func sampleAlert() *domain.EwsAlert {
-	return &domain.EwsAlert{
-		ID:            1,
-		KomoditasKode: "BERAS",
-		WilayahKode:   "1171",
-		Level:         domain.LevelKuning,
-		Skor:          75.5,
-		Deskripsi:     "Kenaikan harga beras signifikan",
-		Status:        "BARU",
-		Sumber:        "SISTEM",
-		SkorDampak:    3,
+func sampleAlert() domain.Alert {
+	kode, nama := "BRS-MED", "Beras medium"
+	return domain.Alert{
+		EwsAlert: domain.EwsAlert{
+			ID: "EWS-1000", Severity: "KRITIS", Jenis: "LONJAKAN_HARGA", Judul: "Lonjakan harga beras",
+			KomoditasKode: &kode, KabupatenKode: "1171", Nilai: 21.4, SatuanNilai: "%", Status: domain.StatusBaru,
+		},
+		KomoditasNama: &nama, KabupatenNama: "KOTA BANDA ACEH",
 	}
 }
 
-// ── List Tests ────────────────────────────────────────────────────────
+func TestList_AppliesDefaultsAndPassesFilters(t *testing.T) {
+	cases := map[string]struct {
+		in, want domain.ListQuery
+	}{
+		"kosong memakai bawaan":        {domain.ListQuery{}, domain.ListQuery{Page: 1, Limit: DefaultLimit}},
+		"limit di atas batas":          {domain.ListQuery{Page: 3, Limit: 5000}, domain.ListQuery{Page: 3, Limit: DefaultLimit}},
+		"filter diteruskan apa adanya": {domain.ListQuery{Status: "BARU", Severity: "KRITIS", Page: 2, Limit: 10}, domain.ListQuery{Status: "BARU", Severity: "KRITIS", Page: 2, Limit: 10}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := new(mockRepository)
+			uc, _ := newTestUseCase(repo)
+			repo.On("List", mock.Anything, tc.want).Return([]domain.Alert{sampleAlert()}, int64(42), nil)
 
-func TestList_Success(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+			items, total, err := uc.List(context.Background(), tc.in)
 
-	expected := []domain.EwsAlert{*sampleAlert()}
-	repo.On("List", mock.Anything, 200).Return(expected, nil)
-
-	result, err := uc.List(context.Background(), 200)
-
-	require.NoError(t, err)
-	assert.Len(t, result, 1)
-	assert.Equal(t, int64(1), result[0].ID)
-
-	repo.AssertExpectations(t)
+			require.NoError(t, err)
+			assert.Len(t, items, 1)
+			assert.Equal(t, int64(42), total)
+			repo.AssertExpectations(t)
+		})
+	}
 }
 
-func TestList_Empty(t *testing.T) {
+func TestList_RepositoryError(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, _ := newTestUseCase(repo)
+	repo.On("List", mock.Anything, mock.Anything).Return([]domain.Alert{}, int64(0), assert.AnError)
 
-	repo.On("List", mock.Anything, 200).Return([]domain.EwsAlert{}, nil)
+	_, _, err := uc.List(context.Background(), domain.ListQuery{})
 
-	result, err := uc.List(context.Background(), 200)
-
-	require.NoError(t, err)
-	assert.Empty(t, result)
-
-	repo.AssertExpectations(t)
+	assert.ErrorIs(t, err, assert.AnError)
 }
 
-func TestList_DefaultLimit(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+func TestGetByID(t *testing.T) {
+	t.Run("ditemukan", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		alert := sampleAlert()
+		repo.On("GetByID", mock.Anything, "EWS-1000").Return(&alert, nil)
 
-	repo.On("List", mock.Anything, 200).Return([]domain.EwsAlert{}, nil)
+		got, err := uc.GetByID(context.Background(), "EWS-1000")
 
-	result, err := uc.List(context.Background(), 0)
+		require.NoError(t, err)
+		assert.Equal(t, "EWS-1000", got.ID)
+	})
+	t.Run("tidak ada menjadi ErrNotFound", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		repo.On("GetByID", mock.Anything, "X").Return(nil, gorm.ErrRecordNotFound)
 
-	require.NoError(t, err)
-	assert.Empty(t, result)
+		_, err := uc.GetByID(context.Background(), "X")
 
-	repo.AssertExpectations(t)
+		assert.ErrorIs(t, err, ErrNotFound)
+	})
+	t.Run("galat lain diteruskan", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		repo.On("GetByID", mock.Anything, "X").Return(nil, assert.AnError)
+
+		_, err := uc.GetByID(context.Background(), "X")
+
+		assert.ErrorIs(t, err, assert.AnError)
+		assert.NotErrorIs(t, err, ErrNotFound)
+	})
 }
 
-func TestList_ExceedsMaxLimit(t *testing.T) {
+func TestListAturan(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, _ := newTestUseCase(repo)
+	repo.On("ListAturan", mock.Anything).Return([]domain.Aturan{{AturanEws: domain.AturanEws{ID: "ATR-LH-BRS-MED"}}}, nil)
 
-	repo.On("List", mock.Anything, 200).Return([]domain.EwsAlert{}, nil)
-
-	result, err := uc.List(context.Background(), 5000)
+	items, err := uc.ListAturan(context.Background())
 
 	require.NoError(t, err)
-	assert.Empty(t, result)
-
-	repo.AssertExpectations(t)
+	assert.Len(t, items, 1)
 }
 
-// ── GetByID Tests ─────────────────────────────────────────────────────
+func TestBulkAction_ReportsChangedAndFailedAndWritesAudit(t *testing.T) {
+	for _, action := range []string{"akui", "eskalasi", "selesai"} {
+		t.Run(action, func(t *testing.T) {
+			repo := new(mockRepository)
+			uc, recorder := newTestUseCase(repo)
+			// id ganda dibuang sebelum ke repository; "EWS-3" tidak berubah.
+			repo.On("BulkAction", mock.Anything, []string{"EWS-1", "EWS-2", "EWS-3"}, domain.BulkAction(action), "user-001").
+				Return([]string{"EWS-1", "EWS-2"}, nil)
 
-func TestGetByID_Success(t *testing.T) {
+			res, err := uc.BulkAction(context.Background(), []string{"EWS-1", "EWS-2", "EWS-1", "EWS-3"}, action, "user-001")
+
+			require.NoError(t, err)
+			assert.Equal(t, BulkResult{Berhasil: 2, Gagal: 1}, res)
+			entry, ok := recorder.Last()
+			require.True(t, ok, "aksi yang mengubah data harus dicatat di audit")
+			assert.Equal(t, "ews_alert", entry.Entitas)
+			assert.Equal(t, "user-001", entry.AktorID)
+			assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
+			assert.Equal(t, []string{"EWS-1", "EWS-2"}, entry.Metadata["ids"])
+		})
+	}
+}
+
+func TestBulkAction_NothingChangedWritesNoAudit(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, recorder := newTestUseCase(repo)
+	repo.On("BulkAction", mock.Anything, []string{"EWS-9"}, domain.BulkAkui, "u").Return([]string{}, nil)
 
-	repo.On("GetByID", mock.Anything, int64(1)).Return(sampleAlert(), nil)
-
-	result, err := uc.GetByID(context.Background(), 1)
+	res, err := uc.BulkAction(context.Background(), []string{"EWS-9"}, "akui", "u")
 
 	require.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, int64(1), result.ID)
-
-	repo.AssertExpectations(t)
-}
-
-func TestGetByID_NotFound(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-
-	repo.On("GetByID", mock.Anything, int64(999)).Return(nil, assert.AnError)
-
-	result, err := uc.GetByID(context.Background(), 999)
-
-	assert.ErrorIs(t, err, ErrNotFound)
-	assert.Nil(t, result)
-
-	repo.AssertExpectations(t)
-}
-
-// ── BulkAction Tests ──────────────────────────────────────────────────
-
-func TestBulkAction_Akui(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-
-	ids := []int64{1, 2, 3}
-	repo.On("BulkAction", mock.Anything, ids, domain.BulkAkui, "user-001").Return(int64(3), nil)
-
-	count, err := uc.BulkAction(context.Background(), ids, "akui", "user-001")
-
-	require.NoError(t, err)
-	assert.Equal(t, int64(3), count)
-
-	repo.AssertExpectations(t)
-}
-
-func TestBulkAction_Eskalasi(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-
-	ids := []int64{1}
-	repo.On("BulkAction", mock.Anything, ids, domain.BulkEskalasi, "user-001").Return(int64(1), nil)
-
-	count, err := uc.BulkAction(context.Background(), ids, "eskalasi", "user-001")
-
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), count)
-
-	repo.AssertExpectations(t)
-}
-
-func TestBulkAction_Selesai(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-
-	ids := []int64{2, 5}
-	repo.On("BulkAction", mock.Anything, ids, domain.BulkSelesai, "user-001").Return(int64(2), nil)
-
-	count, err := uc.BulkAction(context.Background(), ids, "selesai", "user-001")
-
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), count)
-
-	repo.AssertExpectations(t)
+	assert.Equal(t, BulkResult{Gagal: 1}, res)
+	assert.Empty(t, recorder.Entries())
 }
 
 func TestBulkAction_InvalidAction(t *testing.T) {
-	uc := newTestUseCase(new(mockRepository))
+	uc, recorder := newTestUseCase(new(mockRepository))
 
-	_, err := uc.BulkAction(context.Background(), []int64{1}, "hapus", "user-001")
+	_, err := uc.BulkAction(context.Background(), []string{"EWS-1"}, "hapus", "u")
+
 	assert.ErrorIs(t, err, ErrInvalidAction)
+	assert.Empty(t, recorder.Entries())
 }
 
-func TestBulkAction_EmptyIDs(t *testing.T) {
+func TestBulkAction_RepositoryError(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, recorder := newTestUseCase(repo)
+	repo.On("BulkAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
 
-	ids := []int64{}
-	repo.On("BulkAction", mock.Anything, ids, domain.BulkAkui, "user-001").Return(int64(0), nil)
+	_, err := uc.BulkAction(context.Background(), []string{"EWS-1"}, "akui", "u")
 
-	count, err := uc.BulkAction(context.Background(), ids, "akui", "user-001")
+	assert.ErrorIs(t, err, assert.AnError)
+	assert.Empty(t, recorder.Entries())
+}
+
+func TestBulkAction_AuditFailureDoesNotFailTheAction(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	recorder.Err = errors.New("audit down")
+	repo.On("BulkAction", mock.Anything, []string{"EWS-1"}, domain.BulkAkui, "u").Return([]string{"EWS-1"}, nil)
+
+	res, err := uc.BulkAction(context.Background(), []string{"EWS-1"}, "akui", "u")
 
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), count)
-
-	repo.AssertExpectations(t)
+	assert.Equal(t, 1, res.Berhasil)
 }

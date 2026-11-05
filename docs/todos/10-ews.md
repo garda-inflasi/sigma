@@ -1,14 +1,14 @@
 # 10 — Peringatan dini (EWS)
 
-**Prioritas:** P0 (PRD §2.2) · **Status:** UI ✅ · Backend 🟡 (hanya baca/ack) · Terhubung 🟡 · Skema & seed ⬜ · Tes 🟡
+**Prioritas:** P0 (PRD §2.2) · **Status:** UI ✅ · Backend 🟡 (baca, aturan, ubah status; belum rule engine) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
 
 - **UI:** [ews-page.tsx](../../apps/web/src/components/ews/ews-page.tsx) di `/ews` (tabel alert, aksi massal, ambang dan kanal), [ews-live-feed](../../apps/web/src/components/ews/ews-live-feed.tsx), toast, hook [use-ews-stream.ts](../../apps/web/src/components/ews/use-ews-stream.ts), store EWS.
-- **API Go:** `GET /v1/ews`, `GET /v1/ews/:id` (`ews.lihat`), `POST /v1/ews/bulk` (`ews.akui`). Ada `usecase_test.go`.
-- **Mode mock:** alert acak tiap 25–45 detik dan event `garda:simulasi-ews` dari palet perintah.
-- **Skema:** `ews_alert` (`id` VARCHAR, `severity`, `jenis`, `judul`, `pesan`, `komoditas_kode`, `kabupaten_kode` NOT NULL, `nilai`, `satuan_nilai`, `skor_dampak`, `status`, `sumber`, `dibuat_pada`, `diakui_*`). **Entity tidak cocok:** `id` `int64`, `level` (tipe `level_ews` tidak ada), `skor`, `deskripsi`, `wilayah_kode`, `direkomendasikan_pada`, `ditindaklanjuti_pada`. `aturan_ews` (ambang waspada/siaga/kritis, `jendela_hari`, `kanal`, `aktif`) ada tetapi tidak dirujuk kode. Kedua tabel kosong.
+- **API Go:** `GET /v1/ews` (filter `status`/`severity`/`jenis`/`kabupaten_kode`, paginasi `page`/`limit`, header `X-Total-Count`), `GET /v1/ews/:id`, `GET /v1/ews/aturan` (`ews.lihat`), dan `POST /v1/ews/bulk` (`ews.akui`; `eskalasi` menuntut `ews.eskalasi`; hanya transisi sah, dicatat di audit). Tes usecase, seeder, integrasi (Postgres sungguhan), dan asap.
+- **Skema:** `ews_alert` (`id` VARCHAR, `severity`, `jenis`, `judul`, `pesan`, `komoditas_kode`, `kabupaten_kode`, `nilai`, `satuan_nilai`, `skor_dampak`, `status`, `sumber`, `dibuat_pada`, `diakui_*`, `aturan_id`) dan `aturan_ews` (ambang, `jendela_hari`, `kanal`, `aktif`, `keterangan`, `CHECK` waspada < siaga < kritis); entity cocok (migrasi 000030). Seeder `ews.reference` (9 aturan: pilot x lonjakan harga/stok/cuaca) dan `ews.demo` (17 alert).
+- **Web:** `/ews` membaca alert dan aturan dari API (`lib/api/ews.ts`); simulasi acak hanya di `MODE_MOCK`. Ambang tampil baca-saja sampai 10-B.
 - **Yang tidak ada:** pembuat alert (tidak ada deteksi lonjakan/anomali), `GET /v1/ews/stream` (SSE), Redis pub/sub di Go.
 
 ---
@@ -19,15 +19,15 @@
 **Bergantung pada:** 04-A.
 
 1. **MIG**
-   - [ ] `ews_alert`: tambah `aturan_id` (FK `aturan_ews`, nullable). Selaraskan entity ke tabel yang ada (D1): `id` string, `severity`, `kabupaten_kode`, `satuan_nilai`; buang kolom entity yang tidak ada.
-   - [ ] `aturan_ews`: `CHECK (ambang_waspada < ambang_siaga AND ambang_siaga < ambang_kritis)`.
+   - [x] `ews_alert`: tambah `aturan_id` (FK `aturan_ews`, nullable). Selaraskan entity ke tabel yang ada (D1): `id` string, `severity`, `kabupaten_kode`, `satuan_nilai`; buang kolom entity yang tidak ada.
+   - [x] `aturan_ews`: `CHECK (ambang_waspada < ambang_siaga AND ambang_siaga < ambang_kritis)`.
 2. **SEED**
-   - [ ] `reference`: `aturan_ews` default per komoditas pilot × jenis (lonjakan harga, stok, cuaca). Beri keterangan "ambang awal, harus dikalibrasi bersama BI/BPS".
-   - [ ] `demo`: `ews_alert` dengan severity/status beragam, ID berformat sama dengan `mockEws`, merujuk komoditas dan kabupaten yang ada di seed master. Tidak ada alert contoh di produksi.
+   - [x] `reference`: `aturan_ews` default per komoditas pilot × jenis (lonjakan harga, stok, cuaca). Beri keterangan "ambang awal, harus dikalibrasi bersama BI/BPS".
+   - [x] `demo`: `ews_alert` dengan severity/status beragam, ID berformat sama dengan `mockEws`, merujuk komoditas dan kabupaten yang ada di seed master. Tidak ada alert contoh di produksi.
 3. **API**
-   - [ ] Entity + route `GET /v1/ews/aturan` (baca). `list`/`get`/`bulk` (akui) sesuai izin; filter dan paginasi server (UI memuat `limit=200`).
+   - [x] Entity + route `GET /v1/ews/aturan` (baca). `list`/`get`/`bulk` (akui) sesuai izin; filter dan paginasi server (UI memuat `limit=200`).
 4. **FE**
-   - [ ] `useEwsList` ke API; kartu ambang dari `aturan_ews`; simulasi acak hanya aktif di `MODE_MOCK`.
+   - [x] `useEwsList` ke API; kartu ambang dari `aturan_ews`; simulasi acak hanya aktif di `MODE_MOCK`.
 5. **TES**: aturan seed lolos `CHECK`; seed dua kali tidak menggandakan alert; hapus `ews` dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 

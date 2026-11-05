@@ -9,7 +9,8 @@ interface KanbanState {
   cards: Record<string, KartuIntervensi>;
   order: Record<string, string[]>; // tahapId -> id kartu terurut
   selected: string[];
-  init: (cards: KartuIntervensi[]) => void;
+  /** Memuat atau mengganti seluruh papan dengan data server (juga saat polling); pilihan kartu yang masih ada dipertahankan. */
+  sync: (cards: KartuIntervensi[]) => void;
   move: (id: string, toTahap: string, toIndex: number) => void;
   bulkMove: (ids: string[], toTahap: string) => void;
   toggleSelect: (id: string) => void;
@@ -19,17 +20,21 @@ interface KanbanState {
   restore: (s: Pick<KanbanState, "cards" | "order">) => void;
 }
 
+function susun(list: KartuIntervensi[]) {
+  const order: Record<string, string[]> = {};
+  Object.values(SIKLUS_TAHAP).flat().forEach((t) => (order[t.id] = []));
+  list.forEach((c) => order[c.tahap]?.push(c.id));
+  return { cards: Object.fromEntries(list.map((c) => [c.id, c])), order };
+}
+
 export const useKanban = create<KanbanState>()((set, get) => ({
   ready: false,
   cards: {},
   order: {},
   selected: [],
-  init: (list) => {
-    if (get().ready) return;
-    const order: Record<string, string[]> = {};
-    Object.values(SIKLUS_TAHAP).flat().forEach((t) => (order[t.id] = []));
-    list.forEach((c) => order[c.tahap]?.push(c.id));
-    set({ ready: true, cards: Object.fromEntries(list.map((c) => [c.id, c])), order });
+  sync: (list) => {
+    const baru = susun(list);
+    set((s) => ({ ready: true, ...baru, selected: s.selected.filter((id) => id in baru.cards) }));
   },
   move: (id, toTahap, toIndex) =>
     set((s) => {

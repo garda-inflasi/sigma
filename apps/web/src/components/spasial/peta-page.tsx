@@ -10,16 +10,10 @@ import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { RegionMap } from "@/components/map/region-map";
 import { exportCsv } from "@/lib/csv";
-import { kabupatenByKode } from "@/lib/data/reference";
-import { namaWilayah } from "@/lib/data/generators";
 import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
-import { jarakMeter } from "@/lib/offline/acuan";
-import { useMarkerWilayah } from "@/lib/query/hooks";
+import { useKandidatColdStorage, useMarkerWilayah, useRuteDistribusi } from "@/lib/query/hooks";
+import type { Rute } from "@/lib/api/spasial";
 import { cn } from "@/lib/utils";
-
-interface Rute { id: string; asal: string; tujuan: string; komoditas: string; volumeTon: number; jarakKm: number; jamTempuh: number; biaya: number }
-const SENTRA = [{ kode: "1106", kom: "Cabai merah keriting" }, { kode: "1117", kom: "Cabai merah keriting" }, { kode: "1109", kom: "Bawang merah" }];
-const TARIF_TON_KM = 4200;
 
 export function PetaPage() {
   const params = useSearchParams();
@@ -27,16 +21,8 @@ export function PetaPage() {
   const { data: markers, isLoading } = useMarkerWilayah();
   const urut = useMemo(() => [...(markers ?? [])].filter((m) => m.punyaPasar).sort((a, b) => b.delta - a.delta), [markers]);
 
-  const rute = useMemo<Rute[]>(() => {
-    const defisit = urut.filter((m) => m.delta > 5).slice(0, 5);
-    return defisit.flatMap((d, i) => {
-      const s = SENTRA[i % SENTRA.length];
-      const a = kabupatenByKode[s.kode];
-      const km = (jarakMeter(a, d) / 1000) * 1.35; // faktor jalan
-      const vol = Math.round(8 + d.delta * 1.6);
-      return [{ id: `RT-${s.kode}-${d.kode}`, asal: namaWilayah(s.kode), tujuan: d.nama, komoditas: s.kom, volumeTon: vol, jarakKm: Math.round(km), jamTempuh: +(km / 45).toFixed(1), biaya: Math.round(km * vol * TARIF_TON_KM) }];
-    });
-  }, [urut]);
+  const { data: rute, isLoading: ruteMemuat } = useRuteDistribusi();
+  const { data: kandidat } = useKandidatColdStorage();
 
   const kolom = useMemo<ColumnDef<Rute>[]>(() => [
     { id: "rute", accessorFn: (r) => `${r.asal} ${r.tujuan}`, header: "Rute", cell: ({ row: { original: r } }) => <span className="flex items-center gap-2 whitespace-nowrap font-medium">{r.asal}<ArrowRight className="size-3.5 text-muted-foreground" />{r.tujuan}</span> },
@@ -71,8 +57,8 @@ export function PetaPage() {
       </div>
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="space-y-3 xl:col-span-8">
-          <PanelTitle title="Rekomendasi rute distribusi" description={`Biaya dihitung Rp${formatAngka(TARIF_TON_KM)}/ton-km dengan faktor jalan 1,35`} />
-          <DataTable data={rute} columns={kolom} getRowId={(r) => r.id} entityLabel="rute" pageSize={10} searchPlaceholder="Cari rute"
+          <PanelTitle title="Rekomendasi rute distribusi" description="Biaya dihitung Rp4.200/ton-km dengan faktor jalan 1,35" />
+          <DataTable data={rute} isLoading={ruteMemuat} columns={kolom} getRowId={(r) => r.id} entityLabel="rute" pageSize={10} searchPlaceholder="Cari rute"
             bulkActions={[
               { id: "ajukan", label: "Ajukan sebagai intervensi kilat", icon: Send, perm: "logistik.kelola", tone: "data", run: (r) => { toast.success(`${r.length} rute diajukan`, { description: "Masuk ke tahap “Usulan intervensi logistik kilat”." }); } },
               { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "Asal", value: (x) => x.asal }, { header: "Tujuan", value: (x) => x.tujuan }, { header: "Komoditas", value: (x) => x.komoditas }, { header: "Volume (ton)", value: (x) => x.volumeTon }, { header: "Jarak (km)", value: (x) => x.jarakKm }, { header: "Biaya", value: (x) => x.biaya }], "rute-distribusi") },
@@ -81,11 +67,11 @@ export function PetaPage() {
         <section className="glass rounded-xl p-5 xl:col-span-4">
           <PanelTitle title="Kandidat lokasi cold storage" description="Skor gabungan surplus musiman, akses jalan, dan permintaan" />
           <ol className="mt-4 space-y-3">
-            {[{ w: "Kota Langsa", s: 82, a: "Rencana" }, { w: "Kab. Bireuen", s: 77, a: "Usulan baru" }, { w: "Kab. Pidie", s: 71, a: "Usulan baru" }].map((c, i) => (
-              <li key={c.w} className="flex items-center gap-3 rounded-xl bg-white/50 p-3 dark:bg-white/5">
+            {(kandidat ?? []).map((c, i) => (
+              <li key={c.id} className="flex items-center gap-3 rounded-xl bg-white/50 p-3 dark:bg-white/5">
                 <span className="num grid size-8 place-items-center rounded-xl bg-navy-800 text-sm font-semibold text-white">{i + 1}</span>
-                <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{c.w}</span><StatusBadge tone={c.a === "Rencana" ? "data" : "netral"} className="mt-1 h-5 text-[10px]">{c.a}</StatusBadge></span>
-                <span className="text-right"><Warehouse className="ml-auto size-4 text-muted-foreground" /><span className="num text-sm font-semibold">{c.s}</span></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{c.lokasi}</span><StatusBadge tone={c.rencana ? "data" : "netral"} className="mt-1 h-5 text-[10px]">{c.rencana ? "Rencana" : "Usulan baru"}</StatusBadge></span>
+                <span className="text-right"><Warehouse className="ml-auto size-4 text-muted-foreground" /><span className="num text-sm font-semibold">{c.skor}</span></span>
               </li>
             ))}
           </ol>

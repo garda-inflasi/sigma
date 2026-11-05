@@ -1,6 +1,6 @@
 # 15 — Policy brief generator
 
-**Prioritas:** P0 (PRD §3.3) · **Status:** UI ✅ · Backend ⬜ · Terhubung 🟡 · Skema & seed ⬜ · Tes ⬜
+**Prioritas:** P0 (PRD §3.3) · **Status:** UI ✅ · Backend 🟡 · Terhubung ✅ · Skema & seed ✅ · Tes ✅ (15-A selesai; generator nyata di 15-B)
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -17,14 +17,16 @@
 **Bergantung pada:** 02-A, 11-A (untuk bagian XAI).
 
 1. **MIG**
-   - [ ] `policy_brief`: tambah `dibuat_pada` (`DEFAULT now()`). Entity diselaraskan: `id` string (`PB-YYYY-MM`), status `DRAF`, kolom waktu mengikuti tabel.
+   - [x] `policy_brief`: tambah `dibuat_pada` (`DEFAULT now()`, migrasi `000050`). Entity diselaraskan: `id` string (`PB-YYYY-MM`), status `DRAF`, kolom waktu `dibuat_pada` dan `diperbarui`.
 2. **SEED**
-   - [ ] `demo`: brief yang meniru `mockBriefs`, `disusun_oleh_id` → akun `manajer_kebijakan` (urutan: setelah pengguna). Produksi: tidak ada brief contoh.
+   - [x] `demo` (`brief.demo`, `DependsOn master.reference`, `After auth.demo`): 5 brief yang meniru `mockBriefs`, `disusun_oleh_id` = akun `manajer_kebijakan`. Idempoten (`DO NOTHING`, perubahan status tidak ditimpa). Produksi: tidak ada brief contoh.
 3. **API**
-   - [ ] `Generate`: buat id, set `disusun_oleh_id` dari token, status `DRAF`, `rekomendasi` kosong yang valid; tolak periode duplikat. `GET` mengembalikan `PolicyBrief` sesuai tipe web.
+   - [x] `Generate` (`brief.susun`): `periode` `YYYY-MM` -> id `PB-YYYY-MM`, penyusun dari token, status `DRAF`, `rekomendasi` `[]`, isi dari templat deterministik berlabel "draf otomatis non-LLM"; periode duplikat 409, format salah 400; tercatat di audit (`GENERATE_BRIEF`). `GET` mengembalikan daftar (snake_case) dengan nama penyusun dan jumlah rekomendasi.
 4. **FE**
-   - [ ] `useBriefs` ke API; ganti `mockXai` di `brief-page.tsx` dengan hook ([11-A](11-prediksi-xai.md)); `api.brief.susun` sudah memanggil API.
-5. **TES**: `Generate` pada DB hasil migrasi menyimpan baris `DRAF` dengan penyusun dari token; hapus `policy-brief` dari `belumSelaras`.
+   - [x] `useBriefs` ke API lewat mapper `toPolicyBrief` (`lib/api/brief.ts`); dialog generator memanggil `api.brief.susun` (konfirmasi -> simpan -> tampilkan draf tersimpan). Stepper animasi palsu dan `mockXai` di `brief-page.tsx` dibuang (bagian XAI memakai data nyata di [11-A](11-prediksi-xai.md)).
+   - Catatan: aksi massal "Ajukan telaah", "Setujui", "Unduh PDF" masih menunggu 15-C (`POST /v1/policy-brief/bulk` belum ada).
+5. **TES**
+   - [x] `Generate` pada DB hasil migrasi menyimpan baris `DRAF` dengan penyusun dari token, audit, 403/409/400 (integrasi); seeder idempoten; `policy-brief` keluar dari `belumSelaras`; tes asap daftar brief.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 
 ---

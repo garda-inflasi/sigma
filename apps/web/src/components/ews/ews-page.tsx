@@ -1,67 +1,55 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, ChevronsUp, CircleCheckBig, Download, Save } from "lucide-react";
+import { Check, ChevronsUp, CircleCheckBig, Download } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useMemo } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import { EwsSummary } from "@/components/eksekutif/exec-side";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { STATUS_EWS, StatusBadge } from "@/components/garda/status-badge";
-import { SpringButton } from "@/components/garda/spring-button";
 import { PulseRing } from "@/components/motion/pulse-ring";
-import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import type { EwsAlert, StatusEws } from "@/lib/data/types";
 import { severityMeta, toneClass, type Severity } from "@/lib/design/tokens";
-import { formatRelatif } from "@/lib/format";
-import { useBulkAction, useEwsList } from "@/lib/query/hooks";
+import { satuanAmbang } from "@/lib/api/ews";
+import { formatAngka, formatRelatif } from "@/lib/format";
+import { useBulkAction, useEwsAturan, useEwsList } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { JENIS_EWS, JenisIcon, formatNilaiEws } from "./ews-meta";
 
-const KATEGORI = [
-  { k: "Pangan pokok", v: [3, 5, 8] }, { k: "Hortikultura", v: [8, 12, 18] }, { k: "Peternakan", v: [5, 8, 12] }, { k: "Perikanan", v: [6, 10, 15] },
-];
-const KANAL = ["Dashboard", "Push", "Email", "WhatsApp"];
+const KANAL_LABEL: Record<string, string> = { DASHBOARD: "Dashboard", PUSH: "Push", EMAIL: "Email", WHATSAPP: "WhatsApp" };
 
-/** Aturan ambang & kanal notifikasi — dapat diubah oleh Unit Data & Statistik. */
+/** Aturan ambang & kanal notifikasi dari basis data. Perubahan ambang menyusul di slice 10-B. */
 function AturanAmbang() {
-  const bisa = useCan("ews.atur_ambang");
-  const [nilai, setNilai] = useState(KATEGORI.map((x) => x.v));
-  const [kanal, setKanal] = useState<string[]>(["Dashboard", "Push", "WhatsApp"]);
+  const { data, isLoading } = useEwsAturan();
+  const aktif = useMemo(() => (data ?? []).filter((a) => a.aktif), [data]);
+  const kanal = useMemo(() => [...new Set(aktif.flatMap((a) => a.kanal))], [aktif]);
   return (
     <section className="glass rounded-xl p-5 sm:p-6">
-      <PanelTitle title="Ambang peringatan" description="Δ% harga terhadap rata-rata 7 hari, per kategori" actions={bisa && <SpringButton size="sm" onClick={() => toast.success("Ambang EWS disimpan", { description: "Berlaku untuk deteksi berikutnya; perubahan tercatat di audit trail." })}><Save /> Simpan</SpringButton>} />
+      <PanelTitle title="Ambang peringatan" description="Per komoditas dan jenis; satuan menurut jenis (Δ% harga/stok terhadap rata-rata jendela, atau mm hujan)" />
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[420px] text-sm">
-          <thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Kategori</th>{(["WASPADA", "SIAGA", "KRITIS"] as Severity[]).map((s) => <th key={s} className={cn("py-2 font-medium", toneClass[severityMeta[s].tone].text)}>{severityMeta[s].label}</th>)}</tr></thead>
+          <thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Aturan</th>{(["WASPADA", "SIAGA", "KRITIS"] as Severity[]).map((s) => <th key={s} className={cn("py-2 font-medium", toneClass[severityMeta[s].tone].text)}>{severityMeta[s].label}</th>)}</tr></thead>
           <tbody>
-            {KATEGORI.map((row, i) => (
-              <tr key={row.k} className="border-t border-border/60">
-                <td className="py-2.5">{row.k}</td>
-                {nilai[i].map((v, j) => (
-                  <td key={j} className="py-2.5 text-center">
-                    <input type="number" disabled={!bisa} value={v} onChange={(e) => setNilai((n) => n.map((r, ri) => (ri === i ? r.map((c, ci) => (ci === j ? Number(e.target.value) : c)) : r)))} className="num h-9 w-16 rounded-lg border border-input bg-white/70 text-center outline-none focus:shadow-glow-data disabled:opacity-60 dark:bg-white/5" aria-label={`${row.k} ambang ${j}`} />
-                  </td>
-                ))}
+            {isLoading && <tr><td colSpan={4} className="py-4 text-center text-xs text-muted-foreground">Memuat ambang…</td></tr>}
+            {!isLoading && aktif.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-xs text-muted-foreground">Belum ada aturan ambang aktif.</td></tr>}
+            {aktif.map((a) => (
+              <tr key={a.id} className="border-t border-border/60">
+                <td className="py-2.5"><span className="block">{a.komoditasNama ?? "Semua komoditas"}</span><span className="block text-xs text-muted-foreground">{JENIS_EWS[a.jenis].label} · {a.jendelaHari} hari</span></td>
+                {[a.waspada, a.siaga, a.kritis].map((v, j) => <td key={j} className="num py-2.5 text-center">{formatAngka(v)}{satuanAmbang(a.jenis)}</td>)}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-5 text-sm font-medium">Kanal notifikasi untuk Siaga & Kritis</p>
+      {aktif[0] && <p className="mt-3 text-xs text-muted-foreground">{aktif[0].keterangan}</p>}
+      <p className="mt-5 text-sm font-medium">Kanal notifikasi</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        {KANAL.map((k) => (
-          <label key={k} className={cn("flex h-9 cursor-pointer items-center gap-2 rounded-xl px-3 text-sm", kanal.includes(k) ? "bg-data-50 text-data-800 dark:bg-data-500/15 dark:text-data-200" : "glass-subtle")}>
-            <Checkbox disabled={!bisa} checked={kanal.includes(k)} onCheckedChange={() => setKanal((x) => (x.includes(k) ? x.filter((y) => y !== k) : [...x, k]))} className="rounded-md" />{k}
-          </label>
-        ))}
+        {kanal.map((k) => <span key={k} className="glass-subtle flex h-9 items-center rounded-xl px-3 text-sm">{KANAL_LABEL[k] ?? k}</span>)}
       </div>
-      {!bisa && <p className="mt-3 text-xs text-muted-foreground">Hanya Unit Data & Statistik yang dapat mengubah ambang.</p>}
     </section>
   );
 }

@@ -1,11 +1,14 @@
+// Package http adalah lapisan HTTP modul intervensi.
 package http
 
 import (
-	"strconv"
+	"errors"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	"github.com/garda-inflasi/api/internal/intervensi/dto"
 	"github.com/garda-inflasi/api/internal/intervensi/usecase"
+	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -18,19 +21,32 @@ func New(uc *usecase.UseCase) *Handler {
 	return &Handler{uc: uc}
 }
 
-// GET /v1/intervensi
+// List handles GET /v1/intervensi?siklus=&tahap=&prioritas=
 func (h *Handler) List(c *gin.Context) {
-	kartu, err := h.uc.List(c.Request.Context())
+	var req dto.ListIntervensiRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	cards, err := h.uc.List(c.Request.Context(), domain.ListQuery{Siklus: req.Siklus, Tahap: req.Tahap, Prioritas: req.Prioritas})
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data intervensi")
 		return
 	}
-
-	resp := dto.ToKartuIntervensiListResponse(kartu)
-	response.Success(c, resp)
+	response.Success(c, dto.ToKartuResponses(cards))
 }
 
-// POST /v1/intervensi
+// ListTahap handles GET /v1/intervensi/tahap
+func (h *Handler) ListTahap(c *gin.Context) {
+	defs, err := h.uc.ListTahap(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil definisi tahap")
+		return
+	}
+	response.Success(c, dto.ToTahapResponses(defs))
+}
+
+// Create handles POST /v1/intervensi
 func (h *Handler) Create(c *gin.Context) {
 	var req dto.CreateIntervensiRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -38,76 +54,44 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
-
-	kartu := &domain.KartuIntervensi{
-		Judul:         req.Judul,
-		Deskripsi:     req.Deskripsi,
-		Prioritas:     req.Prioritas,
-		PIC:           req.PIC,
-		KomoditasKode: req.KomoditasKode,
-		WilayahKode:   req.WilayahKode,
-		DibuatOlehID:  userID,
-	}
-
-	if err := h.uc.Create(c.Request.Context(), kartu); err != nil {
+	created, err := h.uc.Create(audit.RequestContext(c), domain.NewIntervensi{
+		Siklus: req.Siklus, Judul: req.Judul, Deskripsi: req.Deskripsi, KomoditasKode: req.KomoditasKode,
+		KabupatenKode: req.KabupatenKode, Prioritas: req.Prioritas, Tenggat: req.Tenggat, EwsAlertID: req.EwsAlertID,
+		PenanggungJawabIDs: req.PenanggungJawabIDs, DibuatOlehID: c.GetString("user_id"),
+	})
+	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidReference) {
+			response.BadRequest(c, "Komoditas, kabupaten, alert, atau penanggung jawab tidak ditemukan")
+			return
+		}
 		response.InternalError(c, "Gagal membuat intervensi")
 		return
 	}
-
-	response.Created(c, dto.CreateIntervensiResponse{ID: kartu.ID})
+	response.Created(c, dto.CreateIntervensiResponse{ID: created.ID, Tahap: created.Tahap})
 }
 
-// PATCH /v1/intervensi/:id/tahap
+// UpdateTahap handles PATCH /v1/intervensi/:id/tahap
 func (h *Handler) UpdateTahap(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		response.BadRequest(c, "ID tidak valid")
-		return
-	}
-
 	var req dto.UpdateTahapRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
 
-	if err := h.uc.UpdateTahap(c.Request.Context(), id, req.Tahap, req.Urutan); err != nil {
-		switch err {
-		case usecase.ErrNotFound:
-			response.NotFound(c, "Kartu intervensi tidak ditemukan")
-		case usecase.ErrInvalidTahap:
-			response.BadRequest(c, "Tahap tidak valid")
-		default:
-			response.InternalError(c, "Gagal memperbarui tahap")
-		}
-		return
+	hasPermission := func(permission string) bool { return middleware.HasPermission(c, permission) }
+	err := h.uc.Move(audit.RequestContext(c), c.Param("id"), req.Tahap, req.Urutan, c.GetString("user_id"), hasPermission)
+
+	var forbidden *usecase.ForbiddenError
+	switch {
+	case err == nil:
+		response.Success(c, nil)
+	case errors.Is(err, usecase.ErrNotFound):
+		response.NotFound(c, "Kartu intervensi tidak ditemukan")
+	case errors.Is(err, usecase.ErrInvalidTahap):
+		response.BadRequest(c, "Tahap tidak valid untuk siklus kartu ini")
+	case errors.As(err, &forbidden):
+		response.Forbidden(c, "Tidak memiliki izin "+forbidden.Izin+" untuk memindahkan kartu ke tahap ini")
+	default:
+		response.InternalError(c, "Gagal memperbarui tahap")
 	}
-
-	response.Success(c, nil)
-}
-
-// POST /v1/intervensi/bulk
-func (h *Handler) Bulk(c *gin.Context) {
-	var req dto.BulkIntervensiRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Validasi gagal: "+err.Error())
-		return
-	}
-
-	count, err := h.uc.BulkAction(c.Request.Context(), req.IDs, req.Action)
-	if err != nil {
-		switch err {
-		case usecase.ErrInvalidAction:
-			response.BadRequest(c, "Aksi tidak valid")
-		default:
-			response.InternalError(c, "Gagal memproses aksi massal")
-		}
-		return
-	}
-
-	response.Success(c, dto.BulkIntervensiResponse{
-		Berhasil: int(count),
-	})
 }

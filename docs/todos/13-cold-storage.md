@@ -1,6 +1,6 @@
 # 13 — Cold storage & food loss
 
-**Prioritas:** P1 (PRD §2.4) · **Status:** UI ✅ · Backend ✅ · Terhubung ✅ · Skema & seed ✅ · Tes 🟡
+**Prioritas:** P1 (PRD §2.4) · **Status:** UI ✅ · Backend ✅ · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 Fitur paling matang: migrasi, backend, BFF, seeder, dan UI sudah terhubung.
@@ -11,9 +11,8 @@ Fitur paling matang: migrasi, backend, BFF, seeder, dan UI sudah terhubung.
 - **BFF:** `app/api/cold-storage` dan `.../bulk`; klien [cold-storage.ts](../../apps/web/src/lib/api/cold-storage.ts).
 - **API Go:** `GET /v1/cold-storage` (`coldstorage.lihat`), `POST /v1/cold-storage/bulk` (`coldstorage.kelola` atau `logistik.kelola`).
 - **Skema:** `cold_storage` dan `stok_cold_storage` (000002); 000007 menambah `suhu_aktual_c`, `kedaluwarsa_pada` (diisi dari `komoditas.shelf_life_hari`), `CHECK` volume dan `risiko_food_loss` 0–1, dua index; `Down` ada. Entity cocok.
-- **Seeder** `internal/cold-storage/seeder`: idempoten (upsert), 5 fasilitas dan 23 lot, diuji `TestSeeder_IsIdempotentAndRefreshesDates`; satu-satunya yang dijalankan `cmd/seed`.
-- **Tes:** usecase 100%, handler 93,9%, seeder 28,6%; tes web lolos.
-- **4 tes integrasi gagal** karena domain email di tes (`@garda-inflasi.id`) berbeda dari seed (`@gardainflasi.id`) — diperbaiki di **F0-2**, bukan di slice ini.
+- **Seeder** `internal/cold-storage/seeder`, terdaftar di registry (`cmd/seed/register_coldstorage.go`): `coldstorage.reference` (5 fasilitas, aman di produksi) dan `coldstorage.demo` (23 lot; tanggal digeser mengikuti `now`, ditolak di produksi). Idempoten, diuji termasuk lewat PostgreSQL (`seeder_db_test.go`, coverage 94%).
+- **Tes:** usecase 100%, handler 93,9%, seeder 94%; integrasi memakai seeder (`master.reference`, `auth.demo`, fasilitas, lot), bukan data migrasi; kasus asap `/v1/cold-storage`; tes web lolos.
 
 ---
 
@@ -24,12 +23,12 @@ Fitur paling matang: migrasi, backend, BFF, seeder, dan UI sudah terhubung.
 
 1. **MIG**: tidak ada.
 2. **SEED**
-   - [ ] Pisahkan isi seeder: fasilitas (`cold_storage`) = `reference`; lot dan umur stok yang digeser mengikuti `now` = `demo`. Seeder sekarang **menggeser tanggal lot setiap dijalankan**, jadi tidak boleh jalan di produksi (guard `APP_ENV`).
-   - [ ] Pindahkan 2 komoditas yang disisipkannya ke seed master ([04-A](04-master-data.md)).
-   - [ ] Naikkan coverage seeder (28,6%) dengan tes `BuildFasilitas` dan `BuildStok`.
+   - [x] Pisahkan isi seeder: fasilitas (`cold_storage`) = `reference`; lot dan umur stok yang digeser mengikuti `now` = `demo`. Seeder sekarang **menggeser tanggal lot setiap dijalankan**, jadi tidak boleh jalan di produksi (guard `APP_ENV`).
+   - [x] Pindahkan 2 komoditas yang disisipkannya ke seed master ([04-A](04-master-data.md)).
+   - [x] Naikkan coverage seeder (28,6%) dengan tes `BuildFasilitas` dan `BuildStok`.
 3. **API/FE**: tidak ada perubahan perilaku.
 4. **TES**
-   - [ ] Setelah F0-2, tes integrasi tidak bergantung pada akun dari 000006: pakai fixture atau seeder `demo` ([01-A](01-auth.md)).
+   - [x] Setelah F0-2, tes integrasi tidak bergantung pada akun dari 000006: pakai fixture atau seeder `demo` ([01-A](01-auth.md)).
 5. **DoD** — checklist [00 §4](00-cara-kerja.md); tes asap F0-5 mencakup `/v1/cold-storage`.
 
 ---

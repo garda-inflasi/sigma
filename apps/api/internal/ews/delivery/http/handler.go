@@ -3,11 +3,14 @@ package http
 
 import (
 	"errors"
+	nethttp "net/http"
 	"strconv"
+	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/ews/domain"
 	"github.com/garda-inflasi/api/internal/ews/dto"
+	"github.com/garda-inflasi/api/internal/ews/stream"
 	"github.com/garda-inflasi/api/internal/ews/usecase"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
@@ -18,11 +21,35 @@ import (
 const totalCountHeader = "X-Total-Count"
 
 type Handler struct {
-	uc *usecase.UseCase
+	uc     *usecase.UseCase
+	stream *stream.Streamer
 }
 
-func New(uc *usecase.UseCase) *Handler {
-	return &Handler{uc: uc}
+func New(uc *usecase.UseCase, streamer *stream.Streamer) *Handler {
+	return &Handler{uc: uc, stream: streamer}
+}
+
+// Stream handles GET /v1/ews/stream (Server-Sent Events, event `alert`).
+// Klien yang menyambung ulang mengirim Last-Event-ID dan melanjutkan tanpa celah atau duplikat.
+func (h *Handler) Stream(c *gin.Context) {
+	ctx := c.Request.Context()
+	start, err := h.stream.StartID(ctx, c.GetHeader("Last-Event-ID"))
+	if err != nil {
+		response.InternalError(c, "Gagal memulai aliran peringatan")
+		return
+	}
+
+	// Server memakai WriteTimeout untuk request biasa; aliran harus hidup lebih lama.
+	// Galat diabaikan: writer yang tidak mendukung deadline (mis. recorder tes) tak punya batas.
+	_ = nethttp.NewResponseController(c.Writer).SetWriteDeadline(time.Time{})
+
+	header := c.Writer.Header()
+	header.Set("Content-Type", "text/event-stream; charset=utf-8")
+	header.Set("Cache-Control", "no-cache, no-transform")
+	header.Set("X-Accel-Buffering", "no") // cegah buffering oleh proxy
+	c.Status(nethttp.StatusOK)
+
+	_ = h.stream.Serve(ctx, c.Writer, c.Writer.Flush, start)
 }
 
 // List handles GET /v1/ews?status=&severity=&jenis=&kabupaten_kode=&page=&limit=

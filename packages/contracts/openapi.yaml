@@ -968,6 +968,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/ews/stream:
+    get:
+      summary: Aliran real-time alert EWS (Server-Sent Events)
+      description: |
+        Memerlukan izin `ews.lihat`. Autentikasi lewat header `Authorization: Bearer` atau cookie
+        `garda_access` (EventSource browser). Koneksi tetap terbuka (`Content-Type: text/event-stream`);
+        server mengirim `retry: 5000`, komentar `: ping` tiap 25 detik, dan event `alert` setiap
+        alert dibuat atau naik tingkat oleh rule engine. `id` event berurut; klien yang menyambung
+        ulang mengirim `Last-Event-ID` (otomatis oleh EventSource) dan hanya menerima peristiwa
+        setelahnya, tanpa duplikat. Tanpa `Last-Event-ID` aliran dimulai dari sekarang.
+        Antar-instance disinkronkan lewat Redis pub/sub bila `REDIS_URL` tersedia, dengan polling
+        basis data sebagai cadangan. Proxy tidak boleh mem-buffer respons ini.
+      operationId: streamEwsAlerts
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: id event terakhir yang diterima klien
+      responses:
+        "200":
+          description: |
+            Aliran SSE. Contoh frame:
+            `id: 42` / `event: alert` / `data: {"id":"EWS-2000","severity":"KRITIS", ...}` (bentuk `EwsAlert`).
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Tanpa token atau cookie yang valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `ews.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/ews/aturan/{id}:
     put:
       summary: Mengubah ambang suatu aturan EWS

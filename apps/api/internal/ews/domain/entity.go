@@ -65,6 +65,17 @@ type Alert struct {
 	KabupatenNama string  `gorm:"column:kabupaten_nama;->"`
 }
 
+// EwsEvent memetakan tabel ews_event: peristiwa alert untuk aliran SSE. Id berurut
+// dipakai sebagai Last-Event-ID.
+type EwsEvent struct {
+	ID         int64     `gorm:"column:id;primaryKey;->"`
+	AlertID    string    `gorm:"column:alert_id"`
+	Tipe       string    `gorm:"column:tipe;default:alert"`
+	DibuatPada time.Time `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (EwsEvent) TableName() string { return "ews_event" }
+
 // Kanal adalah daftar kanal notifikasi (kolom TEXT[] aturan_ews.kanal).
 type Kanal []string
 

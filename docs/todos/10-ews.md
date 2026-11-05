@@ -9,7 +9,7 @@
 - **API Go:** `GET /v1/ews` (filter `status`/`severity`/`jenis`/`kabupaten_kode`, paginasi `page`/`limit`, header `X-Total-Count`), `GET /v1/ews/:id`, `GET /v1/ews/aturan` (`ews.lihat`), dan `POST /v1/ews/bulk` (`ews.akui`; `eskalasi` menuntut `ews.eskalasi`; hanya transisi sah, dicatat di audit). Tes usecase, seeder, integrasi (Postgres sungguhan), dan asap.
 - **Skema:** `ews_alert` (`id` VARCHAR, `severity`, `jenis`, `judul`, `pesan`, `komoditas_kode`, `kabupaten_kode`, `nilai`, `satuan_nilai`, `skor_dampak`, `status`, `sumber`, `dibuat_pada`, `diakui_*`, `aturan_id`) dan `aturan_ews` (ambang, `jendela_hari`, `kanal`, `aktif`, `keterangan`, `CHECK` waspada < siaga < kritis); entity cocok (migrasi 000030). Seeder `ews.reference` (9 aturan: pilot x lonjakan harga/stok/cuaca) dan `ews.demo` (17 alert).
 - **Web:** `/ews` membaca alert dan aturan dari API (`lib/api/ews.ts`); simulasi acak hanya di `MODE_MOCK`. Ambang tampil baca-saja sampai 10-B.
-- **Yang tidak ada:** pembuat alert (tidak ada deteksi lonjakan/anomali), `GET /v1/ews/stream` (SSE), Redis pub/sub di Go.
+- **Yang belum ada:** deteksi anomali statistik/ML, notifikasi multi-kanal ([10-D](#10-d--notifikasi-multi-kanal-fase-f-gelombang-f-4)). Rule engine (10-B) dan SSE (10-C) sudah ada.
 
 ---
 
@@ -53,12 +53,12 @@
 
 ---
 
-## 10-C — Real-time (SSE) *(Fase F, gelombang F-2)*
+## 10-C — Real-time (SSE) *(Fase F, gelombang F-2)* — ✅
 
-1. **MIG**: tabel `ews_outbox` (pola outbox) bila memilih `LISTEN/NOTIFY` alih-alih Redis. Redis sudah ada di `compose.infra.yaml`.
-2. **API**: `GET /v1/ews/stream` (SSE, event `alert`) dengan autentikasi cookie/token, heartbeat, `Last-Event-ID`; pub/sub antar instance (Redis).
-3. **FE**: uji `use-ews-stream` dengan SSE nyata (reconnect, tab tidak aktif); feed dashboard ([08-B](08-dashboard-operasional.md)).
-4. **TES**: koneksi, reconnect, event tidak terduplikasi.
+1. **MIG** (`000071_10c_ews_event.sql`): `ews_event` (outbox peristiwa alert, id berurut = `Last-Event-ID`), ditulis dalam transaksi yang sama dengan alert, diserialkan dengan kunci advisory agar id tak pernah terlihat tidak berurutan. Redis tidak jadi sumber kebenaran: hanya membangunkan pembaca.
+2. **API**: `GET /v1/ews/stream` (`ews.lihat`; Bearer atau cookie `garda_access`): event `alert` (alert baru atau naik tingkat), `retry: 5000`, heartbeat `: ping` 25 detik, `Last-Event-ID` (tanpa header mulai dari sekarang), batas tulis server dimatikan per koneksi. Antar-instance: Redis pub/sub (`REDIS_URL`), cadangan polling DB (30 detik dengan Redis, 3 detik tanpa). Peristiwa dibuang setelah 7 hari. Caddy: `flush_interval -1` pada `/api/v1/*`.
+3. **FE**: `use-ews-stream` memetakan payload lewat `toEwsAlert` (`lib/api/ews-stream.ts`), mengganti alert yang sudah ada (naik tingkat) alih-alih menduplikasi, mengumumkan hanya alert baru/naik tingkat, dan menyegarkan daftar setelah tersambung ulang. Feed dashboard [08-B](08-dashboard-operasional.md): belum.
+4. **TES**: Streamer (frame, resume, tanpa duplikat, polling, heartbeat, paginasi), Hub, RedisBus dengan miniredis (dua instance, Redis mati), integrasi HTTP nyata (cookie, 401/403, resume, melewati `WriteTimeout`), logika FE.
 
 ---
 

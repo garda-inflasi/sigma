@@ -21,13 +21,15 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, jobs.Shared(deps.DB, deps.Logger).Engine, audit.NewWriter(deps.DB), deps.Logger)
-	handler := http.New(uc)
+	shared := jobs.Shared(deps.DB, deps.Logger)
+	uc := usecase.New(repo, shared.Engine, audit.NewWriter(deps.DB), deps.Logger)
+	handler := http.New(uc, shared.Streamer)
 
 	group := engine.Group("/ews")
 	group.Use(middleware.JWTAuth(deps.Token))
 	{
 		group.GET("", middleware.RequirePermission("ews.lihat"), handler.List)
+		group.GET("/stream", middleware.RequirePermission("ews.lihat"), handler.Stream)
 		group.GET("/aturan", middleware.RequirePermission("ews.lihat"), handler.ListAturan)
 		group.PUT("/aturan/:id", middleware.RequirePermission("ews.atur_ambang"), handler.UpdateAturan)
 		group.POST("/evaluasi", middleware.RequirePermission("ews.atur_ambang"), handler.Evaluasi)

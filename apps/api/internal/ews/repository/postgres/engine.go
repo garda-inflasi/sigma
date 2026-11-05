@@ -162,10 +162,11 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 		if res.RowsAffected > 0 {
 			naik, err := naikkan(tx, aktif.ID, aktif.Status, aktif.Severity, in)
 			hasil, alertID = domain.HasilDilewati, aktif.ID
-			if naik {
-				hasil = domain.HasilDinaikkan
+			if err != nil || !naik {
+				return err
 			}
-			return err
+			hasil = domain.HasilDinaikkan
+			return catatEvent(tx, aktif.ID)
 		}
 
 		var diredam bool
@@ -204,9 +205,13 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 			return nil
 		}
 		hasil, alertID = domain.HasilDibuat, ids[0]
-		return tx.Exec(`
+		err = tx.Exec(`
 			INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, waktu, catatan)
 			VALUES (?, NULL, 'BARU', NULL, ?, 'Dibuat oleh rule engine')`, alertID, now).Error
+		if err != nil {
+			return fmt.Errorf("riwayat alert baru: %w", err)
+		}
+		return catatEvent(tx, alertID)
 	})
 	if err != nil {
 		return "", nil, err
@@ -243,4 +248,20 @@ func naikkan(tx *gorm.DB, id, status, severityLama string, in domain.NewAlert) (
 		return false, fmt.Errorf("riwayat kenaikan alert: %w", err)
 	}
 	return true, nil
+}
+
+// kunciEvent menserialkan penulisan ews_event: kunci advisory bertahan sampai
+// transaksi commit, sehingga id event yang lebih besar tidak pernah terlihat
+// pembaca lebih dulu daripada id yang lebih kecil (pembaca memakai kursor id).
+const kunciEvent = 710_001
+
+// catatEvent mencatat peristiwa alert untuk aliran SSE dalam transaksi tx.
+func catatEvent(tx *gorm.DB, alertID string) error {
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", kunciEvent).Error; err != nil {
+		return fmt.Errorf("kunci event ews: %w", err)
+	}
+	if err := tx.Exec("INSERT INTO ews_event (alert_id) VALUES (?)", alertID).Error; err != nil {
+		return fmt.Errorf("catat event ews: %w", err)
+	}
+	return nil
 }

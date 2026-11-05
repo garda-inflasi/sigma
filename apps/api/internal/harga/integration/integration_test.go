@@ -396,7 +396,7 @@ func TestBulk_ValidasiThenPublikasi(t *testing.T) {
 	s := sharedSuite(t)
 	a, b := s.buat(t, emailMahasiswa), s.buat(t, emailMahasiswa)
 
-	w := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "validasi", "ids": []string{a, b, "tidak-ada"}})
+	w := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": []string{a, b, "tidak-ada"}})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, hasilBulk{Berhasil: 2, Gagal: 1}, data[hasilBulk](t, w))
 	assert.Equal(t, "DIVALIDASI", s.status(t, a))
@@ -406,26 +406,26 @@ func TestBulk_ValidasiThenPublikasi(t *testing.T) {
 	assert.Positive(t, audit, "aksi massal tercatat di audit trail")
 
 	// Validasi ulang: sudah DIVALIDASI, tidak ada yang berubah.
-	again := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "validasi", "ids": []string{a}}))
+	again := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": []string{a}}))
 	assert.Equal(t, hasilBulk{Berhasil: 0, Gagal: 1}, again)
 
 	// Koordinator tidak memegang harga.publikasi.
-	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "publikasi", "ids": []string{a}}).Code)
+	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "publikasi", "ids": []string{a}}).Code)
 
-	pub := s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"aksi": "publikasi", "ids": []string{a, b}})
+	pub := s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"action": "publikasi", "ids": []string{a, b}})
 	require.Equal(t, http.StatusOK, pub.Code, pub.Body.String())
 	assert.Equal(t, hasilBulk{Berhasil: 2}, data[hasilBulk](t, pub))
 	assert.Equal(t, "DIPUBLIKASI", s.status(t, a))
 
 	// Manajer data hanya berhak publikasi, bukan validasi.
-	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"aksi": "validasi", "ids": []string{a}}).Code)
+	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"action": "validasi", "ids": []string{a}}).Code)
 }
 
 func TestBulk_PublikasiRequiresValidatedEntry(t *testing.T) {
 	s := sharedSuite(t)
 	id := s.buat(t, emailMahasiswa)
 
-	got := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"aksi": "publikasi", "ids": []string{id}}))
+	got := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"action": "publikasi", "ids": []string{id}}))
 
 	assert.Equal(t, hasilBulk{Gagal: 1}, got)
 	assert.Equal(t, "DIAJUKAN", s.status(t, id))
@@ -435,7 +435,7 @@ func TestBulk_SeparationOfDuties(t *testing.T) {
 	s := sharedSuite(t)
 	own := s.buat(t, emailKoordinator)
 
-	got := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "validasi", "ids": []string{own}}))
+	got := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": []string{own}}))
 
 	assert.Equal(t, hasilBulk{Gagal: 1}, got, "pencatat tidak boleh memvalidasi entrinya sendiri")
 	assert.Equal(t, "DIAJUKAN", s.status(t, own))
@@ -445,14 +445,14 @@ func TestBulk_TolakDanKembalikan(t *testing.T) {
 	s := sharedSuite(t)
 	ditolak, dikembalikan := s.buat(t, emailMahasiswa), s.buat(t, emailMahasiswa)
 
-	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "tolak", "ids": []string{ditolak}})))
+	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "tolak", "ids": []string{ditolak}})))
 	assert.Equal(t, "DITOLAK", s.status(t, ditolak))
 
-	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "kembalikan", "ids": []string{dikembalikan}})))
+	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "kembalikan", "ids": []string{dikembalikan}})))
 	assert.Equal(t, "DRAF", s.status(t, dikembalikan))
 
 	// Entri yang sudah ditolak tidak bisa ditolak lagi atau dikembalikan.
-	again := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "tolak", "ids": []string{ditolak}}))
+	again := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "tolak", "ids": []string{ditolak}}))
 	assert.Equal(t, hasilBulk{Gagal: 1}, again)
 }
 
@@ -460,14 +460,14 @@ func TestBulk_BadRequests(t *testing.T) {
 	s := sharedSuite(t)
 
 	cases := map[string]map[string]any{
-		"aksi tidak dikenal": {"aksi": "hapus", "ids": []string{"a"}},
+		"aksi tidak dikenal": {"action": "hapus", "ids": []string{"a"}},
 		"tanpa aksi":         {"ids": []string{"a"}},
-		"ids kosong":         {"aksi": "validasi", "ids": []string{}},
+		"ids kosong":         {"action": "validasi", "ids": []string{}},
 	}
 	for name, body := range cases {
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, body).Code, name)
 	}
-	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailMahasiswa, map[string]any{"aksi": "validasi", "ids": []string{"a"}}).Code)
-	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailLihatSaja, map[string]any{"aksi": "validasi", "ids": []string{"a"}}).Code)
-	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodPost, "/v1/harga/bulk", "", map[string]any{"aksi": "validasi", "ids": []string{"a"}}).Code)
+	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailMahasiswa, map[string]any{"action": "validasi", "ids": []string{"a"}}).Code)
+	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", emailLihatSaja, map[string]any{"action": "validasi", "ids": []string{"a"}}).Code)
+	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodPost, "/v1/harga/bulk", "", map[string]any{"action": "validasi", "ids": []string{"a"}}).Code)
 }

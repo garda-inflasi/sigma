@@ -204,7 +204,7 @@ func TestGet_OwnerAndManagerOnly(t *testing.T) {
 func TestBulk_TandaiSelesai(t *testing.T) {
 	s := sharedSuite(t)
 	bulk := func(email, aksi string, ids ...string) *httptest.ResponseRecorder {
-		return s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", email, map[string]any{"aksi": aksi, "ids": ids})
+		return s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", email, map[string]any{"action": aksi, "ids": ids})
 	}
 
 	// Target belum terpenuhi (0 dari 2): tidak ditutup.
@@ -238,7 +238,7 @@ func TestBulk_ManagerClosesOthersTask(t *testing.T) {
 	s := sharedSuite(t)
 	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE id = 'TGS-mahasiswa_3-2'").Error)
 
-	w := s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", emailKoordinator, map[string]any{"aksi": "tandai_selesai", "ids": []string{"TGS-mahasiswa_3-2"}})
+	w := s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", emailKoordinator, map[string]any{"action": "tandai_selesai", "ids": []string{"TGS-mahasiswa_3-2"}})
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, w))
@@ -248,7 +248,7 @@ func TestBulk_UnduhDataAcuanCountsAccessibleTasks(t *testing.T) {
 	s := sharedSuite(t)
 
 	w := s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", emailMahasiswa1,
-		map[string]any{"aksi": "unduh_data_acuan", "ids": []string{"TGS-mahasiswa_1-1", "TGS-mahasiswa_2-1"}})
+		map[string]any{"action": "unduh_data_acuan", "ids": []string{"TGS-mahasiswa_1-1", "TGS-mahasiswa_2-1"}})
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, hasilBulk{Berhasil: 1, Gagal: 1}, data[hasilBulk](t, w))
@@ -260,9 +260,9 @@ func TestBulk_BadRequestsAndAuthorization(t *testing.T) {
 		return s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", email, body).Code
 	}
 
-	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"aksi": "hapus", "ids": []string{"a"}}))
-	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"aksi": "tandai_selesai", "ids": []string{}}))
+	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"action": "hapus", "ids": []string{"a"}}))
+	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"action": "tandai_selesai", "ids": []string{}}))
 	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"ids": []string{"a"}}))
-	assert.Equal(t, http.StatusForbidden, post(emailTanpaIzin, map[string]any{"aksi": "tandai_selesai", "ids": []string{"a"}}))
-	assert.Equal(t, http.StatusUnauthorized, post("", map[string]any{"aksi": "tandai_selesai", "ids": []string{"a"}}))
+	assert.Equal(t, http.StatusForbidden, post(emailTanpaIzin, map[string]any{"action": "tandai_selesai", "ids": []string{"a"}}))
+	assert.Equal(t, http.StatusUnauthorized, post("", map[string]any{"action": "tandai_selesai", "ids": []string{"a"}}))
 }

@@ -2776,10 +2776,10 @@ components:
     BulkHargaRequest:
       type: object
       required:
-        - aksi
+        - action
         - ids
       properties:
-        aksi:
+        action:
           type: string
           enum: [validasi, publikasi, tolak, kembalikan]
         ids:
@@ -3030,10 +3030,10 @@ components:
     BulkTugasRequest:
       type: object
       required:
-        - aksi
+        - action
         - ids
       properties:
-        aksi:
+        action:
           type: string
           enum: [unduh_data_acuan, tandai_selesai]
         ids:

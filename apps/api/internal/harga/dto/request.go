@@ -42,6 +42,6 @@ type CreateHargaRequest struct {
 
 // BulkHargaRequest adalah isian POST /v1/harga/bulk.
 type BulkHargaRequest struct {
-	Aksi string   `json:"aksi" binding:"required,oneof=validasi publikasi tolak kembalikan"`
+	Aksi string   `json:"action" binding:"required,oneof=validasi publikasi tolak kembalikan"`
 	IDs  []string `json:"ids" binding:"required,min=1,max=1000"`
 }

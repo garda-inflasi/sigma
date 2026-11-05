@@ -5,6 +5,7 @@
 
 import type { KartuIntervensi, Prioritas } from "@/lib/data/types";
 import type { Siklus } from "@/lib/design/tokens";
+import { inisialNama } from "@/lib/nama";
 
 export interface KartuResponse {
   id: string;
@@ -50,16 +51,6 @@ export function ringkasHasilKartu(label: string, r: BulkKartuResult): { judul: s
 
 const SIKLUS: readonly Siklus[] = ["normal", "tekanan", "surplus"];
 
-/** "Rina Safitri, S.T., M.T." → "RS": huruf awal dua kata pertama yang diawali huruf. */
-export function inisial(nama: string): string {
-  return nama
-    .split(/\s+/)
-    .filter((kata) => /^[A-Za-z]/.test(kata))
-    .slice(0, 2)
-    .map((kata) => kata[0])
-    .join("")
-    .toUpperCase();
-}
 
 export function toKartu(r: KartuResponse): KartuIntervensi {
   const siklus = r.siklus.toLowerCase();
@@ -73,7 +64,7 @@ export function toKartu(r: KartuResponse): KartuIntervensi {
     prioritas: r.prioritas,
     penanggungJawab: r.penanggung_jawab.map((p) => ({
       nama: p.nama,
-      inisial: inisial(p.nama),
+      inisial: inisialNama(p.nama),
     })),
     tenggat: r.tenggat,
     rekomendasiAi: r.rekomendasi_ai,

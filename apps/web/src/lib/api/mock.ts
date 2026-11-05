@@ -20,9 +20,9 @@ import type {
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StatusEntri, StokColdStorage, SumberData,
   TugasLapangan,
 } from "@/lib/data/types";
+import { inisialNama } from "@/lib/nama";
 
 const menitLalu = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
-const inisial = (nama: string) => nama.split(/\s+/).filter((w) => /^[A-Za-z]/.test(w)).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
 /* ── Heatmap & KPI ─────────────────────────────────────────── */
 export function mockHeatmap() {
@@ -260,7 +260,7 @@ export function mockKanban(): KartuIntervensi[] {
     return {
       id: `INT-${String(301 + i)}`, siklus: d.siklus, tahap: t.id, judul: d.judul, komoditasKode: d.kom, kabupatenKode: d.kab,
       prioritas: d.p, rekomendasiAi: Boolean(d.ai),
-      penanggungJawab: [...new Map(pj.map((u) => [u.id, { nama: u.nama, inisial: inisial(u.nama) }])).values()],
+      penanggungJawab: [...new Map(pj.map((u) => [u.id, { nama: u.nama, inisial: inisialNama(u.nama) }])).values()],
       tenggat: new Date(ANCHOR_DATE.getTime() + (Math.floor(rng() * 9) - 2) * 86_400_000).toISOString(),
       progres: { selesai: Math.floor(rng() * (total + 1)), total },
       versi: 1, dieskalasi: false,

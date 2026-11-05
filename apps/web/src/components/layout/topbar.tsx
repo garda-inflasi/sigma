@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { inisialNama } from "@/lib/nama";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Kbd } from "@/components/command/command-palette";
 import { PulseRing } from "@/components/motion/pulse-ring";
@@ -97,7 +98,7 @@ export function Topbar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger className="grid size-9 place-items-center rounded-xl bg-navy-800 text-xs font-semibold text-white dark:bg-data-600" aria-label="Menu akun">
-            {user.nama.split(" ").filter((w) => /^[A-Z]/.test(w)).slice(0, 2).map((w) => w[0]).join("")}
+            {inisialNama(user.nama)}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64 rounded-xl p-1.5">
             <DropdownMenuLabel>

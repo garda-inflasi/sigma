@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
-import { bisaMemutus, inisial, ringkasHasilKartu, toKartu, toPersetujuan, type KartuResponse, type PersetujuanResponse } from "./intervensi";
+import { bisaMemutus, ringkasHasilKartu, toKartu, toPersetujuan, type KartuResponse, type PersetujuanResponse } from "./intervensi";
 
 const kartu: KartuResponse = {
   id: "INT-301",
@@ -51,13 +51,6 @@ describe("toKartu", () => {
   });
 });
 
-describe("inisial", () => {
-  it("melewati gelar dan tanda baca di depan kata", () => {
-    assert.equal(inisial("Dr. Nurul Aini, S.E., M.E."), "DN");
-    assert.equal(inisial("Zulkifli, S.P."), "ZS");
-    assert.equal(inisial("Maya"), "M");
-  });
-});
 
 /** Cermin seed intervensi.reference di API Go (internal/intervensi/seeder/seeder_test.go). */
 const seed = JSON.parse(

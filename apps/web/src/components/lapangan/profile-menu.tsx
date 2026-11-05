@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { inisialNama } from "@/lib/nama";
 import { useSession } from "@/lib/auth/session-context";
 import { DEV_ROLE_COOKIE } from "@/lib/auth/resolve";
 import { LAPIS_META, ROLES, ROLE_IDS, type Lapis, type Role } from "@/lib/rbac/roles";
@@ -38,12 +39,7 @@ export default function ProfileMenu({ user }: { user: ReturnType<typeof useSessi
     roles: ROLE_IDS.filter((r) => ROLES[r].lapis === l),
   }));
 
-  const inisial = user.nama
-    .split(" ")
-    .filter((w) => /^[A-Z]/.test(w))
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("");
+  const inisial = inisialNama(user.nama);
 
   // Server & initial client render: placeholder statis tanpa Radix UI
   // Setelah mount: ganti dengan DropdownMenu interaktif

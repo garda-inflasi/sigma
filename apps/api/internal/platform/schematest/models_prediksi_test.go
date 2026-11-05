@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("prediksi", &prediksidomain.ProyeksiXai{})
+	registerModels("prediksi", &prediksidomain.PrediksiHarga{}, &prediksidomain.ModelRegistry{})
 }

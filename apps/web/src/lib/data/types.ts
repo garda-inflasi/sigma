@@ -280,4 +280,6 @@ export interface ProyeksiXai {
   narasi: string;
   model: { nama: string; versi: string; mape: number; dilatih: string };
   rekomendasi: string[];
+  /** True bila proyeksi berasal dari data contoh seed, bukan model sungguhan. */
+  demo?: boolean;
 }

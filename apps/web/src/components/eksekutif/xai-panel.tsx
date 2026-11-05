@@ -10,13 +10,16 @@ import { PanelTitle } from "@/components/garda/page-header";
 import { Segmented } from "@/components/garda/segmented";
 import { PanelSkeleton, Shimmer } from "@/components/garda/shimmer";
 import { SpringButton } from "@/components/garda/spring-button";
+import { StatusBadge } from "@/components/garda/status-badge";
 import { useCan } from "@/lib/auth/session-context";
-import { komoditasPilot } from "@/lib/api/mock";
+import { KOMODITAS } from "@/lib/data/reference";
 import { garda } from "@/lib/design/tokens";
 import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { ease } from "@/lib/motion/presets";
 import { useXai } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
+
+const komoditasPilot = KOMODITAS.filter((k) => k.pilot);
 
 /**
  * Panel Explainable AI: proyeksi + pita ketidakpastian, kontribusi faktor,
@@ -111,7 +114,7 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_1fr]">
         <div className="rounded-xl bg-data-50/70 p-4 dark:bg-data-500/10">
-          <p className="flex items-center gap-2 text-sm font-medium text-data-800 dark:text-data-200"><BrainCircuit className="size-4" /> Ringkasan model</p>
+          <p className="flex items-center gap-2 text-sm font-medium text-data-800 dark:text-data-200"><BrainCircuit className="size-4" /> Ringkasan model{data.demo && <StatusBadge tone="waspada" className="ml-1">Data demo</StatusBadge>}</p>
           <p className="mt-1.5 text-sm leading-relaxed text-data-900/80 dark:text-data-100/80">{data.narasi}</p>
           <ul className="mt-3 space-y-1 text-sm">
             {data.rekomendasi.map((r) => <li key={r} className="flex gap-2"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-data-600" /> {r}</li>)}

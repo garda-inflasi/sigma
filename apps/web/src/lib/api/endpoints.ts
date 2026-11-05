@@ -7,6 +7,11 @@ import {
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
 import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
+import {
+  toBarisModel, toBarisProyeksi, toProyeksiXai,
+  type BarisModel, type BarisProyeksi, type ModelResponse, type ProyeksiResponse, type RingkasanResponse,
+} from "./prediksi";
+import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -41,7 +46,16 @@ export const api = {
   },
   eksekutif: {
     ringkasan: () => get<RingkasanEksekutif>("/v1/dashboard/eksekutif", m.mockEksekutif),
-    xai: (kode: string) => get<ProyeksiXai>(`/v1/prediksi/${kode}`, () => m.mockXai(kode)),
+    xai: (kode: string): Promise<ProyeksiXai> =>
+      MODE_MOCK ? mockDelay(() => m.mockXai(kode)) : apiFetch<ProyeksiResponse>(`/v1/prediksi/${encodeURIComponent(kode)}`).then(toProyeksiXai),
+  },
+  prediksi: {
+    /** Proyeksi 14 hari seluruh komoditas (Kota Banda Aceh). */
+    ringkasan: (): Promise<BarisProyeksi[]> =>
+      MODE_MOCK ? mockDelay(mockBarisProyeksi) : apiFetch<RingkasanResponse[]>("/v1/prediksi").then((rows) => rows.map(toBarisProyeksi)),
+    /** Registri model seluruh komoditas. */
+    model: (): Promise<BarisModel[]> =>
+      MODE_MOCK ? mockDelay(mockBarisModel) : apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel)),
   },
   harga: { list: () => get<EntriHarga[]>("/v1/harga?limit=500", () => m.mockEntri()) },
   ews: { list: () => get<EwsAlert[]>("/v1/ews?limit=200", m.mockEws) },

@@ -34,7 +34,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 8   | Dashboard operasional                     | `/operasional`             | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
 | 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
 | 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [10-ews.md](10-ews.md)                                     |
-| 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   ⬜    |    ⬜     |      ⬜      | ⬜  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
+| 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
 | 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   ⬜    |    🟡     |      ⬜      | ⬜  | [12-peta-spasial.md](12-peta-spasial.md)                   |
 | 13  | Cold storage & food loss                  | `/cold-storage`            | ✅  |   ✅    |    ✅     |      ✅      | 🟡  | [13-cold-storage.md](13-cold-storage.md)                   |
 | 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [14-intervensi.md](14-intervensi.md)                       |
@@ -58,7 +58,7 @@ Detail ada di [19-migration-seeder.md](19-migration-seeder.md) (data) dan [18-pl
 6. **Penyebab 4 tes integrasi cold-storage gagal sudah ditemukan:** tes memakai email `@garda-inflasi.id`, seed memakai `@gardainflasi.id`. Cukup seragamkan domain. (Dugaan awal di versi pertama berkas ini, yaitu seed pindah ke `cmd/seed`, keliru.)
 7. **Dua modul analitik yang tumpang tindih.** `dashboard` + `prediksi` (Postgres) dipakai web; `analytics` (MongoDB, `/v1/operations/*`, `/v1/predictions/*`, `/v1/validations/*`) tidak dipanggil web sama sekali.
 8. **Endpoint yang diminta web tetapi tidak ada di backend:** `POST /v1/lapangan/harga`, `GET /v1/ews/stream` (SSE), `/v1/auth/sso/*`, endpoint KPI, bulk untuk policy brief dan model.
-9. **Halaman yang selalu memakai data statis walau backend aktif:** `/prediksi` dan `/policy-brief` (memanggil `mockXai` langsung), `/master/*` (data referensi statis), `/kpi`.
+9. **Halaman yang selalu memakai data statis walau backend aktif:** `/master/*` (data referensi statis), `/kpi`.
 10. **MFA tidak punya UI** (tidak ada langkah kode OTP saat login maupun halaman setup), padahal diwajibkan untuk banyak peran. **Tautan reset password buntu:** halaman `/reset-password` tidak ada.
 
 ## Urutan pengerjaan

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LayoutDashboard, LogOut, Moon, Sun, UserCog } from "lucide-react";
+import { ChevronDown, LayoutDashboard, LogOut, MonitorSmartphone, Moon, Sun, UserCog } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -85,6 +85,12 @@ export default function ProfileMenu({ user }: { user: ReturnType<typeof useSessi
         >
           {resolvedTheme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           {resolvedTheme === "dark" ? "Mode terang" : "Mode gelap"}
+        </DropdownMenuItem>
+
+        <DropdownMenuItem asChild className="rounded-md">
+          <Link href="/keamanan">
+            <MonitorSmartphone className="size-4" /> Keamanan akun
+          </Link>
         </DropdownMenuItem>
 
         <DropdownMenuItem onSelect={() => void keluarDariSesi()} className="rounded-md">

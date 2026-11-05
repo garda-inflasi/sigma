@@ -358,6 +358,8 @@ func TestPembersihan_AlurRefreshTetapUtuhSetelahPembersihan(t *testing.T) {
 	require.NoError(t, s.db.Raw("SELECT count(*) FROM refresh_tokens WHERE token_hash IN ('mati-lama')").Scan(&ada).Error)
 	assert.Zero(t, ada)
 
+	// Di luar jendela toleransi tab serentak (lihat 01-E), pemakaian ulang token lama adalah pencurian.
+	s.ageRotation(t, lama)
 	pakaiLagi := s.serveRequest(t, http.MethodPost, "/v1/auth/refresh", map[string]any{"refresh_token": lama}, nil)
 	assert.Equal(t, http.StatusUnauthorized, pakaiLagi.Code, "token lama yang dicabut tetap terdeteksi sebagai pemakaian ulang")
 	// Deteksi pemakaian ulang mencabut seluruh keluarga, termasuk token baru.

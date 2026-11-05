@@ -311,6 +311,8 @@ func TestIntegration_AuthFlow(t *testing.T) {
 		}, nil)
 		assert.Equal(t, http.StatusOK, w1.Code)
 
+		// Pemakaian ulang di luar jendela toleransi (rotasi dimundurkan) dianggap token dicuri.
+		s.ageRotation(t, refreshToken)
 		w2 := s.serveRequest(t, http.MethodPost, "/v1/auth/refresh", map[string]interface{}{
 			"refresh_token": refreshToken,
 		}, nil)

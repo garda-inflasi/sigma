@@ -11,6 +11,20 @@
 export const ACCESS_COOKIE = "garda_access";
 export const REFRESH_COOKIE = "garda_refresh";
 export const CSRF_COOKIE = "garda_csrf";
+/**
+ * Penanda singkat (20 detik) bahwa sesi baru saja dipulihkan lewat `GET /api/auth/refresh`. Edge memakainya
+ * sebagai pengaman loop: bila halaman tetap tanpa access token padahal pemulihan baru terjadi, pengguna
+ * dikirim ke /masuk, bukan dipulihkan lagi tanpa akhir.
+ */
+export const RESUME_COOKIE = "garda_pulih";
+export const RESUME_COOKIE_MAX_AGE = 20;
+
+/**
+ * Refresh token hanya dikirim browser ke `/api/auth` (path cookie), jadi edge/middleware tidak pernah
+ * melihatnya pada navigasi halaman. Pemulihan sesi saat navigasi karena itu lewat redirect ke
+ * `GET /api/auth/refresh`, yang menerima cookie itu.
+ */
+export const REFRESH_COOKIE_PATH = "/api/auth";
 
 type Env = Record<string, string | undefined>;
 

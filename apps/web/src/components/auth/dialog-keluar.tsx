@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useDialogKeluar } from "@/lib/auth/dialog-keluar-store";
 import { pesanHasilKirim } from "@/lib/auth/konfirmasi-keluar";
-import { keluarSekarang } from "@/lib/auth/logout-client";
+import { keluarSekarang, keluarSemuaSekarang } from "@/lib/auth/logout-client";
 import { kirimSebelumKeluar } from "@/lib/offline/kirim-dulu-klien";
 import { useOnline } from "@/lib/offline/use-online";
 
@@ -25,11 +26,12 @@ type Fase = "tanya" | "mengirim" | "keluar";
  * Konfirmasi keluar saat masih ada entri lapangan yang belum terkirim. Entri itu hanya ada di perangkat ini
  * dan ikut terhapus bersama data offline, jadi pengguna memilih: "Kirim dulu" (sinkronkan sekarang bila
  * online, lalu keluar bila semuanya terkirim), "Tetap keluar" (buang entri), atau "Batal".
- * Dirender sekali di Providers; dibuka oleh `keluarDariSesi()`.
+ * Dirender sekali di Providers; dibuka oleh `keluarDariSesi()` dan `keluarDariSemuaPerangkat()`.
  */
 export function DialogKeluar() {
   const terbuka = useDialogKeluar((s) => s.terbuka);
   const sisa = useDialogKeluar((s) => s.sisa);
+  const cakupan = useDialogKeluar((s) => s.cakupan);
   const online = useOnline();
   const [fase, setFase] = useState<Fase>("tanya");
   const [pesan, setPesan] = useState<string | null>(null);
@@ -37,7 +39,15 @@ export function DialogKeluar() {
 
   async function keluarKarena() {
     setFase("keluar");
-    await keluarSekarang();
+    if (cakupan === "sesi") return keluarSekarang();
+    try {
+      await keluarSemuaSekarang();
+    } catch (err) {
+      setFase("tanya");
+      toast.error("Gagal keluar dari semua perangkat", {
+        description: err instanceof Error ? err.message : "Coba lagi.",
+      });
+    }
   }
 
   async function kirimDulu() {

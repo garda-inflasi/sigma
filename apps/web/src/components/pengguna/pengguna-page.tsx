@@ -23,6 +23,7 @@ import { LencanaTerkunci } from "./lencana-terkunci";
 import {
   useAssignRolePengguna, useBukaKunciPengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
 } from "@/lib/query/hooks";
+import { usePaksaKeluarPengguna } from "@/lib/query/sesi-hooks";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
 
@@ -229,6 +230,7 @@ export function PenggunaPage() {
   const assignRole = useAssignRolePengguna();
   const bukaKunci = useBukaKunciPengguna();
   const bolehKelola = useCan("pengguna.kelola");
+  const paksaKeluar = usePaksaKeluarPengguna();
 
   const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset"; user: PenggunaRow | null } | null>(null);
 
@@ -254,6 +256,7 @@ export function PenggunaPage() {
             {bolehKelola && masihTerkunci(u.terkunciSampai) && (
               <DropdownMenuItem onSelect={() => bukaKunci.mutate({ id: u.id, nama: u.nama })}><LockOpen /> Buka kunci</DropdownMenuItem>
             )}
+            <DropdownMenuItem onSelect={() => paksaKeluar.mutate({ id: u.id, nama: u.nama })}><LogOut /> Paksa keluar</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => assignRole.mutate({ id: u.id, peran: u.role === "ADMIN_SISTEM" ? "OPS_MAHASISWA" : "ADMIN_SISTEM" })}>
               <ShieldCheck /> {u.role === "ADMIN_SISTEM" ? "Cabut admin sistem" : "Jadikan admin sistem"}
@@ -264,7 +267,7 @@ export function PenggunaPage() {
         </DropdownMenu>
       ),
     },
-  ], [assignRole, hapus, bukaKunci, bolehKelola]);
+  ], [assignRole, hapus, bukaKunci, bolehKelola, paksaKeluar]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">

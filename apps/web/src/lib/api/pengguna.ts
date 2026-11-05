@@ -188,6 +188,13 @@ export const penggunaApi = {
       { method: "POST", body: JSON.stringify({ new_password: newPassword }) }
     ),
 
+  /** Paksa keluar: mengakhiri semua sesi seorang pengguna (access token mereka langsung ditolak). */
+  paksaKeluar: (id: string) =>
+    bffFetch<{ id: string; dicabut: number }>(
+      `/api/pengguna/${encodeURIComponent(id)}/revoke-sessions`,
+      { method: "POST" }
+    ),
+
   assignRole: async (id: string, peran: Role) => {
     const res = await bffFetch<UserResponse>(
       `/api/pengguna/${encodeURIComponent(id)}/roles`,

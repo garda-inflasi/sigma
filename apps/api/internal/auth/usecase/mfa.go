@@ -11,7 +11,6 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/totp"
-	"github.com/google/uuid"
 )
 
 // JumlahKodeCadangan adalah banyaknya kode cadangan yang diterbitkan tiap aktivasi atau regenerasi.
@@ -164,10 +163,7 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code, ip string) (*MFA
 	}
 	user.MfaAktif, user.MfaLangkahTerakhir = true, langkah
 
-	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID); err != nil {
-		return nil, fmt.Errorf("revoke sessions: %w", err)
-	}
-	accessToken, refreshToken, err := uc.issueSession(ctx, user, uuid.New().String(), ip)
+	accessToken, refreshToken, err := uc.replaceCurrentSession(ctx, user, ip)
 	if err != nil {
 		return nil, err
 	}

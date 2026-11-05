@@ -57,6 +57,14 @@ type RefreshToken struct {
 	ExpiresAt time.Time  `gorm:"column:expires_at"`
 	RevokedAt *time.Time `gorm:"column:revoked_at"`
 	CreatedAt time.Time  `gorm:"column:created_at;default:now()"`
+	// UserAgent peramban pemilik sesi (dipotong 512 karakter); kolom `device` dari 000001 tidak dipakai.
+	UserAgent *string `gorm:"column:user_agent"`
+	// LastUsedAt adalah kapan sesi terakhir menukar token (login atau rotasi).
+	LastUsedAt time.Time `gorm:"column:last_used_at;default:now()"`
+	// SessionStartedAt adalah awal sesi; diwariskan ke token pengganti dalam family yang sama.
+	SessionStartedAt time.Time `gorm:"column:session_started_at;default:now()"`
+	// RotatedAt terisi (bersama RevokedAt) bila token dicabut karena diganti rotasi, bukan karena sesinya dicabut.
+	RotatedAt *time.Time `gorm:"column:rotated_at"`
 }
 
 func (RefreshToken) TableName() string {

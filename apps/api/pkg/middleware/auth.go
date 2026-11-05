@@ -41,10 +41,39 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			return
 		}
 
+		// Tanda tangan sah belum berarti token masih berlaku: logout memasukkan jti ke daftar cabut dan
+		// pencabutan sesi (logout, "Cabut", paksa keluar, reuse refresh token, ganti kata sandi) mematikan
+		// sid-nya. Satu query terindeks per request, tanpa cache, supaya pencabutan berlaku seketika
+		// di semua replika.
+		//
+		// Gagal-tutup: bila status pencabutan tidak dapat dipastikan (galat basis data) request ditolak 503,
+		// bukan diloloskan. Fail-open akan membuat token yang sudah dicabut hidup lagi tepat saat basis data
+		// bermasalah, dan hampir semua handler juga butuh basis data sehingga kehilangan ketersediaannya kecil.
+		// 503 (bukan 401) agar klien tidak menyangka sesinya berakhir dan memulai refresh atau logout paksa.
+		revoked, err := tokenMgr.IsRevoked(c.Request.Context(), claims)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"code":    "503",
+				"message": "Status sesi tidak dapat diperiksa, coba lagi",
+			})
+			return
+		}
+		if revoked {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code":    "401",
+				"message": SessionRevokedMessage,
+			})
+			return
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("role", claims.Role)
 		c.Set("permissions", claims.Permissions)
 		c.Set("jti", claims.ID)
+		c.Set(sessionIDKey, claims.SessionID)
+		if claims.ExpiresAt != nil {
+			c.Set(tokenExpiryKey, claims.ExpiresAt.Time)
+		}
 
 		if claims.PasswordChangeRequired && !passwordChangeExempt[c.FullPath()] {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{

@@ -6,6 +6,7 @@
 import { ROLES, type Role } from "@/lib/rbac/roles";
 import type { AuditDetail, AuditPerubahan, AuditRow } from "@/lib/data/types";
 import { API_BASE, ApiError } from "./client";
+import { fetchSesi } from "@/lib/auth/sesi-client";
 
 /** Satu baris audit sebagaimana dikirim backend Go. */
 export interface AuditLogResponse {
@@ -164,7 +165,7 @@ export interface HasilEkspor {
 export async function unduhEksporAudit(
   filter: AuditFilter,
 ): Promise<HasilEkspor> {
-  const res = await fetch(
+  const res = await fetchSesi(
     `${API_BASE}/v1/audit/export${toExportQuery(filter)}`,
     {
       credentials: "include",

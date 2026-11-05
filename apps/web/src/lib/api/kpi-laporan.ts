@@ -4,6 +4,7 @@
  */
 
 import { API_BASE, ApiError, MODE_MOCK } from "./client";
+import { fetchSesi } from "@/lib/auth/sesi-client";
 
 /** Nama berkas unduhan: `laporan-kpi-YYYY-MM.csv` untuk bulan berjalan. */
 export function namaBerkasLaporan(sekarang: Date = new Date()): string {
@@ -13,7 +14,7 @@ export function namaBerkasLaporan(sekarang: Date = new Date()): string {
 /** Mengunduh laporan KPI bulan berjalan (seluruh provinsi) dan memicu simpan berkas. */
 export async function unduhLaporanKpi(): Promise<void> {
   if (MODE_MOCK) throw new Error("Laporan KPI tersedia setelah backend aktif.");
-  const res = await fetch(`${API_BASE}/v1/kpi/export`, {
+  const res = await fetchSesi(`${API_BASE}/v1/kpi/export`, {
     credentials: "include",
     headers: { Accept: "text/csv" },
   });

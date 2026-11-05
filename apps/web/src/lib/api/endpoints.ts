@@ -23,10 +23,11 @@ import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatRe
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
 import {
-  toBarisModel, toBarisProyeksi, toProyeksiXai,
-  type BarisModel, type BarisProyeksi, type ModelResponse, type ProyeksiResponse, type RingkasanResponse, type StatusMl,
+  toBarisModel, toBarisProyeksi, toHasilSimulasi, toProyeksiXai,
+  type AksiModel, type AksiModelResult, type BarisModel, type BarisProyeksi, type HasilSimulasi, type ModelResponse,
+  type ProyeksiResponse, type RingkasanResponse, type SimulasiInput, type SimulasiResponse, type StatusMl,
 } from "./prediksi";
-import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
+import { mockBarisModel, mockBarisProyeksi, mockSimulasi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { USERS } from "@/lib/data/reference";
 import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
@@ -95,6 +96,19 @@ export const api = {
       MODE_MOCK
         ? Promise.reject(new Error("Pelatihan model memerlukan backend dan layanan ML."))
         : apiFetch<ModelResponse>("/v1/prediksi/latih", { method: "POST", body: JSON.stringify({ komoditas_kode: komoditasKode }) }).then(toBarisModel),
+    /** Promosi (kandidat/arsip ke produksi) atau arsip kandidat; izin `model.kelola`, dicatat di audit. */
+    aksiModel: (aksi: AksiModel, ids: string[]): Promise<AksiModelResult> =>
+      MODE_MOCK
+        ? mockDelay({ berhasil: ids.length, gagal: 0, detail: [] }, 300, 600)
+        : apiFetch<AksiModelResult>("/v1/prediksi/registri/bulk", { method: "POST", body: JSON.stringify({ action: aksi, ids }), idempotencyKey: crypto.randomUUID() }),
+    /** Simulasi skenario what-if yang dihitung dan disimpan server. */
+    simulasi: (input: SimulasiInput): Promise<HasilSimulasi> =>
+      MODE_MOCK
+        ? mockDelay(() => mockSimulasi(input), 200, 400)
+        : apiFetch<SimulasiResponse>("/v1/prediksi/simulasi", {
+            method: "POST",
+            body: JSON.stringify({ komoditas_kode: input.komoditasKode, hujan_pct: input.hujanPct, pasokan_pct: input.pasokanPct, subsidi_pct: input.subsidiPct }),
+          }).then(toHasilSimulasi),
   },
   spasial: {
     rute: (): Promise<Rute[]> =>

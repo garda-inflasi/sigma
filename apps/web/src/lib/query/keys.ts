@@ -15,6 +15,7 @@ export const qk = {
   },
   eksekutif: {
     ringkasan: () => ["eksekutif", "ringkasan"] as const,
+    xaiAll: () => ["eksekutif", "xai"] as const,
     xai: (kode: string) => ["eksekutif", "xai", kode] as const,
   },
   spasial: { rute: () => ["spasial", "rute"] as const, kandidat: () => ["spasial", "kandidat"] as const },

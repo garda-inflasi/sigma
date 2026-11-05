@@ -4,9 +4,12 @@ import {
   modelUsang,
   toBarisModel,
   toBarisProyeksi,
+  toHasilSimulasi,
   toProyeksiXai,
   type ProyeksiResponse,
+  type SimulasiResponse,
 } from "./prediksi";
+import { mockSimulasi } from "./prediksi-mock";
 
 const respons: ProyeksiResponse = {
   komoditas_kode: "CBM-KRT",
@@ -171,5 +174,65 @@ describe("modelUsang", () => {
 
   it("model demo tidak pernah ditandai usang", () => {
     assert.equal(modelUsang({ demo: true, dilatihPada: "2025-01-01T00:00:00Z" }, sekarang), false);
+  });
+});
+
+describe("toHasilSimulasi", () => {
+  const respons: SimulasiResponse = {
+    id: "sim-1",
+    komoditas_kode: "CBM-KRT",
+    komoditas_nama: "Cabai merah keriting",
+    kabupaten_kode: "1171",
+    horizon_hari: 14,
+    harga_kini: 50000,
+    proyeksi: 54450,
+    dasar_pct: 14.2,
+    hasil_pct: 8.9,
+    bawah_pct: -1.1,
+    atas_pct: 18.9,
+    efek: [
+      { faktor: "Tambahan pasokan antardaerah", parameter: 10, koefisien: -0.35, efek_pct: -3.5, sumber: "ASUMSI" },
+    ],
+    model_versi: "v2.3.1",
+    sumber_model: "DEMO",
+    terbatas: true,
+    catatan: "Terbatas: koefisien asumsi.",
+  };
+
+  it("memetakan hasil server termasuk label terbatas dan sumber koefisien", () => {
+    assert.deepEqual(toHasilSimulasi(respons), {
+      id: "sim-1",
+      komoditas: "Cabai merah keriting",
+      horizonHari: 14,
+      hargaKini: 50000,
+      proyeksi: 54450,
+      dasarPct: 14.2,
+      hasilPct: 8.9,
+      rentang: [-1.1, 18.9],
+      efek: [{ faktor: "Tambahan pasokan antardaerah", efekPct: -3.5, koefisien: -0.35, sumber: "ASUMSI" }],
+      terbatas: true,
+      catatan: "Terbatas: koefisien asumsi.",
+      demo: true,
+    });
+  });
+
+  it("proyeksi dasar dari model sungguhan bukan demo", () => {
+    assert.equal(toHasilSimulasi({ ...respons, sumber_model: "MODEL" }).demo, false);
+  });
+});
+
+describe("mockSimulasi", () => {
+  it("skenario netral sama dengan proyeksi dasar", () => {
+    const h = mockSimulasi({ komoditasKode: "CBM-KRT", hujanPct: 100, pasokanPct: 0, subsidiPct: 0 });
+
+    assert.equal(h.hasilPct, h.dasarPct);
+    assert.equal(h.terbatas, true);
+  });
+
+  it("tambahan pasokan menurunkan proyeksi", () => {
+    const netral = mockSimulasi({ komoditasKode: "CBM-KRT", hujanPct: 100, pasokanPct: 0, subsidiPct: 0 });
+    const pasok = mockSimulasi({ komoditasKode: "CBM-KRT", hujanPct: 100, pasokanPct: 20, subsidiPct: 0 });
+
+    assert.ok(pasok.hasilPct < netral.hasilPct);
   });
 });

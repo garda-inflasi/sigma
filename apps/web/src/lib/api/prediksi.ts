@@ -72,6 +72,61 @@ export interface StatusMl {
   versi: string;
 }
 
+/** Hasil aksi massal registri (POST /v1/prediksi/registri/bulk). */
+export interface AksiModelResult {
+  berhasil: number;
+  gagal: number;
+  /** Alasan tiap model yang dilewati. */
+  detail: { id: string; alasan: string }[];
+}
+
+export type AksiModel = "promosi" | "arsip";
+
+/** Masukan simulasi; hujan 100 = normal, pasokan dan subsidi 0 = tanpa intervensi. */
+export interface SimulasiInput {
+  komoditasKode: string;
+  hujanPct: number;
+  pasokanPct: number;
+  subsidiPct: number;
+}
+
+export interface SimulasiResponse {
+  id: string;
+  komoditas_kode: string;
+  komoditas_nama: string;
+  kabupaten_kode: string;
+  horizon_hari: number;
+  harga_kini: number;
+  proyeksi: number;
+  dasar_pct: number;
+  hasil_pct: number;
+  bawah_pct: number;
+  atas_pct: number;
+  efek: { faktor: string; parameter: number; koefisien: number; efek_pct: number; sumber: string }[];
+  model_versi: string;
+  sumber_model: string;
+  terbatas: boolean;
+  catatan: string;
+}
+
+/** Hasil simulasi yang dihitung server. */
+export interface HasilSimulasi {
+  id: string;
+  komoditas: string;
+  horizonHari: number;
+  hargaKini: number;
+  proyeksi: number;
+  dasarPct: number;
+  hasilPct: number;
+  rentang: [number, number];
+  efek: { faktor: string; efekPct: number; koefisien: number; sumber: string }[];
+  /** Ada koefisien yang berupa asumsi, bukan estimasi dari data. */
+  terbatas: boolean;
+  catatan: string;
+  /** Proyeksi dasar berasal dari model demo. */
+  demo: boolean;
+}
+
 /** Satu baris tabel "Proyeksi seluruh komoditas". */
 export interface BarisProyeksi {
   id: string;
@@ -177,5 +232,22 @@ export function toBarisModel(r: ModelResponse): BarisModel {
     dilatihPada: r.dilatih_pada,
     catatan: r.catatan,
     demo: isDemo(r.sumber),
+  };
+}
+
+export function toHasilSimulasi(r: SimulasiResponse): HasilSimulasi {
+  return {
+    id: r.id,
+    komoditas: r.komoditas_nama,
+    horizonHari: r.horizon_hari,
+    hargaKini: r.harga_kini,
+    proyeksi: r.proyeksi,
+    dasarPct: r.dasar_pct,
+    hasilPct: r.hasil_pct,
+    rentang: [r.bawah_pct, r.atas_pct],
+    efek: r.efek.map((e) => ({ faktor: e.faktor, efekPct: e.efek_pct, koefisien: e.koefisien, sumber: e.sumber })),
+    terbatas: r.terbatas,
+    catatan: r.catatan,
+    demo: isDemo(r.sumber_model),
   };
 }

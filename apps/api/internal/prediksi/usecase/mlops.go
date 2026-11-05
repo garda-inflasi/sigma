@@ -27,6 +27,11 @@ var (
 	ErrDataTidakCukup = errors.New("data harga tervalidasi belum cukup untuk melatih model")
 	// ErrModelTidakAda berarti komoditas tidak punya model produksi.
 	ErrModelTidakAda = errors.New("model produksi komoditas tidak ditemukan")
+	// ErrLebihBurukDariBaseline: model hasil pelatihan tidak boleh dipromosikan bila MAPE
+	// backtest-nya lebih buruk dari baseline naif.
+	ErrLebihBurukDariBaseline = errors.New("MAPE model lebih buruk dari baseline")
+	// ErrAksiModelTidakValid: aksi massal registri tidak dikenal.
+	ErrAksiModelTidakValid = errors.New("aksi tidak valid")
 	// ErrBukanHasilLatih berarti model produksi berupa data demo, bukan hasil pelatihan.
 	ErrBukanHasilLatih = errors.New("model produksi bukan hasil pelatihan; latih model terlebih dahulu")
 )
@@ -371,4 +376,126 @@ func proyeksiDariHasil(kode, versi string, sekarang time.Time, seri []mlclient.H
 		}
 	}
 	return rows, nil
+}
+
+// Aksi massal registri model (nilai field JSON `action`).
+const (
+	AksiPromosi = "promosi"
+	AksiArsip   = "arsip"
+)
+
+// GagalModel adalah satu model yang tidak diproses beserta alasannya.
+type GagalModel struct {
+	ID     string
+	Alasan string
+}
+
+// BulkModelResult adalah hasil aksi massal registri.
+type BulkModelResult struct {
+	Berhasil int
+	Gagal    []GagalModel
+}
+
+// AksiMassal mempromosikan atau mengarsipkan model menurut id. Model yang tidak ada,
+// berstatus tidak sesuai, atau (untuk promosi) lebih buruk dari baseline dilewati dan
+// dilaporkan dengan alasannya. Setiap perubahan dicatat di riwayat model_promosi dan audit.
+func (uc *MLOps) AksiMassal(ctx context.Context, aksi string, ids []string, aktorID string) (BulkModelResult, error) {
+	if aksi != AksiPromosi && aksi != AksiArsip {
+		return BulkModelResult{}, ErrAksiModelTidakValid
+	}
+	var hasil BulkModelResult
+	for _, id := range ids {
+		var err error
+		if aksi == AksiPromosi {
+			err = uc.promosikan(ctx, id, aktorID)
+		} else {
+			err = uc.arsipkan(ctx, id, aktorID)
+		}
+		alasan, dilewati := alasanDilewati(err)
+		switch {
+		case dilewati:
+			hasil.Gagal = append(hasil.Gagal, GagalModel{ID: id, Alasan: alasan})
+		case err != nil:
+			return hasil, err
+		default:
+			hasil.Berhasil++
+		}
+	}
+	return hasil, nil
+}
+
+// alasanDilewati menerjemahkan galat aturan bisnis menjadi alasan yang bisa ditampilkan;
+// galat lain (basis data) bukan alasan melewati.
+func alasanDilewati(err error) (string, bool) {
+	switch {
+	case errors.Is(err, domain.ErrModelTidakDitemukan):
+		return "model tidak ditemukan", true
+	case errors.Is(err, domain.ErrStatusModelTidakValid):
+		return "status model tidak memungkinkan aksi ini", true
+	case errors.Is(err, domain.ErrModelTanpaProyeksi):
+		return "model belum punya proyeksi; latih atau segarkan dulu agar komoditas tidak kehilangan proyeksi", true
+	case errors.Is(err, ErrLebihBurukDariBaseline):
+		return err.Error(), true
+	}
+	return "", false
+}
+
+// cekBaseline menolak model hasil pelatihan yang MAPE backtest-nya lebih buruk dari baseline naif.
+// Model demo tidak punya metrik pelatihan dan tidak diperiksa.
+func cekBaseline(m *domain.ModelRegistry) error {
+	if m.Sumber != domain.SumberModel {
+		return nil
+	}
+	metrik, err := domain.BacaMetrik(m.Metrics)
+	if err != nil {
+		return err
+	}
+	if metrik.Mape > metrik.BaselineMape {
+		return fmt.Errorf("%w: MAPE %s%% > baseline naif %s%%", ErrLebihBurukDariBaseline, angka2(metrik.Mape), angka2(metrik.BaselineMape))
+	}
+	return nil
+}
+
+func angka2(v float64) string {
+	return strings.Replace(fmt.Sprintf("%.2f", v), ".", ",", 1)
+}
+
+func (uc *MLOps) promosikan(ctx context.Context, id, aktorID string) error {
+	m, err := uc.repo.GetModel(ctx, id)
+	if err != nil {
+		return err
+	}
+	if m.Status == domain.StatusProduksi {
+		return domain.ErrStatusModelTidakValid
+	}
+	if err := cekBaseline(m); err != nil {
+		return err
+	}
+	hasil, err := uc.repo.Promosikan(ctx, id, aktorID, uc.now())
+	if err != nil {
+		return err
+	}
+	sesudah := map[string]any{"status": domain.StatusProduksi, "versi": hasil.Model.Versi}
+	if hasil.Digantikan != nil {
+		sesudah["menggantikan"] = hasil.Digantikan.ID
+	}
+	uc.catat(ctx, audit.Entry{
+		AktorID: aktorID, Aksi: "PROMOSI_MODEL", Entitas: "model_registry", EntitasID: id, Hasil: audit.HasilBerhasil,
+		Sebelum: map[string]any{"status": hasil.DariStatus}, Sesudah: sesudah,
+		Metadata: map[string]any{"komoditas": hasil.Model.KomoditasKode, "rollback": hasil.DariStatus == domain.StatusArsip},
+	})
+	return nil
+}
+
+func (uc *MLOps) arsipkan(ctx context.Context, id, aktorID string) error {
+	m, err := uc.repo.Arsipkan(ctx, id, aktorID, uc.now())
+	if err != nil {
+		return err
+	}
+	uc.catat(ctx, audit.Entry{
+		AktorID: aktorID, Aksi: "ARSIP_MODEL", Entitas: "model_registry", EntitasID: id, Hasil: audit.HasilBerhasil,
+		Sebelum: map[string]any{"status": domain.StatusKandidat}, Sesudah: map[string]any{"status": m.Status, "versi": m.Versi},
+		Metadata: map[string]any{"komoditas": m.KomoditasKode},
+	})
+	return nil
 }

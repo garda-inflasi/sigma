@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -169,6 +171,9 @@ func (r *Repository) SeriKonsumen(ctx context.Context, kode string, dari time.Ti
 func (r *Repository) SimpanModel(ctx context.Context, m *domain.ModelRegistry, proyeksi []domain.PrediksiHarga) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(m).Error; err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				return domain.ErrModelSudahAda
+			}
 			return fmt.Errorf("simpan model: %w", err)
 		}
 		return upsertProyeksi(tx, proyeksi)
@@ -220,4 +225,133 @@ func (r *Repository) EvaluasiJatuhTempo(ctx context.Context, hariIni time.Time) 
 		return 0, fmt.Errorf("evaluasi proyeksi: %w", res.Error)
 	}
 	return res.RowsAffected, nil
+}
+
+func (r *Repository) GetModel(ctx context.Context, id string) (*domain.ModelRegistry, error) {
+	var m domain.ModelRegistry
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, domain.ErrModelTidakDitemukan
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get model: %w", err)
+	}
+	return &m, nil
+}
+
+// kunciModel membaca satu model dengan kunci baris (FOR UPDATE) di dalam transaksi.
+func kunciModel(tx *gorm.DB, id string) (*domain.ModelRegistry, error) {
+	var m domain.ModelRegistry
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, domain.ErrModelTidakDitemukan
+	}
+	if err != nil {
+		return nil, fmt.Errorf("kunci model: %w", err)
+	}
+	return &m, nil
+}
+
+func ubahStatus(tx *gorm.DB, id, status string, kolom map[string]any) error {
+	kolom["status"] = status
+	if err := tx.Model(&domain.ModelRegistry{}).Where("id = ?", id).Updates(kolom).Error; err != nil {
+		return fmt.Errorf("ubah status model: %w", err)
+	}
+	return nil
+}
+
+func catatPromosi(tx *gorm.DB, p domain.ModelPromosi) error {
+	p.ID = uuid.NewString()
+	if err := tx.Create(&p).Error; err != nil {
+		return fmt.Errorf("catat riwayat model: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) Promosikan(ctx context.Context, id, oleh string, waktu time.Time) (*domain.HasilPromosi, error) {
+	var hasil domain.HasilPromosi
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		m, err := kunciModel(tx, id)
+		if err != nil {
+			return err
+		}
+		if m.Status == domain.StatusProduksi {
+			return domain.ErrStatusModelTidakValid
+		}
+		var proyeksi int64
+		err = tx.Model(&domain.PrediksiHarga{}).Where("komoditas_kode = ? AND model_versi = ?", m.KomoditasKode, m.Versi).Count(&proyeksi).Error
+		if err != nil {
+			return fmt.Errorf("hitung proyeksi model: %w", err)
+		}
+		if proyeksi == 0 {
+			return domain.ErrModelTanpaProyeksi
+		}
+
+		// Arsipkan dulu model produksi lama: indeks unik hanya mengizinkan satu PRODUKSI per komoditas.
+		var lama []domain.ModelRegistry
+		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("komoditas_kode = ? AND status = ?", m.KomoditasKode, domain.StatusProduksi).Find(&lama).Error
+		if err != nil {
+			return fmt.Errorf("cari model produksi: %w", err)
+		}
+		promosi := domain.ModelPromosi{
+			ModelID: m.ID, KomoditasKode: m.KomoditasKode, Aksi: domain.AksiPromosi,
+			StatusLama: m.Status, StatusBaru: domain.StatusProduksi, Oleh: oleh, Waktu: waktu,
+		}
+		if len(lama) > 0 {
+			if err := ubahStatus(tx, lama[0].ID, domain.StatusArsip, map[string]any{}); err != nil {
+				return err
+			}
+			lama[0].Status = domain.StatusArsip
+			hasil.Digantikan = &lama[0]
+			promosi.ModelDigantikanID = &lama[0].ID
+		}
+
+		dariStatus := m.Status
+		err = ubahStatus(tx, m.ID, domain.StatusProduksi, map[string]any{
+			"deployed_at": waktu, "dipromosikan_oleh": oleh, "dipromosikan_pada": waktu,
+		})
+		if err != nil {
+			return err
+		}
+		m.Status, m.DipromosikanOleh, m.DipromosikanPada, m.DeployedAt = domain.StatusProduksi, &oleh, &waktu, &waktu
+		hasil.Model, hasil.DariStatus = *m, dariStatus
+		return catatPromosi(tx, promosi)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &hasil, nil
+}
+
+func (r *Repository) Arsipkan(ctx context.Context, id, oleh string, waktu time.Time) (*domain.ModelRegistry, error) {
+	var m *domain.ModelRegistry
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		if m, err = kunciModel(tx, id); err != nil {
+			return err
+		}
+		if m.Status != domain.StatusKandidat {
+			return domain.ErrStatusModelTidakValid
+		}
+		if err := ubahStatus(tx, m.ID, domain.StatusArsip, map[string]any{}); err != nil {
+			return err
+		}
+		m.Status = domain.StatusArsip
+		return catatPromosi(tx, domain.ModelPromosi{
+			ModelID: m.ID, KomoditasKode: m.KomoditasKode, Aksi: domain.AksiArsip,
+			StatusLama: domain.StatusKandidat, StatusBaru: domain.StatusArsip, Oleh: oleh, Waktu: waktu,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (r *Repository) SimpanSkenario(ctx context.Context, s *domain.SkenarioSimulasi) error {
+	if err := r.db.WithContext(ctx).Create(s).Error; err != nil {
+		return fmt.Errorf("simpan skenario: %w", err)
+	}
+	return nil
 }

@@ -80,11 +80,13 @@ type fakeML struct {
 	srv         *httptest.Server
 	lastTrain   mlclient.TrainRequest
 	lastPredict mlclient.PredictRequest
+	// mape dan baseline adalah metrik ringkasan yang dilaporkan /train.
+	mape, baseline float64
 }
 
 func newFakeML(t *testing.T) *fakeML {
 	t.Helper()
-	f := &fakeML{}
+	f := &fakeML{mape: 2.5, baseline: 3.0}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"ok","versi":"test"}`))
@@ -97,7 +99,7 @@ func newFakeML(t *testing.T) *fakeML {
 		}
 		jawab(t, w, mlclient.TrainResponse{
 			VersiLayanan: "test", KomoditasKode: f.lastTrain.KomoditasKode, Seri: seri,
-			Ringkasan: mlclient.Ringkasan{NSeriOK: len(seri), Mape: 2.5, Rmse: 1200, BaselineMape: 3.0, BaselineRmse: 1500, Algoritma: map[string]int{"holt": len(seri)}},
+			Ringkasan: mlclient.Ringkasan{NSeriOK: len(seri), Mape: f.mape, Rmse: 1200, BaselineMape: f.baseline, BaselineRmse: 1500, Algoritma: map[string]int{"holt": len(seri)}},
 		})
 	})
 	mux.HandleFunc("/predict", func(w http.ResponseWriter, r *http.Request) {

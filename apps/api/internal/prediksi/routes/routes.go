@@ -29,7 +29,9 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	if ml == nil {
 		ml = mlclient.FromEnv()
 	}
-	mlops := http.NewMLOps(usecase.NewMLOps(repo, ml, audit.NewWriter(deps.DB), deps.Logger))
+	auditWriter := audit.NewWriter(deps.DB)
+	mlops := http.NewMLOps(usecase.NewMLOps(repo, ml, auditWriter, deps.Logger))
+	simulasi := http.NewSimulasi(usecase.NewSimulasi(repo, auditWriter, deps.Logger))
 
 	prediksi := engine.Group("/prediksi")
 	prediksi.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("prediksi.lihat"))
@@ -44,5 +46,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		prediksi.POST("/latih", kelola, mlops.Latih)
 		prediksi.POST("/segarkan", kelola, mlops.Segarkan)
 		prediksi.POST("/evaluasi", kelola, mlops.Evaluasi)
+		prediksi.POST("/registri/bulk", kelola, mlops.Bulk)
+		prediksi.POST("/simulasi", simulasi.Hitung)
 	}
 }

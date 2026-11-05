@@ -1,7 +1,7 @@
 /** Data prediksi mode mock (tanpa backend): tabel proyeksi dan registri yang dulu dihitung di halaman. */
 
 import { KOMODITAS } from "@/lib/data/reference";
-import type { BarisModel, BarisProyeksi } from "./prediksi";
+import type { BarisModel, BarisProyeksi, HasilSimulasi, SimulasiInput } from "./prediksi";
 import { mockXai } from "./mock";
 
 const MOCK_DILATIH = "2026-10-29T00:00:00Z";
@@ -57,4 +57,30 @@ export function mockBarisModel(): BarisModel[] {
       demo: true,
     },
   ]);
+}
+
+/** Simulasi mode mock: koefisien contoh yang sama dengan asumsi server, dihitung di peramban. */
+export function mockSimulasi(input: SimulasiInput): HasilSimulasi {
+  const x = mockXai(input.komoditasKode);
+  const efek = [
+    { faktor: "Curah hujan sentra (vs normal)", koefisien: 0.06, efekPct: +((input.hujanPct - 100) * 0.06).toFixed(1) },
+    { faktor: "Tambahan pasokan antardaerah", koefisien: -0.35, efekPct: +(input.pasokanPct * -0.35).toFixed(1) },
+    { faktor: "Subsidi ongkos angkut", koefisien: -0.18, efekPct: +(input.subsidiPct * -0.18).toFixed(1) },
+  ].map((e) => ({ ...e, sumber: "ASUMSI" }));
+  const total = efek.reduce((a, e) => a + e.efekPct, 0);
+  const hasilPct = +(x.perubahanPct + total).toFixed(1);
+  return {
+    id: "mock",
+    komoditas: x.nama,
+    horizonHari: x.horizonHari,
+    hargaKini: x.hargaKini,
+    proyeksi: Math.round(x.hargaKini * (1 + hasilPct / 100)),
+    dasarPct: x.perubahanPct,
+    hasilPct,
+    rentang: [+(x.interval[0] + total).toFixed(1), +(x.interval[1] + total).toFixed(1)],
+    efek,
+    terbatas: true,
+    catatan: "Mode mock: koefisien contoh dihitung di peramban, bukan keluaran server.",
+    demo: true,
+  };
 }

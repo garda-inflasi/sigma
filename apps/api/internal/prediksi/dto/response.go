@@ -167,3 +167,17 @@ func ToProyeksi(d domain.Detail) ProyeksiResponse {
 }
 
 func ptr(v int) *int { return &v }
+
+// GagalModelResponse menyebut model yang tidak diproses dan alasannya.
+type GagalModelResponse struct {
+	ID     string `json:"id"`
+	Alasan string `json:"alasan"`
+}
+
+// BulkModelResponse melaporkan hasil aksi massal registri: jumlah berhasil, jumlah gagal,
+// dan rincian alasan tiap model yang dilewati.
+type BulkModelResponse struct {
+	Berhasil int                  `json:"berhasil"`
+	Gagal    int                  `json:"gagal"`
+	Detail   []GagalModelResponse `json:"detail"`
+}

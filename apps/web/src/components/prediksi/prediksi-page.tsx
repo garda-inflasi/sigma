@@ -1,15 +1,14 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowRightLeft, Cpu, Download } from "lucide-react";
+import { Archive, ArrowRightLeft, Cpu, Download, Rocket } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { XaiPanel } from "@/components/eksekutif/xai-panel";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
-import { PanelSkeleton } from "@/components/garda/shimmer";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { CountUp } from "@/components/motion/count-up";
@@ -17,7 +16,7 @@ import { modelUsang, type BarisModel, type BarisProyeksi } from "@/lib/api/predi
 import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import { formatPersen, formatRelatif, formatRupiah } from "@/lib/format";
-import { useLatihModel, useModelPrediksi, useProyeksiRingkasan, useStatusMl, useXai } from "@/lib/query/hooks";
+import { useAksiModel, useLatihModel, useModelPrediksi, useProyeksiRingkasan, useSimulasi, useStatusMl } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
 function Slider({ label, v, set, min, max, unit }: { label: string; v: number; set: (n: number) => void; min: number; max: number; unit: string }) {
@@ -29,25 +28,44 @@ function Slider({ label, v, set, min, max, unit }: { label: string; v: number; s
   );
 }
 
-/** Simulasi what-if: dampak skenario terhadap proyeksi harga (model linear sederhana untuk DSS). */
-function SimulasiSkenario({ basePct }: { basePct: number }) {
+/**
+ * Simulasi what-if yang dihitung dan disimpan server dari proyeksi model komoditas terpilih.
+ * Koefisien sensitivitas masih asumsi (belum diestimasi dari data) dan diberi label tegas.
+ */
+function SimulasiSkenario({ kode, nama }: { kode: string; nama: string }) {
   const [hujan, setHujan] = useState(100);
   const [pasokan, setPasokan] = useState(0);
   const [subsidi, setSubsidi] = useState(0);
-  const hasil = basePct + (hujan - 100) * 0.06 - pasokan * 0.35 - subsidi * 0.18;
+  const { mutate, data: hasil, isPending, reset } = useSimulasi();
+  // Hasil milik komoditas sebelumnya tidak boleh tampak berlaku untuk yang baru dipilih.
+  useEffect(() => { reset(); }, [kode, reset]);
+
   return (
     <section className="glass rounded-xl p-5 sm:p-6">
-      <PanelTitle title="Simulasi skenario" description="Cabai merah keriting, Banda Aceh, 14 hari" />
+      <PanelTitle title="Simulasi skenario" description={`${nama}, Banda Aceh, 14 hari`} />
       <div className="mt-5 space-y-4">
         <Slider label="Curah hujan sentra (vs normal)" v={hujan} set={setHujan} min={50} max={250} unit="%" />
         <Slider label="Tambahan pasokan antardaerah" v={pasokan} set={setPasokan} min={0} max={40} unit="%" />
         <Slider label="Subsidi ongkos angkut" v={subsidi} set={setSubsidi} min={0} max={30} unit="%" />
       </div>
-      <div className={cn("mt-5 rounded-xl p-4", hasil > 5 ? "bg-defisit-soft/70 dark:bg-defisit/15" : hasil < -3 ? "bg-surplus-soft/70 dark:bg-surplus/15" : "bg-normal-soft/70 dark:bg-normal/15")}>
-        <p className="text-xs text-muted-foreground">Proyeksi perubahan harga</p>
-        <p className="mt-1 text-3xl font-semibold"><CountUp value={hasil} onView={false} duration={0.5} format={(n) => formatPersen(n, { signed: true })} /></p>
-        <p className="mt-1 text-xs text-muted-foreground">Simulasi sederhana dihitung di peramban dengan koefisien contoh, bukan keluaran model (simulasi model menyusul). Gunakan sebagai bahan diskusi, bukan keputusan final.</p>
-      </div>
+      <SpringButton className="mt-4" disabled={isPending} onClick={() => mutate({ komoditasKode: kode, hujanPct: hujan, pasokanPct: pasokan, subsidiPct: subsidi })}>
+        {isPending ? "Menghitung" : "Hitung simulasi"}
+      </SpringButton>
+      {hasil && (
+        <div className={cn("mt-5 rounded-xl p-4", hasil.hasilPct > 5 ? "bg-defisit-soft/70 dark:bg-defisit/15" : hasil.hasilPct < -3 ? "bg-surplus-soft/70 dark:bg-surplus/15" : "bg-normal-soft/70 dark:bg-normal/15")}>
+          <p className="text-xs text-muted-foreground">Proyeksi perubahan harga (model {formatPersen(hasil.dasarPct, { signed: true })})</p>
+          <p className="mt-1 text-3xl font-semibold"><CountUp value={hasil.hasilPct} onView={false} duration={0.5} format={(n) => formatPersen(n, { signed: true })} /></p>
+          <p className="num mt-1 text-xs text-muted-foreground">
+            Rentang {formatPersen(hasil.rentang[0], { signed: true })} s.d. {formatPersen(hasil.rentang[1], { signed: true })} · {formatRupiah(hasil.proyeksi)}
+          </p>
+          <ul className="mt-3 space-y-0.5 text-xs text-muted-foreground">
+            {hasil.efek.map((e) => (
+              <li key={e.faktor} className="flex justify-between gap-2"><span>{e.faktor} ({e.sumber.toLowerCase()})</span><span className="num">{formatPersen(e.efekPct, { signed: true })}</span></li>
+            ))}
+          </ul>
+          <p role="note" className="mt-3 text-xs text-muted-foreground">{hasil.catatan}</p>
+        </div>
+      )}
     </section>
   );
 }
@@ -58,10 +76,10 @@ export function PrediksiPage() {
   const [kode, setKode] = useState(params.get("komoditas") ?? "CBM-KRT");
   const { data: proyeksi, isLoading: memuatProyeksi } = useProyeksiRingkasan();
   const { data: model, isLoading: memuatModel } = useModelPrediksi();
-  const { data: cabai } = useXai("CBM-KRT");
   const bisaKelola = useCan("model.kelola");
   const { data: statusMl } = useStatusMl();
   const latih = useLatihModel();
+  const aksiModel = useAksiModel();
   const namaTerpilih = proyeksi?.find((p) => p.id === kode)?.nama ?? kode;
   const demo = [...(proyeksi ?? []), ...(model ?? [])].some((r) => r.demo);
 
@@ -95,7 +113,7 @@ export function PrediksiPage() {
       )}
       <div className="grid gap-6 xl:grid-cols-12">
         <XaiPanel kode={kode} onKodeChange={setKode} className="xl:col-span-8" />
-        <div className="xl:col-span-4">{cabai ? <SimulasiSkenario basePct={cabai.perubahanPct} /> : <PanelSkeleton />}</div>
+        <div className="xl:col-span-4"><SimulasiSkenario kode={kode} nama={namaTerpilih} /></div>
       </div>
       <section className="space-y-3">
         <PanelTitle title="Proyeksi seluruh komoditas" description="Centang untuk meneruskan beberapa proyeksi sekaligus ke kanban intervensi" />
@@ -113,12 +131,20 @@ export function PrediksiPage() {
             <SpringButton disabled={latih.isPending || !statusMl?.tersedia} onClick={() => latih.mutate(kode)}><Cpu /> Latih model {namaTerpilih}</SpringButton>
             <span role="status" className="text-muted-foreground">
               {statusMl?.tersedia ? `Layanan ML ${statusMl.versi} siap. ` : "Layanan ML tidak tersedia; proyeksi demo tetap tampil. "}
-              Model baru berstatus kandidat sampai dipromosikan.
+              Model baru berstatus kandidat sampai dipromosikan di tabel di bawah.
             </span>
           </div>
         )}
         <DataTable data={model} isLoading={memuatModel} columns={kolomModel} getRowId={(r) => r.id} entityLabel="model" pageSize={10} searchPlaceholder="Cari model"
-          facets={[{ columnId: "status", label: "Status", options: [{ value: "PRODUKSI", label: "Produksi" }, { value: "KANDIDAT", label: "Kandidat" }, { value: "ARSIP", label: "Arsip" }] }]} />
+          facets={[{ columnId: "status", label: "Status", options: [{ value: "PRODUKSI", label: "Produksi" }, { value: "KANDIDAT", label: "Kandidat" }, { value: "ARSIP", label: "Arsip" }] }]}
+          bulkActions={[
+            {
+              id: "promosi", label: "Promosikan ke produksi", icon: Rocket, perm: "model.kelola", tone: "data", enabled: (r) => r.every((x) => x.status !== "PRODUKSI"),
+              confirm: { title: "Promosikan model terpilih?", description: (n) => `${n} model menggantikan versi produksi komoditasnya; versi lama diarsipkan dan dapat dipromosikan kembali (rollback). Model hasil pelatihan yang MAPE-nya lebih buruk dari baseline ditolak.`, actionLabel: "Promosikan" },
+              run: (r) => aksiModel.mutateAsync({ aksi: "promosi", ids: r.map((x) => x.id), label: "Model dipromosikan" }),
+            },
+            { id: "arsip", label: "Arsipkan kandidat", icon: Archive, perm: "model.kelola", enabled: (r) => r.every((x) => x.status === "KANDIDAT"), run: (r) => aksiModel.mutateAsync({ aksi: "arsip", ids: r.map((x) => x.id), label: "Model diarsipkan" }) },
+          ]} />
       </section>
     </div>
   );

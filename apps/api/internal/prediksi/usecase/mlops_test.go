@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,11 +21,19 @@ type fakeMLRepo struct {
 	seri      []domain.SeriHarian
 	produksi  *domain.ModelRegistry
 	err       error
+	errSimpan error
 	evaluasi  int64
 	disimpan  *domain.ModelRegistry
 	proyeksi  []domain.PrediksiHarga
 	seriDari  time.Time
 	hariIniEv time.Time
+
+	models       map[string]*domain.ModelRegistry
+	digantikan   *domain.ModelRegistry
+	dipromosikan []string
+	diarsipkan   []string
+	oleh         string
+	waktu        time.Time
 }
 
 func (r *fakeMLRepo) SeriKonsumen(_ context.Context, _ string, dari time.Time) ([]domain.SeriHarian, error) {
@@ -34,7 +43,7 @@ func (r *fakeMLRepo) SeriKonsumen(_ context.Context, _ string, dari time.Time) (
 
 func (r *fakeMLRepo) SimpanModel(_ context.Context, m *domain.ModelRegistry, p []domain.PrediksiHarga) error {
 	r.disimpan, r.proyeksi = m, p
-	return r.err
+	return r.errSimpan
 }
 
 func (r *fakeMLRepo) SimpanProyeksi(_ context.Context, p []domain.PrediksiHarga) error {
@@ -51,6 +60,45 @@ func (r *fakeMLRepo) ModelProduksi(context.Context, string) (*domain.ModelRegist
 
 func (r *fakeMLRepo) GetModelView(_ context.Context, id string) (*domain.ModelView, error) {
 	return &domain.ModelView{ID: id}, r.err
+}
+
+// GetModel mengembalikan model menurut id dari `models`; ErrModelTidakDitemukan bila tak ada.
+func (r *fakeMLRepo) GetModel(_ context.Context, id string) (*domain.ModelRegistry, error) {
+	if m, ok := r.models[id]; ok {
+		return m, nil
+	}
+	return nil, domain.ErrModelTidakDitemukan
+}
+
+// Promosikan meniru aturan repositori: model PRODUKSI tidak dapat dipromosikan lagi.
+func (r *fakeMLRepo) Promosikan(_ context.Context, id, oleh string, waktu time.Time) (*domain.HasilPromosi, error) {
+	m, ok := r.models[id]
+	if !ok {
+		return nil, domain.ErrModelTidakDitemukan
+	}
+	if m.Status == domain.StatusProduksi {
+		return nil, domain.ErrStatusModelTidakValid
+	}
+	hasil := &domain.HasilPromosi{DariStatus: m.Status, Digantikan: r.digantikan}
+	m.Status = domain.StatusProduksi
+	hasil.Model = *m
+	r.dipromosikan = append(r.dipromosikan, id)
+	r.oleh, r.waktu = oleh, waktu
+	return hasil, nil
+}
+
+func (r *fakeMLRepo) Arsipkan(_ context.Context, id, oleh string, waktu time.Time) (*domain.ModelRegistry, error) {
+	m, ok := r.models[id]
+	if !ok {
+		return nil, domain.ErrModelTidakDitemukan
+	}
+	if m.Status != domain.StatusKandidat {
+		return nil, domain.ErrStatusModelTidakValid
+	}
+	m.Status = domain.StatusArsip
+	r.diarsipkan = append(r.diarsipkan, id)
+	r.oleh, r.waktu = oleh, waktu
+	return m, nil
 }
 
 func (r *fakeMLRepo) EvaluasiJatuhTempo(_ context.Context, hariIni time.Time) (int64, error) {
@@ -378,4 +426,158 @@ func TestStatus(t *testing.T) {
 		u, _ := uc(&fakeMLRepo{}, &fakeML{err: mlclient.ErrTidakTersedia})
 		assert.Equal(t, StatusML{Dikonfigurasi: true}, u.Status(t.Context()))
 	})
+}
+
+func modelUji(id, status, sumber string, mape, baseline float64) *domain.ModelRegistry {
+	metrik := `{}`
+	if sumber == domain.SumberModel {
+		metrik = fmt.Sprintf(`{"mape":%v,"baseline_mape":%v}`, mape, baseline)
+	}
+	return &domain.ModelRegistry{ID: id, KomoditasKode: "CBM-KRT", Versi: "v-" + id, Status: status, Sumber: sumber, Mape: mape, Metrics: metrik}
+}
+
+func TestCekBaseline(t *testing.T) {
+	assert.NoError(t, cekBaseline(modelUji("a", domain.StatusKandidat, domain.SumberModel, 2.5, 3.0)))
+	assert.NoError(t, cekBaseline(modelUji("a", domain.StatusKandidat, domain.SumberModel, 3.0, 3.0)), "sama dengan baseline lolos")
+	assert.NoError(t, cekBaseline(modelUji("a", domain.StatusKandidat, domain.SumberDemo, 9, 0)), "model demo tak punya metrik pelatihan")
+
+	err := cekBaseline(modelUji("a", domain.StatusKandidat, domain.SumberModel, 3.5, 3.0))
+	assert.ErrorIs(t, err, ErrLebihBurukDariBaseline)
+	assert.ErrorContains(t, err, "3,50% > baseline naif 3,00%")
+
+	rusak := modelUji("a", domain.StatusKandidat, domain.SumberModel, 1, 2)
+	rusak.Metrics = "bukan json"
+	assert.Error(t, cekBaseline(rusak))
+}
+
+func TestAksiMassal_PromosiMemanggilRepoDanMencatatAudit(t *testing.T) {
+	lama := &domain.ModelRegistry{ID: "lama", Versi: "v-lama"}
+	repo := &fakeMLRepo{
+		digantikan: lama,
+		models: map[string]*domain.ModelRegistry{
+			"kandidat": modelUji("kandidat", domain.StatusKandidat, domain.SumberModel, 2.5, 3.0),
+			"arsip":    modelUji("arsip", domain.StatusArsip, domain.SumberDemo, 4, 0),
+		},
+	}
+	u, rec := uc(repo, nil)
+
+	hasil, err := u.AksiMassal(t.Context(), AksiPromosi, []string{"kandidat", "arsip"}, "u-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, hasil.Berhasil)
+	assert.Empty(t, hasil.Gagal)
+	assert.Equal(t, []string{"kandidat", "arsip"}, repo.dipromosikan)
+	assert.Equal(t, "u-1", repo.oleh)
+	assert.Equal(t, sekarang, repo.waktu)
+
+	entries := rec.Entries()
+	require.Len(t, entries, 2)
+	assert.Equal(t, "PROMOSI_MODEL", entries[0].Aksi)
+	assert.Equal(t, "kandidat", entries[0].EntitasID)
+	assert.Equal(t, "lama", entries[0].Sesudah.(map[string]any)["menggantikan"])
+	assert.Equal(t, false, entries[0].Metadata["rollback"])
+	assert.Equal(t, true, entries[1].Metadata["rollback"], "promosi dari ARSIP adalah rollback")
+}
+
+func TestAksiMassal_PromosiDitolakBilaLebihBurukDariBaseline(t *testing.T) {
+	repo := &fakeMLRepo{models: map[string]*domain.ModelRegistry{
+		"buruk": modelUji("buruk", domain.StatusKandidat, domain.SumberModel, 4.0, 3.0),
+		"baik":  modelUji("baik", domain.StatusKandidat, domain.SumberModel, 2.0, 3.0),
+	}}
+	u, rec := uc(repo, nil)
+
+	hasil, err := u.AksiMassal(t.Context(), AksiPromosi, []string{"buruk", "baik"}, "u-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, hasil.Berhasil)
+	require.Len(t, hasil.Gagal, 1)
+	assert.Equal(t, "buruk", hasil.Gagal[0].ID)
+	assert.Contains(t, hasil.Gagal[0].Alasan, "lebih buruk dari baseline")
+	assert.Equal(t, []string{"baik"}, repo.dipromosikan, "model yang lebih buruk tidak menyentuh produksi")
+	assert.Len(t, rec.Entries(), 1)
+}
+
+func TestAksiMassal_StatusDanIdTidakValidDilewati(t *testing.T) {
+	repo := &fakeMLRepo{models: map[string]*domain.ModelRegistry{
+		"produksi": modelUji("produksi", domain.StatusProduksi, domain.SumberDemo, 2, 0),
+		"arsip":    modelUji("arsip", domain.StatusArsip, domain.SumberDemo, 2, 0),
+	}}
+	u, rec := uc(repo, nil)
+
+	promosi, err := u.AksiMassal(t.Context(), AksiPromosi, []string{"produksi", "hilang"}, "u-1")
+	require.NoError(t, err)
+	assert.Zero(t, promosi.Berhasil)
+	assert.Equal(t, []GagalModel{
+		{ID: "produksi", Alasan: "status model tidak memungkinkan aksi ini"},
+		{ID: "hilang", Alasan: "model tidak ditemukan"},
+	}, promosi.Gagal)
+
+	arsip, err := u.AksiMassal(t.Context(), AksiArsip, []string{"produksi", "arsip", "hilang"}, "u-1")
+	require.NoError(t, err)
+	assert.Zero(t, arsip.Berhasil, "model produksi dan yang sudah arsip tidak dapat diarsipkan")
+	assert.Len(t, arsip.Gagal, 3)
+	assert.Empty(t, rec.Entries(), "tidak ada yang berubah, tidak ada audit")
+}
+
+func TestAksiMassal_ArsipkanKandidat(t *testing.T) {
+	repo := &fakeMLRepo{models: map[string]*domain.ModelRegistry{"k": modelUji("k", domain.StatusKandidat, domain.SumberModel, 5, 3)}}
+	u, rec := uc(repo, nil)
+
+	hasil, err := u.AksiMassal(t.Context(), AksiArsip, []string{"k"}, "u-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, hasil.Berhasil, "kandidat yang buruk tetap boleh diarsipkan")
+	assert.Equal(t, []string{"k"}, repo.diarsipkan)
+	e, _ := rec.Last()
+	assert.Equal(t, "ARSIP_MODEL", e.Aksi)
+	assert.Equal(t, domain.StatusArsip, e.Sesudah.(map[string]any)["status"])
+}
+
+func TestAksiMassal_AksiTidakDikenal(t *testing.T) {
+	u, _ := uc(&fakeMLRepo{}, nil)
+
+	_, err := u.AksiMassal(t.Context(), "hapus", []string{"x"}, "u-1")
+
+	assert.ErrorIs(t, err, ErrAksiModelTidakValid)
+}
+
+func TestAksiMassal_GalatBasisDataBukanAlasanMelewati(t *testing.T) {
+	boom := errors.New("db down")
+	dasar := &fakeMLRepo{models: map[string]*domain.ModelRegistry{"k": modelUji("k", domain.StatusKandidat, domain.SumberDemo, 1, 0)}}
+	u, _ := uc(dasar, nil)
+	u.repo = &repoGalatPromosi{fakeMLRepo: dasar, err: boom}
+
+	_, err := u.AksiMassal(t.Context(), AksiPromosi, []string{"k"}, "u-1")
+
+	assert.ErrorIs(t, err, boom)
+}
+
+type repoGalatPromosi struct {
+	*fakeMLRepo
+	err error
+}
+
+func (r *repoGalatPromosi) Promosikan(context.Context, string, string, time.Time) (*domain.HasilPromosi, error) {
+	return nil, r.err
+}
+
+func TestAlasanDilewati(t *testing.T) {
+	alasan, ok := alasanDilewati(fmt.Errorf("bungkus: %w", domain.ErrModelTanpaProyeksi))
+	assert.True(t, ok)
+	assert.Contains(t, alasan, "belum punya proyeksi")
+
+	_, ok = alasanDilewati(errors.New("db down"))
+	assert.False(t, ok)
+	_, ok = alasanDilewati(nil)
+	assert.False(t, ok)
+}
+
+func TestLatih_VersiSudahAdaDiteruskan(t *testing.T) {
+	repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}, errSimpan: domain.ErrModelSudahAda}
+	u, rec := uc(repo, &fakeML{train: jawabanLatih(hasilOK("1171"))})
+
+	_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+	assert.ErrorIs(t, err, domain.ErrModelSudahAda)
+	assert.Empty(t, rec.Entries())
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/garda-inflasi/api/internal/prediksi/dto"
 	"github.com/garda-inflasi/api/internal/prediksi/usecase"
 	"github.com/garda-inflasi/api/pkg/response"
@@ -64,6 +65,29 @@ func (h *MLOpsHandler) Evaluasi(c *gin.Context) {
 	response.Success(c, dto.EvaluasiResponse{Dievaluasi: n})
 }
 
+// POST /v1/prediksi/registri/bulk
+func (h *MLOpsHandler) Bulk(c *gin.Context) {
+	var req dto.BulkModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	hasil, err := h.uc.AksiMassal(audit.RequestContext(c), req.Action, req.IDs, c.GetString("user_id"))
+	if errors.Is(err, usecase.ErrAksiModelTidakValid) {
+		response.BadRequest(c, "Aksi tidak valid")
+		return
+	}
+	if err != nil {
+		response.InternalError(c, "Gagal memproses aksi massal")
+		return
+	}
+	detail := make([]dto.GagalModelResponse, len(hasil.Gagal))
+	for i, g := range hasil.Gagal {
+		detail[i] = dto.GagalModelResponse{ID: g.ID, Alasan: g.Alasan}
+	}
+	response.Success(c, dto.BulkModelResponse{Berhasil: hasil.Berhasil, Gagal: len(hasil.Gagal), Detail: detail})
+}
+
 // galat menjawab err (bila ada) dengan status yang sesuai dan melaporkan apakah sudah dijawab.
 func (h *MLOpsHandler) galat(c *gin.Context, err error, pesanUmum string) bool {
 	switch {
@@ -77,6 +101,8 @@ func (h *MLOpsHandler) galat(c *gin.Context, err error, pesanUmum string) bool {
 		response.Error(c, http.StatusUnprocessableEntity, "422", "Data harga tervalidasi belum cukup untuk komoditas ini.")
 	case errors.Is(err, usecase.ErrModelTidakAda):
 		response.NotFound(c, "Komoditas tidak punya model produksi")
+	case errors.Is(err, domain.ErrModelSudahAda):
+		response.Conflict(c, "Model dengan versi ini sudah ada; tunggu sebentar lalu coba lagi")
 	case errors.Is(err, usecase.ErrBukanHasilLatih):
 		response.Conflict(c, "Model produksi komoditas ini adalah data demo; latih model terlebih dahulu")
 	default:

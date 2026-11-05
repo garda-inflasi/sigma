@@ -53,9 +53,12 @@
 
 ---
 
-## 11-C — MLOps dan simulasi *(Fase F, gelombang F-4)*
+## 11-C — MLOps dan simulasi *(Fase F, gelombang F-4)* — promosi, arsip, simulasi selesai
 
-1. **MIG**: `model_promosi` (riwayat promosi), `skenario_simulasi` (`id`, `parameter` JSONB, `hasil` JSONB, `dibuat_oleh`, `dibuat_pada`), `model_registry`: `dipromosikan_oleh`/`dipromosikan_pada`.
-2. **API**: promosi model dengan persetujuan manusia (izin `model.kelola`); retraining terjadwal dan pemantauan drift/performa; `POST /v1/prediksi/simulasi` (what-if pasokan, cuaca, kebijakan); audit keputusan ([03-A](03-audit.md)).
-3. **FE**: aksi promosi di registri model; simulasi memakai endpoint.
-4. **TES**: promosi hanya oleh pemegang izin; simulasi tersimpan.
+1. **MIG**: [x] `000091`: `model_promosi` (riwayat promosi/arsip, model yang digantikan, pelaku), `skenario_simulasi` (`parameter`, `hasil` JSONB, `dibuat_oleh`), `model_registry.dipromosikan_oleh`/`dipromosikan_pada`.
+2. **API**
+   - [x] `POST /v1/prediksi/registri/bulk` (`action`: `promosi`|`arsip`, izin `model.kelola`, audit `PROMOSI_MODEL`/`ARSIP_MODEL`): promosi KANDIDAT atau ARSIP (rollback) mengarsipkan model produksi komoditas itu dalam satu transaksi; model produksi tak dapat diarsipkan langsung. **Gerbang:** model hasil pelatihan yang MAPE backtest-nya lebih buruk dari baseline naif ditolak; model tanpa proyeksi ditolak (komoditas tidak boleh kehilangan proyeksi). Alasan penolakan dikembalikan per model.
+   - [x] `POST /v1/prediksi/simulasi` (izin `prediksi.lihat`, audit `SIMULASI_SKENARIO`): proyeksi dasar dari model produksi + efek parameter (hujan, pasokan, subsidi) dihitung di server dan disimpan. **Terbatas:** koefisien masih `ASUMSI` generik (riwayat pasokan/cuaca/subsidi belum ada untuk diestimasi); hasil berlabel `terbatas` beserta koefisien dan sumbernya.
+   - [ ] Retraining terjadwal, pemantauan drift (kolom `drift` masih nol untuk model hasil pelatihan), estimasi koefisien simulasi dari data (menunggu 05-B/05-C), antarmuka riwayat `model_promosi`.
+3. **FE**: [x] aksi "Promosikan ke produksi" dan "Arsipkan kandidat" di registri (izin `model.kelola`, konfirmasi, alasan penolakan ditampilkan); simulasi memanggil endpoint untuk komoditas terpilih dan menampilkan efek per parameter dengan label asumsi.
+4. **TES**: [x] promosi hanya oleh pemegang izin (403 untuk `prediksi.lihat` saja), satu produksi per komoditas, rollback, penolakan baseline dan tanpa proyeksi, arsip hanya KANDIDAT, riwayat dan audit tercatat; simulasi tersimpan, netral = proyeksi model, validasi rentang.

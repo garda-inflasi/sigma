@@ -4,6 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
+import type { AksiModel, SimulasiInput } from "@/lib/api/prediksi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
@@ -162,6 +163,35 @@ export function useBulkAction<T extends { id: string }>(opts: {
     },
     onSettled: () => {
       if (opts.invalidate && !MODE_MOCK) qc.invalidateQueries({ queryKey: opts.invalidate });
+    },
+  });
+}
+
+// ── Mutasi prediksi ───────────────────────────────────────────────────
+
+/** Promosi/arsip model; menyegarkan registri dan proyeksi (model produksi menentukan proyeksi yang tampil). */
+export function useAksiModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ aksi, ids }: { aksi: AksiModel; ids: string[]; label: string }) => api.prediksi.aksiModel(aksi, ids),
+    onSuccess: (res, { label }) => {
+      qc.invalidateQueries({ queryKey: qk.prediksi.all() });
+      qc.invalidateQueries({ queryKey: qk.eksekutif.xaiAll() });
+      toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} model`, { description: res.berhasil ? "Tercatat di audit trail." : undefined });
+      if (res.gagal) toast.warning(`${res.gagal} model dilewati`, { description: res.detail.map((d) => d.alasan).join("; ") });
+    },
+    onError: (err) => {
+      toast.error("Aksi model gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+
+/** Menghitung simulasi skenario di server; hasilnya dibaca dari `data` mutasi. */
+export function useSimulasi() {
+  return useMutation({
+    mutationFn: (input: SimulasiInput) => api.prediksi.simulasi(input),
+    onError: (err) => {
+      toast.error("Simulasi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
     },
   });
 }

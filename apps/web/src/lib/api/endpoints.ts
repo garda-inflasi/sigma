@@ -2,7 +2,7 @@ import { apiFetch, mockDelay, MODE_MOCK } from "./client";
 import { toAuditRow, type AuditLogResponse } from "./audit";
 import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
-import { penggunaApi } from "./pengguna";
+import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
   ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
@@ -64,6 +64,7 @@ export const api = {
   },
   sumber: { list: () => get<SumberData[]>("/v1/sumber-data", m.mockSumber) },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
+  rbac: { katalog: (): Promise<KatalogAkses> => (MODE_MOCK ? mockDelay(m.mockKatalogAkses) : penggunaApi.katalog()) },
   audit: { list: () => (MODE_MOCK ? mockDelay(m.mockAudit) : apiFetch<AuditLogResponse[]>("/v1/audit?limit=500").then((rows) => rows.map(toAuditRow))) },
   brief: {
     list: () => get<PolicyBrief[]>("/v1/policy-brief", m.mockBriefs),

@@ -25,7 +25,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | #   | Fitur                                     | Rute UI                    | UI  | Backend | Terhubung | Skema & seed | Tes | Berkas                                                     |
 | --- | ----------------------------------------- | -------------------------- | :-: | :-----: | :-------: | :----------: | :-: | ---------------------------------------------------------- |
 | 1   | Autentikasi, MFA, sesi                    | `/masuk`, `/lupa-password` | 🟡  |   ✅    |    ✅     |      ✅      | ✅  | [01-auth.md](01-auth.md)                                   |
-| 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      🟡      | 🟡  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
+| 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | 🟡  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
 | 3   | Audit trail                               | `/audit`                   | ✅  |   🟡    |    ✅     |      🟡      | ⬜  | [03-audit.md](03-audit.md)                                 |
 | 4   | Master data                               | `/master/[entitas]`        | ✅  |   🟡    |    ⬜     |      ✅      | 🟡  | [04-master-data.md](04-master-data.md)                     |
 | 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [05-sumber-data.md](05-sumber-data.md)                     |

@@ -18,17 +18,19 @@ import { exportCsv } from "@/lib/csv";
 import type { PenggunaRow } from "@/lib/data/types";
 import { formatRelatif } from "@/lib/format";
 import {
-  useAssignRolePengguna, useCreatePengguna, useDeletePengguna, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna,
+  useAssignRolePengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna,
 } from "@/lib/query/hooks";
-import { PERMISSIONS, can } from "@/lib/rbac/permissions";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
 
 const STATUS = { AKTIF: { tone: "normal", label: "Aktif" }, NONAKTIF: { tone: "netral", label: "Nonaktif" }, MENUNGGU: { tone: "waspada", label: "Menunggu aktivasi" } } as const;
 
-/** Matriks peran × izin: transparansi least privilege untuk audit SPBE. */
+/** Matriks peran × izin: transparansi least privilege untuk audit SPBE. Dibaca dari API (sumber izin tunggal). */
 function MatriksAkses() {
-  const grup = [...new Set(PERMISSIONS.map((p) => p.split(".")[0]))];
+  const { data: katalog, isLoading } = useKatalogAkses();
+  if (isLoading || !katalog) return <div className="glass h-64 animate-pulse rounded-xl" aria-busy="true" />;
+  const { izin, izinPeran } = katalog;
+  const grup = [...new Set(izin.map((p) => p.split(".")[0]))];
   return (
     <div className="glass scrollbar-thin overflow-x-auto rounded-xl">
       <table className="w-full min-w-[1100px] border-separate border-spacing-0 text-xs">
@@ -47,12 +49,12 @@ function MatriksAkses() {
           {grup.map((g) => (
             <Fragment key={g}>
               <tr><td colSpan={ROLE_IDS.length + 1} className="sticky left-0 bg-mist-100/80 px-3 py-1.5 font-semibold capitalize dark:bg-white/5">{g}</td></tr>
-              {PERMISSIONS.filter((p) => p.startsWith(`${g}.`)).map((p) => (
+              {izin.filter((p) => p.startsWith(`${g}.`)).map((p) => (
                 <tr key={p} className="hover:bg-white/50 dark:hover:bg-white/[0.03]">
                   <td className="num sticky left-0 border-b border-border/50 bg-white/90 px-3 py-2 backdrop-blur dark:bg-navy-950/90">{p}</td>
                   {ROLE_IDS.map((r) => (
                     <td key={r} className="border-b border-border/50 text-center">
-                      {can(r, p) ? <span className="inline-grid size-5 place-items-center rounded-full bg-data-500 text-white"><Check className="size-3" /></span> : <span className="inline-block size-1 rounded-full bg-mist-300 dark:bg-white/15" />}
+                      {izinPeran[r]?.has(p) ? <span className="inline-grid size-5 place-items-center rounded-full bg-data-500 text-white"><Check className="size-3" /></span> : <span className="inline-block size-1 rounded-full bg-mist-300 dark:bg-white/15" />}
                     </td>
                   ))}
                 </tr>
@@ -247,7 +249,7 @@ export function PenggunaPage() {
             { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "Nama", value: (u) => u.nama }, { header: "Email", value: (u) => u.email }, { header: "Peran", value: (u) => ROLES[u.role].label }, { header: "Lembaga", value: (u) => u.lembaga }, { header: "Status", value: (u) => u.status }], "pengguna") },
           ]} />
       )}
-      <p className={cn("text-xs text-muted-foreground", tab === "matriks" ? "block" : "hidden")}>Matriks ini dibaca langsung dari lib/rbac/permissions.ts, sumber yang sama dengan proxy.ts dan API.</p>
+      <p className={cn("text-xs text-muted-foreground", tab === "matriks" ? "block" : "hidden")}>Matriks ini dibaca dari API (GET /v1/roles dan /v1/permissions), sumber izin yang sama dengan penegakan di backend.</p>
 
       {dialog?.mode === "reset" ? (
         <ResetPasswordDialog user={dialog.user} open onOpenChange={(v) => !v && setDialog(null)} />

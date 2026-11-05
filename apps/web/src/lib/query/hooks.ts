@@ -51,6 +51,7 @@ export const usePengguna = (search?: string) =>
     queryKey: qk.pengguna.list(search),
     queryFn: () => (MODE_MOCK ? api.pengguna.list() : penggunaApi.list({ search })),
   });
+export const useKatalogAkses = () => useQuery({ queryKey: qk.rbac.katalog(), queryFn: api.rbac.katalog, staleTime: 5 * 60_000 });
 export const useAudit = () => useQuery({ queryKey: qk.audit.list(), queryFn: api.audit.list });
 export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
 export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn: api.tugas.saya });

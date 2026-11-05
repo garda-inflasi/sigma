@@ -3,6 +3,8 @@
  * tanpa backend Go. Aktif otomatis bila NEXT_PUBLIC_API_BASE_URL kosong.
  */
 import type { Severity } from "@/lib/design/tokens";
+import type { KatalogAkses } from "@/lib/api/pengguna";
+import { PERMISSIONS, ROLE_PERMISSIONS } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
 import {
   ANCHOR_DATE, KABUPATEN, KOMODITAS, PASAR, delta7, gauss, hashSeed, kabupatenBerpasar, mulberry32,
@@ -285,6 +287,13 @@ export function mockPengguna(): PenggunaRow[] {
     mfa: ROLES[u.role].mfaWajib || rng() > 0.4,
     terakhirMasuk: menitLalu(Math.floor(rng() * 4000)),
   }));
+}
+
+export function mockKatalogAkses(): KatalogAkses {
+  return {
+    izin: [...PERMISSIONS],
+    izinPeran: Object.fromEntries(Object.entries(ROLE_PERMISSIONS).map(([role, izin]) => [role, new Set<string>(izin)])),
+  };
 }
 
 export function mockAudit(): AuditRow[] {

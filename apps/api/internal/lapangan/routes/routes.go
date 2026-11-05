@@ -23,7 +23,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	handler := http.New(uc)
 
 	lapangan := engine.Group("/lapangan")
-	lapangan.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("lapangan.lihat"))
+	lapangan.Use(middleware.JWTAuth(deps.Token), middleware.RequireAnyPermission("tugas.lihat_sendiri", "tugas.kelola"))
 	{
 		tugas := lapangan.Group("/tugas")
 		{

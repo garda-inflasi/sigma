@@ -41,6 +41,20 @@ export interface RoleInfo {
   permissions: string[];
 }
 
+/** Katalog akses: seluruh izin dan izin tiap peran, sebagaimana dikenal API. */
+export interface KatalogAkses {
+  izin: string[];
+  izinPeran: Record<string, ReadonlySet<string>>;
+}
+
+/** RoleInfo[] + daftar izin (API) → KatalogAkses (UI). */
+export function toKatalogAkses(roles: RoleInfo[], permissions: { id: string }[]): KatalogAkses {
+  return {
+    izin: permissions.map((p) => p.id),
+    izinPeran: Object.fromEntries(roles.map((r) => [r.id, new Set(r.permissions)])),
+  };
+}
+
 const STATUSES = ["AKTIF", "NONAKTIF", "MENUNGGU"] as const;
 type Status = (typeof STATUSES)[number];
 
@@ -157,4 +171,9 @@ export const penggunaApi = {
   roles: () => bffFetch<RoleInfo[]>("/api/rbac/roles"),
 
   permissions: () => bffFetch<{ id: string }[]>("/api/rbac/permissions"),
+
+  katalog: async (): Promise<KatalogAkses> => {
+    const [roles, permissions] = await Promise.all([penggunaApi.roles(), penggunaApi.permissions()]);
+    return toKatalogAkses(roles, permissions);
+  },
 };

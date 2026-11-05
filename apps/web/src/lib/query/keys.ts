@@ -26,6 +26,7 @@ export const qk = {
     all: () => ["pengguna"] as const,
     list: (search?: string) => ["pengguna", "list", search ?? ""] as const,
   },
+  rbac: { katalog: () => ["rbac", "katalog"] as const },
   audit: { list: () => ["audit"] as const },
   brief: { list: () => ["policy-brief"] as const },
   tugas: { saya: () => ["tugas", "saya"] as const },

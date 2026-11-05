@@ -4,11 +4,12 @@ package integration
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -392,16 +393,43 @@ func TestPrediksi_RegistryListsModelsWithStatus(t *testing.T) {
 	assert.Equal(t, "PRODUKSI", got[1].Status)
 }
 
-func TestPrediksi_ExportIsDownloadableJSON(t *testing.T) {
+func TestPrediksi_ExportIsDownloadableCSV(t *testing.T) {
 	s := sharedSuite(t)
 
 	w := s.call(t, "/v1/prediksi/CBM-KRT/export", emailBerhak)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "attachment; filename=proyeksi_CBM-KRT.json", w.Header().Get("Content-Disposition"))
-	var body detailResp
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "CBM-KRT", body.KomoditasKode)
-	assert.NotEmpty(t, body.Seri)
-	assert.Equal(t, http.StatusNotFound, s.call(t, fmt.Sprintf("/v1/prediksi/%s/export", "XXX"), emailBerhak).Code)
+	assert.Equal(t, `attachment; filename="proyeksi_CBM-KRT.csv"`, w.Header().Get("Content-Disposition"))
+	assert.Equal(t, "text/csv; charset=utf-8", w.Header().Get("Content-Type"))
+
+	isi := strings.TrimPrefix(w.Body.String(), "\ufeff")
+	r := csv.NewReader(strings.NewReader(isi))
+	r.Comma = ';'
+	baris, err := r.ReadAll()
+	require.NoError(t, err)
+	require.Greater(t, len(baris), 1, "header dan sedikitnya satu titik")
+	assert.Equal(t, []string{
+		"komoditas_kode", "komoditas_nama", "kabupaten_kode", "horizon_hari", "tanggal",
+		"aktual", "proyeksi", "bawah", "atas", "model_versi", "sumber",
+	}, baris[0])
+
+	// Isi CSV harus sama dengan seri pada detail: satu baris per titik, urutan sama.
+	detail := decode[detailResp](t, s.call(t, "/v1/prediksi/CBM-KRT", emailBerhak))
+	require.Len(t, baris[1:], len(detail.Seri))
+	var adaAktual, adaProyeksi bool
+	for i, t0 := range detail.Seri {
+		b := baris[i+1]
+		assert.Equal(t, "CBM-KRT", b[0])
+		assert.Equal(t, t0.Tanggal, b[4])
+		assert.Equal(t, detail.Model.Versi, b[9])
+		assert.Equal(t, detail.Sumber, b[10])
+		assert.Equal(t, t0.Aktual != nil, b[5] != "", "sel aktual kosong hanya bila titik tanpa aktual")
+		assert.Equal(t, t0.Proyeksi != nil, b[6] != "")
+		adaAktual = adaAktual || b[5] != ""
+		adaProyeksi = adaProyeksi || b[6] != ""
+	}
+	assert.True(t, adaAktual && adaProyeksi, "CSV memuat riwayat aktual dan jalur proyeksi")
+
+	assert.Equal(t, http.StatusNotFound, s.call(t, "/v1/prediksi/XXX/export", emailBerhak).Code)
+	assert.Equal(t, http.StatusBadRequest, s.call(t, "/v1/prediksi/CBM-KRT/export?horizon=0", emailBerhak).Code)
 }

@@ -4343,8 +4343,13 @@ paths:
 
   /v1/prediksi/{kode}/export:
     get:
-      summary: Unduh proyeksi satu komoditas (JSON)
-      description: Isi sama dengan `GET /v1/prediksi/{kode}`, tanpa envelope, sebagai lampiran berkas.
+      summary: Unduh proyeksi satu komoditas (CSV)
+      description: |
+        Seri grafik `GET /v1/prediksi/{kode}` sebagai lampiran CSV (titik koma, BOM UTF-8):
+        satu baris per titik (riwayat aktual, titik sambung, jalur proyeksi). Kolom:
+        `komoditas_kode`, `komoditas_nama`, `kabupaten_kode`, `horizon_hari`, `tanggal`,
+        `aktual`, `proyeksi`, `bawah`, `atas`, `model_versi`, `sumber`; sel kosong berarti
+        titik itu tidak punya nilai tersebut.
       operationId: exportPrediksi
       tags:
         - Prediksi
@@ -4371,11 +4376,22 @@ paths:
             maximum: 365
       responses:
         "200":
-          description: Berkas JSON
+          description: Berkas CSV
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="proyeksi_CBM-KRT.csv"
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Kabupaten atau horizon tidak valid
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PrediksiProyeksi"
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tanpa izin `prediksi.lihat`
           content:

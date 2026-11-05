@@ -4,19 +4,24 @@ import "time"
 
 // Pengguna maps to the pengguna table.
 type Pengguna struct {
-	ID             string     `gorm:"column:id;primaryKey"`
-	Nama           string     `gorm:"column:nama"`
-	Email          string     `gorm:"column:email;uniqueIndex:idx_pengguna_email"`
-	PasswordHash   *string    `gorm:"column:password_hash"`
-	Peran          string     `gorm:"column:peran"`
-	Lapis          string     `gorm:"column:lapis"`
-	Lembaga        string     `gorm:"column:lembaga"`
-	KabupatenKode  *string    `gorm:"column:kabupaten_kode"`
-	MfaAktif       bool       `gorm:"column:mfa_aktif;default:false"`
-	MfaSecret      *string    `gorm:"column:mfa_secret"`
-	MfaBackupCodes *string    `gorm:"column:mfa_backup_codes"`
-	Status         string     `gorm:"column:status;default:AKTIF"`
-	TerakhirMasuk  *time.Time `gorm:"column:terakhir_masuk"`
+	ID            string  `gorm:"column:id;primaryKey"`
+	Nama          string  `gorm:"column:nama"`
+	Email         string  `gorm:"column:email;uniqueIndex:idx_pengguna_email"`
+	PasswordHash  *string `gorm:"column:password_hash"`
+	Peran         string  `gorm:"column:peran"`
+	Lapis         string  `gorm:"column:lapis"`
+	Lembaga       string  `gorm:"column:lembaga"`
+	KabupatenKode *string `gorm:"column:kabupaten_kode"`
+	MfaAktif      bool    `gorm:"column:mfa_aktif;default:false"`
+	// MfaSecret adalah rahasia TOTP bersegel AES ("v1:<base64>", lihat crypto.Keyring); nil bila MFA belum disiapkan.
+	// Selama MfaAktif false, isinya rahasia setup yang belum diverifikasi.
+	MfaSecret *string `gorm:"column:mfa_secret"`
+	// MfaWajib memaksa akun ini memakai MFA walau perannya tidak termasuk peran wajib (aksi massal wajibkan_mfa).
+	MfaWajib bool `gorm:"column:mfa_wajib;default:false"`
+	// MfaLangkahTerakhir adalah langkah waktu TOTP terakhir yang diterima; kode dengan langkah sama atau lebih lama ditolak.
+	MfaLangkahTerakhir int64      `gorm:"column:mfa_langkah_terakhir;default:0"`
+	Status             string     `gorm:"column:status;default:AKTIF"`
+	TerakhirMasuk      *time.Time `gorm:"column:terakhir_masuk"`
 	// WajibGantiPassword aktif untuk akun yang kata sandinya ditetapkan pihak lain
 	// (admin awal, dibuat/di-reset admin); dimatikan oleh ganti atau reset kata sandi.
 	WajibGantiPassword bool       `gorm:"column:wajib_ganti_password;default:false"`
@@ -27,6 +32,19 @@ type Pengguna struct {
 
 func (Pengguna) TableName() string {
 	return "pengguna"
+}
+
+// KodeCadanganMFA memetakan tabel mfa_kode_cadangan: satu kode cadangan MFA sebagai hash.
+type KodeCadanganMFA struct {
+	ID          int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID      string     `gorm:"column:user_id"`
+	KodeHash    string     `gorm:"column:kode_hash"`
+	DipakaiPada *time.Time `gorm:"column:dipakai_pada"`
+	DibuatPada  time.Time  `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (KodeCadanganMFA) TableName() string {
+	return "mfa_kode_cadangan"
 }
 
 // RefreshToken represents a stored refresh token.

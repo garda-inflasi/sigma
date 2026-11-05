@@ -70,19 +70,10 @@ func SeedAdmin(ctx context.Context, db *gorm.DB, cfg AdminConfig) (AdminSummary,
 	admin := domain.Pengguna{
 		ID: adminID, Nama: "Administrator Sistem", Email: email, PasswordHash: &hash,
 		Peran: adminPeran, Lapis: "SISTEM", Lembaga: adminLembaga, Status: "AKTIF",
-		WajibGantiPassword: true,
+		WajibGantiPassword: true, MfaWajib: true,
 	}
-	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&admin).Error; err != nil {
-			return fmt.Errorf("simpan admin awal: %w", err)
-		}
-		if err := tx.Exec("UPDATE pengguna SET mfa_wajib = true WHERE id = ?", adminID).Error; err != nil {
-			return fmt.Errorf("wajibkan MFA admin awal: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return AdminSummary{}, err
+	if err := db.WithContext(ctx).Create(&admin).Error; err != nil {
+		return AdminSummary{}, fmt.Errorf("simpan admin awal: %w", err)
 	}
 
 	if generated && cfg.Output != nil {

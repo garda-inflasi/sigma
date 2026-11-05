@@ -15,7 +15,9 @@ import { KOMODITAS, PASAR, komoditasByKode, pasarById } from "@/lib/data/referen
 import type { Kualitas, TipeHarga } from "@/lib/data/types";
 import { formatAngka, formatPersen, formatRupiah, parseRupiah } from "@/lib/format";
 import { popIn, spring } from "@/lib/motion/presets";
+import { cariAcuan } from "@/lib/api/lapangan";
 import { BATAS_EKSTREM, TOLERANSI, hargaAcuan, jarakMeter, kompresFoto } from "@/lib/offline/acuan";
+import { useAcuanServer } from "@/lib/offline/acuan-server";
 import { useOnline } from "@/lib/offline/use-online";
 import { useFieldQueue } from "@/lib/stores/field-queue-store";
 import { cn } from "@/lib/utils";
@@ -72,7 +74,11 @@ export function PriceInputForm() {
 
   const kom = komoditasByKode[kode];
   const pasar = pasarById[pasarId];
-  const acuan = useMemo(() => hargaAcuan(kode, pasarId, tipe), [kode, pasarId, tipe]);
+  const acuanServer = useAcuanServer((s) => s.data);
+  const acuan = useMemo(
+    () => (acuanServer && cariAcuan(acuanServer, kode, pasarById[pasarId].kabupatenKode, tipe)) || hargaAcuan(kode, pasarId, tipe),
+    [acuanServer, kode, pasarId, tipe],
+  );
   const harga = parseRupiah(hargaStr);
   const dev = harga ? ((harga - acuan.median) / acuan.median) * 100 : 0;
   const level = !harga ? "kosong" : Math.abs(dev) > BATAS_EKSTREM * 100 ? "ekstrem" : Math.abs(dev) > TOLERANSI * 100 ? "luar" : "wajar";

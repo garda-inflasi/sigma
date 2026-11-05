@@ -26,6 +26,12 @@ make dev/web              # terminal 2: web di :3000
 
 Login dengan akun demo, mis. `superadmin@gardainflasi.id`, kata sandi `Garda2024!`.
 
+MFA: akun yang sudah mengaktifkan MFA (di demo: `mfa@gardainflasi.id`, rahasia TOTP `JBSWY3DPEHPK3PXP`, kode
+cadangan `BACKUP01`-`BACKUP03`) diminta kode OTP setelah kata sandi. Penegakan MFA bagi peran strategis,
+manajerial, koordinator, dan admin diatur `MFA_ENFORCE` (kosong = hanya di `APP_ENV=production`), jadi lokal
+dan demo tetap bisa masuk tanpa setup. Dengan `MFA_ENFORCE=true`, akun wajib-MFA yang belum setup diarahkan
+ke `/mfa` dan sesinya hanya membuka endpoint setup.
+
 - `NEXT_PUBLIC_API_BASE_URL=/api` di `apps/web/.env.local`. Panggilan `/api/v1/*` diteruskan Next ke Go
   (`GO_API_BASE_URL`) hanya saat `make dev/web`; di Docker/produksi Caddy yang meneruskannya.
 - `make db/seed/reference db/seed/demo` aman dijalankan berulang (idempoten).

@@ -22,7 +22,7 @@ func TestLogin_SuccessWritesExactlyOneAuditEntry(t *testing.T) {
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 
-	_, _, _, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
+	_, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
 	require.NoError(t, err)
 	entries := recorder.Entries()
@@ -89,7 +89,7 @@ func TestLogin_FailuresAreAudited(t *testing.T) {
 			uc, recorder := newTestUseCaseWithAudit(repo)
 			tc.setup(repo)
 
-			_, _, _, err := uc.Login(context.Background(), "test@example.com", tc.password, "10.0.0.1")
+			_, err := uc.Login(context.Background(), "test@example.com", tc.password, "10.0.0.1")
 
 			require.Error(t, err)
 			entries := recorder.Entries()

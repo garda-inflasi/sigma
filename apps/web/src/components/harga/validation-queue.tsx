@@ -9,7 +9,7 @@ import { qk } from "@/lib/query/keys";
 import { useHargaBulkActions, useHargaColumns } from "./harga-table";
 import { SpringLink } from "@/components/garda/spring-button";
 
-const PARAMS: HargaParams = { status: "DIAJUKAN" };
+const PARAMS: HargaParams = { status: "DIAJUKAN", urut: "skor" };
 const getId = (r: EntriHarga) => r.id;
 
 export function ValidationQueue() {
@@ -21,7 +21,7 @@ export function ValidationQueue() {
     <section className="space-y-3">
       <PanelTitle
         title="Antrean validasi"
-        description="Entri lapangan yang menunggu verifikasi koordinator. Centang beberapa untuk memvalidasi sekaligus."
+        description="Entri lapangan yang menunggu verifikasi koordinator, yang paling mencurigakan di atas. Centang beberapa untuk memvalidasi sekaligus."
         actions={<SpringLink href="/data/harga" size="sm" variant="soft">Buka semua</SpringLink>}
       />
       <DataTable
@@ -33,7 +33,6 @@ export function ValidationQueue() {
         bulkActions={actions}
         pageSize={8}
         searchPlaceholder="Cari komoditas, pasar, atau petugas"
-        initialSorting={[{ id: "deviasiPct", desc: true }]}
         rowTone={(r) => (Math.abs(r.deviasiPct) > 25 ? "defisit" : Math.abs(r.deviasiPct) > 10 ? "waspada" : undefined)}
         empty={{ title: "Antrean validasi kosong", description: "Semua entri lapangan sudah diverifikasi. Entri baru akan masuk otomatis saat agen lapangan menyinkronkan data." }}
       />

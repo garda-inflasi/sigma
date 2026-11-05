@@ -44,12 +44,12 @@
 
 **Tujuan:** tautan di email reset tidak lagi berujung 404. Tanpa migration.
 
-1. **API**: sudah ada (`POST /v1/auth/reset-password`). Verifikasi masa berlaku dan pemakaian satu kali token.
+1. **API** (selesai): token dipakai atomik (`ConsumeResetToken`), kedaluwarsa dan terpakai dibedakan di pesan, token lain akun yang sama hangus, sesi dicabut; tautan email mengarah ke `/reset-password` (`APP_PUBLIC_URL`).
 2. **FE**
-   - [ ] Halaman `/reset-password` (token dari query, form password baru + konfirmasi, aturan password policy). BFF `/api/auth/reset-password` sudah ada; rute sudah ada di `PUBLIC_ROUTES`.
-   - [ ] Pesan jelas untuk token kedaluwarsa/terpakai, lalu arahkan ke `/masuk`.
-   - [ ] Hapus `/daftar` dari `PUBLIC_ROUTES` bila tidak ada halamannya.
-3. **TES**: komponen form; e2e forgot → reset → login.
+   - [x] Halaman `/reset-password` (token dari query, form password baru + konfirmasi, aturan password policy). BFF `/api/auth/reset-password` sudah ada; rute sudah ada di `PUBLIC_ROUTES`.
+   - [x] Pesan jelas untuk token kedaluwarsa/terpakai, lalu arahkan ke `/masuk`.
+   - [x] Hapus `/daftar` dari `PUBLIC_ROUTES` bila tidak ada halamannya.
+3. **TES** (selesai): logika form (`lib/auth/reset-password.test.ts`) dan alur reset → login di integrasi Go. Form `lupa-password` diperbaiki agar memanggil BFF `/api/auth/forgot-password` (sebelumnya endpoint salah). E2E browser belum ada.
 
 ---
 
@@ -59,18 +59,18 @@
 **Bergantung pada:** 01-A.
 
 1. **MIG**
-   - [ ] Enkripsi `mfa_secret` memakai `pkg/crypto` (simpan versi kunci) beserta **migrasi data** yang mengenkripsi nilai lama. Down harus dapat memulihkan.
-   - [ ] Tabel `mfa_backup_codes (user_id, kode_hash, dipakai_pada)`; pindahkan `mfa_backup_codes` JSONB (polos) menjadi hash.
-2. **SEED**: akun demo MFA dibuat ulang dengan secret terenkripsi dan kode cadangan ter-hash; secret dan kode demo ditandai demo.
+   - [x] Enkripsi `mfa_secret` memakai `pkg/crypto` (`Keyring`, versi kunci disimpan sebagai awalan `v1:`) beserta **migrasi data** Go versi 64 yang mengenkripsi nilai lama; Down memulihkannya (memerlukan `AES_KEY` yang sama).
+   - [x] Tabel `mfa_kode_cadangan (user_id, kode_hash, dipakai_pada)` (migrasi 000063); kode polos di `pengguna.mfa_backup_codes` dipindahkan sebagai hash SHA-256 `"<id>:<kode>"` lalu kolomnya dibuang (Down tidak dapat memulihkan kode polos). Tambahan: `mfa_langkah_terakhir` agar satu kode TOTP tidak berlaku dua kali.
+2. **SEED** (selesai): `user_mfa` dibuat ulang dengan rahasia bersegel dan kode cadangan ter-hash; rahasia dan kode demo (`DemoMFASecret`, `DemoKodeCadangan`) hanya ada di seeder demo.
 3. **API**
-   - [ ] Verifikasi alur: login yang memerlukan MFA harus menandai butuh kode dan baru menerbitkan token penuh setelah `mfa/validate`.
-   - [ ] Kode cadangan: buat, pakai sekali, regenerasi.
-   - [ ] Paksa MFA untuk peran wajib: sebelum setup, hanya endpoint setup MFA yang boleh diakses.
+   - [x] Verifikasi alur: login yang memerlukan MFA harus menandai butuh kode dan baru menerbitkan token penuh setelah `mfa/validate`.
+   - [x] Kode cadangan: buat, pakai sekali, regenerasi.
+   - [x] Paksa MFA untuk peran wajib (strategis, manajerial, koordinator, admin, dan akun bertanda `mfa_wajib`): sebelum setup, hanya endpoint setup MFA yang boleh diakses (403 `MFA_SETUP_REQUIRED`). Dikendalikan `MFA_ENFORCE` (kosong = hanya di `APP_ENV=production`), sehingga lokal/demo tetap bisa masuk; akun yang sudah ber-MFA selalu ditantang OTP.
 4. **FE**
-   - [ ] Route BFF untuk `/v1/auth/mfa/*` (belum ada).
-   - [ ] Langkah kode OTP di login; halaman setup MFA (QR, verifikasi kode pertama, tampilkan kode cadangan sekali, nonaktifkan).
-   - [ ] Arahkan peran wajib yang belum setup ke halaman setup.
-5. **TES**: usecase MFA (setup, validasi, kode cadangan, pemaksaan peran); e2e login+OTP.
+   - [x] Route BFF untuk `/v1/auth/mfa/*` (belum ada).
+   - [x] Langkah kode OTP di login; halaman setup MFA (QR, verifikasi kode pertama, tampilkan kode cadangan sekali, nonaktifkan).
+   - [x] Arahkan peran wajib yang belum setup ke halaman setup.
+5. **TES** (selesai; e2e browser login+OTP belum ada): usecase MFA (setup, validasi, kode cadangan, pemaksaan peran); e2e login+OTP.
 
 ---
 

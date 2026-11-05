@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/garda-inflasi/api/pkg/email"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
-	"github.com/garda-inflasi/api/pkg/totp"
 )
 
 // ── Mock Repository ───────────────────────────────────────────────────
@@ -123,9 +121,36 @@ func (m *mockRepository) GetResetToken(ctx context.Context, tokenHash string) (*
 	return args.Get(0).(*domain.ResetToken), args.Error(1)
 }
 
-func (m *mockRepository) MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error {
-	args := m.Called(ctx, id, usedAt)
-	return args.Error(0)
+func (m *mockRepository) ConsumeResetToken(ctx context.Context, id int64, now time.Time) (bool, error) {
+	args := m.Called(ctx, id, now)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *mockRepository) ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64) error {
+	return m.Called(ctx, userID, kodeHash, langkah).Error(0)
+}
+
+func (m *mockRepository) ReplaceBackupCodes(ctx context.Context, userID string, kodeHash []string) error {
+	return m.Called(ctx, userID, kodeHash).Error(0)
+}
+
+func (m *mockRepository) UseBackupCode(ctx context.Context, userID, kodeHash string, now time.Time) (bool, error) {
+	args := m.Called(ctx, userID, kodeHash, now)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *mockRepository) CountBackupCodes(ctx context.Context, userID string) (int64, error) {
+	args := m.Called(ctx, userID)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *mockRepository) AdvanceMFAStep(ctx context.Context, userID string, langkah int64) (bool, error) {
+	args := m.Called(ctx, userID, langkah)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *mockRepository) ClearMFA(ctx context.Context, userID string) error {
+	return m.Called(ctx, userID).Error(0)
 }
 
 func (m *mockRepository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {
@@ -146,6 +171,7 @@ func newTestUseCaseWithAudit(repo *mockRepository) (*UseCase, *audittest.Recorde
 		token.WithRefreshTTL(7*24*time.Hour),
 	)
 	cfg := DefaultConfig()
+	cfg.MFAKey = testKeyring()
 	log := logger.NewDefault()
 	emailSender := email.New(email.Config{}) // SMTP not configured — no-op sender
 	recorder := &audittest.Recorder{}
@@ -178,13 +204,14 @@ func TestLogin_Success(t *testing.T) {
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 
-	result, accessToken, refreshToken, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, "user-123", result.ID)
-	assert.NotEmpty(t, accessToken)
-	assert.NotEmpty(t, refreshToken)
+	assert.Equal(t, "user-123", result.User.ID)
+	assert.NotEmpty(t, result.AccessToken)
+	assert.NotEmpty(t, result.RefreshToken)
+	assert.False(t, result.MFARequired)
 
 	repo.AssertExpectations(t)
 }
@@ -196,7 +223,7 @@ func TestLogin_InvalidCredentials(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "wrong@example.com").Return(nil, errors.New("not found"))
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
-	result, _, _, err := uc.Login(context.Background(), "wrong@example.com", "Test1234!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "wrong@example.com", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrInvalidCredentials)
 	assert.Nil(t, result)
@@ -213,7 +240,7 @@ func TestLogin_InactiveAccount(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "inactive@example.com").Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
-	result, _, _, err := uc.Login(context.Background(), "inactive@example.com", "Test1234!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "inactive@example.com", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrAccountInactive)
 	assert.Nil(t, result)
@@ -229,7 +256,7 @@ func TestLogin_AccountLocked(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "locked@example.com").Return(user, nil)
 	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(10), nil)
 
-	result, _, _, err := uc.Login(context.Background(), "locked@example.com", "Test1234!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "locked@example.com", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrAccountLocked)
 	assert.Nil(t, result)
@@ -246,7 +273,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
-	result, _, _, err := uc.Login(context.Background(), "test@example.com", "WrongPass1!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "test@example.com", "WrongPass1!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrInvalidCredentials)
 	assert.Nil(t, result)
@@ -263,7 +290,7 @@ func TestLogin_NoPassword(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "sso@example.com").Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
-	result, _, _, err := uc.Login(context.Background(), "sso@example.com", "Test1234!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "sso@example.com", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrInvalidCredentials)
 	assert.Nil(t, result)
@@ -478,11 +505,11 @@ func TestLogin_MandatoryChangeFlagIsCarriedByToken(t *testing.T) {
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 
-	result, accessToken, _, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
+	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
 	require.NoError(t, err)
-	assert.True(t, result.WajibGantiPassword)
-	claims, err := uc.token.VerifyToken(accessToken)
+	assert.True(t, result.User.WajibGantiPassword)
+	claims, err := uc.token.VerifyToken(result.AccessToken)
 	require.NoError(t, err)
 	assert.True(t, claims.PasswordChangeRequired)
 }
@@ -594,7 +621,7 @@ func TestResetPassword_Success(t *testing.T) {
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("MarkResetTokenUsed", mock.Anything, int64(1), mock.Anything).Return(nil)
+	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 
 	err := uc.ResetPassword(context.Background(), "valid-token-hash", "NewPass1@")
@@ -657,6 +684,48 @@ func TestResetPassword_UsedToken(t *testing.T) {
 	assert.ErrorIs(t, err, ErrResetTokenInvalid)
 
 	repo.AssertExpectations(t)
+}
+
+func TestResetPassword_TokenClaimedByConcurrentRequest(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
+	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(false, nil)
+
+	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
+
+	assert.ErrorIs(t, err, ErrResetTokenInvalid)
+	repo.AssertNotCalled(t, "UpdateUser", mock.Anything, mock.Anything)
+	repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
+}
+
+func TestResetPassword_WeakPasswordDoesNotConsumeToken(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
+
+	err := uc.ResetPassword(context.Background(), "token", "lemahsekali")
+
+	assert.ErrorIs(t, err, ErrWeakPassword)
+	repo.AssertNotCalled(t, "ConsumeResetToken", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestResetPassword_SessionRevocationFailureIsReported(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
+	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
+	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db mati"))
+
+	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
+
+	require.Error(t, err)
 }
 
 // ── Password Validation Tests ─────────────────────────────────────────
@@ -782,200 +851,4 @@ func TestGetPermissionsForRole_UnknownRole(t *testing.T) {
 
 	perms := uc.getPermissionsForRole("UNKNOWN_ROLE")
 	assert.Empty(t, perms)
-}
-
-// ── MFA Tests ─────────────────────────────────────────────────────────
-
-func TestSetupMFA_Success(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-
-	secret, uri, backupCodes, err := uc.SetupMFA(context.Background(), "user-123")
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, secret)
-	assert.Contains(t, uri, "otpauth://totp/")
-	assert.Len(t, backupCodes, 8)
-
-	repo.AssertExpectations(t)
-}
-
-func TestSetupMFA_AlreadyActive(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-	user.MfaAktif = true
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-
-	_, _, _, err := uc.SetupMFA(context.Background(), "user-123")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "sudah aktif")
-
-	repo.AssertExpectations(t)
-}
-
-func TestSetupMFA_UserNotFound(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-
-	repo.On("GetUserByID", mock.Anything, "nonexistent").Return(nil, errors.New("not found"))
-
-	_, _, _, err := uc.SetupMFA(context.Background(), "nonexistent")
-	assert.ErrorIs(t, err, ErrUserNotFound)
-
-	repo.AssertExpectations(t)
-}
-
-func TestVerifyMFA_Success(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-
-	// Setup MFA first
-	secret := totp.GenerateSecret()
-	user.MfaSecret = &secret
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-
-	// Generate a valid TOTP code
-	code, err := totp.GenerateTOTP(secret, time.Now())
-	require.NoError(t, err)
-
-	err = uc.VerifyMFA(context.Background(), "user-123", code)
-	require.NoError(t, err)
-	assert.True(t, user.MfaAktif)
-
-	repo.AssertExpectations(t)
-}
-
-func TestVerifyMFA_InvalidCode(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-	secret := totp.GenerateSecret()
-	user.MfaSecret = &secret
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-
-	err := uc.VerifyMFA(context.Background(), "user-123", "000000")
-	assert.Error(t, err)
-
-	repo.AssertExpectations(t)
-}
-
-func TestVerifyMFA_NoSecret(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-
-	err := uc.VerifyMFA(context.Background(), "user-123", "123456")
-	assert.Error(t, err)
-
-	repo.AssertExpectations(t)
-}
-
-func TestValidateMFACode_TOTP(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-	user.MfaAktif = true
-	secret := totp.GenerateSecret()
-	user.MfaSecret = &secret
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-
-	code, err := totp.GenerateTOTP(secret, time.Now())
-	require.NoError(t, err)
-
-	valid, err := uc.ValidateMFACode(context.Background(), "user-123", code)
-	require.NoError(t, err)
-	assert.True(t, valid)
-
-	repo.AssertExpectations(t)
-}
-
-func TestValidateMFACode_BackupCode(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-	user.MfaAktif = true
-	secret := totp.GenerateSecret()
-	user.MfaSecret = &secret
-	codes := []string{"CODE0001", "CODE0002"}
-	codesJSON, _ := json.Marshal(codes)
-	s := string(codesJSON)
-	user.MfaBackupCodes = &s
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-
-	valid, err := uc.ValidateMFACode(context.Background(), "user-123", "CODE0001")
-	require.NoError(t, err)
-	assert.True(t, valid)
-
-	repo.AssertExpectations(t)
-}
-
-func TestValidateMFACode_MFANotActive(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-
-	_, err := uc.ValidateMFACode(context.Background(), "user-123", "123456")
-	assert.Error(t, err)
-
-	repo.AssertExpectations(t)
-}
-
-func TestDisableMFA_Success(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-	user.MfaAktif = true
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-
-	err := uc.DisableMFA(context.Background(), "user-123", "Test1234!")
-	require.NoError(t, err)
-	assert.False(t, user.MfaAktif)
-	assert.Nil(t, user.MfaSecret)
-	assert.Nil(t, user.MfaBackupCodes)
-
-	repo.AssertExpectations(t)
-}
-
-func TestDisableMFA_WrongPassword(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	user := activeUser()
-
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-
-	err := uc.DisableMFA(context.Background(), "user-123", "WrongPass1!")
-	assert.ErrorIs(t, err, ErrWrongPassword)
-
-	repo.AssertExpectations(t)
-}
-
-func TestDisableMFA_UserNotFound(t *testing.T) {
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-
-	repo.On("GetUserByID", mock.Anything, "nonexistent").Return(nil, errors.New("not found"))
-
-	err := uc.DisableMFA(context.Background(), "nonexistent", "Test1234!")
-	assert.ErrorIs(t, err, ErrUserNotFound)
-
-	repo.AssertExpectations(t)
 }

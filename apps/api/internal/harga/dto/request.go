@@ -12,8 +12,10 @@ type ListHargaRequest struct {
 	// Komoditas adalah kode komoditas.
 	Komoditas string `form:"komoditas"`
 	PasarID   string `form:"pasar_id"`
-	Dari      string `form:"dari" binding:"omitempty,datetime=2006-01-02"`
-	Sampai    string `form:"sampai" binding:"omitempty,datetime=2006-01-02"`
+	// Urut: kosong (terbaru lebih dulu) atau "skor" (skor anomali tertinggi lebih dulu).
+	Urut   string `form:"urut" binding:"omitempty,oneof=skor"`
+	Dari   string `form:"dari" binding:"omitempty,datetime=2006-01-02"`
+	Sampai string `form:"sampai" binding:"omitempty,datetime=2006-01-02"`
 }
 
 // RingkasanHargaRequest adalah query GET /v1/harga/ringkasan.
@@ -36,12 +38,19 @@ type CreateHargaRequest struct {
 	Tipe          string     `json:"tipe" binding:"required,oneof=PRODUSEN KONSUMEN"`
 	Harga         int        `json:"harga" binding:"required,min=1"`
 	Kualitas      string     `json:"kualitas" binding:"omitempty,oneof=PREMIUM MEDIUM ASALAN"`
+	KodePedagang  *string    `json:"kode_pedagang" binding:"omitempty,max=100"`
 	Catatan       *string    `json:"catatan" binding:"omitempty,max=1000"`
 	DicatatPada   *time.Time `json:"dicatat_pada"`
+	Lat           *float64   `json:"lat" binding:"omitempty,min=-90,max=90"`
+	Lng           *float64   `json:"lng" binding:"omitempty,min=-180,max=180"`
+	// Pertahankan menyimpan entri walau bentrok dengan entri petugas lain.
+	Pertahankan bool `json:"pertahankan"`
 }
 
 // BulkHargaRequest adalah isian POST /v1/harga/bulk.
 type BulkHargaRequest struct {
-	Aksi string   `json:"action" binding:"required,oneof=validasi publikasi tolak kembalikan"`
+	Aksi string   `json:"action" binding:"required,oneof=ajukan validasi publikasi tolak kembalikan"`
 	IDs  []string `json:"ids" binding:"required,min=1,max=1000"`
+	// Alasan wajib untuk aksi tolak dan tampil bagi petugas pencatat.
+	Alasan string `json:"alasan" binding:"omitempty,max=1000"`
 }

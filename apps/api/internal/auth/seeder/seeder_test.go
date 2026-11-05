@@ -171,3 +171,35 @@ func TestAdminSeed_LeavesNoAccountWithDefaultPassword(t *testing.T) {
 		assert.False(t, crypto.VerifyPassword(DemoPassword, h))
 	}
 }
+
+func TestSeedDemo_MFAAccountHasSealedSecretAndHashedBackupCodes(t *testing.T) {
+	db := pg.NewDatabase(t, "auth_seed_demo_mfa")
+	pgtest.MigrateUp(t, db)
+	seedWilayahDemo(t, db)
+
+	_, err := SeedDemo(t.Context(), db)
+	require.NoError(t, err)
+	_, err = SeedDemo(t.Context(), db)
+	require.NoError(t, err)
+
+	var secret string
+	require.NoError(t, db.Raw("SELECT mfa_secret FROM pengguna WHERE id = 'user_mfa'").Scan(&secret).Error)
+	assert.True(t, strings.HasPrefix(secret, "v1:"), secret)
+	assert.NotContains(t, secret, DemoMFASecret)
+	ring, err := crypto.KeyringFromEnv(os.Getenv)
+	require.NoError(t, err)
+	opened, err := ring.Open(secret)
+	require.NoError(t, err)
+	assert.Equal(t, DemoMFASecret, opened)
+
+	var hashes []string
+	require.NoError(t, db.Raw("SELECT kode_hash FROM mfa_kode_cadangan WHERE user_id = 'user_mfa' ORDER BY kode_hash").Scan(&hashes).Error)
+	assert.Len(t, hashes, len(DemoKodeCadangan), "seed ulang tidak menggandakan kode")
+	for _, h := range hashes {
+		assert.Len(t, h, 64)
+	}
+
+	var akunLain int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM pengguna WHERE id <> 'user_mfa' AND (mfa_secret IS NOT NULL OR mfa_aktif)").Scan(&akunLain).Error)
+	assert.Zero(t, akunLain, "hanya satu akun demo ber-MFA")
+}

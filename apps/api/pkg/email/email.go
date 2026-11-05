@@ -2,7 +2,9 @@ package email
 
 import (
 	"fmt"
+	"html"
 	"net/smtp"
+	"net/url"
 	"strings"
 )
 
@@ -14,7 +16,15 @@ type Config struct {
 	Password string
 	From     string
 	FromName string
+	// BaseURL adalah alamat publik aplikasi web untuk tautan di email; kosong memakai DefaultBaseURL.
+	BaseURL string
 }
+
+// DefaultBaseURL adalah alamat publik bawaan aplikasi web.
+const DefaultBaseURL = "https://gardainflasi.id"
+
+// ResetPath adalah halaman web tujuan tautan atur ulang kata sandi.
+const ResetPath = "/reset-password"
 
 // DefaultConfig returns a default SMTP config from environment variables.
 // In production, set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM.
@@ -39,6 +49,15 @@ func New(cfg Config) *Sender {
 	return &Sender{cfg: cfg}
 }
 
+// ResetLink menyusun tautan halaman atur ulang kata sandi untuk token.
+func (s *Sender) ResetLink(resetToken string) string {
+	base := strings.TrimRight(s.cfg.BaseURL, "/")
+	if base == "" {
+		base = DefaultBaseURL
+	}
+	return base + ResetPath + "?token=" + url.QueryEscape(resetToken)
+}
+
 // SendResetPassword sends a password reset email.
 func (s *Sender) SendResetPassword(to, resetToken string) error {
 	subject := "Reset Password - Garda Inflasi"
@@ -52,15 +71,15 @@ func (s *Sender) SendResetPassword(to, resetToken string) error {
 	<h2>Reset Password</h2>
 	<p>Anda menerima email ini karena ada permintaan reset password untuk akun Garda Inflasi.</p>
 	<p>Klik tautan berikut untuk mereset password Anda:</p>
-	<p><a href="https://gardainflasi.id/auth/reset-password?token=%s" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a></p>
-	<p>Atau salin tautan ini ke browser: https://gardainflasi.id/auth/reset-password?token=%s</p>
-	<p>Tautan ini berlaku selama 1 jam.</p>
+	<p><a href="%[1]s" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a></p>
+	<p>Atau salin tautan ini ke browser: %[1]s</p>
+	<p>Tautan ini berlaku terbatas dan hanya dapat dipakai satu kali.</p>
 	<p>Jika Anda tidak meminta reset password, abaikan email ini.</p>
 	<hr>
 	<p style="color: #6b7280; font-size: 12px;">Garda Inflasi - Sistem Informasi Pengendalian Inflasi Daerah</p>
 </body>
 </html>
-`, resetToken, resetToken)
+`, html.EscapeString(s.ResetLink(resetToken)))
 
 	return s.send(to, subject, body)
 }

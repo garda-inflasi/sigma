@@ -23,6 +23,21 @@ type Repository interface {
 	CountRecentFailedAttempts(ctx context.Context, userID string, since time.Time) (int64, error)
 	SaveResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
 	GetResetToken(ctx context.Context, tokenHash string) (*ResetToken, error)
-	MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error
+	// ConsumeResetToken memakai token satu kali secara atomik: berhasil hanya bila token belum dipakai dan
+	// belum kedaluwarsa pada now, lalu menghanguskan token lain milik pengguna yang sama. Mengembalikan
+	// false bila token sudah dipakai (mis. oleh permintaan serentak) atau kedaluwarsa.
+	ConsumeResetToken(ctx context.Context, id int64, now time.Time) (bool, error)
 	BulkUpdateUsers(ctx context.Context, ids []string, action BulkUserAction) (int64, error)
+	// ActivateMFA mengaktifkan MFA dan mengganti seluruh kode cadangan (hash) dalam satu transaksi.
+	ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64) error
+	// ReplaceBackupCodes mengganti seluruh kode cadangan (hash) milik pengguna.
+	ReplaceBackupCodes(ctx context.Context, userID string, kodeHash []string) error
+	// UseBackupCode menandai satu kode cadangan terpakai; true hanya bila kode ada dan belum terpakai.
+	UseBackupCode(ctx context.Context, userID, kodeHash string, now time.Time) (bool, error)
+	// CountBackupCodes menghitung kode cadangan yang belum terpakai.
+	CountBackupCodes(ctx context.Context, userID string) (int64, error)
+	// AdvanceMFAStep memajukan langkah TOTP terakhir; false bila langkah itu sudah pernah dipakai.
+	AdvanceMFAStep(ctx context.Context, userID string, langkah int64) (bool, error)
+	// ClearMFA menonaktifkan MFA: rahasia, langkah, dan semua kode cadangan dihapus.
+	ClearMFA(ctx context.Context, userID string) error
 }

@@ -17,6 +17,10 @@ const (
 	audience = "garda-api"
 	// ClockSkew is the allowed clock skew for JWT validation (30 seconds).
 	ClockSkew = 30 * time.Second
+	// mfaAudience memisahkan token tantangan MFA dari access token: VerifyToken menolaknya karena audiens beda.
+	mfaAudience = "garda-mfa"
+	// MFAChallengeTTL adalah masa berlaku token tantangan MFA setelah kata sandi benar.
+	MFAChallengeTTL = 5 * time.Minute
 )
 
 // ── Claims ────────────────────────────────────────────────────────────
@@ -29,6 +33,9 @@ type Claims struct {
 	// PasswordChangeRequired menandai sesi akun yang wajib mengganti kata sandi;
 	// middleware menolak semua endpoint di luar daftar kecil selama klaim ini aktif.
 	PasswordChangeRequired bool `json:"wajib_ganti_password,omitempty"`
+	// MFASetupRequired menandai sesi akun yang wajib mengaktifkan MFA tetapi belum; middleware hanya
+	// membuka endpoint setup MFA, keluar, dan profil selama klaim ini aktif.
+	MFASetupRequired bool `json:"wajib_setup_mfa,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -112,6 +119,41 @@ func WithPasswordChangeRequired(required bool) ClaimOption {
 	}
 }
 
+// WithMFASetupRequired menandai token milik akun yang wajib mengaktifkan MFA.
+func WithMFASetupRequired(required bool) ClaimOption {
+	return func(c *Claims) {
+		c.MFASetupRequired = required
+	}
+}
+
+// CreateMFAChallengeToken menerbitkan token tantangan MFA berumur pendek: bukti bahwa kata sandi sudah
+// benar, hanya berguna untuk menukar kode OTP dengan sesi. Bukan access token (audiens berbeda).
+func (m *Manager) CreateMFAChallengeToken(userID string) (string, error) {
+	now := time.Now()
+	claims := &Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.New().String(),
+			Subject:   userID,
+			Issuer:    m.issuer,
+			Audience:  jwt.ClaimStrings{mfaAudience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now.Add(-ClockSkew)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(MFAChallengeTTL)),
+		},
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(m.secret)
+}
+
+// VerifyMFAChallengeToken memeriksa token tantangan MFA dan mengembalikan id pengguna.
+func (m *Manager) VerifyMFAChallengeToken(tokenString string) (string, error) {
+	claims, err := m.parse(tokenString, mfaAudience)
+	if err != nil {
+		return "", err
+	}
+	return claims.UserID, nil
+}
+
 // CreateAccessToken creates a new signed JWT access token.
 // Includes jti (unique ID), sub (user ID), role, permissions, iss, aud, iat, exp, nbf.
 func (m *Manager) CreateAccessToken(userID string, role string, permissions []string, opts ...ClaimOption) (string, error) {
@@ -153,6 +195,11 @@ func (m *Manager) CreateRefreshToken() (rawToken string, tokenHash string, err e
 // VerifyToken verifies a JWT token string and returns the claims.
 // Validates: signature, algorithm (HS256 only), issuer, audience, expiry, not-before.
 func (m *Manager) VerifyToken(tokenString string) (*Claims, error) {
+	return m.parse(tokenString, m.audience)
+}
+
+// parse memeriksa tanda tangan, algoritma, penerbit, audiens, kedaluwarsa, dan nbf.
+func (m *Manager) parse(tokenString, audience string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// Enforce algorithm — reject "none" and any non-HMAC algorithm
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -164,7 +211,7 @@ func (m *Manager) VerifyToken(tokenString string) (*Claims, error) {
 		return m.secret, nil
 	},
 		jwt.WithIssuer(m.issuer),
-		jwt.WithAudience(m.audience),
+		jwt.WithAudience(audience),
 		jwt.WithLeeway(ClockSkew),
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 	)

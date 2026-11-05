@@ -47,7 +47,7 @@ func init() {
 Aturan: idempoten (upsert, jalankan dua kali tidak menambah baris), deterministik (PRNG seed
 tetap; tanggal relatif terhadap `now`), `reference`/`admin` aman di produksi, `demo` tidak.
 Nama kanonik: `auth.admin`, `auth.demo`, `master.reference`, `coldstorage.reference|demo`,
-`harga.demo`, `lapangan.demo`, `dashboard.reference|demo`, `ews.reference|demo`,
+`harga.reference|demo`, `lapangan.demo`, `dashboard.reference|demo`, `ews.reference|demo`,
 `intervensi.reference|demo`, `spasial.demo`, `sumber.reference|demo`, `eksekutif.reference|demo`,
 `brief.demo`, `kpi.reference|demo`, `prediksi.demo`.
 Dependensi di lapis yang tidak dipilih dianggap sudah dijalankan (`seed demo` mengandaikan `reference` sudah ada).

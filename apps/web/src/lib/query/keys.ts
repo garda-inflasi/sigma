@@ -31,6 +31,8 @@ export const qk = {
     all: () => ["harga"] as const,
     list: (params: HargaParams = {}) => ["harga", "list", params] as const,
     saya: () => ["harga", "saya"] as const,
+    detail: (id: string) => ["harga", "detail", id] as const,
+    riwayat: (id: string) => ["harga", "riwayat", id] as const,
     ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
   },
   ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const },

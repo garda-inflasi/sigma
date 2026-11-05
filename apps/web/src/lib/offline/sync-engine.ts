@@ -1,33 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { ApiError, apiFetch, MODE_MOCK } from "@/lib/api/client";
-import { sleep } from "@/lib/utils";
-import { useFieldQueue, type EntriLokal } from "@/lib/stores/field-queue-store";
+import { useFieldQueue } from "@/lib/stores/field-queue-store";
+import { kirimEntri } from "./kirim-entri";
 import { useOnline } from "./use-online";
-
-type Hasil = { ok: true } | { konflik: true; versiServer: NonNullable<EntriLokal["versiServer"]> };
-
-async function kirim(e: EntriLokal): Promise<Hasil> {
-  if (MODE_MOCK) {
-    await sleep(450 + Math.random() * 600);
-    // ±1 dari 9 entri disimulasikan bentrok dengan entri petugas lain di pasar yang sama
-    if (parseInt(e.localId.slice(-2), 16) % 9 === 0) {
-      return { konflik: true, versiServer: { harga: Math.round((e.harga * 1.06) / 100) * 100, dicatatPada: new Date(Date.now() - 35 * 60_000).toISOString(), petugas: "Muhammad Ikhsan" } };
-    }
-    return { ok: true };
-  }
-  try {
-    const { foto, ...payload } = e;
-    await apiFetch("/v1/lapangan/harga", { method: "POST", body: JSON.stringify({ ...payload, foto }), idempotencyKey: e.localId });
-    return { ok: true };
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 409) {
-      return { konflik: true, versiServer: (err.payload as { versiServer: NonNullable<EntriLokal["versiServer"]> }).versiServer };
-    }
-    throw err;
-  }
-}
 
 /**
  * Mesin sinkronisasi offline-first:
@@ -50,7 +26,7 @@ export function useSyncEngine() {
       for (const e of antre) {
         st.perbarui(e.localId, { status: "MENYINKRON" });
         try {
-          const h = await kirim(e);
+          const h = await kirimEntri(e);
           if ("konflik" in h) st.perbarui(e.localId, { status: "KONFLIK", versiServer: h.versiServer });
           else st.perbarui(e.localId, { status: "TERSINKRON", galat: undefined });
         } catch (err) {

@@ -134,3 +134,37 @@ const (
 func (a BulkAction) Valid() bool {
 	return a == BulkUnduhDataAcuan || a == BulkTandaiSelesai
 }
+
+// AcuanKomoditas adalah komoditas aktif beserta harga acuan dasarnya.
+type AcuanKomoditas struct {
+	Kode       string `gorm:"column:kode"`
+	Nama       string `gorm:"column:nama"`
+	Satuan     string `gorm:"column:satuan"`
+	HargaAcuan int    `gorm:"column:harga_acuan"`
+}
+
+// AcuanPasar adalah pasar aktif beserta titik dan radius geofence-nya.
+type AcuanPasar struct {
+	ID            string  `gorm:"column:id"`
+	Nama          string  `gorm:"column:nama"`
+	KabupatenKode string  `gorm:"column:kabupaten_kode"`
+	Lat           float64 `gorm:"column:lat"`
+	Lng           float64 `gorm:"column:lng"`
+	RadiusMeter   int     `gorm:"column:radius_meter"`
+}
+
+// MedianHarga adalah median harga resmi satu komoditas dan tipe di satu kabupaten.
+type MedianHarga struct {
+	KomoditasKode string  `gorm:"column:komoditas_kode"`
+	KabupatenKode string  `gorm:"column:kabupaten_kode"`
+	Tipe          string  `gorm:"column:tipe"`
+	Median        float64 `gorm:"column:median"`
+	Sampel        int     `gorm:"column:sampel"`
+}
+
+// DataAcuan adalah bahan validasi harga di perangkat saat offline.
+type DataAcuan struct {
+	Komoditas []AcuanKomoditas
+	Pasar     []AcuanPasar
+	Median    []MedianHarga
+}

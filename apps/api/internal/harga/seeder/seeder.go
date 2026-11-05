@@ -21,7 +21,15 @@ const HariHistori = 90
 
 // DemoSummary melaporkan baris yang ditulis oleh SeedDemo.
 type DemoSummary struct {
-	Entri int
+	Entri   int
+	Riwayat int
+}
+
+// alasanTolak adalah alasan penolakan entri demo; dipilih menurut urutan entri agar deterministik.
+var alasanTolak = []string{
+	"Harga di luar rentang wajar dan tanpa bukti pendukung",
+	"Satuan harga diduga salah, mohon survei ulang",
+	"Lokasi pencatatan di luar area pasar",
 }
 
 // Komoditas adalah komoditas master yang dicatat petugas.
@@ -95,14 +103,68 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	}
 	entri := Build(in, now)
 
-	err = db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		UpdateAll: true,
-	}).CreateInBatches(&entri, 500).Error
+	riwayat := BuildRiwayat(entri)
+
+	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			UpdateAll: true,
+		}).CreateInBatches(&entri, 500).Error
+		if err != nil {
+			return fmt.Errorf("seed entri harga: %w", err)
+		}
+
+		// Riwayat entri demo ditulis ulang bersama entrinya supaya waktunya mengikuti now.
+		ids := make([]string, len(entri))
+		for i, e := range entri {
+			ids[i] = e.ID
+		}
+		for start := 0; start < len(ids); start += hapusBatch {
+			batch := ids[start:min(start+hapusBatch, len(ids))]
+			if err := tx.Exec("DELETE FROM riwayat_status_entri WHERE entri_id IN ?", batch).Error; err != nil {
+				return fmt.Errorf("bersihkan riwayat status demo: %w", err)
+			}
+		}
+		if err := tx.CreateInBatches(&riwayat, 1000).Error; err != nil {
+			return fmt.Errorf("seed riwayat status: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return DemoSummary{}, fmt.Errorf("seed entri harga: %w", err)
+		return DemoSummary{}, err
 	}
-	return DemoSummary{Entri: len(entri)}, nil
+	return DemoSummary{Entri: len(entri), Riwayat: len(riwayat)}, nil
+}
+
+// hapusBatch membatasi jumlah id per DELETE agar di bawah batas parameter PostgreSQL.
+const hapusBatch = 5000
+
+// BuildRiwayat menurunkan riwayat status dari jejak tiap entri demo: dicatat, divalidasi,
+// dipublikasi, atau ditolak. Entri DRAF hanya tercatat sebagai draf.
+func BuildRiwayat(entri []domain.EntriHarga) []domain.RiwayatStatusEntri {
+	var out []domain.RiwayatStatusEntri
+	tambah := func(e domain.EntriHarga, dari *string, ke string, oleh *string, waktu time.Time, alasan *string) {
+		out = append(out, domain.RiwayatStatusEntri{EntriID: e.ID, Dari: dari, Ke: ke, Oleh: oleh, Waktu: waktu, Alasan: alasan})
+	}
+	str := func(s string) *string { return &s }
+
+	for _, e := range entri {
+		if e.Status == domain.StatusDraf {
+			tambah(e, nil, domain.StatusDraf, e.PetugasID, e.DibuatPada, nil)
+			continue
+		}
+		tambah(e, nil, domain.StatusDiajukan, e.PetugasID, e.DibuatPada, nil)
+		switch e.Status {
+		case domain.StatusDivalidasi, domain.StatusDipublikasi:
+			tambah(e, str(domain.StatusDiajukan), domain.StatusDivalidasi, e.DivalidasiOleh, *e.DivalidasiPada, nil)
+			if e.Status == domain.StatusDipublikasi {
+				tambah(e, str(domain.StatusDivalidasi), domain.StatusDipublikasi, e.DipublikasiOleh, *e.DipublikasiPada, nil)
+			}
+		case domain.StatusDitolak:
+			tambah(e, str(domain.StatusDiajukan), domain.StatusDitolak, e.DitolakOleh, *e.DitolakPada, e.AlasanPenolakan)
+		}
+	}
+	return out
 }
 
 func loadInput(ctx context.Context, db *gorm.DB) (Input, error) {
@@ -222,13 +284,14 @@ func buatEntri(rng *rand.Rand, in Input, p Petugas, k Komoditas, tipe string, of
 		Lat: &lat, Lng: &lng, DalamGeofence: !luar, KodePedagang: &pedagang,
 		DicatatPada: dicatat, PetugasID: &petugas, DibuatPada: dicatat, DiupdatePada: dicatat,
 	}
+	e.FlagValidasi = domain.FlagValidasi{Outlier: outlier, LuarGeofence: luar, Median: int(math.Round(acuan))}
 	if rng.Float64() < pFoto {
 		foto := "demo/foto/" + id + ".jpg"
 		e.FotoURL = &foto
 	}
 
 	e.Status = pilihStatus(rng, offset, outlier)
-	terapkanJejak(&e, in, dicatat, now)
+	terapkanJejak(&e, in, dicatat, now, pi*100+ki)
 	return e
 }
 
@@ -322,7 +385,7 @@ func pilihStatus(rng *rand.Rand, offset int, outlier bool) string {
 }
 
 // terapkanJejak mengisi validator dan penerbit sesuai status, tidak melampaui now.
-func terapkanJejak(e *domain.EntriHarga, in Input, dicatat, now time.Time) {
+func terapkanJejak(e *domain.EntriHarga, in Input, dicatat, now time.Time, urutan int) {
 	tidakLewatSekarang := func(t time.Time) time.Time {
 		if t.After(now) {
 			return now
@@ -334,6 +397,10 @@ func terapkanJejak(e *domain.EntriHarga, in Input, dicatat, now time.Time) {
 	case domain.StatusDivalidasi, domain.StatusDipublikasi:
 		validator, pada := in.Validator, tidakLewatSekarang(dicatat.Add(2*time.Hour))
 		e.DivalidasiOleh, e.DivalidasiPada, e.DiupdatePada = &validator, &pada, pada
+	}
+	if e.Status == domain.StatusDitolak {
+		validator, pada, alasan := in.Validator, tidakLewatSekarang(dicatat.Add(2*time.Hour)), alasanTolak[urutan%len(alasanTolak)]
+		e.DitolakOleh, e.DitolakPada, e.AlasanPenolakan, e.DiupdatePada = &validator, &pada, &alasan, pada
 	}
 	if e.Status == domain.StatusDipublikasi {
 		penerbit, pada := in.Publikator, tidakLewatSekarang(e.DivalidasiPada.Add(3*time.Hour))
@@ -347,6 +414,8 @@ func duplikat(e domain.EntriHarga, now time.Time) domain.EntriHarga {
 	d.ID = e.ID + "-dup"
 	d.Status = domain.StatusDiajukan
 	d.DivalidasiOleh, d.DivalidasiPada, d.DipublikasiOleh, d.DipublikasiPada = nil, nil, nil, nil
+	d.DitolakOleh, d.DitolakPada, d.AlasanPenolakan = nil, nil, nil
+	d.FlagValidasi.Duplikat = true
 	d.DicatatPada = e.DicatatPada.Add(5 * time.Minute)
 	if d.DicatatPada.After(now) {
 		d.DicatatPada = now

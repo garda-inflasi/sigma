@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
+	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/pkg/crypto"
@@ -35,6 +36,11 @@ type Suite struct {
 
 var jwtSecret = "integration-test-secret-key-32chars!!"
 
+// Rahasia dan kode cadangan akun uji ber-MFA (uji.mfa@gardainflasi.id).
+const mfaSecretUji = "JBSWY3DPEHPK3PXP"
+
+var kodeCadanganUji = []string{"BACKUP01", "BACKUP02", "BACKUP03"}
+
 var pg *pgtest.Server
 
 func TestMain(m *testing.M) {
@@ -50,6 +56,12 @@ func setupSuite(t *testing.T) *Suite {
 
 // setupSuiteWith seperti setupSuite dengan isi basis data yang ditentukan pemanggil.
 func setupSuiteWith(t *testing.T, seed func(*testing.T, *gorm.DB)) *Suite {
+	t.Helper()
+	return newSuite(t, seed)
+}
+
+// newSuite seperti setupSuiteWith; opts (bila ada) menggantikan konfigurasi usecase dari lingkungan.
+func newSuite(t *testing.T, seed func(*testing.T, *gorm.DB), opts ...routes.Options) *Suite {
 	t.Helper()
 
 	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
@@ -80,7 +92,7 @@ func setupSuiteWith(t *testing.T, seed func(*testing.T, *gorm.DB)) *Suite {
 		DB:     db,
 		Token:  tokenMgr,
 		Logger: log,
-	})
+	}, opts...)
 
 	modules.RegisterAll(v1, db, log, tokenMgr)
 
@@ -118,14 +130,28 @@ func seedData(t *testing.T, db *gorm.DB) {
 		`, passwordHash).Error)
 	}
 
+	db.Table("pengguna").Where("email = ?", "uji.biasa@gardainflasi.id").Count(&count)
+	if count == 0 {
+		require.NoError(t, db.Exec(`
+			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status)
+			VALUES ('test-user-biasa', 'Pengguna Biasa', 'uji.biasa@gardainflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF')
+		`, passwordHash).Error)
+	}
+
 	db.Table("pengguna").Where("email = ?", "uji.mfa@gardainflasi.id").Count(&count)
 	if count == 0 {
-		mfaSecret := "JBSWY3DPEHPK3PXP"
-		backupCodes := `["BACKUP01", "BACKUP02", "BACKUP03"]`
+		ring, err := crypto.KeyringFromEnv(os.Getenv)
+		require.NoError(t, err)
+		sealed, err := ring.Seal(mfaSecretUji)
+		require.NoError(t, err)
 		require.NoError(t, db.Exec(`
-			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret, mfa_backup_codes)
-			VALUES ('test-user-mfa', 'MFA User', 'uji.mfa@gardainflasi.id', ?, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, ?, ?::jsonb)
-		`, passwordHash, mfaSecret, backupCodes).Error)
+			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret)
+			VALUES ('test-user-mfa', 'MFA User', 'uji.mfa@gardainflasi.id', ?, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, ?)
+		`, passwordHash, sealed).Error)
+		for _, kode := range kodeCadanganUji {
+			require.NoError(t, db.Exec("INSERT INTO mfa_kode_cadangan (user_id, kode_hash) VALUES ('test-user-mfa', ?)",
+				usecase.HashKodeCadangan("test-user-mfa", kode)).Error)
+		}
 	}
 
 	t.Log("seed data inserted")
@@ -362,77 +388,18 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 }
 
-func TestIntegration_MFAFlow(t *testing.T) {
-	s := setupSuite(t)
-
-	t.Run("MFA Setup", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/setup", nil, s.authHeader(accessToken))
-		t.Logf("MFA Setup status: %d, body: %s", w.Code, w.Body.String())
-		assert.Equal(t, http.StatusOK, w.Code)
-
-		result := s.parseResponse(t, w)
-		t.Logf("result: %+v", result)
-		data, ok := result["data"].(map[string]interface{})
-		require.True(t, ok, "data should be a map, got type: %T, value: %+v", result["data"], result["data"])
-		assert.NotEmpty(t, data["secret"])
-		assert.NotEmpty(t, data["provisioning_uri"])
-		assert.NotEmpty(t, data["backup_codes"])
-	})
-
-	t.Run("MFA Setup Already Active", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/setup", nil, s.authHeader(accessToken))
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-
-	t.Run("MFA Verify Invalid Code", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
-
-		s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/setup", nil, s.authHeader(accessToken))
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/verify", map[string]interface{}{
-			"code": "000000",
-		}, s.authHeader(accessToken))
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-
-	t.Run("MFA Disable", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/disable", map[string]interface{}{
-			"password": "Test1234!",
-		}, s.authHeader(accessToken))
-
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-
-	t.Run("MFA Disable Wrong Password", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/disable", map[string]interface{}{
-			"password": "WrongPassword1!",
-		}, s.authHeader(accessToken))
-
-		assert.Equal(t, http.StatusUnauthorized, w.Code)
-	})
-}
-
 func TestIntegration_UserManagement(t *testing.T) {
 	s := setupSuite(t)
 
 	t.Run("List Users Requires Permission", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.biasa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodGet, "/v1/users", nil, s.authHeader(accessToken))
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
 
 	t.Run("Create User Requires Permission", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.biasa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/users", map[string]interface{}{
 			"nama":    "New User",
@@ -534,30 +501,6 @@ func TestIntegration_WeakPassword(t *testing.T) {
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/change-password", map[string]interface{}{
 			"old_password": "Test1234!",
 			"new_password": "weak",
-		}, s.authHeader(accessToken))
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-}
-
-func TestIntegration_BackupCode(t *testing.T) {
-	s := setupSuite(t)
-
-	t.Run("Validate Backup Code", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate", map[string]interface{}{
-			"code": "BACKUP01",
-		}, s.authHeader(accessToken))
-
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-
-	t.Run("Validate Invalid Backup Code", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
-
-		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate", map[string]interface{}{
-			"code": "INVALID99",
 		}, s.authHeader(accessToken))
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)

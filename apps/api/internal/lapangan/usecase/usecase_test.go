@@ -42,6 +42,11 @@ func (m *mockRepository) TandaiSelesai(ctx context.Context, ids []string, petuga
 	return changed, args.Error(1)
 }
 
+func (m *mockRepository) Acuan(ctx context.Context, sejak time.Time, minSampel int) (domain.DataAcuan, error) {
+	args := m.Called(ctx, sejak, minSampel)
+	return args.Get(0).(domain.DataAcuan), args.Error(1)
+}
+
 var fixedNow = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 
 func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
@@ -161,4 +166,43 @@ func TestBulkAction_NothingChangedIsNotAudited(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, HasilBulk{Gagal: 1}, hasil)
 	assert.Empty(t, recorder.Entries())
+}
+
+func TestAcuan_ComputesRangeAndStableVersion(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	raw := domain.DataAcuan{
+		Komoditas: []domain.AcuanKomoditas{{Kode: "CBM-KRT", Nama: "Cabai Merah Keriting", Satuan: "kg", HargaAcuan: 50000}},
+		Pasar:     []domain.AcuanPasar{{ID: "PSR-1171-01", Nama: "Pasar Aceh", KabupatenKode: "1171", RadiusMeter: 400}},
+		Median:    []domain.MedianHarga{{KomoditasKode: "CBM-KRT", KabupatenKode: "1171", Tipe: "KONSUMEN", Median: 52349.6, Sampel: 8}},
+	}
+	repo.On("Acuan", mock.Anything, fixedNow.AddDate(0, 0, -HariAcuan), MinSampelAcuan).Return(raw, nil)
+
+	first, err := uc.Acuan(t.Context())
+	require.NoError(t, err)
+	second, err := uc.Acuan(t.Context())
+	require.NoError(t, err)
+
+	require.Len(t, first.HargaAcuan, 1)
+	assert.Equal(t, HargaAcuan{KomoditasKode: "CBM-KRT", KabupatenKode: "1171", Tipe: "KONSUMEN", Median: 52350, Bawah: 39300, Atas: 65400, Sampel: 8}, first.HargaAcuan[0])
+	assert.Equal(t, ToleransiAcuan, first.Toleransi)
+	assert.NotEmpty(t, first.Versi)
+	assert.Equal(t, first.Versi, second.Versi, "isi sama menghasilkan versi sama")
+
+	raw.Median[0].Median = 60000
+	repo.ExpectedCalls = nil
+	repo.On("Acuan", mock.Anything, mock.Anything, mock.Anything).Return(raw, nil)
+	changed, err := uc.Acuan(t.Context())
+	require.NoError(t, err)
+	assert.NotEqual(t, first.Versi, changed.Versi, "isi berubah menghasilkan versi baru")
+}
+
+func TestAcuan_RepoError(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	repo.On("Acuan", mock.Anything, mock.Anything, mock.Anything).Return(domain.DataAcuan{}, errors.New("db mati"))
+
+	_, err := uc.Acuan(t.Context())
+
+	require.Error(t, err)
 }

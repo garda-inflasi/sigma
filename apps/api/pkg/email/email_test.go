@@ -36,3 +36,9 @@ func TestSendResetPassword_EmptyFrom(t *testing.T) {
 	err := s.SendResetPassword("test@example.com", "reset-token-123")
 	assert.NoError(t, err)
 }
+
+func TestResetLink(t *testing.T) {
+	assert.Equal(t, "https://gardainflasi.id/reset-password?token=abc-123", New(DefaultConfig()).ResetLink("abc-123"), "bawaan memakai alamat publik")
+	assert.Equal(t, "http://localhost:3000/reset-password?token=abc-123", New(Config{BaseURL: "http://localhost:3000/"}).ResetLink("abc-123"), "garis miring akhir dibuang")
+	assert.Equal(t, "https://x.id/reset-password?token=a%26b", New(Config{BaseURL: "https://x.id"}).ResetLink("a&b"), "token di-escape")
+}

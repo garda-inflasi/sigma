@@ -16,6 +16,8 @@ export interface EdgeClaims {
   /** Detik epoch kedaluwarsa (klaim `exp`); null bila tidak ada. */
   exp: number | null;
   wajibGantiPassword: boolean;
+  /** Klaim `wajib_setup_mfa`: peran wajib MFA yang belum menyiapkannya. */
+  wajibSetupMfa: boolean;
 }
 
 function decodeBase64Url(segment: string): string {
@@ -56,7 +58,12 @@ const isRole = (v: unknown): v is Role =>
 export function readEdgeClaims(token: string | undefined): EdgeClaims | null {
   const payload = decodeJwtPayload(token);
   if (!payload || !isRole(payload.role)) return null;
-  const { permissions, exp, wajib_ganti_password: wajib } = payload;
+  const {
+    permissions,
+    exp,
+    wajib_ganti_password: wajib,
+    wajib_setup_mfa: wajibMfa,
+  } = payload;
   return {
     role: payload.role,
     permissions:
@@ -66,6 +73,7 @@ export function readEdgeClaims(token: string | undefined): EdgeClaims | null {
         : null,
     exp: typeof exp === "number" && Number.isFinite(exp) ? exp : null,
     wajibGantiPassword: wajib === true,
+    wajibSetupMfa: wajibMfa === true,
   };
 }
 

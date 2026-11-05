@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -19,7 +18,6 @@ import (
 	"github.com/garda-inflasi/api/pkg/email"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
-	"github.com/garda-inflasi/api/pkg/totp"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -43,6 +41,13 @@ var (
 	ErrRoleNotFound       = errors.New("peran tidak dikenal")
 	ErrCannotDeleteSelf   = errors.New("tidak dapat menghapus akun sendiri")
 	ErrUserHasReferences  = errors.New("pengguna masih memiliki data terkait")
+
+	ErrMFAChallengeInvalid = errors.New("sesi verifikasi MFA tidak valid atau sudah kedaluwarsa, masuk ulang")
+	ErrMFACodeInvalid      = errors.New("kode MFA tidak valid")
+	ErrMFAAlreadyActive    = errors.New("MFA sudah aktif")
+	ErrMFANotSetup         = errors.New("MFA belum disiapkan, mulai setup lebih dulu")
+	ErrMFAMandatory        = errors.New("MFA wajib untuk akun Anda dan tidak dapat dinonaktifkan")
+	ErrMFAUnavailable      = errors.New("kunci enkripsi MFA belum dikonfigurasi")
 )
 
 // ── Password Policy ───────────────────────────────────────────────────
@@ -96,6 +101,12 @@ type Config struct {
 	MaxFailedAttempts int
 	LockoutDuration   time.Duration
 	ResetTokenTTL     time.Duration
+	// MFAEnforce mewajibkan MFA bagi peran wajib (lihat mfaWajibPeran) dan akun bertanda mfa_wajib:
+	// sebelum setup, sesi mereka hanya membuka endpoint setup MFA. Akun yang sudah mengaktifkan MFA
+	// selalu ditantang kode OTP, apa pun nilai ini.
+	MFAEnforce bool
+	// MFAKey menyegel rahasia TOTP di basis data; nil membuat setup dan verifikasi MFA gagal dengan ErrMFAUnavailable.
+	MFAKey *crypto.Keyring
 }
 
 func DefaultConfig() Config {
@@ -132,49 +143,84 @@ func New(repo domain.Repository, tokenMgr *token.Manager, cfg Config, log *logge
 
 // ── Auth Use Cases ────────────────────────────────────────────────────
 
-// Login authenticates a user and returns tokens.
-func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*domain.Pengguna, string, string, error) {
+// LoginResult adalah hasil langkah kata sandi. Bila MFARequired, belum ada sesi: klien menukar MFAToken
+// dan kode OTP lewat ValidateMFALogin. Selain itu AccessToken dan RefreshToken terisi.
+type LoginResult struct {
+	User         *domain.Pengguna
+	AccessToken  string
+	RefreshToken string
+	MFARequired  bool
+	MFAToken     string
+	// MFASetupRequired true bila akun wajib MFA tetapi belum mengaktifkannya; sesinya hanya membuka endpoint setup.
+	MFASetupRequired bool
+}
+
+// Login authenticates a user. Akun dengan MFA aktif menerima token tantangan, bukan sesi.
+func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*LoginResult, error) {
 	user, err := uc.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		uc.log.Warn("login: user not found", map[string]interface{}{"email": email, "ip": ip})
 		uc.recordLoginAttempt(ctx, nil, ip, false, "user_not_found")
 		uc.recordFailedLogin(ctx, "", email, "user_not_found")
-		return nil, "", "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
 	if user.Status != "AKTIF" {
 		uc.log.Warn("login: inactive account", map[string]interface{}{"user_id": user.ID, "status": user.Status})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "account_inactive")
 		uc.recordFailedLogin(ctx, user.ID, email, "account_inactive")
-		return nil, "", "", ErrAccountInactive
+		return nil, ErrAccountInactive
 	}
 
-	if user.PasswordHash != nil {
-		recentFails, err := uc.repo.CountRecentFailedAttempts(ctx, user.ID, time.Now().Add(-uc.cfg.LockoutDuration))
-		if err == nil && recentFails >= int64(uc.cfg.MaxFailedAttempts) {
-			uc.log.Warn("login: account locked", map[string]interface{}{"user_id": user.ID, "fails": recentFails})
-			uc.recordFailedLogin(ctx, user.ID, email, "account_locked")
-			return nil, "", "", ErrAccountLocked
-		}
+	if user.PasswordHash != nil && uc.accountLocked(ctx, user.ID) {
+		uc.recordFailedLogin(ctx, user.ID, email, "account_locked")
+		return nil, ErrAccountLocked
 	}
 
 	if user.PasswordHash == nil {
 		uc.log.Warn("login: no password set (SSO only)", map[string]interface{}{"user_id": user.ID})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "no_password")
 		uc.recordFailedLogin(ctx, user.ID, email, "no_password")
-		return nil, "", "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
 	if !crypto.VerifyPassword(password, *user.PasswordHash) {
 		uc.log.Warn("login: wrong password", map[string]interface{}{"user_id": user.ID, "ip": ip})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "wrong_password")
 		uc.recordFailedLogin(ctx, user.ID, email, "wrong_password")
-		return nil, "", "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
 
+	if user.MfaAktif {
+		challenge, err := uc.token.CreateMFAChallengeToken(user.ID)
+		if err != nil {
+			return nil, fmt.Errorf("create mfa challenge: %w", err)
+		}
+		uc.log.Info("login: password ok, menunggu kode MFA", map[string]interface{}{"user_id": user.ID, "ip": ip})
+		return &LoginResult{User: user, MFARequired: true, MFAToken: challenge}, nil
+	}
+	return uc.completeLogin(ctx, user, ip, "")
+}
+
+// accountLocked melaporkan apakah percobaan gagal terbaru sudah mencapai batas kunci akun.
+func (uc *UseCase) accountLocked(ctx context.Context, userID string) bool {
+	fails, err := uc.repo.CountRecentFailedAttempts(ctx, userID, time.Now().Add(-uc.cfg.LockoutDuration))
+	if err != nil {
+		return false
+	}
+	if fails >= int64(uc.cfg.MaxFailedAttempts) {
+		uc.log.Warn("login: account locked", map[string]interface{}{"user_id": userID, "fails": fails})
+		return true
+	}
+	return false
+}
+
+// completeLogin menerbitkan sesi untuk pengguna yang seluruh faktornya sudah terbukti. metodeMFA
+// ("totp" atau "kode_cadangan") dicatat di audit; kosong bila akun tanpa MFA.
+func (uc *UseCase) completeLogin(ctx context.Context, user *domain.Pengguna, ip, metodeMFA string) (*LoginResult, error) {
 	accessToken, rawRefresh, err := uc.issueSession(ctx, user, uuid.New().String(), ip)
 	if err != nil {
-		return nil, "", "", err
+		return nil, err
 	}
 
 	now := time.Now()
@@ -183,9 +229,13 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 	user.TerakhirMasuk = &now
 	_ = uc.repo.UpdateUser(ctx, user)
 
-	uc.recordAudit(ctx, user.ID, "LOGIN", user.ID)
-	uc.log.Info("login success", map[string]interface{}{"user_id": user.ID, "email": email, "ip": ip})
-	return user, accessToken, rawRefresh, nil
+	entry := audit.Entry{AktorID: user.ID, Aksi: "LOGIN", Entitas: "pengguna", EntitasID: user.ID, Hasil: audit.HasilBerhasil}
+	if metodeMFA != "" {
+		entry.Metadata = map[string]any{"mfa": metodeMFA}
+	}
+	uc.writeAudit(ctx, entry)
+	uc.log.Info("login success", map[string]interface{}{"user_id": user.ID, "email": user.Email, "ip": ip})
+	return &LoginResult{User: user, AccessToken: accessToken, RefreshToken: rawRefresh, MFASetupRequired: uc.mfaSetupRequired(user)}, nil
 }
 
 // Refresh rotates a refresh token.
@@ -372,18 +422,25 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 		return ErrPasswordReuse
 	}
 
+	// Token dipakai lebih dulu dan atomik: dua permintaan serentak dengan token yang sama
+	// tidak bisa sama-sama mengganti kata sandi.
+	claimed, err := uc.repo.ConsumeResetToken(ctx, stored.ID, time.Now())
+	if err != nil {
+		return fmt.Errorf("consume reset token: %w", err)
+	}
+	if !claimed {
+		return ErrResetTokenInvalid
+	}
+
 	if err := uc.setPassword(ctx, user, newPassword, false); err != nil {
+		uc.log.Error("reset password: gagal menyimpan kata sandi setelah token dipakai", map[string]interface{}{"user_id": user.ID, "error": err.Error()})
 		return err
 	}
 
-	// Mark token as used
-	now := time.Now()
-	if err := uc.repo.MarkResetTokenUsed(ctx, stored.ID, now); err != nil {
-		uc.log.Warn("reset password: failed to mark token used", map[string]interface{}{"token_id": stored.ID})
-	}
-
 	// Revoke all sessions
-	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, stored.UserID)
+	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, stored.UserID); err != nil {
+		return fmt.Errorf("revoke sessions: %w", err)
+	}
 
 	uc.recordAudit(ctx, stored.UserID, "RESET_PASSWORD", stored.UserID)
 	uc.log.Info("password reset success", map[string]interface{}{"user_id": stored.UserID})
@@ -708,7 +765,8 @@ func userSnapshot(u *domain.Pengguna) map[string]any {
 // bila aktif) dan refresh token baru dalam keluarga familyID.
 func (uc *UseCase) issueSession(ctx context.Context, user *domain.Pengguna, familyID, ip string) (accessToken, refreshToken string, err error) {
 	accessToken, err = uc.token.CreateAccessToken(user.ID, user.Peran, uc.getPermissionsForRole(user.Peran),
-		token.WithPasswordChangeRequired(user.WajibGantiPassword))
+		token.WithPasswordChangeRequired(user.WajibGantiPassword),
+		token.WithMFASetupRequired(uc.mfaSetupRequired(user)))
 	if err != nil {
 		return "", "", fmt.Errorf("create access token: %w", err)
 	}
@@ -751,120 +809,4 @@ func (uc *UseCase) setPassword(ctx context.Context, user *domain.Pengguna, passw
 func sha256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
-}
-
-// ── TOTP / MFA ───────────────────────────────────────────────────────
-
-// SetupMFA generates a TOTP secret and provisioning URI for the user.
-func (uc *UseCase) SetupMFA(ctx context.Context, userID string) (string, string, []string, error) {
-	user, err := uc.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		return "", "", nil, ErrUserNotFound
-	}
-
-	if user.MfaAktif {
-		return "", "", nil, fmt.Errorf("MFA sudah aktif")
-	}
-
-	secret := totp.GenerateSecret()
-	uri := totp.GenerateProvisioningURI(secret, user.Email)
-	backupCodes := totp.GenerateBackupCodes(8)
-
-	// Store backup codes as JSON
-	codesJSON, _ := json.Marshal(backupCodes)
-	codesStr := string(codesJSON)
-	user.MfaSecret = &secret
-	user.MfaBackupCodes = &codesStr
-
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return "", "", nil, fmt.Errorf("update user: %w", err)
-	}
-
-	uc.recordAudit(ctx, userID, "MFA_SETUP", userID)
-	return secret, uri, backupCodes, nil
-}
-
-// VerifyMFA verifies a TOTP code and activates MFA for the user.
-func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code string) error {
-	user, err := uc.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		return ErrUserNotFound
-	}
-
-	if user.MfaSecret == nil || *user.MfaSecret == "" {
-		return fmt.Errorf("MFA belum di-setup")
-	}
-
-	if !totp.ValidateTOTP(*user.MfaSecret, code, time.Now()) {
-		return fmt.Errorf("kode TOTP tidak valid")
-	}
-
-	user.MfaAktif = true
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("update user: %w", err)
-	}
-
-	uc.recordAudit(ctx, userID, "MFA_VERIFY", userID)
-	return nil
-}
-
-// ValidateMFACode validates a TOTP or backup code during login.
-func (uc *UseCase) ValidateMFACode(ctx context.Context, userID, code string) (bool, error) {
-	user, err := uc.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		return false, ErrUserNotFound
-	}
-
-	if !user.MfaAktif || user.MfaSecret == nil {
-		return false, fmt.Errorf("MFA tidak aktif")
-	}
-
-	// Try TOTP first
-	if totp.ValidateTOTP(*user.MfaSecret, code, time.Now()) {
-		return true, nil
-	}
-
-	// Try backup codes
-	if user.MfaBackupCodes != nil && *user.MfaBackupCodes != "" {
-		var codes []string
-		if err := json.Unmarshal([]byte(*user.MfaBackupCodes), &codes); err == nil {
-			for i, c := range codes {
-				if c == code {
-					// Remove used backup code
-					codes = append(codes[:i], codes[i+1:]...)
-					newJSON, _ := json.Marshal(codes)
-					s := string(newJSON)
-					user.MfaBackupCodes = &s
-					_ = uc.repo.UpdateUser(ctx, user)
-					uc.recordAudit(ctx, userID, "MFA_VALIDATE_BACKUP", userID)
-					return true, nil
-				}
-			}
-		}
-	}
-
-	return false, fmt.Errorf("kode tidak valid")
-}
-
-// DisableMFA disables MFA for a user.
-func (uc *UseCase) DisableMFA(ctx context.Context, userID, password string) error {
-	user, err := uc.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		return ErrUserNotFound
-	}
-
-	if user.PasswordHash != nil && !crypto.VerifyPassword(password, *user.PasswordHash) {
-		return ErrWrongPassword
-	}
-
-	user.MfaAktif = false
-	user.MfaSecret = nil
-	user.MfaBackupCodes = nil
-
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("update user: %w", err)
-	}
-
-	uc.recordAudit(ctx, userID, "MFA_DISABLE", userID)
-	return nil
 }

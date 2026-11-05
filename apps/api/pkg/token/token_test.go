@@ -233,3 +233,58 @@ func TestCreateAccessToken_NilPermissions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, claims.Permissions)
 }
+
+func TestMFAChallengeToken_RoundTripAndIsolation(t *testing.T) {
+	m := NewManager("test-secret-key-32-chars-minimum!")
+
+	challenge, err := m.CreateMFAChallengeToken("user-1")
+	require.NoError(t, err)
+
+	userID, err := m.VerifyMFAChallengeToken(challenge)
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", userID)
+
+	_, err = m.VerifyToken(challenge)
+	assert.Error(t, err, "token tantangan bukan access token")
+
+	access, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", []string{"x"})
+	require.NoError(t, err)
+	_, err = m.VerifyMFAChallengeToken(access)
+	assert.Error(t, err, "access token tidak bisa dipakai sebagai tantangan MFA")
+
+	_, err = m.VerifyMFAChallengeToken("bukan-jwt")
+	assert.Error(t, err)
+}
+
+func TestMFAChallengeToken_ExpiresAfterTTL(t *testing.T) {
+	m := NewManager("test-secret-key-32-chars-minimum!")
+	kedaluwarsa := &Claims{
+		UserID: "user-1",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer: m.issuer, Audience: jwt.ClaimStrings{mfaAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
+		},
+	}
+	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, kedaluwarsa).SignedString(m.secret)
+	require.NoError(t, err)
+
+	_, err = m.VerifyMFAChallengeToken(raw)
+
+	assert.Error(t, err)
+}
+
+func TestAccessToken_CarriesMFASetupRequiredClaim(t *testing.T) {
+	m := NewManager("test-secret-key-32-chars-minimum!")
+
+	raw, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", nil, WithMFASetupRequired(true))
+	require.NoError(t, err)
+	claims, err := m.VerifyToken(raw)
+	require.NoError(t, err)
+	assert.True(t, claims.MFASetupRequired)
+
+	plain, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", nil)
+	require.NoError(t, err)
+	claims, err = m.VerifyToken(plain)
+	require.NoError(t, err)
+	assert.False(t, claims.MFASetupRequired)
+}

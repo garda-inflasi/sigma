@@ -113,8 +113,8 @@ export function useHargaBulkActions(listKey: QueryKey): BulkAction<EntriHarga>[]
     {
       id: "tolak", label: "Tolak", icon: XCircle, perm: "harga.validasi", tone: "danger",
       enabled: (rows) => rows.every((r) => r.status === "DIAJUKAN"),
-      confirm: { title: "Tolak entri terpilih?", description: (n) => `${n} entri akan dikembalikan ke petugas dengan status ditolak. Petugas menerima notifikasi untuk survei ulang.`, actionLabel: "Tolak entri" },
-      run: (rows) => mut.mutateAsync({ aksi: "tolak", ids: ids(rows), label: "Entri ditolak" }),
+      confirm: { title: "Tolak entri terpilih?", description: (n) => `${n} entri akan dikembalikan ke petugas dengan status ditolak untuk survei ulang.`, actionLabel: "Tolak entri", alasan: { label: "Alasan penolakan (terlihat oleh petugas, minimal 3 karakter)", min: 3 } },
+      run: (rows, alasan) => mut.mutateAsync({ aksi: "tolak", ids: ids(rows), label: "Entri ditolak", alasan }),
     },
     {
       id: "kembalikan", label: "Minta survei ulang", icon: RotateCcw, perm: "harga.validasi",
@@ -126,7 +126,7 @@ export function useHargaBulkActions(listKey: QueryKey): BulkAction<EntriHarga>[]
         exportCsv(rows, [
           { header: "ID", value: (r) => r.id }, { header: "Komoditas", value: (r) => r.komoditasNama }, { header: "Tipe", value: (r) => r.tipe },
           { header: "Pasar", value: (r) => r.pasarNama }, { header: "Wilayah", value: (r) => r.wilayah }, { header: "Harga", value: (r) => r.harga },
-          { header: "Satuan", value: (r) => r.satuan }, { header: "Deviasi (%)", value: (r) => r.deviasiPct }, { header: "Petugas", value: (r) => r.petugasNama },
+          { header: "Satuan", value: (r) => r.satuan }, { header: "Deviasi (%)", value: (r) => r.deviasiPct }, { header: "Skor anomali", value: (r) => r.skorAnomali }, { header: "Petugas", value: (r) => r.petugasNama },
           { header: "Dicatat", value: (r) => r.dicatatPada }, { header: "Status", value: (r) => r.status },
         ], "entri-harga"),
     },

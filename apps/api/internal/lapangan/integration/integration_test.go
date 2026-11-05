@@ -14,6 +14,7 @@ import (
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	hargaseeder "github.com/garda-inflasi/api/internal/harga/seeder"
 	lapanganRoutes "github.com/garda-inflasi/api/internal/lapangan/routes"
 	lapanganseeder "github.com/garda-inflasi/api/internal/lapangan/seeder"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
@@ -65,6 +66,8 @@ func sharedSuite(t *testing.T) *suite {
 		require.NoError(t, err)
 		_, err = lapanganseeder.SeedDemo(t.Context(), db, time.Now())
 		require.NoError(t, err)
+		_, err = hargaseeder.SeedDemo(t.Context(), db, time.Now())
+		require.NoError(t, err)
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
@@ -79,12 +82,20 @@ func sharedSuite(t *testing.T) *suite {
 
 func (s *suite) call(t *testing.T, method, path, email string, body any) *httptest.ResponseRecorder {
 	t.Helper()
+	return s.callWith(t, method, path, email, nil, body)
+}
+
+func (s *suite) callWith(t *testing.T, method, path, email string, headers map[string]string, body any) *httptest.ResponseRecorder {
+	t.Helper()
 	var payload bytes.Buffer
 	if body != nil {
 		require.NoError(t, json.NewEncoder(&payload).Encode(body))
 	}
 	req := httptest.NewRequest(method, path, &payload)
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	if email != "" {
 		req.Header.Set("Authorization", "Bearer "+s.login(t, email))
 	}

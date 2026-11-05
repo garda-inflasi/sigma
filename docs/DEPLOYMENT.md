@@ -178,7 +178,7 @@ DB_NAME=garda_inflasi
 # Pakai hex agar aman di URL dan env: openssl rand -hex 24   (JWT_SECRET, passwords)
 #                                     openssl rand -hex 16   (AES_KEY, TEPAT 32 karakter)
 JWT_SECRET=GANTI_DENGAN_HEX_ACAK_MIN_32
-AES_KEY=GANTI_DENGAN_HEX_32_KARAKTER
+AES_KEY=GANTI_DENGAN_HEX_32_KARAKTER   # menyegel rahasia MFA; migrate/seed/api memakai kunci yang sama
 
 # ── App ─────────────────────────────────────────────────────────────────
 # Origin publik aplikasi (proteksi CSRF); WAJIB bukan localhost di production.
@@ -593,11 +593,14 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Kredensial Postgres |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Koneksi aplikasi (DSN dirakit compose.prod.yaml) |
 | `JWT_SECRET` | Signing key JWT (≥32 char acak); dipakai juga BFF Next.js (compose menyalinnya ke `GARDA_JWT_SECRET`) |
-| `AES_KEY` | Enkripsi at-rest (tepat 32 char acak) |
+| `AES_KEY` | Enkripsi at-rest, termasuk rahasia MFA (tepat 32 char acak; kunci contoh ditolak). `migrate`, `seed`, dan `api` memakai kunci yang sama |
 | `APP_ALLOWED_ORIGINS` | Origin publik untuk CSRF (wajib, bukan localhost) |
 | `CADDY_SITE_ADDRESS` / `CADDY_TLS` | Domain publik dan email ACME |
 | `COMPOSE_PROFILES` | `backup` untuk backup terjadwal |
 | `JOB_<NAMA>_INTERVAL` | Interval job worker, `off` menonaktifkan |
+| `APP_ENV` | `production` di server (dipasang compose.prod.yaml): menolak rahasia bawaan dan menyalakan penegakan MFA |
+| `MFA_ENFORCE` | Menimpa penegakan MFA (`true`/`false`); kosong = ikut `APP_ENV` |
+| `APP_PUBLIC_URL` | Origin publik untuk tautan di email (reset kata sandi) |
 | `GO_API_BASE_URL` | `http://api:8080/v1` (internal) |
 | `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` | Port publik Caddy |
 

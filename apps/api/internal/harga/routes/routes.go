@@ -32,7 +32,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		harga.GET("/tren", middleware.RequirePermission("harga.lihat"), handler.GetTren)
 		harga.GET("/saya", middleware.RequirePermission("harga.input"), handler.ListSaya)
 		harga.GET("/:id", middleware.RequirePermission("harga.lihat"), handler.GetHargaByID)
+		harga.GET("/:id/riwayat", middleware.RequireAnyPermission("harga.lihat", "harga.input"), handler.Riwayat)
 		harga.POST("", middleware.RequirePermission("harga.input"), handler.CreateHarga)
-		harga.POST("/bulk", middleware.RequireAnyPermission("harga.validasi", "harga.publikasi"), handler.BulkHarga)
+		harga.POST("/bulk", middleware.RequireAnyPermission("harga.validasi", "harga.publikasi", "harga.input"), handler.BulkHarga)
 	}
 }

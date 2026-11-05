@@ -3,41 +3,10 @@ import { describe, it } from "node:test";
 import {
   isPasswordChangeExempt,
   postLoginDestination,
-  requiresPasswordChange,
 } from "./password-change";
 import { evaluatePassword, isPasswordValid } from "./password-policy";
 
-function jwtWith(payload: object): string {
-  const b64 = (o: object) =>
-    Buffer.from(JSON.stringify(o)).toString("base64url");
-  return `${b64({ alg: "HS256" })}.${b64(payload)}.tanda-tangan`;
-}
 
-describe("requiresPasswordChange", () => {
-  it("true bila klaim wajib_ganti_password aktif", () => {
-    assert.equal(
-      requiresPasswordChange(jwtWith({ wajib_ganti_password: true })),
-      true,
-    );
-  });
-
-  it("false bila klaim tidak ada atau bukan true", () => {
-    assert.equal(
-      requiresPasswordChange(jwtWith({ role: "ADMIN_SISTEM" })),
-      false,
-    );
-    assert.equal(
-      requiresPasswordChange(jwtWith({ wajib_ganti_password: "true" })),
-      false,
-    );
-  });
-
-  it("false untuk token kosong atau rusak", () => {
-    assert.equal(requiresPasswordChange(undefined), false);
-    assert.equal(requiresPasswordChange("bukan-jwt"), false);
-    assert.equal(requiresPasswordChange("a.%%%.c"), false);
-  });
-});
 
 describe("isPasswordChangeExempt", () => {
   it("membuka halaman ganti password dan BFF auth", () => {

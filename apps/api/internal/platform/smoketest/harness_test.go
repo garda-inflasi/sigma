@@ -117,14 +117,19 @@ func newStack(t *testing.T, db *gorm.DB, dbName string) *stack {
 	t.Helper()
 	pgtest.MigrateUp(t, db)
 	seedAll(t, dbName)
+	return newRouterStack(db)
+}
 
+// newRouterStack merakit router penuh di atas basis data yang sudah dimigrasi dan di-seed. opts (bila ada)
+// menggantikan konfigurasi autentikasi dari lingkungan, mis. untuk menyalakan penegakan MFA.
+func newRouterStack(db *gorm.DB, opts ...authRoutes.Options) *stack {
 	tokenMgr := token.NewManager(jwtSecret)
 	log := logger.NewDefault()
 
 	router := gin.New()
 	router.Use(gin.Recovery())
 	v1 := router.Group("/v1")
-	authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokenMgr, Logger: log})
+	authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokenMgr, Logger: log}, opts...)
 	modules.RegisterAll(v1, db, log, tokenMgr)
 
 	return &stack{db: db, router: router, tokens: map[string]string{}}
@@ -146,6 +151,11 @@ func readEnvelope(t *testing.T, w *httptest.ResponseRecorder) envelope {
 
 func (s *stack) do(t *testing.T, method, path, bearer string, body any) *httptest.ResponseRecorder {
 	t.Helper()
+	return s.doWith(t, method, path, bearer, nil, body)
+}
+
+func (s *stack) doWith(t *testing.T, method, path, bearer string, headers map[string]string, body any) *httptest.ResponseRecorder {
+	t.Helper()
 	var payload io.Reader = http.NoBody
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -154,6 +164,9 @@ func (s *stack) do(t *testing.T, method, path, bearer string, body any) *httptes
 	}
 	req := httptest.NewRequest(method, path, payload)
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}

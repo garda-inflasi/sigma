@@ -41,6 +41,13 @@ paths:
   /v1/auth/login:
     post:
       summary: Login pengguna
+      description: |
+        Akun dengan MFA aktif tidak langsung menerima sesi: respons berisi `mfa_required: true` dan `mfa_token`
+        (berlaku 5 menit), yang ditukar dengan kode OTP di `POST /v1/auth/mfa/validate`. Akun yang wajib MFA
+        (peran strategis, manajerial, koordinator lapangan, admin, atau bertanda `mfa_wajib`, bila `MFA_ENFORCE`
+        menyala; bawaan hanya di produksi) tetapi belum setup menerima sesi dengan `mfa_setup_diwajibkan: true`:
+        semua endpoint selain `/v1/auth/mfa/setup`, `/v1/auth/mfa/verify`, ganti password, keluar, dan profil
+        menjawab 403 dengan kode `MFA_SETUP_REQUIRED`.
       operationId: authLogin
       tags:
         - Authentication
@@ -150,7 +157,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserResponse"
+                $ref: "#/components/schemas/MeResponse"
         "401":
           description: Token tidak valid
           content:
@@ -225,6 +232,11 @@ paths:
   /v1/auth/reset-password:
     post:
       summary: Mereset password dengan token dari email
+      description: |
+        Token berlaku 30 menit dan hanya dapat dipakai satu kali (dipakai secara atomik: permintaan serentak
+        dengan token sama hanya satu yang berhasil). Setelah berhasil, penanda wajib ganti password dimatikan,
+        seluruh sesi lama dicabut, dan token lain milik akun yang sama dihanguskan. Tautan di email mengarah
+        ke halaman web `/reset-password?token=...` (alamat dasar dari env `APP_PUBLIC_URL`).
       operationId: authResetPassword
       tags:
         - Authentication
@@ -242,13 +254,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
         "400":
-          description: Password terlalu lemah
+          description: Password melanggar kebijakan (pesan memuat alasannya) atau sama dengan password lama
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Token reset tidak valid atau sudah kedaluwarsa
+          description: Token tidak valid, sudah dipakai, atau kedaluwarsa (pesan membedakan kedaluwarsa dari tidak valid/terpakai)
           content:
             application/json:
               schema:
@@ -256,7 +268,10 @@ paths:
 
   /v1/auth/mfa/setup:
     post:
-      summary: Memulai setup MFA (menghasilkan secret TOTP)
+      summary: Memulai setup MFA (menghasilkan rahasia TOTP dan QR)
+      description: |
+        Rahasia disimpan bersegel AES (versi kunci tertera) dan belum aktif sampai `/v1/auth/mfa/verify`.
+        Memanggil ulang sebelum verifikasi mengganti rahasia. Terbuka juga bagi sesi yang wajib setup MFA.
       operationId: authMFASetup
       tags:
         - Multi-Factor Authentication
@@ -264,19 +279,25 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: Secret TOTP berhasil dibuat
+          description: Rahasia TOTP berhasil dibuat
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MFASetupResponse"
-        "400":
-          description: MFA sudah aktif atau token tidak valid
+        "401":
+          description: Token tidak valid
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Token tidak valid
+        "409":
+          description: MFA sudah aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Kunci enkripsi MFA (AES_KEY) belum dikonfigurasi
           content:
             application/json:
               schema:
@@ -284,7 +305,10 @@ paths:
 
   /v1/auth/mfa/verify:
     post:
-      summary: Memverifikasi dan mengaktifkan MFA dengan kode TOTP
+      summary: Memverifikasi kode pertama dan mengaktifkan MFA
+      description: |
+        Menerbitkan kode cadangan (sekali tampil, hanya hash yang tersimpan) dan sesi baru: semua sesi lama
+        dicabut dan sesi baru tidak lagi dibatasi ke setup MFA. Kode salah dihitung terhadap batas kunci akun.
       operationId: authMFAVerify
       tags:
         - Multi-Factor Authentication
@@ -302,9 +326,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/MFAVerifyResponse"
         "400":
-          description: Kode TOTP tidak valid
+          description: Kode TOTP tidak valid atau setup belum dimulai
           content:
             application/json:
               schema:
@@ -315,11 +339,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: MFA sudah aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Terlalu banyak percobaan salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/auth/mfa/validate:
     post:
-      summary: Memvalidasi kode MFA (TOTP atau backup code)
+      summary: Menukar token tantangan MFA dan kode OTP dengan sesi
+      description: |
+        Publik (belum ada sesi). `code` adalah kode TOTP enam digit atau kode cadangan (huruf besar/kecil dan
+        tanda hubung diabaikan). Kode TOTP hanya berlaku sekali per langkah waktu 30 detik; kode cadangan sekali
+        pakai. Kode salah dihitung terhadap batas kunci akun yang sama dengan kata sandi salah.
       operationId: authMFAValidate
+      tags:
+        - Multi-Factor Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAValidateRequest"
+      responses:
+        "200":
+          description: Sesi diterbitkan (bentuk sama dengan login berhasil)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tantangan tidak valid atau kedaluwarsa, atau kode salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Akun terkunci karena terlalu banyak percobaan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/mfa/backup-codes:
+    post:
+      summary: Menerbitkan kode cadangan baru
+      description: Kode lama hangus. Memerlukan konfirmasi kata sandi. Kode polos hanya tampil sekali.
+      operationId: authMFABackupCodes
       tags:
         - Multi-Factor Authentication
       security:
@@ -329,22 +408,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MFAValidateRequest"
+              $ref: "#/components/schemas/MFADisableRequest"
       responses:
         "200":
-          description: Kode MFA valid
+          description: Kode cadangan baru
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/MFABackupCodesResponse"
         "400":
-          description: Kode MFA tidak valid (error)
+          description: MFA belum aktif
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Kode MFA tidak valid (unauthorized) atau token tidak valid
+          description: Password salah atau token tidak valid
           content:
             application/json:
               schema:
@@ -353,6 +432,9 @@ paths:
   /v1/auth/mfa/disable:
     post:
       summary: Menonaktifkan MFA
+      description: |
+        Memerlukan konfirmasi kata sandi. Rahasia dan semua kode cadangan dihapus. Ditolak (403) untuk akun
+        yang MFA-nya diwajibkan.
       operationId: authMFADisable
       tags:
         - Multi-Factor Authentication
@@ -371,14 +453,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
-        "400":
-          description: Gagal menonaktifkan MFA
+        "401":
+          description: Password salah atau token tidak valid
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Password salah atau token tidak valid
+        "403":
+          description: MFA diwajibkan untuk akun ini
           content:
             application/json:
               schema:
@@ -572,6 +654,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: urut
+          in: query
+          description: Kosong untuk entri terbaru lebih dulu; `skor` untuk skor anomali tertinggi lebih dulu (prioritas antrean validasi)
+          schema:
+            type: string
+            enum: [skor]
         - name: dari
           in: query
           description: Tanggal awal (inklusif), YYYY-MM-DD waktu Aceh
@@ -629,12 +717,17 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Mencatat entri harga baru
-      description: Entri disimpan berstatus DIAJUKAN atas nama pengguna. Memerlukan izin `harga.input`. Tercatat di audit trail.
+      description: |
+        Entri disimpan berstatus DIAJUKAN atas nama pengguna. Memerlukan izin `harga.input`. Tercatat di audit trail.
+        Header `Idempotency-Key` bersifat opsional di sini; bila dikirim, kiriman ulang oleh pengguna yang sama
+        mengembalikan entri semula (200).
       operationId: createHarga
       tags:
         - Harga
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -797,12 +890,16 @@ paths:
     post:
       summary: Menjalankan aksi massal pada entri harga
       description: |
-        Memerlukan `harga.validasi` untuk aksi validasi, tolak, dan kembalikan, atau `harga.publikasi` untuk aksi publikasi.
-        Entri yang statusnya tidak memenuhi syarat, atau yang dicatat oleh pelaku sendiri
-        (validasi dan publikasi), dilewati dan dihitung di `gagal`. Tercatat di audit trail.
+        State machine entri harga ditegakkan di server. Izin diperiksa per aksi: `harga.input` untuk ajukan
+        (hanya petugas pencatat), `harga.validasi` untuk validasi, tolak, dan kembalikan, `harga.publikasi`
+        untuk publikasi. Validator dan penerbit tidak boleh sama dengan petugas pencatat (pemisahan tugas,
+        juga dijaga CHECK di basis data). Entri yang dilewati dilaporkan di `rincian` beserta sebabnya.
+        Alasan wajib untuk tolak (3 sampai 1000 karakter) dan tampil bagi petugas pencatat. Setiap
+        perpindahan tercatat di riwayat status dan audit trail.
 
         | Aksi | Dari status | Ke status |
         | --- | --- | --- |
+        | ajukan | DRAF | DIAJUKAN |
         | validasi | DIAJUKAN | DIVALIDASI |
         | publikasi | DIVALIDASI | DIPUBLIKASI |
         | tolak | DIAJUKAN | DITOLAK |
@@ -839,6 +936,49 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tanpa izin untuk aksi tersebut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/{id}/riwayat:
+    get:
+      summary: Riwayat perpindahan status entri harga
+      description: |
+        Yang terlama lebih dulu. `harga.lihat` membuka semua entri; petugas dengan `harga.input` hanya
+        entri yang ia catat sendiri (entri lain tampil sebagai 404).
+      operationId: getHargaRiwayat
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Riwayat status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiwayatStatusEntriResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.lihat` maupun `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Entri tidak ada atau bukan milik pemanggil
           content:
             application/json:
               schema:
@@ -1592,6 +1732,119 @@ paths:
                 $ref: "#/components/schemas/KpiRiwayatResponse"
         "404":
           description: KPI tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/lapangan/harga:
+    post:
+      summary: Mengirim entri harga dari aplikasi lapangan (idempoten)
+      description: |
+        Dipakai sync engine PWA. Memerlukan izin `harga.input`. Header `Idempotency-Key` wajib dan unik per
+        petugas: kiriman ulang dengan kunci yang sama mengembalikan entri semula dengan status 200 dan
+        header `Idempotent-Replayed: true`, tanpa menyimpan atau mencatat audit ulang.
+
+        Bila petugas lain sudah mengirim harga yang berbeda untuk pasar, komoditas, dan tipe yang sama dalam
+        3 jam dari waktu pencatatan (entri DRAF dan DITOLAK diabaikan), kiriman ditolak dengan 409 beserta
+        versi server sebagai pembanding. Kirim ulang dengan `pertahankan: true` untuk tetap menyimpan versi
+        sendiri. Entri ditautkan ke tugas lapangan petugas yang meminta pasar, tipe, dan komoditas ini, dan
+        progres tugas bertambah satu per komoditas.
+      operationId: kirimHargaLapangan
+      tags:
+        - Lapangan
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHargaRequest"
+      responses:
+        "201":
+          description: Entri baru tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateHargaResponse"
+        "200":
+          description: Kiriman ulang; entri semula dikembalikan
+          headers:
+            Idempotent-Replayed:
+              schema:
+                type: string
+                example: "true"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateHargaResponse"
+        "400":
+          description: Validasi gagal, Idempotency-Key tidak ada, komoditas atau pasar tidak ada, atau waktu pencatatan di masa depan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Bentrok dengan harga petugas lain; `data.versi_server` memuat pembandingnya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HargaBentrokResponse"
+
+  /v1/lapangan/acuan:
+    get:
+      summary: Mengunduh data acuan untuk validasi harga offline
+      description: |
+        Komoditas aktif, pasar aktif beserta geofence, dan median harga resmi (DIVALIDASI atau DIPUBLIKASI)
+        7 hari terakhir per komoditas, kabupaten, dan tipe (hanya bila minimal 3 sampel) dengan rentang wajar
+        ±`toleransi`. Memerlukan izin `harga.input`. `versi` juga dikirim sebagai `ETag`; kirim kembali di
+        `If-None-Match` agar server menjawab 304 tanpa isi bila data tidak berubah.
+      operationId: getDataAcuan
+      tags:
+        - Lapangan
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Data acuan
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAcuanResponse"
+        "304":
+          description: Data tidak berubah sejak versi di If-None-Match
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.input`
           content:
             application/json:
               schema:
@@ -2966,6 +3219,13 @@ components:
       description: Masukkan token JWT yang diperoleh dari endpoint login
 
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: Kunci unik per kiriman (mis. UUID dari perangkat), maksimal 255 karakter
+      schema:
+        type: string
+        maxLength: 255
     HargaStatus:
       name: status
       in: query
@@ -3071,6 +3331,15 @@ components:
               description: Refresh token
             user:
               $ref: "#/components/schemas/UserObject"
+            mfa_required:
+              type: boolean
+              description: True bila akun harus menyelesaikan MFA; token sesi dan user tidak disertakan
+            mfa_token:
+              type: string
+              description: Token tantangan MFA (5 menit), bukan kredensial sesi
+            mfa_setup_diwajibkan:
+              type: boolean
+              description: Sesi hanya membuka endpoint setup MFA sampai MFA diaktifkan
 
     RefreshTokenRequest:
       type: object
@@ -3173,21 +3442,15 @@ components:
           properties:
             secret:
               type: string
-              description: Base32-encoded secret key untuk ditambahkan ke authenticator app
+              description: Rahasia base32 (20 byte acak) untuk entri manual di aplikasi autentikator
               example: JBSWY3DPEHPK3PXP
             provisioning_uri:
               type: string
-              format: uri
-              description: URI untuk QR code (otpauth://)
-              example: otpauth://totp/Garda%20Inflasi:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Garda%20Inflasi
-            backup_codes:
-              type: array
-              items:
-                type: string
-              description: 8 kode cadangan sekali pakai (8 karakter alfanumerik)
-              example:
-                - F3119FBC
-                - 38F46BF0
+              description: URI otpauth:// untuk kode QR
+              example: otpauth://totp/Garda%20Inflasi:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Garda+Inflasi
+            qr_svg:
+              type: string
+              description: Kode QR dari provisioning_uri sebagai dokumen SVG
 
     MFAVerifyRequest:
       type: object
@@ -3196,18 +3459,85 @@ components:
       properties:
         code:
           type: string
+          minLength: 6
+          maxLength: 6
           description: Kode TOTP 6 digit dari authenticator app
           example: "123456"
+
+    MFAVerifyResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            kode_cadangan:
+              type: array
+              description: 10 kode cadangan sekali pakai, format XXXXX-XXXXX; hanya tampil sekali
+              items:
+                type: string
+
+    MFABackupCodesResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            kode_cadangan:
+              type: array
+              items:
+                type: string
 
     MFAValidateRequest:
       type: object
       required:
+        - mfa_token
         - code
+      properties:
+        mfa_token:
+          type: string
+          description: Token tantangan dari respons login (mfa_required)
+        code:
+          type: string
+          maxLength: 32
+          description: Kode TOTP 6 digit atau kode cadangan
+          example: "123456"
+
+    MeResponse:
+      type: object
       properties:
         code:
           type: string
-          description: Kode TOTP 6 digit atau backup code 8 karakter
-          example: "123456"
+          example: "200"
+        message:
+          type: string
+        data:
+          allOf:
+            - $ref: "#/components/schemas/UserObject"
+            - type: object
+              properties:
+                mfa_setup_diwajibkan:
+                  type: boolean
+                  description: Akun wajib MFA tetapi belum mengaktifkannya
+                mfa_wajib:
+                  type: boolean
+                  description: MFA tidak boleh dinonaktifkan oleh pemilik akun
+                kode_cadangan_tersisa:
+                  type: integer
+                  description: Hanya ada bila MFA aktif
 
     MFADisableRequest:
       type: object
@@ -4017,6 +4347,10 @@ components:
           type: string
           enum: [PREMIUM, MEDIUM, ASALAN]
           default: MEDIUM
+        kode_pedagang:
+          type: string
+          maxLength: 100
+          description: Kode pedagang, bukan nama atau nomor telepon
         catatan:
           type: string
           maxLength: 1000
@@ -4024,6 +4358,18 @@ components:
           type: string
           format: date-time
           description: Waktu pencatatan di lapangan; bawaan sekarang, tidak boleh di masa depan
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+          description: Harus diisi bersamaan dengan `lng`
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        pertahankan:
+          type: boolean
+          description: Simpan walau bentrok dengan harga petugas lain
 
     CreateHargaResponse:
       type: object
@@ -4038,6 +4384,102 @@ components:
           properties:
             id:
               type: string
+            status:
+              type: string
+              enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+
+    HargaBentrokResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "409"
+        message:
+          type: string
+          example: harga bentrok dengan entri petugas lain
+        data:
+          type: object
+          properties:
+            versi_server:
+              type: object
+              properties:
+                id:
+                  type: string
+                harga:
+                  type: integer
+                dicatat_pada:
+                  type: string
+                  format: date-time
+                petugas:
+                  type: string
+                  description: Nama petugas yang mengirim lebih dulu
+
+    DataAcuanResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            versi:
+              type: string
+            toleransi:
+              type: number
+              example: 0.25
+            komoditas:
+              type: array
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  nama:
+                    type: string
+                  satuan:
+                    type: string
+                  harga_acuan:
+                    type: integer
+            pasar:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  nama:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  lat:
+                    type: number
+                  lng:
+                    type: number
+                  radius_meter:
+                    type: integer
+            harga_acuan:
+              type: array
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  tipe:
+                    type: string
+                    enum: [PRODUSEN, KONSUMEN]
+                  median:
+                    type: integer
+                  bawah:
+                    type: integer
+                  atas:
+                    type: integer
+                  sampel:
+                    type: integer
 
     BulkHargaRequest:
       type: object
@@ -4047,13 +4489,17 @@ components:
       properties:
         action:
           type: string
-          enum: [validasi, publikasi, tolak, kembalikan]
+          enum: [ajukan, validasi, publikasi, tolak, kembalikan]
         ids:
           type: array
           minItems: 1
           maxItems: 1000
           items:
             type: string
+        alasan:
+          type: string
+          maxLength: 1000
+          description: Wajib (minimal 3 karakter) untuk aksi tolak; opsional untuk aksi lain
 
     BulkHargaResponse:
       type: object
@@ -4071,7 +4517,18 @@ components:
               description: Entri yang statusnya berubah
             gagal:
               type: integer
-              description: Entri yang dilewati (id tidak ada, status tidak memenuhi syarat, atau dicatat pelaku sendiri)
+              description: Entri yang dilewati
+            rincian:
+              type: array
+              description: Tiap entri yang dilewati beserta sebabnya, urut seperti permintaan
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  sebab:
+                    type: string
+                    enum: [tidak_ditemukan, status_tidak_sesuai, pemisahan_tugas, bukan_pemilik]
 
     EntriHarga:
       type: object
@@ -4116,14 +4573,18 @@ components:
           enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
         deviasi_pct:
           type: number
-          description: Deviasi terhadap harga wajar, dalam persen
+          description: Deviasi terhadap median histori resmi (atau harga acuan master bila histori kurang), dalam persen
         skor_anomali:
           type: number
-          description: 0 sampai 1
+          description: 0 sampai 1; gabungan deviasi, z-score, dan penalti bendera validasi otomatis
         ada_foto:
           type: boolean
         dalam_geofence:
           type: boolean
+        alasan_penolakan:
+          type: string
+          nullable: true
+          description: Terisi untuk entri DITOLAK; terlihat oleh petugas pencatat
 
     EntriHargaListResponse:
       type: object
@@ -4137,6 +4598,67 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntriHarga"
+
+    FlagValidasi:
+      type: object
+      description: |
+        Hasil cek otomatis saat entri disimpan. `di_luar_rentang`: di luar `batas_harga` yang berlaku;
+        `outlier`: |z-score| robust (median dan MAD histori resmi 30 hari sekabupaten) di atas 3,5, hanya
+        bila histori minimal 5 harga; `duplikat`: pasar, komoditas, tipe, dan kode pedagang sama dalam 3 jam;
+        `luar_geofence`: titik GPS di luar radius pasar; `tanpa_lokasi`: tanpa koordinat; `bentrok`: dipertahankan
+        walau berbeda dari harga petugas lain.
+      properties:
+        di_luar_rentang:
+          type: boolean
+        outlier:
+          type: boolean
+        duplikat:
+          type: boolean
+        luar_geofence:
+          type: boolean
+        tanpa_lokasi:
+          type: boolean
+        bentrok:
+          type: boolean
+        median:
+          type: integer
+          description: Harga pembanding (median histori resmi, atau harga acuan master bila histori kurang)
+        jarak_meter:
+          type: integer
+          description: Jarak titik GPS dari pasar
+
+    RiwayatStatusEntriResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              dari:
+                type: string
+                nullable: true
+                description: Kosong untuk pencatatan awal
+              ke:
+                type: string
+                enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+              oleh:
+                type: string
+                nullable: true
+              oleh_nama:
+                type: string
+                nullable: true
+              waktu:
+                type: string
+                format: date-time
+              alasan:
+                type: string
+                nullable: true
 
     HargaDetailResponse:
       type: object
@@ -4177,6 +4699,15 @@ components:
                   type: string
                   nullable: true
                 dipublikasi_pada:
+                  type: string
+                  format: date-time
+                  nullable: true
+                flag_validasi:
+                  $ref: "#/components/schemas/FlagValidasi"
+                ditolak_oleh:
+                  type: string
+                  nullable: true
+                ditolak_pada:
                   type: string
                   format: date-time
                   nullable: true

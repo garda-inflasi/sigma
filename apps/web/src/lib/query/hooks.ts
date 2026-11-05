@@ -7,7 +7,7 @@ import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggu
 import type { AksiModel, SimulasiInput } from "@/lib/api/prediksi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
-import type { HargaParams } from "@/lib/api/harga";
+import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { StokColdStorage } from "@/lib/data/types";
@@ -62,6 +62,12 @@ export const useRingkasanHarga = (hari = 7, enabled = true) =>
   useQuery({ queryKey: qk.harga.ringkasan(hari), queryFn: () => api.harga.ringkasan(hari), enabled, refetchInterval: LIVE });
 /** Riwayat entri milik pengguna yang masuk. */
 export const useRiwayatHargaSaya = () => useQuery({ queryKey: qk.harga.saya(), queryFn: api.harga.saya });
+/** Bukti dan bendera validasi otomatis satu entri. */
+export const useDetailHarga = (id: string | undefined) =>
+  useQuery({ queryKey: qk.harga.detail(id ?? ""), queryFn: () => api.harga.detail(id!), enabled: !!id });
+/** Perpindahan status satu entri (timeline detail). */
+export const useRiwayatStatus = (id: string | undefined) =>
+  useQuery({ queryKey: qk.harga.riwayat(id ?? ""), queryFn: () => api.harga.riwayat(id!), enabled: !!id });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
 /** Kartu kanban. Dengan backend aktif disegarkan berkala agar perpindahan oleh pengguna lain muncul. */
@@ -186,7 +192,7 @@ export function useBulkAction<T extends { id: string }>(opts: {
 }) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ aksi, ids }: { aksi: string; ids: string[]; label: string }) => bulk(opts.sumber, aksi, ids),
+    mutationFn: ({ aksi, ids, alasan }: { aksi: string; ids: string[]; label: string; alasan?: string }) => bulk(opts.sumber, aksi, ids, alasan),
     onMutate: async ({ aksi, ids }) => {
       await qc.cancelQueries({ queryKey: opts.queryKey });
       const prev = qc.getQueryData<T[]>(opts.queryKey);
@@ -202,7 +208,7 @@ export function useBulkAction<T extends { id: string }>(opts: {
     },
     onSuccess: (res, { label }) => {
       toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} data`, {
-        description: res.gagal ? `${res.gagal} data dilewati karena status atau pemisahan tugas.` : "Tercatat di audit trail.",
+        description: res.gagal ? `${res.gagal} data dilewati: ${ringkasSebab(res.rincian) || "status atau pemisahan tugas"}.` : "Tercatat di audit trail.",
       });
     },
     onSettled: () => {

@@ -4,6 +4,9 @@
  */
 
 import type { TipeHarga, TugasLapangan } from "@/lib/data/types";
+import type { EntriLokal } from "@/lib/stores/field-queue-store";
+
+type VersiServer = NonNullable<EntriLokal["versiServer"]>;
 
 export interface TugasLapanganResponse {
   id: string;
@@ -32,4 +35,58 @@ export function toTugasLapangan(t: TugasLapanganResponse): TugasLapangan {
     terisi: t.terisi,
     tipe: t.tipe,
   };
+}
+
+/** Isi POST /v1/lapangan/harga dari entri antrean perangkat (foto menyusul di 07-C). */
+export function toKirimHargaBody(e: EntriLokal) {
+  return {
+    komoditas_kode: e.komoditasKode,
+    pasar_id: e.pasarId,
+    tipe: e.tipe,
+    harga: e.harga,
+    kualitas: e.kualitas,
+    kode_pedagang: e.kodePedagang,
+    catatan: e.catatan,
+    dicatat_pada: e.dicatatPada,
+    lat: e.lat,
+    lng: e.lng,
+    pertahankan: e.pertahankan || undefined,
+  };
+}
+
+/** Isi 409: harga petugas lain yang bentrok. */
+export interface BentrokResponse {
+  versi_server?: { id: string; harga: number; dicatat_pada: string; petugas: string };
+}
+
+export function toVersiServer(payload: unknown): VersiServer | undefined {
+  const versi = (payload as { data?: BentrokResponse } | undefined)?.data?.versi_server;
+  return versi ? { harga: versi.harga, dicatatPada: versi.dicatat_pada, petugas: versi.petugas } : undefined;
+}
+
+export interface DataAcuanResponse {
+  versi: string;
+  toleransi: number;
+  komoditas: { kode: string; nama: string; satuan: string; harga_acuan: number }[];
+  pasar: { id: string; nama: string; kabupaten_kode: string; lat: number; lng: number; radius_meter: number }[];
+  harga_acuan: { komoditas_kode: string; kabupaten_kode: string; tipe: TipeHarga; median: number; bawah: number; atas: number; sampel: number }[];
+}
+
+export interface Acuan {
+  median: number;
+  bawah: number;
+  atas: number;
+}
+
+const RASIO_PRODUSEN = 0.72;
+
+/** Rentang wajar satu komoditas: median resmi kabupaten bila ada, selain itu harga acuan master (produsen 72%). */
+export function cariAcuan(data: DataAcuanResponse, kode: string, kabupatenKode: string, tipe: TipeHarga): Acuan | undefined {
+  const median = data.harga_acuan.find((h) => h.komoditas_kode === kode && h.kabupaten_kode === kabupatenKode && h.tipe === tipe);
+  if (median) return { median: median.median, bawah: median.bawah, atas: median.atas };
+  const dasar = data.komoditas.find((k) => k.kode === kode)?.harga_acuan;
+  if (!dasar) return undefined;
+  const nilai = tipe === "PRODUSEN" ? dasar * RASIO_PRODUSEN : dasar;
+  const bulat = (n: number) => Math.round(n / 100) * 100;
+  return { median: Math.round(nilai), bawah: bulat(nilai * (1 - data.toleransi)), atas: bulat(nilai * (1 + data.toleransi)) };
 }

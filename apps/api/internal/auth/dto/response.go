@@ -8,10 +8,16 @@ import (
 
 // ── Auth Responses ────────────────────────────────────────────────────
 
+// LoginResponse adalah hasil login. Bila mfa_required, belum ada sesi: tidak ada token sesi maupun
+// profil, dan klien menukar mfa_token dengan kode OTP di POST /v1/auth/mfa/validate.
 type LoginResponse struct {
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
-	User         UserResponse `json:"user"`
+	AccessToken  string        `json:"access_token,omitempty"`
+	RefreshToken string        `json:"refresh_token,omitempty"`
+	User         *UserResponse `json:"user,omitempty"`
+	MFARequired  bool          `json:"mfa_required,omitempty"`
+	MFAToken     string        `json:"mfa_token,omitempty"`
+	// MFASetupDiwajibkan true berarti sesi ini hanya membuka endpoint setup MFA (403 MFA_SETUP_REQUIRED selain itu).
+	MFASetupDiwajibkan bool `json:"mfa_setup_diwajibkan"`
 }
 
 type RefreshTokenResponse struct {
@@ -26,8 +32,15 @@ type ChangePasswordResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type MeResponse struct {
-	User UserResponse `json:"user"`
+// MeUserResponse adalah profil sendiri beserta keadaan MFA.
+type MeUserResponse struct {
+	UserResponse
+	// MfaSetupDiwajibkan true bila akun wajib MFA tetapi belum mengaktifkannya.
+	MfaSetupDiwajibkan bool `json:"mfa_setup_diwajibkan"`
+	// MfaWajib true bila MFA tidak boleh dinonaktifkan oleh pemilik akun.
+	MfaWajib bool `json:"mfa_wajib"`
+	// KodeCadanganTersisa hanya ada untuk akun dengan MFA aktif.
+	KodeCadanganTersisa *int `json:"kode_cadangan_tersisa,omitempty"`
 }
 
 // ── User Responses ────────────────────────────────────────────────────
@@ -108,8 +121,21 @@ func ToUserResponses(users []domain.Pengguna) []UserResponse {
 
 // ── MFA Responses ─────────────────────────────────────────────────────
 
+// MFASetupResponse adalah bahan setup MFA: rahasia untuk entri manual, URI otpauth, dan QR sebagai SVG.
 type MFASetupResponse struct {
-	Secret          string   `json:"secret"`
-	ProvisioningURI string   `json:"provisioning_uri"`
-	BackupCodes     []string `json:"backup_codes"`
+	Secret          string `json:"secret"`
+	ProvisioningURI string `json:"provisioning_uri"`
+	QRSVG           string `json:"qr_svg"`
+}
+
+// MFAVerifyResponse adalah hasil aktivasi MFA: sesi baru dan kode cadangan yang hanya tampil sekali.
+type MFAVerifyResponse struct {
+	AccessToken  string   `json:"access_token"`
+	RefreshToken string   `json:"refresh_token"`
+	KodeCadangan []string `json:"kode_cadangan"`
+}
+
+// MFABackupCodesResponse memuat kode cadangan baru yang hanya tampil sekali.
+type MFABackupCodesResponse struct {
+	KodeCadangan []string `json:"kode_cadangan"`
 }

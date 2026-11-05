@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { BellRing, CheckCheck, CloudDownload, MapPin, Play } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { unduhAcuan } from "@/lib/offline/acuan-server";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkActionBar, type BulkAction } from "@/components/data-table/bulk-action-bar";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
@@ -55,7 +56,7 @@ export function TugasList() {
   const mendesak = aktif.filter((t) => new Date(t.tenggat).getTime() - Date.now() < 3 * 3_600_000).sort((a, b) => +new Date(a.tenggat) - +new Date(b.tenggat))[0];
 
   const actions: BulkAction<TugasLapangan>[] = [
-    { id: "unduh", label: "Unduh data acuan", icon: CloudDownload, tone: "data", run: async (r) => { await new Promise((ok) => setTimeout(ok, 700)); toast.success(`Data acuan ${r.length} tugas tersimpan offline`, { description: "Median harga, daftar pedagang, dan geofence pasar." }); } },
+    { id: "unduh", label: "Unduh data acuan", icon: CloudDownload, tone: "data", run: async (r) => { await unduhAcuan(); toast.success(`Data acuan ${r.length} tugas tersimpan offline`, { description: "Median harga dan geofence pasar." }); } },
     {
       id: "selesai", label: "Tandai selesai", icon: CheckCheck,
       enabled: (r) => r.every((t) => t.terisi >= t.target && t.status !== "SELESAI"),

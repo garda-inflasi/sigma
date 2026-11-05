@@ -30,13 +30,14 @@ const decide = (
 ) => decideEdge({ pathname, accessToken, refreshToken, nowSeconds: NOW });
 
 describe("klaim edge", () => {
-  it("membaca role, permissions, exp, wajib_ganti_password", () => {
+  it("membaca role, permissions, exp, wajib_ganti_password, wajib_setup_mfa", () => {
     const c = readEdgeClaims(
       jwt({
         role: "ADMIN_SISTEM",
         permissions: ["audit.lihat"],
         exp: 5,
         wajib_ganti_password: true,
+        wajib_setup_mfa: true,
       }),
     );
     assert.deepEqual(c, {
@@ -44,7 +45,16 @@ describe("klaim edge", () => {
       permissions: ["audit.lihat"],
       exp: 5,
       wajibGantiPassword: true,
+      wajibSetupMfa: true,
     });
+  });
+
+  it("klaim wajib hanya berlaku bila bernilai true (bukan string)", () => {
+    const c = readEdgeClaims(
+      jwt({ role: "ADMIN_SISTEM", wajib_ganti_password: "true", wajib_setup_mfa: 1 }),
+    );
+    assert.equal(c?.wajibGantiPassword, false);
+    assert.equal(c?.wajibSetupMfa, false);
   });
 
   it("menolak token rusak atau peran tidak dikenal", () => {
@@ -83,6 +93,7 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
     "/offline",
     "/healthz",
     "/api/auth/login",
+    "/api/auth/mfa/validate",
     "/api/auth/refresh",
     "/_next/static/chunk.js",
   ]) {
@@ -93,6 +104,15 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
 
   it("batas prefiks: /masuk-palsu bukan rute publik", () => {
     assert.equal(isPublicRoute("/masuk-palsu"), false);
+  });
+
+  it("/daftar tidak lagi publik (halamannya tidak ada)", () => {
+    assert.equal(isPublicRoute("/daftar"), false);
+  });
+
+  it("hanya langkah OTP yang publik di /api/auth/mfa; setup dan verifikasi butuh sesi", () => {
+    assert.equal(isPublicRoute("/api/auth/mfa/setup"), false);
+    assert.equal(decide("/api/auth/mfa/verify").kind, "json");
   });
 
   it("/ganti-password terbuka bagi peran apa pun yang sudah masuk, termasuk yang wajib ganti sandi", () => {
@@ -187,6 +207,35 @@ describe("wajib ganti kata sandi", () => {
     const d = decide("/api/pengguna", t);
     assert.equal(d.kind === "json" && d.status, 403);
     assert.equal(d.kind === "json" && d.body.code, "PASSWORD_CHANGE_REQUIRED");
+  });
+});
+
+describe("wajib setup MFA", () => {
+  const t = tokenFor("STRATEGIS_BI", { wajib_setup_mfa: true });
+  it("halaman dialihkan ke /mfa membawa tujuan semula", () => {
+    assert.deepEqual(decide("/eksekutif", t), {
+      kind: "redirect",
+      path: "/mfa",
+      query: { lanjut: "/eksekutif" },
+    });
+  });
+  it("API menjawab 403 MFA_SETUP_REQUIRED", () => {
+    const d = decide("/api/pengguna", t);
+    assert.equal(d.kind === "json" && d.status, 403);
+    assert.equal(d.kind === "json" && d.body.code, "MFA_SETUP_REQUIRED");
+  });
+  it("halaman setup, ganti kata sandi, dan API auth tetap terbuka", () => {
+    for (const path of ["/mfa", "/ganti-password", "/api/auth/mfa/setup", "/api/auth/me"]) {
+      assert.deepEqual(decide(path, t), { kind: "next" }, path);
+    }
+  });
+  it("ganti kata sandi didahulukan bila keduanya diwajibkan", () => {
+    const keduanya = tokenFor("STRATEGIS_BI", { wajib_setup_mfa: true, wajib_ganti_password: true });
+    assert.deepEqual(decide("/eksekutif", keduanya), {
+      kind: "redirect",
+      path: "/ganti-password",
+      query: { lanjut: "/eksekutif" },
+    });
   });
 });
 

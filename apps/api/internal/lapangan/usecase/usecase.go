@@ -2,8 +2,12 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -21,6 +25,18 @@ var (
 
 // MaxBulkIDs membatasi jumlah id pada satu aksi massal.
 const MaxBulkIDs = 500
+
+// Parameter data acuan offline.
+const (
+	// ToleransiAcuan adalah selisih dari median yang masih dianggap wajar (±25%).
+	ToleransiAcuan = 0.25
+	// HariAcuan adalah jendela median harga resmi.
+	HariAcuan = 7
+	// MinSampelAcuan adalah jumlah entri resmi minimal agar median dipercaya.
+	MinSampelAcuan = 3
+	// pembulatanAcuan membulatkan batas rentang wajar ke ratusan rupiah.
+	pembulatanAcuan = 100
+)
 
 // Tugas adalah tugas yang siap ditampilkan: status sudah dihitung terhadap waktu sekarang.
 type Tugas struct {
@@ -135,4 +151,59 @@ func dedup(ids []string) []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+// HargaAcuan adalah median dan rentang wajar harga satu komoditas dan tipe di satu kabupaten.
+type HargaAcuan struct {
+	KomoditasKode string `json:"komoditas_kode"`
+	KabupatenKode string `json:"kabupaten_kode"`
+	Tipe          string `json:"tipe"`
+	Median        int    `json:"median"`
+	Bawah         int    `json:"bawah"`
+	Atas          int    `json:"atas"`
+	Sampel        int    `json:"sampel"`
+}
+
+// DataAcuan adalah paket unduhan offline petugas lapangan beserta versinya. Versi
+// berubah hanya bila isinya berubah, sehingga klien dapat bertanya "ada yang baru?".
+type DataAcuan struct {
+	Versi      string
+	Toleransi  float64
+	Komoditas  []domain.AcuanKomoditas
+	Pasar      []domain.AcuanPasar
+	HargaAcuan []HargaAcuan
+}
+
+// Acuan menyusun data acuan offline: komoditas, pasar beserta geofence, dan median
+// harga resmi tujuh hari terakhir dengan rentang wajar.
+func (uc *UseCase) Acuan(ctx context.Context) (DataAcuan, error) {
+	sejak := uc.now().AddDate(0, 0, -HariAcuan)
+	raw, err := uc.repo.Acuan(ctx, sejak, MinSampelAcuan)
+	if err != nil {
+		uc.log.Error("lapangan: baca data acuan gagal", map[string]interface{}{"error": err.Error()})
+		return DataAcuan{}, fmt.Errorf("data acuan: %w", err)
+	}
+
+	harga := make([]HargaAcuan, len(raw.Median))
+	for i, m := range raw.Median {
+		harga[i] = HargaAcuan{
+			KomoditasKode: m.KomoditasKode, KabupatenKode: m.KabupatenKode, Tipe: m.Tipe, Sampel: m.Sampel,
+			Median: int(math.Round(m.Median)),
+			Bawah:  bulatkan(m.Median * (1 - ToleransiAcuan)),
+			Atas:   bulatkan(m.Median * (1 + ToleransiAcuan)),
+		}
+	}
+	data := DataAcuan{Toleransi: ToleransiAcuan, Komoditas: raw.Komoditas, Pasar: raw.Pasar, HargaAcuan: harga}
+
+	isi, err := json.Marshal(data)
+	if err != nil {
+		return DataAcuan{}, fmt.Errorf("versi data acuan: %w", err)
+	}
+	ringkas := sha256.Sum256(isi)
+	data.Versi = hex.EncodeToString(ringkas[:8])
+	return data, nil
+}
+
+func bulatkan(v float64) int {
+	return int(math.Round(v/pembulatanAcuan)) * pembulatanAcuan
 }

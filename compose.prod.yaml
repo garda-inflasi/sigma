@@ -64,6 +64,9 @@ services:
     build: !reset null
     environment:
       <<: *prod-database-url
+      # Migrasi data MFA menyegel mfa_secret dengan AES_KEY: wajib sama dengan kunci api.
+      APP_ENV: production
+      AES_KEY: "${AES_KEY:?AES_KEY wajib diisi}"
 
   # Produksi hanya mengisi referensi dan admin awal, tidak pernah demo.
   seed:

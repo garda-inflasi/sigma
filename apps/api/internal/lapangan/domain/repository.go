@@ -10,6 +10,8 @@ import (
 var ErrNotFound = errors.New("tugas tidak ditemukan")
 
 type Repository interface {
+	// Acuan membaca data acuan unduhan offline; median dihitung dari entri resmi sejak waktu itu.
+	Acuan(ctx context.Context, sejak time.Time, minSampel int) (DataAcuan, error)
 	// ListSaya mengembalikan tugas milik petugas: yang belum selesai lebih dulu, menurut tenggat.
 	ListSaya(ctx context.Context, petugasID string) ([]TugasView, error)
 	// GetByID mengembalikan satu tugas; semua true membuka tugas milik petugas lain.

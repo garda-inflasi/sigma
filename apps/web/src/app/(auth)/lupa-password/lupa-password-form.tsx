@@ -12,11 +12,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MODE_MOCK } from "@/lib/api/client";
+import { bffFetch, MODE_MOCK } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 /** Form permintaan tautan atur ulang kata sandi. */
-export function LupaPasswordForm({ apiBase }: { apiBase: string }) {
+export function LupaPasswordForm() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [terkirim, setTerkirim] = useState(false);
@@ -37,15 +37,7 @@ export function LupaPasswordForm({ apiBase }: { apiBase: string }) {
       if (MODE_MOCK) {
         await new Promise((r) => setTimeout(r, 650));
       } else {
-        await fetch(`${apiBase}/v1/auth/password/forgot`, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ email: email.trim() }),
-        });
+        await bffFetch("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email: email.trim() }) });
       }
       // Selalu tampilkan keadaan sukses (tanpa membocorkan keberadaan akun).
       setTerkirim(true);

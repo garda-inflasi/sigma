@@ -9,7 +9,9 @@ import { BrandMark } from "@/components/layout/brand-mark";
 import { useSession } from "@/lib/auth/session-context";
 import { namaWilayah } from "@/lib/data/generators";
 import { spring } from "@/lib/motion/presets";
+import { unduhAcuan } from "@/lib/offline/acuan-server";
 import { useSyncEngine } from "@/lib/offline/sync-engine";
+import { useOnline } from "@/lib/offline/use-online";
 import { can } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
 import { pendingCount, useFieldQueue } from "@/lib/stores/field-queue-store";
@@ -30,7 +32,12 @@ export function FieldShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const user = useSession();
   const items = useFieldQueue((s) => s.items);
+  const online = useOnline();
   useSyncEngine();
+
+  useEffect(() => {
+    if (online) void unduhAcuan();
+  }, [online]);
 
   useEffect(() => {
     useFieldQueue.persist.rehydrate();

@@ -8,6 +8,11 @@
  */
 
 import {
+  MFA_SETUP_PATH,
+  MFA_SETUP_REQUIRED_CODE,
+  isMfaSetupExempt,
+} from "@/lib/auth/mfa";
+import {
   PASSWORD_CHANGE_PATH,
   PASSWORD_CHANGE_REQUIRED_CODE,
   isPasswordChangeExempt,
@@ -17,13 +22,17 @@ import { ROLE_PERMISSIONS } from "./permissions";
 import { ROLES } from "./roles";
 import { requiredPermission } from "./routes";
 
-/** Rute yang tidak memerlukan sesi (halaman publik, alur masuk, aset). */
+/**
+ * Rute yang tidak memerlukan sesi (halaman publik, alur masuk, aset). Langkah OTP login
+ * (`/api/auth/mfa/validate`) publik karena sesi baru terbit setelah kode diterima; ia
+ * memakai cookie tantangan berumur pendek dari `/api/auth/login`.
+ */
 export const PUBLIC_ROUTES = [
   "/masuk",
-  "/daftar",
   "/lupa-password",
   "/reset-password",
   "/api/auth/login",
+  "/api/auth/mfa/validate",
   "/api/auth/refresh",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
@@ -122,6 +131,28 @@ export function decideEdge({
     return {
       kind: "redirect",
       path: PASSWORD_CHANGE_PATH,
+      query: { lanjut: pathname },
+    };
+  }
+
+  // Peran wajib MFA yang belum menyiapkannya hanya boleh membuka halaman setup MFA
+  // (setelah ganti kata sandi bila itu juga diwajibkan).
+  if (claims.wajibSetupMfa && !isMfaSetupExempt(pathname)) {
+    if (isApi(pathname)) {
+      return {
+        kind: "json",
+        status: 403,
+        body: {
+          error: true,
+          code: MFA_SETUP_REQUIRED_CODE,
+          message:
+            "Anda harus mengaktifkan verifikasi dua langkah sebelum melanjutkan.",
+        },
+      };
+    }
+    return {
+      kind: "redirect",
+      path: MFA_SETUP_PATH,
       query: { lanjut: pathname },
     };
   }

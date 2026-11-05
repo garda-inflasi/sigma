@@ -190,8 +190,8 @@ test.describe("kanban intervensi", () => {
 
     const alur = page.getByRole("region", { name: "Alur persetujuan" });
     await expect(alur).toBeVisible();
-    await expect(alur.getByText("Dukungan instrumen belanja")).toBeVisible();
-    await expect(alur.getByText("Persetujuan Kanwil DJPb")).toBeVisible();
+    await expect(alur.getByText("Dukungan instrumen belanja", { exact: true })).toBeVisible();
+    await expect(alur.getByText("Persetujuan Kanwil DJPb", { exact: true }).first()).toBeVisible();
   });
 
   test("tambah intervensi: kartu muncul di tahap pertama dan riwayat mencatat pembuatannya", async ({

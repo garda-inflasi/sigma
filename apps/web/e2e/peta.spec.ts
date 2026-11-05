@@ -111,28 +111,28 @@ test.describe("lokasi saya", () => {
   test("klik peta mencari wilayah untuk titik itu", async ({ page }) => {
     await masukSebagai(page, "manajerData");
     await buka(page, "/peta");
-    const peta = page.getByLabel("Peta skema Aceh");
-    // Dengan token Mapbox peta bukan skema SVG dan klik tidak diuji di sini.
-    test.skip((await peta.count()) === 0, "peta Mapbox aktif");
+    await tungguTenang(page);
+    // Peta skema SVG (tanpa token Mapbox) atau kanvas Mapbox; keduanya meneruskan klik sebagai koordinat.
+    const skema = page.getByLabel("Peta skema Aceh");
+    const peta = (await skema.count()) > 0 ? skema : page.locator("canvas.mapboxgl-canvas");
     await expect(peta).toBeVisible();
 
-    // Titik di laut barat laut Banda Aceh; wilayah yang benar ditanyakan ke API dengan koordinat sama.
-    const [fx, fy] = [0.06, 0.1];
+    // Pojok barat laut (laut) agar tidak mengenai marker; wilayah terdekat tetap dikembalikan.
     const box = (await peta.boundingBox())!;
-    const lat = 6.1 - fy * (6.1 - 1.9);
-    const lng = 94.9 + fx * (98.5 - 94.9);
+    await peta.click({ position: { x: box.width * 0.08, y: box.height * 0.12 } });
+
+    const koordinat = /\((-?\d+\.\d{4}), (-?\d+\.\d{4})\)/;
+    const status = page.getByRole("status").filter({ hasText: koordinat });
+    await expect(status).toBeVisible();
+    const [, lat, lng] = (await status.innerText()).match(koordinat)!;
+
     const api = await apiSebagai("manajerData");
     const res = await api.get(`spasial/lokasi?lat=${lat}&lng=${lng}`);
     expect(res.status()).toBe(200);
     const nama = ((await res.json()) as Amplop<Lokasi>).data.nama;
     await api.dispose();
 
-    await peta.click({ position: { x: fx * box.width, y: fy * box.height } });
-
-    const pola = new RegExp(nama.replace(/^(KOTA|KABUPATEN) /, ""), "i");
-    await expect(
-      page.getByRole("status").filter({ hasText: pola }),
-    ).toBeVisible();
+    await expect(status).toContainText(new RegExp(nama.replace(/^(KOTA|KABUPATEN) /i, ""), "i"));
   });
 });
 

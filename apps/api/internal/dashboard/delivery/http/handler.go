@@ -47,3 +47,25 @@ func (h *Handler) GetAktivitasLapangan(c *gin.Context) {
 
 	response.Success(c, dto.ToAktivitasLapanganResponses(items))
 }
+
+// GET /v1/dashboard/operasional/pembanding-harga
+func (h *Handler) GetPembandingHarga(c *gin.Context) {
+	p, err := h.uc.GetPembandingHarga(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil pembanding harga")
+		return
+	}
+
+	response.Success(c, dto.ToPembandingHargaResponse(p))
+}
+
+// GET /v1/dashboard/operasional/cuaca
+func (h *Handler) GetCuaca(c *gin.Context) {
+	items, err := h.uc.GetCuaca(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil cuaca")
+		return
+	}
+
+	response.Success(c, dto.ToCuacaResponses(items))
+}

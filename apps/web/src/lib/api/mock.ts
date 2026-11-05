@@ -31,7 +31,7 @@ export function mockHeatmap() {
   for (const kom of KOMODITAS) {
     for (const k of kab) {
       const seri = seriHarga(kom, k.kode);
-      sel.push({ komoditasKode: kom.kode, kabupatenKode: k.kode, delta: delta7(seri), harga: seri[seri.length - 1].konsumen });
+      sel.push({ komoditasKode: kom.kode, kabupatenKode: k.kode, delta: delta7(seri), harga: seri[seri.length - 1].konsumen, sumber: "LAPANGAN" });
     }
   }
   return {

@@ -1767,8 +1767,11 @@ paths:
       summary: Peta panas harga konsumen
       description: |
         Perubahan harga konsumen terakhir terhadap rata-rata tertimbang tujuh hari sebelumnya,
-        per komoditas dan kabupaten/kota, dari `mv_heatmap_harga`. Hanya kabupaten dan komoditas
-        yang punya data yang dikembalikan. Memerlukan izin `dashboard.operasional`.
+        per komoditas dan kabupaten/kota, dari `mv_heatmap_harga` (entri lapangan tervalidasi).
+        Sel yang belum punya data lapangan dilengkapi dari harga eksternal hasil ingestion
+        (`gold_harga_harian`) dan ditandai `sumber: EKSTERNAL`; sel dengan data lapangan tidak
+        pernah digantikan. Hanya kabupaten dan komoditas yang punya data yang dikembalikan.
+        Memerlukan izin `dashboard.operasional`.
       operationId: getHeatmapHarga
       tags:
         - Dashboard
@@ -1806,6 +1809,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AktivitasLapanganListResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/pembanding-harga:
+    get:
+      summary: Validasi silang harga lapangan vs eksternal
+      description: |
+        Pasangan terbaru (7 hari terakhir, waktu Aceh) harga konsumen lapangan tervalidasi dan
+        harga eksternal hasil ingestion (PIHPS) per komoditas dan kabupaten/kota, dari
+        `gold_harga_harian`. Sepakat bila selisih paling banyak `batas_pct` (10%).
+        Memerlukan izin `dashboard.operasional`.
+      operationId: getPembandingHarga
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Ringkasan pasangan dan selisih terbesar (kosong bila belum ada pasangan)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PembandingHargaResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/cuaca:
+    get:
+      summary: Cuaca harian terbaru per kabupaten/kota
+      description: |
+        Cuaca harian terbaru (hari ini atau sampai 3 hari ke belakang, waktu Aceh) hasil
+        ingestion BMKG dari `cuaca_harian`. Prakiraan hari-hari mendatang tidak dipakai.
+        Memerlukan izin `dashboard.operasional`.
+      operationId: getCuacaWilayah
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Cuaca per kabupaten/kota yang punya data (kosong bila belum ada)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CuacaWilayahListResponse"
         "403":
           description: Tanpa izin `dashboard.operasional`
           content:
@@ -4067,6 +4123,96 @@ components:
                   harga:
                     type: number
                     description: Harga konsumen rata-rata pada tanggal terakhir yang tersedia
+                  sumber:
+                    type: string
+                    enum: [LAPANGAN, EKSTERNAL]
+                    description: EKSTERNAL bila sel dihitung dari harga hasil ingestion karena belum ada data lapangan
+
+    PembandingHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            pasangan:
+              type: integer
+              description: Jumlah pasangan komoditas-kabupaten yang dibandingkan (semua, bukan hanya items)
+            sepakat:
+              type: integer
+              description: Pasangan yang selisihnya dalam batas_pct
+            batas_pct:
+              type: number
+              example: 10
+            items:
+              type: array
+              description: Paling banyak 20 pasangan, selisih absolut terbesar lebih dulu
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  komoditas_nama:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  kabupaten_nama:
+                    type: string
+                  tanggal:
+                    type: string
+                    format: date
+                  harga_lapangan:
+                    type: number
+                  harga_eksternal:
+                    type: number
+                  selisih_pct:
+                    type: number
+                    description: (lapangan - eksternal) / eksternal, persen
+                  sepakat:
+                    type: boolean
+                  demo:
+                    type: boolean
+                    description: Benar bila sisi eksternal berasal dari eksekusi contoh
+
+    CuacaWilayahListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          description: Satu baris per kabupaten/kota; anomali dan curah hujan terbesar lebih dulu
+          items:
+            type: object
+            properties:
+              kabupaten_kode:
+                type: string
+              kabupaten_nama:
+                type: string
+              tanggal:
+                type: string
+                format: date
+              curah_hujan_mm:
+                type: number
+              suhu_c:
+                type: number
+              kelembapan:
+                type: integer
+              anomali:
+                type: boolean
+                description: Hujan lebat, curah hujan harian >= 50 mm
+              sumber:
+                type: string
+                example: BMKG
+              demo:
+                type: boolean
 
     AktivitasLapanganListResponse:
       type: object

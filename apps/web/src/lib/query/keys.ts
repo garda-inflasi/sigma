@@ -10,6 +10,8 @@ export const qk = {
     kpi: () => ["operasional", "kpi"] as const,
     heatmap: () => ["operasional", "heatmap"] as const,
     aktivitas: () => ["operasional", "aktivitas"] as const,
+    pembanding: () => ["operasional", "pembanding-harga"] as const,
+    cuaca: () => ["operasional", "cuaca"] as const,
     marker: () => ["operasional", "marker"] as const,
     tren: (kode: string, kab: string) => ["operasional", "tren", kode, kab] as const,
   },

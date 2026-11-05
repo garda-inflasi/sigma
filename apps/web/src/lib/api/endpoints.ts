@@ -8,7 +8,8 @@ import {
 } from "./master";
 import {
   aktivitasMock, toAktivitasLapangan, toHeatmap, toKpiOperasional,
-  type AktivitasLapangan, type AktivitasLapanganResponse, type Heatmap, type HeatmapResponse, type KpiResponse,
+  type AktivitasLapangan, type AktivitasLapanganResponse, type CuacaResponse, type CuacaWilayah, type Heatmap, type HeatmapResponse, type KpiResponse,
+  type PembandingHarga, type PembandingHargaResponse, toCuacaWilayah, toPembandingHarga,
 } from "./dashboard";
 import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery,
@@ -63,6 +64,14 @@ export const api = {
   operasional: {
     kpi: (): Promise<KpiOperasional[]> =>
       MODE_MOCK ? mockDelay(m.mockKpi) : apiFetch<KpiResponse[]>("/v1/dashboard/operasional/kpi").then((rows) => rows.map(toKpiOperasional)),
+    /** Validasi silang harga lapangan vs eksternal (hasil ingestion). */
+    pembandingHarga: (): Promise<PembandingHarga> =>
+      MODE_MOCK
+        ? mockDelay({ pasangan: 0, sepakat: 0, batasPct: 10, items: [] })
+        : apiFetch<PembandingHargaResponse>("/v1/dashboard/operasional/pembanding-harga").then(toPembandingHarga),
+    /** Cuaca harian terbaru per kabupaten/kota (BMKG). */
+    cuaca: (): Promise<CuacaWilayah[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<CuacaResponse[]>("/v1/dashboard/operasional/cuaca").then((rows) => rows.map(toCuacaWilayah)),
     heatmap: (): Promise<Heatmap> =>
       MODE_MOCK ? mockDelay(m.mockHeatmap) : apiFetch<HeatmapResponse>("/v1/dashboard/operasional/heatmap").then(toHeatmap),
     aktivitas: (): Promise<AktivitasLapangan[]> =>

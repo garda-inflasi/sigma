@@ -65,6 +65,8 @@ export interface SelHeatmap {
   kabupatenKode: string;
   delta: number;
   harga: number;
+  /** LAPANGAN = entri tervalidasi; EKSTERNAL = hasil ingestion bagi sel yang belum punya data lapangan. */
+  sumber: "LAPANGAN" | "EKSTERNAL";
 }
 
 export type Prioritas = "TINGGI" | "SEDANG" | "RENDAH";

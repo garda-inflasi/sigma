@@ -26,6 +26,8 @@ export const useSiklusAktif = (enabled = true) =>
 export const useKpiOperasional = () => useQuery({ queryKey: qk.operasional.kpi(), queryFn: api.operasional.kpi, refetchInterval: LIVE });
 export const useHeatmap = () => useQuery({ queryKey: qk.operasional.heatmap(), queryFn: api.operasional.heatmap, refetchInterval: LIVE * 2 });
 export const useAktivitasLapangan = () => useQuery({ queryKey: qk.operasional.aktivitas(), queryFn: api.operasional.aktivitas, refetchInterval: LIVE });
+export const usePembandingHarga = () => useQuery({ queryKey: qk.operasional.pembanding(), queryFn: api.operasional.pembandingHarga, refetchInterval: LIVE * 2 });
+export const useCuacaTerbaru = () => useQuery({ queryKey: qk.operasional.cuaca(), queryFn: api.operasional.cuaca, refetchInterval: LIVE * 10 });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
 export const useRuteDistribusi = () => useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
 export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });

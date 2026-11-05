@@ -13,6 +13,7 @@ import { formatPersen, formatRupiah } from "@/lib/format";
 import { heatCell } from "@/lib/motion/presets";
 import { useHeatmap } from "@/lib/query/hooks";
 import { komoditasByKode, kabupatenByKode } from "@/lib/data/reference";
+import { cn } from "@/lib/utils";
 
 const LEGENDA = [-10, -5, 0, 5, 9, 14].map((v) => heatTone(v));
 
@@ -40,6 +41,7 @@ export function PriceHeatmap() {
             <span className="font-medium">{komoditasByKode[hover.komoditasKode].nama}</span> di {kabupatenByKode[hover.kabupatenKode].nama}:{" "}
             <span className="num">{formatRupiah(hover.harga)}</span>/{komoditasByKode[hover.komoditasKode].satuan},{" "}
             <span className="num font-semibold" style={{ color: heatTone(hover.delta).ink }}>{formatPersen(hover.delta, { signed: true })}</span>
+            {hover.sumber === "EKSTERNAL" && <span className="text-muted-foreground"> (harga eksternal, belum ada data lapangan)</span>}
           </>
         ) : (
           <span className="text-muted-foreground">Arahkan kursor atau fokus ke sel untuk melihat detail. Klik untuk membuka prediksi.</span>
@@ -81,8 +83,8 @@ export function PriceHeatmap() {
                       onFocus={() => setHover(s)}
                       onClick={() => router.push(`/prediksi?komoditas=${kom.kode}&wilayah=${k.kode}`)}
                       whileHover={{ scale: 1.08, zIndex: 2 }}
-                      aria-label={`${kom.nama}, ${k.nama}: ${formatPersen(s.delta, { signed: true })}`}
-                      className="num relative h-9 rounded-lg text-[11px] font-medium ring-white/70 transition-shadow hover:shadow-ambient hover:ring-2 dark:ring-white/20"
+                      aria-label={`${kom.nama}, ${k.nama}: ${formatPersen(s.delta, { signed: true })}${s.sumber === "EKSTERNAL" ? " (harga eksternal)" : ""}`}
+                      className={cn("num relative h-9 rounded-lg text-[11px] font-medium ring-white/70 transition-shadow hover:shadow-ambient hover:ring-2 dark:ring-white/20", s.sumber === "EKSTERNAL" && "outline-dashed outline-1 -outline-offset-2 outline-current")}
                       style={{ background: t.fill, color: t.ink }}
                     >
                       {s.delta > 0 ? "+" : ""}{s.delta.toFixed(1).replace(".", ",")}

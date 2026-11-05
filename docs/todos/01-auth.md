@@ -92,12 +92,70 @@
 
 ---
 
+## 01-E — Sesi aktif, rotasi refresh token, dan pencabutan access token
+
+**Tujuan:** sesi dapat dilihat dan dicabut per perangkat, pencabutan berlaku seketika, dan web memperbarui sesi tanpa mengeluarkan pengguna.
+**Migration:** `000104_01e_sesi_refresh_token.sql`.
+
+### Dua bug yang ditemukan dan diperbaiki
+
+1. **Access token yang dicabut tidak pernah ditegakkan.** `Logout` menulis `jti` ke `jwt_blacklist`, tetapi tidak ada yang memanggil `IsJWTBlacklisted`; `JWTAuth` hanya memeriksa tanda tangan dan klaim. Token yang sudah logout tetap sah di API Go sampai 15 menit. Kini `JWTAuth` menolak token yang `jti`-nya masuk daftar cabut **atau** sesinya (`sid`) sudah tidak hidup, seketika.
+2. **Web tidak pernah memperbarui sesi.** Route BFF `/api/auth/refresh` ada tetapi tidak dipanggil siapa pun: setelah 15 menit navigasi halaman dilempar ke `/masuk` dan panggilan data menerima 401, padahal cookie refresh (7 hari) masih sah. Kini 401 dipulihkan senyap dan navigasi halaman dipulihkan lewat redirect (lihat di bawah).
+
+Temuan terkait yang ikut diperbaiki: rotasi tidak atomik (dua refresh serentak dengan token yang sama sama-sama berhasil) dan tab kedua yang menyegarkan bersamaan terbaca sebagai "pemakaian ulang" sehingga mematikan sesi di semua tab; logout mencabut semua refresh token pengguna (keluar di satu perangkat mengeluarkan semua perangkat); penonaktifan massal tidak mencabut sesi; kegagalan mencabut sesi saat penonaktifan, reset admin, dan ganti peran ditelan tanpa suara; dan aliran SSE EWS hidup terus setelah sesinya dicabut.
+
+### Model
+
+- **Sesi = satu `family_id` pada `refresh_tokens` = klaim `sid` access token.** Satu baris tetap satu token. Kolom baru: `user_agent` (kolom `device` lama tidak dipakai; ringkasan "Chrome di macOS" dihitung saat dibaca), `last_used_at` (login atau rotasi terakhir), `session_started_at` (diwariskan ke token pengganti), `rotated_at` (diisi bersama `revoked_at` hanya bila token dicabut karena **diganti**, bukan karena keluar/dicabut). Index `(user_id, revoked_at)` dan index parsial `idx_rt_family_aktif (family_id) WHERE revoked_at IS NULL`.
+- **Penegakan.** `token.Manager.SetRevocationChecker` dipasang oleh `internal/auth/routes.Register` pada `Manager` yang dibagi semua modul, jadi tanda tangan `JWTAuth(tokenMgr)` tidak berubah dan setiap router yang memasang modul auth (cmd/api, harness smoketest, tes integrasi) otomatis menegakkannya; router tanpa modul auth tidak menegakkan apa pun. Satu pernyataan SQL per request: lookup PK `jwt_blacklist` + satu entri indeks parsial. **Tanpa cache**: pencabutan harus seketika di semua replika dan biayanya satu lookup terindeks. Token tanpa `sid` (terbitan sebelum fitur ini, maks. 15 menit) hanya diperiksa lewat `jti`.
+- **Gagal-tutup.** Bila status pencabutan tidak dapat diperiksa (galat basis data) request dijawab **503**, bukan diloloskan: fail-open menghidupkan token yang sudah dicabut tepat saat basis data bermasalah, sedangkan hampir semua handler juga butuh basis data sehingga kehilangan ketersediaannya kecil. 503 (bukan 401) agar klien tidak menyangka sesinya berakhir.
+- **Rotasi atomik.** `RotateRefreshToken` mencabut token lama dengan `UPDATE … WHERE revoked_at IS NULL AND expires_at > now` lalu menyimpan penggantinya dalam satu transaksi dan memeriksa `RowsAffected`; transaksi kedua menunggu kunci baris, melihat token sudah dicabut, dan tidak menyimpan apa pun.
+- **Token yang sudah dirotasi dipakai lagi:**
+  - dalam **jendela toleransi** (`Config.RefreshGraceWindow`, bawaan 10 detik; 0 = mati) dan sesinya masih hidup → dianggap tab/permintaan serentak yang sah: hanya **access token baru** yang dikembalikan, tanpa `refresh_token`, karena pemenang rotasi sudah menerbitkan satu-satunya token pengganti dan memasangnya di cookie bersama;
+  - lewat jendela itu → pemakaian ulang: seluruh family dicabut (access token-nya ikut mati lewat `sid`) dan `TOKEN_REUSE` dicatat di audit;
+  - token yang dicabut tanpa digantikan (keluar, "Cabut", paksa keluar, penonaktifan) hanya dijawab 401, tanpa audit pencurian.
+
+  *Trade-off:* pemegang token lama yang mengulang dalam ≤ 10 detik setelah rotasi mendapat access token (maks. 15 menit) tanpa bisa memutar lagi; menolak keras akan mengeluarkan pengguna dari semua tab setiap kali dua tab menyegarkan bersamaan. Jendela pendek dan hanya untuk sesi yang masih hidup menekan risikonya.
+- **Konsistensi pencabutan.** Keluar: hanya sesi ini (`sid`; cadangan: family dari `refresh_token` di badan; tanpa keduanya: semua, seperti dulu). Ganti kata sandi dan aktivasi MFA: sesi ini tetap (family sama, token baru) dan sesi lain dicabut. Reset kata sandi (lupa), reset admin, ganti peran, penonaktifan (satu per satu maupun massal), aksi massal "akhiri sesi", dan penghapusan pengguna: semua sesi dicabut. Refresh juga menolak akun yang sudah tidak aktif.
+- **SSE EWS** ditutup saat access token kedaluwarsa (`middleware.TokenLifetimeContext`); `EventSource` menyambung ulang lewat pemeriksaan penuh.
+
+### API
+
+| Endpoint | Keterangan |
+|---|---|
+| `GET /v1/auth/sessions` | Sesi aktif sendiri: `id`, `perangkat`, `user_agent`, `ip`, `dibuat_pada`, `terakhir_dipakai_pada`, `kedaluwarsa_pada`, `saat_ini`. Semua peran. |
+| `DELETE /v1/auth/sessions/{id}` | Cabut satu sesi sendiri (sesi ini ditolak 400; sesi orang lain/tidak ada 404). Audit `REVOKE_SESSION`. |
+| `POST /v1/auth/sessions/revoke-others` | Cabut semua sesi lain. Audit `REVOKE_OTHER_SESSIONS`. |
+| `POST /v1/auth/logout` | Hanya sesi ini; badan opsional `{refresh_token}`. |
+| `POST /v1/auth/logout-all` | Semua perangkat, termasuk ini. Audit `LOGOUT_ALL`. |
+| `POST /v1/users/{id}/revoke-sessions` | Paksa keluar (`pengguna.kelola`). Audit `FORCE_LOGOUT` (aktor admin, sasaran pengguna). |
+| `POST /v1/auth/refresh` | `refresh_token` pada respons bisa kosong (pemutaran ulang yang ditoleransi). |
+
+Login mencatat IP dan user agent; refresh memperbarui `last_used_at`, IP, dan user agent.
+
+### Web
+
+- **Refresh senyap.** `apiFetch`/`bffFetch` (dan tiga unduhan CSV) memakai `fetchSesi`: 401 karena token (bukan karena kata sandi salah, bukan alur masuk) → `POST /api/auth/refresh` **single-flight**, dikunci antar-tab dengan Web Locks dan catatan di `localStorage` (tab yang menunggu melewati refresh bila tab lain baru berhasil sesudah permintaannya dimulai) → permintaan diulang sekali (header CSRF dihitung ulang). Hanya bila refresh ditolak (401) pengguna diarahkan ke `/masuk?lanjut=<halaman>`; galat sementara (5xx, jaringan) tidak mengeluarkan siapa pun.
+- **Navigasi halaman.** Cookie refresh ber-path `/api/auth`, sehingga edge tidak pernah melihatnya. Halaman terlindungi tanpa access token dialihkan ke `GET /api/auth/refresh?lanjut=<path+query>` yang menukar token lalu kembali ke tujuan semula (tujuan divalidasi: hanya path internal) atau ke `/masuk` bila tidak ada/ditolak. Penanda `garda_pulih` (20 detik) memutus loop. Batasan: navigasi yang dimulai dari situs lain (tautan email/chat) tidak membawa cookie `SameSite=Strict`, sehingga tetap berakhir di `/masuk`.
+- **Keluar.** `/api/auth/logout` kini publik di edge dan diperiksa `Origin`-nya; bila access token sudah habis ia menukar refresh token dulu supaya sesi di server benar-benar dicabut. Ditambah `logout-all`, `sessions`, `sessions/[id]`, `sessions/revoke-others`, dan `pengguna/[id]/revoke-sessions`.
+- **IP dan user agent peramban** diteruskan BFF ke Go (`User-Agent`, `X-Forwarded-For`); Go memercayai `X-Forwarded-For` hanya dari proxy tepercaya (`TRUSTED_PROXIES`, bawaan jaringan privat tempat web berada).
+- **SSE EWS** (`lib/api/ews-sambung.ts`): koneksi yang ditolak (CLOSED) memulihkan sesi lalu membuat `EventSource` baru dan menyegarkan daftar alert; berhenti setelah beberapa kali pemulihan yang langsung ditolak lagi.
+- **UI.** Halaman `/keamanan` ("Keamanan akun", semua peran; tautan di menu profil konsol dan lapangan): daftar sesi dengan penanda "Perangkat ini", "Cabut" per sesi, "Keluar dari perangkat lain", "Keluar dari semua perangkat". `/pengguna`: aksi baris "Paksa keluar".
+
+### Tes
+
+- Go: `usecase/sesi_test.go` (rotasi, jendela toleransi, reuse, logout, daftar/cabut/paksa keluar, ganti kata sandi), `pkg/middleware/revocation_test.go`, `pkg/token/session_test.go`, `dto/sesi_test.go`, dan integrasi dockertest `auth/integration/sesi_test.go` (penegakan jti/sid di semua modul, gagal-tutup 503, rotasi 16 goroutine → satu pemenang, tanpa toleransi → satu sukses, reuse mencabut family + audit, daftar/cabut/revoke-others/logout/logout-all, paksa keluar dan izinnya, ganti kata sandi, aksi admin). Perintah: `cd apps/api && go test ./internal/auth/... ./pkg/... ./internal/platform/...`.
+- Web: `sesi-pulih.test.ts`, `ews-sambung.test.ts`, `sesi.test.ts`, `edge-guard.test.ts`, `refresh-session.test.ts`, `logout-server.test.ts`, `session-cookies.test.ts`, `api-client-sesi.test.ts` (`pnpm test`).
+- E2E: [sesi.spec.ts](../../apps/web/e2e/sesi.spec.ts) (pengguna uji sementara; sesi "perangkat lain" dibuat lewat API dengan User-Agent berbeda). Stack Docker harus dibangun ulang agar memuat migrasi 000104 dan build web baru.
+
+---
+
 ## Backlog lanjutan (belum dijadwalkan)
 
 - [ ] **SSO Google:** tombolnya sudah dihapus dari login (rute `/v1/auth/sso/*` tidak pernah ada, tombol berujung 404). Bila SSO masuk scope (PRD §5.1 menyebut SSO): OIDC + pemetaan akun ke peran; migration `sso_provider`, `sso_subject` dengan UNIQUE gabungan (`password_hash` sudah nullable); lalu pasang kembali tombolnya bersama e2e-nya.
 - [ ] Mekanisme lockout satu saja: hitung dari `login_attempts` (sudah ber-index) atau kolom `terkunci_sampai`; buka-kunci oleh admin.
-- [ ] Daftar dan pencabutan sesi aktif (`refresh_tokens`: `last_used_at`, `user_agent`; index `(user_id, revoked_at)`).
-- [ ] Rotasi refresh token dengan deteksi pemakaian ulang (verifikasi sudah ada).
+- [x] Daftar dan pencabutan sesi aktif (`refresh_tokens`: `last_used_at`, `user_agent`; index `(user_id, revoked_at)`): lihat [01-E](#01-e--sesi-aktif-rotasi-refresh-token-dan-pencabutan-access-token).
+- [x] Rotasi refresh token dengan deteksi pemakaian ulang (verifikasi sudah ada): atomik, dengan jendela toleransi tab serentak; lihat [01-E](#01-e--sesi-aktif-rotasi-refresh-token-dan-pencabutan-access-token).
 - [ ] Job pembersihan baris kedaluwarsa `jwt_blacklist`, `refresh_tokens`, `password_reset_tokens`.
 - [ ] Pesan error login konsisten (akun terkunci, password kedaluwarsa, 429).
 - [ ] Logout membersihkan store offline lapangan (IndexedDB). Cache TanStack Query sudah bersih karena logout memuat ulang halaman penuh (lihat 01-D).

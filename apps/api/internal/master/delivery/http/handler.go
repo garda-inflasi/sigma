@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/master/domain"
 	"github.com/garda-inflasi/api/internal/master/dto"
 	"github.com/garda-inflasi/api/internal/master/usecase"
+	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -79,6 +80,9 @@ func bindListQuery(c *gin.Context) (domain.ListQuery, bool) {
 }
 
 // POST /v1/master/komoditas/bulk
+//
+// Rute mensyaratkan master.ajukan atau master.setujui; izin yang dituntut tiap
+// aksi diperiksa di sini dari klaim JWT: setujui perlu master.setujui, aksi lain master.ajukan.
 func (h *Handler) BulkKomoditas(c *gin.Context) {
 	var req dto.BulkKomoditasRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -86,7 +90,12 @@ func (h *Handler) BulkKomoditas(c *gin.Context) {
 		return
 	}
 
-	count, err := h.uc.BulkKomoditas(audit.RequestContext(c), req.Kode, req.Action, c.GetString("user_id"))
+	if !middleware.HasPermission(c, domain.BulkAction(req.Action).IzinUntuk()) {
+		response.Forbidden(c, "Akses ditolak: peran Anda tidak boleh menjalankan aksi ini")
+		return
+	}
+
+	hasil, err := h.uc.BulkKomoditas(audit.RequestContext(c), req.Kode, req.Action, c.GetString("user_id"))
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidAction) {
 			response.BadRequest(c, "Aksi tidak valid")
@@ -95,5 +104,5 @@ func (h *Handler) BulkKomoditas(c *gin.Context) {
 		response.InternalError(c, "Gagal memproses aksi massal")
 		return
 	}
-	response.Success(c, dto.BulkKomoditasResponse{Berhasil: int(count)})
+	response.Success(c, dto.ToBulkKomoditasResponse(hasil))
 }

@@ -30,6 +30,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		master.GET("/komoditas", handler.ListKomoditas)
 		master.GET("/wilayah", handler.ListWilayah)
 		master.GET("/pasar", handler.ListPasar)
-		master.POST("/komoditas/bulk", middleware.RequirePermission("master.ajukan"), handler.BulkKomoditas)
+		// Izin per aksi diperiksa di handler (setujui ≠ ajukan/arsipkan).
+		master.POST("/komoditas/bulk", middleware.RequireAnyPermission("master.ajukan", "master.setujui"), handler.BulkKomoditas)
 	}
 }

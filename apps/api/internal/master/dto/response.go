@@ -34,8 +34,28 @@ type MasterPasarRowResponse struct {
 	Aktif         bool    `json:"aktif"`
 }
 
+// RincianBulkResponse adalah hasil satu kode pada aksi massal.
+type RincianBulkResponse struct {
+	Kode     string `json:"kode"`
+	Berhasil bool   `json:"berhasil"`
+	// Pesan menjelaskan sebab gagal; kosong bila berhasil.
+	Pesan string `json:"pesan,omitempty"`
+}
+
+// BulkKomoditasResponse mengikuti BulkResult di web: jumlah berhasil/gagal dan rincian per kode.
 type BulkKomoditasResponse struct {
-	Berhasil int `json:"berhasil"`
+	Berhasil int                   `json:"berhasil"`
+	Gagal    int                   `json:"gagal"`
+	Rincian  []RincianBulkResponse `json:"rincian"`
+}
+
+// ToBulkKomoditasResponse memetakan hasil aksi massal ke bentuk API.
+func ToBulkKomoditasResponse(h domain.HasilBulk) BulkKomoditasResponse {
+	rincian := make([]RincianBulkResponse, len(h.Rincian))
+	for i, r := range h.Rincian {
+		rincian[i] = RincianBulkResponse{Kode: r.Kode, Berhasil: r.Berhasil, Pesan: r.Pesan}
+	}
+	return BulkKomoditasResponse{Berhasil: h.Berhasil, Gagal: h.Gagal, Rincian: rincian}
 }
 
 // ToKomoditasRows memetakan entity komoditas ke bentuk API.

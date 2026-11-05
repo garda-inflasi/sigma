@@ -73,26 +73,35 @@ func (r *Repository) list(query *gorm.DB, q domain.ListQuery, orderBy string, se
 	return total, nil
 }
 
-func (r *Repository) BulkKomoditas(ctx context.Context, kode []string, action domain.BulkAction) (int64, error) {
-	var status string
-	switch action {
-	case domain.BulkArsipkan:
-		status = domain.StatusDiarsipkan
-	case domain.BulkSetujui:
-		status = domain.StatusAktif
-	case domain.BulkAjukanPerubahan:
-		status = domain.StatusMenungguPersetujuan
-	default:
-		return 0, fmt.Errorf("unknown bulk action: %s", action)
+func (r *Repository) StatusKomoditas(ctx context.Context, kode []string) (map[string]string, error) {
+	var rows []struct {
+		Kode   string
+		Status string
 	}
+	err := r.db.WithContext(ctx).Model(&domain.Komoditas{}).
+		Select("kode, status::text AS status").Where("kode IN ?", kode).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("status komoditas: %w", err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		out[row.Kode] = row.Status
+	}
+	return out, nil
+}
 
-	tx := r.db.WithContext(ctx).Model(&domain.Komoditas{}).
-		Where("kode IN ?", kode).
-		Update("status", status)
-	if tx.Error != nil {
-		return 0, fmt.Errorf("bulk komoditas %s: %w", action, tx.Error)
+func (r *Repository) UbahStatusKomoditas(ctx context.Context, kode string, t domain.Transisi) (bool, error) {
+	updates := map[string]any{"status": t.Ke}
+	if t.NaikVersi {
+		updates["versi"] = gorm.Expr("versi + 1")
 	}
-	return tx.RowsAffected, nil
+	tx := r.db.WithContext(ctx).Model(&domain.Komoditas{}).
+		Where("kode = ? AND status::text IN ?", kode, t.Dari).
+		Updates(updates)
+	if tx.Error != nil {
+		return false, fmt.Errorf("ubah status komoditas %s: %w", kode, tx.Error)
+	}
+	return tx.RowsAffected == 1, nil
 }
 
 // escapeLike menetralkan karakter wildcard LIKE agar pencarian bersifat literal.

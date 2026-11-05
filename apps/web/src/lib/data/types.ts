@@ -140,6 +140,8 @@ export interface TitikSuhu {
   waktu: string;
   suhuC: number;
   kelembapanPct: number | null;
+  /** SENSOR, MANUAL, atau DEMO; kosong pada data mock. */
+  sumber?: string;
   diLuarRentang: boolean;
 }
 

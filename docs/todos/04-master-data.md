@@ -6,10 +6,10 @@
 ## Yang sudah ada
 
 - **UI:** [master-page.tsx](../../apps/web/src/components/master/master-page.tsx) di `/master/[entitas]` (komoditas, wilayah, pasar), versioning dan persetujuan tampil di UI.
-- **API Go:** `GET /v1/master/{komoditas,wilayah,pasar}` (izin `master.lihat`) dan `POST /v1/master/komoditas/bulk` (izin `master.ajukan`). Ada `usecase_test.go`.
+- **API Go:** `GET /v1/master/{komoditas,wilayah,pasar}` (izin `master.lihat`) dan `POST /v1/master/komoditas/bulk` (rute: `master.ajukan` atau `master.setujui`; izin per aksi di handler, lihat 04-B). Tes: unit usecase dan integrasi (dockertest).
 - **Skema:** `provinsi`, `kabupaten`, `pasar` (+ `radius_meter` untuk geofence, `aktif`), `komoditas` (+ `versi`, `status`, `pilot`, `shelf_life_hari`) **cocok** dengan entity. Tabel `perubahan_master` (`versi`, `perubahan` JSONB, `status`, `diajukan_oleh_id`, `disetujui_oleh_id`) sudah ada tetapi **tidak dirujuk kode Go**.
 - **Data referensi sudah ada, tetapi di dalam migrasi 000006** (provinsi Aceh, 23 kabupaten/kota, pasar utama, komoditas utama; `ON CONFLICT DO NOTHING`).
-- **Halaman membaca dari API** (`api.master.{komoditas,wilayah,pasar}`). Aksi ajukan/setujui/arsipkan masih simulasi lokal di halaman; penyimpanannya adalah 04-B.
+- **Halaman membaca dari API** (`api.master.{komoditas,wilayah,pasar}`). Aksi ajukan/setujui/arsipkan komoditas memanggil `POST /v1/master/komoditas/bulk` lalu memuat ulang daftar (tidak ada lagi simulasi di state React); wilayah dan pasar hanya punya ekspor CSV.
 
 ---
 
@@ -43,11 +43,16 @@
    - [ ] `kecamatan` (kode BPS 7 digit, `kabupaten_kode` FK) dan `pasar.kecamatan_kode`, sesuai hierarki PRD.
 2. **SEED**: impor kecamatan se-Aceh dari BPS lewat skrip (catat sumber dan lisensi), bukan ditulis tangan.
 3. **API**
-   - [ ] Hubungkan entity ke `perubahan_master`; endpoint ajukan/setujui/tolak; izin `master.setujui` (ada di web, belum dipakai di route).
-   - [ ] Bulk/ajukan untuk **wilayah** dan **pasar** (UI menampilkannya; API baru punya komoditas).
+   - [x] Aksi massal komoditas `POST /v1/master/komoditas/bulk` (`ajukan_perubahan`, `setujui`, `arsipkan`) dengan izin per aksi: `setujui` butuh `master.setujui` (STRATEGIS_BPS, STRATEGIS_FMIPA), `ajukan_perubahan`/`arsipkan` butuh `master.ajukan` (ADMIN_SISTEM, MANAJER_DATA, MANAJER_PROGRAM). Pengaju tidak dapat menyetujui usulannya sendiri. Transisi dinilai per kode: AKTIF → MENUNGGU_PERSETUJUAN (ajukan); MENUNGGU_PERSETUJUAN → AKTIF dan `versi` + 1 (setujui); AKTIF atau MENUNGGU_PERSETUJUAN → DIARSIPKAN (arsipkan, tanpa pemulihan). Kode tak dikenal atau transisi tak sah menjadi item gagal di `rincian` (`kode`, `berhasil`, `pesan`) tanpa menggagalkan item lain; pembaruan memakai `WHERE status IN (...)` sehingga balapan juga jadi item gagal. Audit `BULK_<aksi>` mencatat kode yang berubah dan yang gagal.
+   - [ ] Hubungkan entity ke `perubahan_master` (riwayat versi, alasan, penolakan); endpoint tolak.
+   - **Wilayah dan pasar: tidak ada endpoint bulk.** Tabel `kabupaten` tidak punya kolom `status`/`versi` dan `pasar` hanya punya `aktif` (boolean), jadi siklus ajukan/setujui/arsip tidak berlaku tanpa migrasi. Migrasi tidak ditambahkan di sini; aksi ajukan/setujui/arsipkan dihapus dari UI untuk kedua entitas itu (tinggal Ekspor CSV). Bila siklus persetujuan wilayah/pasar diperlukan, tambahkan kolom `status` (enum `status_master`) dan `versi` pada `kabupaten` dan `pasar` (atau pakai `perubahan_master`), lalu perluas `domain.TransisiUntuk` dan repo agar generik per tabel.
    - [ ] Validasi referensial: komoditas atau pasar yang sudah punya data harga hanya dinonaktifkan, tidak dihapus.
-4. **FE**: dialog ajukan perubahan, antrean persetujuan, riwayat versi dan diff.
-5. **TES**: alur ajukan → setujui, termasuk penolakan oleh peran tanpa izin; audit tercatat.
+4. **FE**
+   - [x] Aksi ajukan/setujui/arsipkan di `/master/komoditas` memanggil API (`api.master.bulkKomoditas`, hook `useBulkMasterKomoditas`), menampilkan kode yang ditolak, memuat ulang daftar; "Setujui" hanya untuk `master.setujui`, "Ajukan perubahan"/"Arsipkan" hanya untuk `master.ajukan`.
+   - [ ] Dialog ajukan perubahan (isi perubahan), antrean persetujuan, riwayat versi dan diff.
+5. **TES**
+   - [x] Unit usecase (transisi per aksi, item gagal, kode ganda, balapan, audit) dan integrasi (izin per aksi untuk ADMIN_SISTEM, MANAJER_DATA, STRATEGIS_BPS, STRATEGIS_FMIPA, peran lihat-saja; ajukan → setujui menaikkan versi; arsipkan dari AKTIF dan dari MENUNGGU; transisi tak sah; audit).
+   - [x] e2e `apps/web/e2e/master.spec.ts`: manajer.data mengajukan (bertahan setelah muat ulang, tanpa tombol Setujui), strategis.bps menyetujui (versi + 1), wilayah/pasar tanpa aksi status, 403/400/item gagal lewat API. Arsip tidak diuji di e2e (tidak ada pemulihan).
 
 ---
 

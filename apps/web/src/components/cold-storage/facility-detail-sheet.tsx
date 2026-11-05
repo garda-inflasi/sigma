@@ -13,6 +13,10 @@ import {
   YAxis,
 } from "recharts";
 import { StatusBadge } from "@/components/garda/status-badge";
+import {
+  PembacaanTerbaru,
+  PengelolaanFasilitas,
+} from "./facility-manage";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -102,6 +106,8 @@ function Isi({
   return (
     <>
       <GrafikSuhu detail={detail} />
+      <PembacaanTerbaru telemetri={detail.telemetri} />
+      <PengelolaanFasilitas detail={detail} />
       <DaftarLot stok={detail.stok} />
       {f.status === "OPERASIONAL" && (
         <FormTransaksi detail={detail} fasilitas={semua} />

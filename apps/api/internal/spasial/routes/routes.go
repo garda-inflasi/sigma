@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/spasial/delivery/http"
 	"github.com/garda-inflasi/api/internal/spasial/repository/postgres"
 	"github.com/garda-inflasi/api/internal/spasial/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -19,12 +19,15 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo)
+	uc := usecase.New(repo, deps.Logger)
 	handler := http.New(uc)
 
 	spasial := engine.Group("/spasial")
 	spasial.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("spasial.lihat"))
 	{
 		spasial.GET("/wilayah", handler.ListWilayah)
+		spasial.GET("/neraca", handler.ListNeraca)
+		spasial.GET("/rute", handler.ListRute)
+		spasial.GET("/kandidat-cold-storage", handler.ListKandidat)
 	}
 }

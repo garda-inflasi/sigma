@@ -693,9 +693,99 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/ews:
+    get:
+      summary: Mendaftar alert EWS (terbaru dahulu)
+      description: Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server.
+      operationId: listEwsAlerts
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [BARU, DIAKUI, DIESKALASI, SELESAI]
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [INFO, WASPADA, SIAGA, KRITIS]
+        - name: jenis
+          in: query
+          schema:
+            type: string
+            enum: [LONJAKAN_HARGA, KELANGKAAN_STOK, ANOMALI_CUACA, OVER_SUPPLY, ANOMALI_DATA]
+        - name: kabupaten_kode
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (bawaan 200, maksimum 1000)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Daftar alert
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil filter (bukan hanya halaman ini)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsAlertListResponse"
+        "400":
+          description: Nilai filter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `ews.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ews/aturan:
+    get:
+      summary: Mendaftar aturan ambang EWS beserta kanal notifikasi
+      description: Memerlukan izin `ews.lihat`. Ambang bersifat awal dan harus dikalibrasi.
+      operationId: listEwsAturan
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar aturan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsAturanListResponse"
+        "403":
+          description: Tanpa izin `ews.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/ews/{id}:
     get:
       summary: Mendapatkan detail alert EWS
+      description: Memerlukan izin `ews.lihat`.
       operationId: getEwsAlert
       tags:
         - Early Warning System
@@ -706,15 +796,15 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
-          description: ID alert
+            type: string
+          description: ID alert, mis. EWS-1000
       responses:
         "200":
           description: Detail alert
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/EwsAlertResponse"
         "404":
           description: Alert tidak ditemukan
           content:
@@ -725,6 +815,11 @@ paths:
   /v1/ews/bulk:
     post:
       summary: Menjalankan aksi massal pada alert EWS
+      description: |
+        `akui` dan `selesai` memerlukan izin `ews.akui`; `eskalasi` memerlukan `ews.eskalasi`.
+        Hanya transisi sah yang berlaku (BARU -> DIAKUI, BARU/DIAKUI -> DIESKALASI,
+        selain SELESAI -> SELESAI); id yang tidak ada atau tak boleh bertransisi dihitung `gagal`.
+        Aksi yang mengubah data dicatat di audit trail.
       operationId: bulkEwsAlerts
       tags:
         - Early Warning System
@@ -735,24 +830,77 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BulkActionRequest"
+              $ref: "#/components/schemas/BulkEwsRequest"
       responses:
         "200":
-          description: Aksi massal berhasil diproses
+          description: Aksi massal diproses
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BulkResultResponse"
+                $ref: "#/components/schemas/EwsBulkResponse"
         "400":
           description: Validasi gagal atau aksi tidak valid
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin untuk aksi tersebut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/intervensi:
+    get:
+      summary: Mendaftar kartu intervensi (papan kanban)
+      description: Memerlukan izin `intervensi.lihat`. Terurut per siklus, tahap, lalu urutan.
+      operationId: listIntervensi
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: siklus
+          in: query
+          schema:
+            type: string
+            enum: [NORMAL, TEKANAN, SURPLUS]
+        - name: tahap
+          in: query
+          description: Kode tahap, mis. t-ews
+          schema:
+            type: string
+        - name: prioritas
+          in: query
+          schema:
+            type: string
+            enum: [TINGGI, SEDANG, RENDAH]
+      responses:
+        "200":
+          description: Daftar kartu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiListResponse"
+        "400":
+          description: Nilai filter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `intervensi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     post:
-      summary: Membuat intervensi baru
+      summary: Membuat kartu intervensi
+      description: |
+        Memerlukan izin `intervensi.kelola`. Kartu masuk ke tahap pertama siklusnya di urutan
+        paling bawah. Aksi dicatat di audit trail.
       operationId: createIntervensi
       tags:
         - Intervensi
@@ -766,41 +914,94 @@ paths:
               $ref: "#/components/schemas/CreateIntervensiRequest"
       responses:
         "201":
-          description: Intervensi dibuat
+          description: Kartu dibuat
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/CreateIntervensiResponse"
         "400":
-          description: Validasi gagal
+          description: Validasi gagal, atau komoditas/kabupaten/alert/penanggung jawab tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `intervensi.kelola`
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /v1/intervensi/bulk:
-    post:
-      summary: Menjalankan aksi massal pada intervensi
-      operationId: bulkIntervensi
+  /v1/intervensi/tahap:
+    get:
+      summary: Mendaftar definisi tahap per siklus
+      description: Memerlukan izin `intervensi.lihat`. Satu sumber untuk tahap, urutan, izin masuk, dan SLA.
+      operationId: listIntervensiTahap
       tags:
         - Intervensi
       security:
         - BearerAuth: []
+      responses:
+        "200":
+          description: Definisi tahap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiTahapListResponse"
+        "403":
+          description: Tanpa izin `intervensi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi/{id}/tahap:
+    patch:
+      summary: Memindahkan kartu ke tahap dan posisi lain
+      description: |
+        Memerlukan salah satu dari `intervensi.kelola`, `intervensi.setujui`, `intervensi.setujui_fiskal`;
+        izin yang tepat ditentukan oleh `izin_dibutuhkan` pada tahap tujuan. Kolom tujuan dinomori
+        ulang; `urutan` di luar rentang dijepit. Memindahkan ke tahap penutup mengisi `selesai_pada`.
+        Pemindahan (juga yang ditolak) dicatat di audit trail.
+      operationId: moveIntervensi
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: INT-301
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BulkActionRequest"
+              $ref: "#/components/schemas/MoveIntervensiRequest"
       responses:
         "200":
-          description: Aksi massal berhasil diproses
+          description: Kartu dipindahkan
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BulkResultResponse"
+                $ref: "#/components/schemas/SuccessResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Tahap tidak terdefinisi untuk siklus kartu, atau masukan tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Izin tahap tujuan tidak dimiliki
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kartu tidak ditemukan
           content:
             application/json:
               schema:
@@ -1454,6 +1655,362 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Peran tidak memiliki izin untuk aksi ini
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/wilayah:
+    get:
+      summary: Mendaftar wilayah sebagai marker peta
+      description: |
+        Memerlukan izin `spasial.lihat`. Setiap kabupaten/kota dengan komoditas yang deviasi harganya
+        terbesar (mutlak) pada periode neraca terbaru. Status: defisit (delta > 10), waspada (> 5),
+        surplus (< -6), selain itu normal.
+      operationId: listSpasialWilayah
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar marker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialMarkerListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/neraca:
+    get:
+      summary: Neraca surplus/defisit per komoditas dan wilayah
+      description: Memerlukan izin `spasial.lihat`. Tanpa `periode` dipakai periode terbaru. Data demo berlabel `sumber` DEMO.
+      operationId: listSpasialNeraca
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: komoditas
+          in: query
+          description: Kode komoditas
+          schema:
+            type: string
+        - name: periode
+          in: query
+          description: Tanggal awal periode (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daftar neraca
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialNeracaListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Format periode salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/rute:
+    get:
+      summary: Usulan rute distribusi dari sentra surplus ke wilayah tertekan
+      description: Memerlukan izin `spasial.lihat`. Terurut dari biaya terbesar.
+      operationId: listSpasialRute
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar rute
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialRuteListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/kandidat-cold-storage:
+    get:
+      summary: Kandidat lokasi cold storage
+      description: Memerlukan izin `spasial.lihat`. Terurut dari skor tertinggi.
+      operationId: listSpasialKandidat
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar kandidat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialKandidatListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policy-brief:
+    get:
+      summary: Mendaftar policy brief
+      description: Seluruh brief, periode terbaru lebih dulu.
+      operationId: listPolicyBrief
+      tags:
+        - Policy Brief
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyBriefListResponse"
+        "403":
+          description: Tanpa izin `brief.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policy-brief/generate:
+    post:
+      summary: Menyusun draf policy brief
+      description: |
+        Menyimpan draf berstatus `DRAF` untuk satu periode bulanan atas nama pemanggil
+        (penyusun diambil dari token). Isinya kerangka dari templat deterministik yang
+        berlabel draf otomatis non-LLM; penyusunan dengan data dan LLM menyusul (15-B).
+        Aksi dicatat di audit trail (`GENERATE_BRIEF`).
+      operationId: generatePolicyBrief
+      tags:
+        - Policy Brief
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratePolicyBriefRequest"
+      responses:
+        "201":
+          description: Draf tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyBriefCreatedResponse"
+        "400":
+          description: Periode kosong atau bukan YYYY-MM
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `brief.susun`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Periode itu sudah punya brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi:
+    get:
+      summary: Proyeksi harga seluruh komoditas
+      description: |
+        Proyeksi terbaru tiap komoditas dari model berstatus PRODUKSI untuk satu
+        kabupaten dan horizon. Baris berpenanda `sumber: DEMO` berasal dari seed
+        contoh, bukan model sungguhan.
+      operationId: listPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kabupaten
+          in: query
+          description: Kode kabupaten/kota BPS (4 digit). Bawaan 1171 (Kota Banda Aceh).
+          schema:
+            type: string
+            pattern: '^[0-9]{4}$'
+        - name: horizon
+          in: query
+          description: Horizon proyeksi dalam hari (1-365). Bawaan 14.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+      responses:
+        "200":
+          description: Daftar proyeksi (kosong bila tidak ada proyeksi untuk kombinasi itu)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiRingkasanListResponse"
+        "400":
+          description: Kabupaten atau horizon tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/registri:
+    get:
+      summary: Registri model prediksi
+      description: Seluruh versi model (produksi, kandidat, arsip) beserta MAPE dan drift.
+      operationId: listModelPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Registri model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiModelListResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/{kode}:
+    get:
+      summary: Proyeksi harga dan penjelasan faktor satu komoditas
+      description: |
+        Seri grafik (riwayat harga konsumen tervalidasi bila ada, titik sambung pada
+        hari dasar, titik proyeksi), kontribusi faktor ala SHAP, narasi dan rekomendasi
+        dari templat aturan (bukan LLM), serta model yang menghasilkannya.
+      operationId: getPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          schema:
+            type: string
+          example: CBM-KRT
+        - name: kabupaten
+          in: query
+          description: Kode kabupaten/kota BPS (4 digit). Bawaan 1171 (Kota Banda Aceh).
+          schema:
+            type: string
+            pattern: '^[0-9]{4}$'
+        - name: horizon
+          in: query
+          description: Horizon proyeksi dalam hari (1-365). Bawaan 14.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+      responses:
+        "200":
+          description: Proyeksi lengkap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiProyeksiResponse"
+        "400":
+          description: Kabupaten atau horizon tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tidak ada proyeksi model produksi untuk kombinasi itu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/{kode}/export:
+    get:
+      summary: Unduh proyeksi satu komoditas (JSON)
+      description: Isi sama dengan `GET /v1/prediksi/{kode}`, tanpa envelope, sebagai lampiran berkas.
+      operationId: exportPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: kabupaten
+          in: query
+          description: Kode kabupaten/kota BPS (4 digit). Bawaan 1171 (Kota Banda Aceh).
+          schema:
+            type: string
+            pattern: '^[0-9]{4}$'
+        - name: horizon
+          in: query
+          description: Horizon proyeksi dalam hari (1-365). Bawaan 14.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+      responses:
+        "200":
+          description: Berkas JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiProyeksi"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tidak ada proyeksi
           content:
             application/json:
               schema:
@@ -2308,19 +2865,519 @@ components:
       type: object
       required:
         - judul
-        - tipe
+        - siklus
+        - prioritas
+        - komoditas_kode
+        - kabupaten_kode
+        - tenggat
       properties:
         judul:
           type: string
           example: Operasi Pasar Beras
-        tipe:
-          type: string
-          example: OPERASI_PASAR
         deskripsi:
           type: string
-        wilayah_kode:
+        siklus:
+          type: string
+          enum: [NORMAL, TEKANAN, SURPLUS]
+        prioritas:
+          type: string
+          enum: [TINGGI, SEDANG, RENDAH]
+        komoditas_kode:
+          type: string
+          example: BRS-MED
+        kabupaten_kode:
           type: string
           example: "1171"
+        tenggat:
+          type: string
+          format: date-time
+        ews_alert_id:
+          type: string
+          nullable: true
+          example: EWS-1000
+        penanggung_jawab_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          example: [manajer_data]
+
+    CreateIntervensiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: INT-1000
+            tahap:
+              type: string
+              example: t-ews
+
+    MoveIntervensiRequest:
+      type: object
+      required:
+        - tahap
+      properties:
+        tahap:
+          type: string
+          description: Kode tahap tujuan (milik siklus kartu)
+          example: t-verifikasi
+        urutan:
+          type: integer
+          minimum: 0
+          description: Posisi (indeks dari 0) di kolom tujuan
+          example: 0
+
+    IntervensiKartu:
+      type: object
+      properties:
+        id:
+          type: string
+          example: INT-301
+        siklus:
+          type: string
+          enum: [NORMAL, TEKANAN, SURPLUS]
+        tahap:
+          type: string
+          example: t-ews
+        urutan:
+          type: integer
+        judul:
+          type: string
+        deskripsi:
+          type: string
+        komoditas_kode:
+          type: string
+        kabupaten_kode:
+          type: string
+        prioritas:
+          type: string
+          enum: [TINGGI, SEDANG, RENDAH]
+        tenggat:
+          type: string
+          format: date-time
+        rekomendasi_ai:
+          type: boolean
+        progres:
+          type: object
+          properties:
+            selesai:
+              type: integer
+            total:
+              type: integer
+        ews_alert_id:
+          type: string
+          nullable: true
+        penanggung_jawab:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              nama:
+                type: string
+        dibuat_pada:
+          type: string
+          format: date-time
+        selesai_pada:
+          type: string
+          format: date-time
+          nullable: true
+
+    IntervensiListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntervensiKartu"
+
+    IntervensiTahap:
+      type: object
+      properties:
+        siklus:
+          type: string
+          enum: [NORMAL, TEKANAN, SURPLUS]
+        kode_tahap:
+          type: string
+          example: t-petakan
+        urutan:
+          type: integer
+        label:
+          type: string
+        petunjuk:
+          type: string
+        izin_dibutuhkan:
+          type: string
+          example: intervensi.setujui
+        sla_hari:
+          type: integer
+          nullable: true
+
+    IntervensiTahapListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntervensiTahap"
+
+    # ── EWS ────────────────────────────────────────────────────────────
+    EwsAlert:
+      type: object
+      properties:
+        id:
+          type: string
+          example: EWS-1000
+        severity:
+          type: string
+          enum: [INFO, WASPADA, SIAGA, KRITIS]
+        jenis:
+          type: string
+          enum: [LONJAKAN_HARGA, KELANGKAAN_STOK, ANOMALI_CUACA, OVER_SUPPLY, ANOMALI_DATA]
+        judul:
+          type: string
+        pesan:
+          type: string
+        komoditas_kode:
+          type: string
+          nullable: true
+        komoditas_nama:
+          type: string
+          nullable: true
+        kabupaten_kode:
+          type: string
+          example: "1171"
+        wilayah:
+          type: string
+          description: Nama resmi kabupaten/kota
+          example: KOTA BANDA ACEH
+        nilai:
+          type: number
+        satuan_nilai:
+          type: string
+          example: "%"
+        skor_dampak:
+          type: integer
+        status:
+          type: string
+          enum: [BARU, DIAKUI, DIESKALASI, SELESAI]
+        sumber:
+          type: string
+        dibuat_pada:
+          type: string
+          format: date-time
+        diakui_oleh_id:
+          type: string
+          nullable: true
+        diakui_pada:
+          type: string
+          format: date-time
+          nullable: true
+        aturan_id:
+          type: string
+          nullable: true
+
+    EwsAlertResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          $ref: "#/components/schemas/EwsAlert"
+
+    EwsAlertListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EwsAlert"
+
+    EwsAturan:
+      type: object
+      properties:
+        id:
+          type: string
+          example: ATR-LH-CBM-KRT
+        komoditas_kode:
+          type: string
+          nullable: true
+        komoditas_nama:
+          type: string
+          nullable: true
+        jenis:
+          type: string
+          enum: [LONJAKAN_HARGA, KELANGKAAN_STOK, ANOMALI_CUACA, OVER_SUPPLY, ANOMALI_DATA]
+        ambang_waspada:
+          type: number
+        ambang_siaga:
+          type: number
+        ambang_kritis:
+          type: number
+          description: Selalu waspada < siaga < kritis (CHECK di basis data)
+        jendela_hari:
+          type: integer
+        kanal:
+          type: array
+          items:
+            type: string
+          example: [DASHBOARD, PUSH]
+        aktif:
+          type: boolean
+        keterangan:
+          type: string
+
+    EwsAturanListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EwsAturan"
+
+    BulkEwsRequest:
+      type: object
+      required:
+        - action
+        - ids
+      properties:
+        action:
+          type: string
+          enum: [akui, eskalasi, selesai]
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+          example: [EWS-1000, EWS-1001]
+
+    EwsBulkResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            berhasil:
+              type: integer
+            gagal:
+              type: integer
+
+    # ── Spasial ────────────────────────────────────────────────────────
+    SpasialMarker:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: "1171"
+        nama:
+          type: string
+          example: KOTA BANDA ACEH
+        level:
+          type: string
+          enum: [kabupaten, kota]
+        lat:
+          type: number
+        lng:
+          type: number
+        delta:
+          type: number
+          description: Deviasi harga (persen) komoditas teratas; 0 bila wilayah belum punya neraca
+        komoditas:
+          type: string
+          description: Nama komoditas teratas, "—" bila belum ada neraca
+        status:
+          type: string
+          enum: [defisit, waspada, normal, surplus]
+        punya_pasar:
+          type: boolean
+
+    SpasialMarkerListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialMarker"
+
+    SpasialNeraca:
+      type: object
+      properties:
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        kabupaten_kode:
+          type: string
+        wilayah:
+          type: string
+        periode:
+          type: string
+          format: date
+        surplus_defisit_ton:
+          type: number
+          description: Positif = surplus, negatif = defisit
+        delta_harga_pct:
+          type: number
+        sumber:
+          type: string
+          example: DEMO
+
+    SpasialNeracaListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialNeraca"
+
+    SpasialRute:
+      type: object
+      properties:
+        id:
+          type: string
+          example: RT-1106-1171
+        asal_kode:
+          type: string
+        asal:
+          type: string
+        tujuan_kode:
+          type: string
+        tujuan:
+          type: string
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        volume_ton:
+          type: number
+        jarak_km:
+          type: integer
+        jam_tempuh:
+          type: number
+        biaya:
+          type: integer
+          format: int64
+          description: Rupiah
+        status:
+          type: string
+          example: USULAN
+        sumber:
+          type: string
+        dibuat_pada:
+          type: string
+          format: date-time
+
+    SpasialRuteListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialRute"
+
+    SpasialKandidat:
+      type: object
+      properties:
+        id:
+          type: string
+          example: KC-1173
+        kabupaten_kode:
+          type: string
+        wilayah:
+          type: string
+        lokasi:
+          type: string
+        skor:
+          type: integer
+          minimum: 0
+          maximum: 100
+        komponen_skor:
+          type: object
+          additionalProperties:
+            type: number
+        alasan:
+          type: string
+        status:
+          type: string
+          enum: [RENCANA, USULAN_BARU]
+        sumber:
+          type: string
+
+    SpasialKandidatListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialKandidat"
 
     # ── Cold Storage ───────────────────────────────────────────────────
     AuditRow:
@@ -2643,3 +3700,177 @@ components:
               format: double
               description: Total volume lot yang diproses
               example: 65.9
+
+    PolicyBrief:
+      type: object
+      properties:
+        id:
+          type: string
+          description: PB-YYYY-MM
+          example: PB-2026-10
+        periode:
+          type: string
+          example: Oktober 2026
+        judul:
+          type: string
+        status:
+          type: string
+          enum: [DRAF, TELAAH, DISETUJUI, DIDISTRIBUSIKAN]
+        ringkasan:
+          type: string
+        disusun_oleh:
+          type: string
+          description: Nama penyusun
+        jumlah_rekomendasi:
+          type: integer
+        halaman:
+          type: integer
+        dibuat_pada:
+          type: string
+          format: date-time
+        diperbarui:
+          type: string
+          format: date-time
+
+    PolicyBriefListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyBrief"
+
+    PolicyBriefCreatedResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/PolicyBrief"
+
+    GeneratePolicyBriefRequest:
+      type: object
+      required: [periode]
+      properties:
+        periode:
+          type: string
+          pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+          description: Periode bulanan YYYY-MM
+          example: "2026-11"
+
+    PrediksiRingkasan:
+      type: object
+      properties:
+        komoditas_kode: {type: string, example: CBM-KRT}
+        komoditas_nama: {type: string, example: Cabai merah keriting}
+        kabupaten_kode: {type: string, example: "1171"}
+        horizon_hari: {type: integer, example: 14}
+        harga_kini: {type: integer, description: Harga dasar saat proyeksi dibuat (Rp), example: 50000}
+        proyeksi: {type: integer, description: Harga proyeksi (Rp), example: 57100}
+        perubahan_pct: {type: number, format: double, example: 14.2}
+        bawah_pct: {type: number, format: double, description: Batas bawah rentang 80% terhadap harga dasar (persen)}
+        atas_pct: {type: number, format: double, description: Batas atas rentang 80% terhadap harga dasar (persen)}
+        model_versi: {type: string, example: v2.3.1}
+        mape: {type: number, format: double, example: 7.6}
+        sumber: {type: string, enum: [MODEL, DEMO]}
+
+    PrediksiTitik:
+      type: object
+      description: Titik seri grafik. Riwayat hanya `aktual`; titik sambung memuat keduanya; proyeksi memuat `proyeksi`, `bawah`, `atas`.
+      properties:
+        tanggal: {type: string, format: date}
+        aktual: {type: integer}
+        proyeksi: {type: integer}
+        bawah: {type: integer}
+        atas: {type: integer}
+
+    PrediksiFaktor:
+      type: object
+      properties:
+        nama: {type: string}
+        kontribusi: {type: number, format: double, description: Poin persen terhadap perubahan harga proyeksi}
+        detail: {type: string}
+
+    PrediksiProyeksi:
+      type: object
+      properties:
+        komoditas_kode: {type: string}
+        komoditas_nama: {type: string}
+        kabupaten_kode: {type: string}
+        kabupaten_nama: {type: string}
+        horizon_hari: {type: integer}
+        harga_kini: {type: integer}
+        perubahan_pct: {type: number, format: double}
+        bawah_pct: {type: number, format: double}
+        atas_pct: {type: number, format: double}
+        seri:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrediksiTitik"
+        faktor:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrediksiFaktor"
+        narasi: {type: string}
+        model:
+          type: object
+          properties:
+            nama: {type: string}
+            versi: {type: string}
+            mape: {type: number, format: double}
+            dilatih: {type: string, format: date}
+        rekomendasi:
+          type: array
+          items: {type: string}
+        sumber: {type: string, enum: [MODEL, DEMO]}
+
+    PrediksiModel:
+      type: object
+      properties:
+        id: {type: string, example: MDL-CBM-KRT-v2.3.1}
+        komoditas_kode: {type: string}
+        komoditas_nama: {type: string}
+        nama: {type: string}
+        versi: {type: string}
+        mape: {type: number, format: double}
+        drift: {type: number, format: double}
+        status: {type: string, enum: [PRODUKSI, KANDIDAT, ARSIP]}
+        dilatih_pada: {type: string, format: date-time}
+        sumber: {type: string, enum: [MODEL, DEMO]}
+
+    PrediksiRingkasanListResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrediksiRingkasan"
+
+    PrediksiProyeksiResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/PrediksiProyeksi"
+
+    PrediksiModelListResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrediksiModel"

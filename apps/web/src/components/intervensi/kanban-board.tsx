@@ -54,7 +54,10 @@ export function KanbanBoard() {
   const snap = useRef<ReturnType<typeof k.snapshot> | null>(null);
   const asal = useRef<string | null>(null);
 
-  useEffect(() => { if (data) k.init(data); }, [data, k]);
+  // Data server menggantikan papan, kecuali saat kartu sedang diseret atau disimpan,
+  // agar polling tidak mengembalikan kartu yang baru dipindahkan.
+  const sibuk = useRef(false);
+  useEffect(() => { if (data && !sibuk.current) useKanban.getState().sync(data); }, [data]);
 
   const tahap = SIKLUS_TAHAP[siklus];
   const izinMasuk = (tahapId: string): Permission => Object.values(SIKLUS_TAHAP).flat().find((t) => t.id === tahapId)?.izinMasuk ?? "intervensi.kelola";
@@ -75,6 +78,7 @@ export function KanbanBoard() {
   }
 
   function onDragStart({ active }: DragStartEvent) {
+    sibuk.current = true;
     setActiveId(String(active.id));
     snap.current = k.snapshot();
     asal.current = k.cards[String(active.id)]?.tahap ?? null;
@@ -90,7 +94,15 @@ export function KanbanBoard() {
     k.move(String(active.id), to, idx >= 0 ? idx : k.order[to].length);
   }
 
-  async function onDragEnd({ active, over }: DragEndEvent) {
+  async function onDragEnd(event: DragEndEvent) {
+    try {
+      await simpanDrag(event);
+    } finally {
+      sibuk.current = false;
+    }
+  }
+
+  async function simpanDrag({ active, over }: DragEndEvent) {
     const id = String(active.id);
     setActiveId(null);
     setOverTahap(null);
@@ -191,7 +203,7 @@ export function KanbanBoard() {
       ) : view === "tabel" ? (
         <DataTable data={semuaKartu} columns={kolomTabel} getRowId={(r) => r.id} entityLabel="intervensi" bulkActions={bulkActions} searchPlaceholder="Cari intervensi, komoditas, wilayah" />
       ) : (
-        <DndContext sensors={bisaSeret ? sensors : []} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { setActiveId(null); setOverTahap(null); snap.current && k.restore(snap.current); }}>
+        <DndContext sensors={bisaSeret ? sensors : []} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { sibuk.current = false; setActiveId(null); setOverTahap(null); snap.current && k.restore(snap.current); }}>
           <div className="scrollbar-thin -mx-1 flex gap-4 overflow-x-auto px-1 pb-4" style={{ minHeight: 540 }}>
             {tahap.map((t, i) => (
               <KanbanColumn

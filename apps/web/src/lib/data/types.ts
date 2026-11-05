@@ -191,6 +191,8 @@ export interface PolicyBrief {
   diperbarui: string;
   jumlahRekomendasi: number;
   halaman: number;
+  /** Ada pada brief dari API; mode mock tidak mengisinya. */
+  ringkasan?: string;
 }
 
 export interface TugasLapangan {
@@ -292,4 +294,6 @@ export interface ProyeksiXai {
   narasi: string;
   model: { nama: string; versi: string; mape: number; dilatih: string };
   rekomendasi: string[];
+  /** True bila proyeksi berasal dari data contoh seed, bukan model sungguhan. */
+  demo?: boolean;
 }

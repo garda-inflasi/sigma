@@ -2,6 +2,13 @@ package domain
 
 import "context"
 
+// Repository adalah akses data baca-saja untuk peta.
 type Repository interface {
-	ListWilayah(ctx context.Context) ([]Wilayah, error)
+	// ListMarker mengembalikan seluruh wilayah, terurut menurut kode.
+	ListMarker(ctx context.Context) ([]Marker, error)
+	ListNeraca(ctx context.Context, q NeracaQuery) ([]Neraca, error)
+	// ListRute mengembalikan rute terurut dari yang berbiaya terbesar.
+	ListRute(ctx context.Context) ([]Rute, error)
+	// ListKandidat mengembalikan kandidat terurut dari skor tertinggi.
+	ListKandidat(ctx context.Context) ([]Kandidat, error)
 }

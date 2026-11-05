@@ -15,8 +15,10 @@ export const qk = {
     ringkasan: () => ["eksekutif", "ringkasan"] as const,
     xai: (kode: string) => ["eksekutif", "xai", kode] as const,
   },
+  spasial: { rute: () => ["spasial", "rute"] as const, kandidat: () => ["spasial", "kandidat"] as const },
+  prediksi: { ringkasan: () => ["prediksi", "ringkasan"] as const, model: () => ["prediksi", "model"] as const },
   harga: { list: () => ["harga", "list"] as const },
-  ews: { list: () => ["ews", "list"] as const },
+  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const },
   intervensi: { list: () => ["intervensi", "list"] as const },
   coldStorage: {
     all: () => ["cold-storage"] as const,

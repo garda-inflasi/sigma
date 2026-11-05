@@ -25,14 +25,21 @@ export const useSiklusAktif = (enabled = true) =>
 export const useKpiOperasional = () => useQuery({ queryKey: qk.operasional.kpi(), queryFn: api.operasional.kpi, refetchInterval: LIVE });
 export const useHeatmap = () => useQuery({ queryKey: qk.operasional.heatmap(), queryFn: api.operasional.heatmap, refetchInterval: LIVE * 2 });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
+export const useRuteDistribusi = () => useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
+export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });
 export const useTrenHarga = (kode: string, kab: string) =>
   useQuery({ queryKey: qk.operasional.tren(kode, kab), queryFn: () => api.operasional.tren(kode, kab), placeholderData: (prev) => prev });
 export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.ringkasan(), queryFn: api.eksekutif.ringkasan });
 export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
+export const useProyeksiRingkasan = () => useQuery({ queryKey: qk.prediksi.ringkasan(), queryFn: api.prediksi.ringkasan });
+export const useModelPrediksi = () => useQuery({ queryKey: qk.prediksi.model(), queryFn: api.prediksi.model });
 /** Daftar entri harga; `enabled` dipakai sidebar agar peran tanpa `harga.lihat` tidak memicu 403. */
 export const useEntriHarga = (enabled = true) => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list, enabled });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
-export const useIntervensi = () => useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity });
+export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
+/** Kartu kanban. Dengan backend aktif disegarkan berkala agar perpindahan oleh pengguna lain muncul. */
+export const useIntervensi = () =>
+  useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity, refetchInterval: MODE_MOCK ? false : LIVE });
 /**
  * Satu layar cold storage. `keepPreviousData` menahan tampilan lama saat
  * pindah halaman/urutan/filter agar tabel tidak berkedip; kartu fasilitas
@@ -83,6 +90,14 @@ export const useAudit = (filter: AuditFilter) =>
     placeholderData: keepPreviousData,
   });
 export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
+/** Menyusun draf brief; galat ditampilkan oleh pemanggil (dialog generator). */
+export function useSusunBrief() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (periode: string) => api.brief.susun(periode),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.brief.list() }),
+  });
+}
 export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn: api.tugas.saya });
 /** Master data; `enabled` memuat hanya entitas yang sedang dibuka. */
 export const useMasterKomoditas = (enabled = true) => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas, enabled });

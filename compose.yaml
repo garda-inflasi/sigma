@@ -115,6 +115,10 @@ services:
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
       # Penyegaran berkala dashboard dimiliki service worker (satu pemilik).
       API_BACKGROUND_JOBS: "false"
+      # Batas permintaan per menit per IP klien (kosong = 600) dan proxy tepercaya untuk
+      # X-Forwarded-For (kosong = jaringan privat, tempat Caddy berada).
+      API_RATE_LIMIT_PER_MENIT: "${API_RATE_LIMIT_PER_MENIT:-}"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
       # Ingestion manual (tombol "Jalankan sekarang" di /sumber-data) berjalan di api.
       BPS_API_KEY: "${BPS_API_KEY:-}"
       INGEST_USER_AGENT: "${INGEST_USER_AGENT:-}"

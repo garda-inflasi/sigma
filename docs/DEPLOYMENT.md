@@ -601,6 +601,8 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `APP_ENV` | `production` di server (dipasang compose.prod.yaml): menolak rahasia bawaan dan menyalakan penegakan MFA |
 | `MFA_ENFORCE` | Menimpa penegakan MFA (`true`/`false`); kosong = ikut `APP_ENV` |
 | `APP_PUBLIC_URL` | Origin publik untuk tautan di email (reset kata sandi) |
+| `API_RATE_LIMIT_PER_MENIT` | Batas permintaan API per menit per IP klien (bawaan 600) |
+| `TRUSTED_PROXIES` | CIDR proxy tepercaya untuk `X-Forwarded-For` (bawaan jaringan privat tempat Caddy berada) |
 | `GO_API_BASE_URL` | `http://api:8080/v1` (internal) |
 | `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` | Port publik Caddy |
 

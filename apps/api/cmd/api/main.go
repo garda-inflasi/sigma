@@ -67,6 +67,15 @@ func main() {
 	// Router
 	router := gin.New()
 	router.Use(gin.Recovery())
+	// X-Forwarded-For hanya dipercaya dari proxy (Caddy) agar IP klien tidak dapat dipalsukan.
+	if err := router.SetTrustedProxies(middleware.TrustedProxiesFromEnv(os.Getenv("TRUSTED_PROXIES"))); err != nil {
+		log.Error("TRUSTED_PROXIES tidak valid", map[string]interface{}{"error": err.Error()})
+		os.Exit(1)
+	}
+	rateLimit, err := middleware.RateLimitFromEnv(os.Getenv, "API_RATE_LIMIT_PER_MENIT", middleware.DefaultAPIRateLimit)
+	if err != nil {
+		log.Warn("memakai batas laju bawaan", map[string]interface{}{"error": err.Error()})
+	}
 
 	// ── Global middleware chain ──────────────────────────────────────
 	router.Use(
@@ -76,7 +85,7 @@ func main() {
 		middleware.CORSMiddleware(),
 		middleware.CSRFProtection(middleware.ParseOrigins(os.Getenv("APP_ALLOWED_ORIGINS"), "http://localhost:3000")),
 		middleware.AccessLog(log),
-		middleware.RateLimit(100, time.Minute),
+		middleware.RateLimit(rateLimit, time.Minute),
 	)
 
 	// Health check

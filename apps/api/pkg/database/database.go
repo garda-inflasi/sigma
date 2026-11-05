@@ -54,12 +54,12 @@ func New(cfg Config) (*gorm.DB, error) {
 	)
 
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
-		Logger:                                   l,
-		SkipDefaultTransaction:                   true,
-		DisableNestedTransaction:                 false,
-		PrepareStmt:                              true,
-		FullSaveAssociations:                     false,
-		TranslateError:                           true,
+		Logger:                   l,
+		SkipDefaultTransaction:   true,
+		DisableNestedTransaction: false,
+		PrepareStmt:              true,
+		FullSaveAssociations:     false,
+		TranslateError:           true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gorm open: %w", err)

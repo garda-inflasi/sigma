@@ -49,7 +49,7 @@ func TestEncryptDecrypt(t *testing.T) {
 }
 
 func TestEncryptDecrypt_WrongKey(t *testing.T) {
-	key := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // exactly 32 bytes for AES-256
+	key := []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")      // exactly 32 bytes for AES-256
 	wrongKey := []byte("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") // exactly 32 bytes
 	plaintext := []byte("sensitive-data-123")
 

@@ -74,7 +74,15 @@ go -C apps/api test ./... -count=1     # butuh Docker (dockertest); tambah -shor
 make test/api/integration              # hanya paket integrasi
 pnpm -C apps/web typecheck
 pnpm -C apps/web test
+make test/ml
+make test/e2e                          # Playwright terhadap stack demo yang sedang berjalan
 ```
+
+E2E (`apps/web/e2e`) berjalan terhadap stack Docker yang hidup, bukan server sementara: nyalakan
+`make docker/demo/up` dulu (termasuk Mailpit dan layanan ML). Alamat web diatur `E2E_BASE_URL`
+(bawaan `http://localhost:8090`), Mailpit `E2E_MAILPIT_URL` (bawaan `http://localhost:8025`), container
+Postgres `E2E_PG_CONTAINER` (bawaan `garda-postgres`). Tes berjalan berurutan, memulihkan data yang
+diubahnya, dan aman diulang. Data uji yang tidak punya endpoint hapus dibersihkan lewat SQL.
 
 ## Deploy
 

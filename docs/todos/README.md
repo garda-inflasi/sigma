@@ -49,22 +49,28 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 ## Status setelah Fase F (diperbarui 5 Nov 2026)
 
 Fondasi (F0), Fase P (semua slice `-A`), F1, Fase F gelombang F-1 sampai F-5, dan gerbang produksi
-([00 §7](00-cara-kerja.md)) sudah dikerjakan dan lolos `go test ./...` (90 paket, termasuk tes Postgres
+([00 §7](00-cara-kerja.md)) sudah dikerjakan dan lolos `go test ./...` (91 paket, termasuk tes Postgres
 sungguhan), tes web, dan tes layanan ML. Stack Docker demo: `make docker/demo/up` ([README akar](../../README.md)).
+
+**Integrasi endpoint (5 Nov 2026):** seluruh 109 rute API Go kini dipakai UI, kecuali `POST /v1/harga` yang
+sengaja dibiarkan untuk klien non-browser (kembaran `POST /v1/lapangan/harga` yang dipakai aplikasi lapangan).
+Suite e2e Playwright `apps/web/e2e` (`make test/e2e`, 103 tes: halaman per peran, alur auth lewat form termasuk
+reset kata sandi via Mailpit, dan fitur per halaman beserta cek izin API) lolos dua putaran berturut-turut.
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 
 1. **Belum diuji terhadap layanan nyata** (tidak ada akses/kunci saat dikerjakan): konektor PIHPS, BMKG, dan BPS
    (parser dikunci fixture; id wilayah PIHPS dan id variabel BPS wajib diisi operator), panggilan Claude untuk
-   brief (tanpa `ANTHROPIC_API_KEY` brief memakai templat), pengiriman SMTP dan Web Push, serta deploy ujung ke
-   ujung (remote-deploy, rollback, sertifikat ACME).
+   brief (tanpa `ANTHROPIC_API_KEY` brief memakai templat), SMTP sungguhan (di demo email ditangkap Mailpit) dan
+   Web Push, serta deploy ujung ke ujung (remote-deploy, rollback, sertifikat ACME).
 2. **Belum dikerjakan (di luar daftar Fase F):** row scope dan pemisahan tugas per peran (02-B), hash berantai dan
-   partisi audit (03-C), persetujuan perubahan master data (04-B, aksinya masih simulasi di klien), foto entri
-   lapangan (07-C), ensemble dan fitur eksogen model prediksi serta retraining terjadwal (11), batas wilayah resmi
+   partisi audit (03-C), antrean dan riwayat persetujuan perubahan isi master data (04-B; aksi status komoditas
+   sudah tersimpan lewat API, wilayah dan pasar belum punya siklus status), foto entri lapangan (07-C), ensemble dan fitur eksogen model prediksi serta retraining terjadwal (11), batas wilayah resmi
    dan matriks jarak jalan (12), MQTT cold storage (13), SSO, WhatsApp, dan konektor Bapanas/DJPb/OpenWeather.
 3. **Data demo atau perkiraan** (berlabel di UI): geometri dan koordinat wilayah, target KPI dan target inflasi awal,
    skor ruang fiskal heuristik, koefisien simulasi skenario prediksi. Perlu konfirmasi pemilik program.
-4. **Pengujian:** belum ada e2e Playwright otomatis (halaman diperiksa manual dengan browser headless saat demo);
-   kinerja pada data ratusan ribu baris belum diukur.
+4. **Pengujian:** e2e berjalan terhadap stack Docker lokal, belum di CI (repo belum punya pipeline CI);
+   `pnpm lint` belum berfungsi karena ESLint belum dipasang di apps/web; kinerja pada data ratusan ribu baris
+   belum diukur.
 5. **Operasional:** backup belum disalin ke luar VM dan belum ada WAL/PITR; pengguna DB aplikasi masih pemilik
    skema (least-privilege di [19 §7](19-migration-seeder.md) belum).
 

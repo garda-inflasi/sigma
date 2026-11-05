@@ -342,6 +342,13 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 		}
 	})
 
+	t.Run("judul berisi spasi saja ditolak", func(t *testing.T) {
+		body := valid()
+		body["judul"] = "   \t "
+		w := s.call(t, http.MethodPost, "/v1/intervensi", emailKelola, body)
+		assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	})
+
 	t.Run("pembuatan tercatat di audit", func(t *testing.T) {
 		var n int64
 		require.NoError(t, s.db.Table("audit_log").Where("entitas = 'intervensi' AND aksi = 'BUAT' AND hasil = 'BERHASIL'").Count(&n).Error)

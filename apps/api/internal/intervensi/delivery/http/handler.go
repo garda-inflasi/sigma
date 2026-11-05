@@ -4,6 +4,7 @@ package http
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
@@ -52,6 +53,12 @@ func (h *Handler) Create(c *gin.Context) {
 	var req dto.CreateIntervensiRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	// binding:"required" meloloskan judul berisi spasi saja; kartu tanpa judul terbaca tidak bernama di papan.
+	req.Judul = strings.TrimSpace(req.Judul)
+	if req.Judul == "" {
+		response.BadRequest(c, "Validasi gagal: judul wajib diisi")
 		return
 	}
 

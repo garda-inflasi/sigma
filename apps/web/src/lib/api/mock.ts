@@ -3,6 +3,7 @@
  * tanpa backend Go. Aktif otomatis bila NEXT_PUBLIC_API_BASE_URL kosong.
  */
 import type { Severity } from "@/lib/design/tokens";
+import type { EwsAturan } from "@/lib/api/ews";
 import type { KatalogAkses } from "@/lib/api/pengguna";
 import { PERMISSIONS, ROLE_PERMISSIONS } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
@@ -190,6 +191,17 @@ export function randomEws(): EwsAlert {
     nilai, satuanNilai: "%", pesan: naik ? "Kenaikan melampaui ambang dinamis wilayah." : "Harga produsen turun di bawah koridor.",
     waktu: new Date().toISOString(), status: "BARU", skorDampak: Math.round(35 + Math.abs(nilai) * 2.5), sumber: "Model EWS v2.3",
   };
+}
+
+/** Aturan ambang EWS mode mock: tiga komoditas pilot x lonjakan harga (sama dengan seed ews.reference). */
+export function mockEwsAturan(): EwsAturan[] {
+  const kanal = ["DASHBOARD", "PUSH"];
+  const ket = "Ambang awal, harus dikalibrasi bersama BI/BPS.";
+  return [
+    { id: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, kanal, aktif: true, keterangan: ket },
+    { id: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, kanal, aktif: true, keterangan: ket },
+    { id: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, kanal, aktif: true, keterangan: ket },
+  ];
 }
 
 /* ── Kanban intervensi ───────────────────────────────────── */

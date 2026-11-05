@@ -6,6 +6,7 @@ import {
   toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
+import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -18,10 +19,10 @@ type Heatmap = { kabupaten: { kode: string; nama: string }[]; komoditas: { kode:
 
 const get = <T,>(path: string, mock: () => T) => (MODE_MOCK ? mockDelay(mock) : apiFetch<T>(path));
 
-/** Aksi massal generik: POST /v1/{sumber}/bulk { aksi, ids } */
+/** Aksi massal generik: POST /v1/{sumber}/bulk { action, ids } */
 export function bulk(sumber: string, aksi: string, ids: string[]): Promise<BulkResult> {
   if (MODE_MOCK) return mockDelay({ berhasil: ids.length, gagal: 0 }, 500, 1100);
-  return apiFetch<BulkResult>(`/v1/${sumber}/bulk`, { method: "POST", body: JSON.stringify({ aksi, ids }), idempotencyKey: crypto.randomUUID() });
+  return apiFetch<BulkResult>(`/v1/${sumber}/bulk`, { method: "POST", body: JSON.stringify({ action: aksi, ids }), idempotencyKey: crypto.randomUUID() });
 }
 
 /** Satu halaman cold storage: BFF bila backend aktif, data mock bila tidak. */
@@ -43,7 +44,13 @@ export const api = {
     xai: (kode: string) => get<ProyeksiXai>(`/v1/prediksi/${kode}`, () => m.mockXai(kode)),
   },
   harga: { list: () => get<EntriHarga[]>("/v1/harga?limit=500", () => m.mockEntri()) },
-  ews: { list: () => get<EwsAlert[]>("/v1/ews?limit=200", m.mockEws) },
+  ews: {
+    list: (): Promise<EwsAlert[]> =>
+      MODE_MOCK ? mockDelay(m.mockEws) : apiFetch<EwsAlertResponse[]>("/v1/ews?limit=200").then((rows) => rows.map(toEwsAlert)),
+    /** Aturan ambang per komoditas dan jenis, beserta kanal notifikasi. */
+    aturan: (): Promise<EwsAturan[]> =>
+      MODE_MOCK ? mockDelay(m.mockEwsAturan) : apiFetch<EwsAturanResponse[]>("/v1/ews/aturan").then((rows) => rows.map(toEwsAturan)),
+  },
   intervensi: {
     list: () => get<KartuIntervensi[]>("/v1/intervensi", m.mockKanban),
     pindah: (id: string, tahap: string, urutan: number) =>

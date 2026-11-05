@@ -31,6 +31,7 @@ export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(ko
 /** Daftar entri harga; `enabled` dipakai sidebar agar peran tanpa `harga.lihat` tidak memicu 403. */
 export const useEntriHarga = (enabled = true) => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list, enabled });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
+export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
 export const useIntervensi = () => useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity });
 /**
  * Satu layar cold storage. `keepPreviousData` menahan tampilan lama saat

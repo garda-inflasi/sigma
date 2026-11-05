@@ -16,7 +16,7 @@ export const qk = {
     xai: (kode: string) => ["eksekutif", "xai", kode] as const,
   },
   harga: { list: () => ["harga", "list"] as const },
-  ews: { list: () => ["ews", "list"] as const },
+  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const },
   intervensi: { list: () => ["intervensi", "list"] as const },
   coldStorage: {
     all: () => ["cold-storage"] as const,

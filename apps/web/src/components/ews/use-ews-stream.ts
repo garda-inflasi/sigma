@@ -44,7 +44,7 @@ export function useEwsStream() {
     };
 
     const onSimulasi = () => handle({ ...randomEws(), severity: "KRITIS", nilai: 21.4, judul: "Lonjakan harga cabai merah keriting", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", wilayah: "Kota Banda Aceh", kabupatenKode: "1171", jenis: "LONJAKAN_HARGA" });
-    window.addEventListener("garda:simulasi-ews", onSimulasi);
+    if (MODE_MOCK) window.addEventListener("garda:simulasi-ews", onSimulasi);
 
     if (MODE_MOCK) {
       setStatus("simulasi");
@@ -67,10 +67,7 @@ export function useEwsStream() {
     es.onopen = () => setStatus("terhubung");
     es.onerror = () => setStatus("terputus"); // EventSource menyambung ulang otomatis
     es.addEventListener("alert", (e) => handle(JSON.parse((e as MessageEvent<string>).data) as EwsAlert));
-    return () => {
-      es.close();
-      window.removeEventListener("garda:simulasi-ews", onSimulasi);
-    };
+    return () => es.close();
   }, [role, qc, router, catat, setStatus]);
 }
 

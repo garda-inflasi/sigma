@@ -929,6 +929,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/kpi:
+    get:
+      summary: Mendaftar indikator kinerja (KPI)
+      description: |
+        Semua KPI dengan target berlaku, nilai terbaru yang tidak melewati
+        `periode`, tren (paling banyak 6 periode), dan status capaian. Butuh izin
+        `kpi.lihat`.
+
+        Nilai dihitung job dari data yang ada (`otomatis`: true). KPI yang butuh
+        model atau data yang belum ada bernilai null dengan status
+        `MENUNGGU_DATA`, bukan 0. `baseline` kosong sampai ditetapkan pemangku
+        kepentingan.
+      operationId: listKpi
+      tags:
+        - KPI
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: periode
+          in: query
+          description: Bulan acuan `YYYY-MM` (bawaan bulan berjalan)
+          schema:
+            type: string
+            example: "2026-10"
+        - name: wilayah
+          in: query
+          description: Kode kabupaten/kota 4 digit (bawaan seluruh provinsi)
+          schema:
+            type: string
+            example: "1171"
+      responses:
+        "200":
+          description: Daftar KPI terurut menurut kelompok dan urutan baku
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiListResponse"
+        "400":
+          description: Periode atau wilayah tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `kpi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/kpi/{kode}/riwayat:
+    get:
+      summary: Riwayat satu KPI
+      description: Paling banyak 36 periode terakhir (versi berlaku tiap periode), urut naik.
+      operationId: getKpiRiwayat
+      tags:
+        - KPI
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          schema:
+            type: string
+          example: LOG-UTILISASI-CS
+        - name: periode
+          in: query
+          schema:
+            type: string
+            example: "2026-10"
+        - name: wilayah
+          in: query
+          schema:
+            type: string
+            example: "1171"
+      responses:
+        "200":
+          description: KPI beserta riwayat nilainya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiRiwayatResponse"
+        "404":
+          description: KPI tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/lapangan/tugas/{id}:
     get:
       summary: Mendapatkan detail tugas lapangan
@@ -1806,6 +1896,109 @@ components:
           items:
             type: string
           example: ["SRC-BPS", "SRC-BI"]
+
+    KpiNilai:
+      type: object
+      properties:
+        periode:
+          type: string
+          format: date
+          description: Bulan (tanggal 1)
+        nilai:
+          type: number
+        versi:
+          type: integer
+          description: Revisi menambah versi; versi terbesar yang berlaku
+        dihitung_pada:
+          type: string
+          format: date-time
+
+    Kpi:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: LOG-UTILISASI-CS
+        kelompok:
+          type: string
+          enum: [DATA_SISTEM, LOGISTIK, DAMPAK_EKONOMI, TINDAK_LANJUT]
+        nama:
+          type: string
+        deskripsi:
+          type: string
+        rumus:
+          type: string
+        satuan:
+          type: string
+        arah_baik:
+          type: string
+          enum: [NAIK, TURUN]
+        frekuensi:
+          type: string
+          enum: [HARIAN, MINGGUAN, BULANAN, TRIWULAN]
+        otomatis:
+          type: boolean
+          description: Ada penghitung otomatis; false = menunggu model atau data lain
+        target:
+          type: object
+          nullable: true
+          properties:
+            nilai:
+              type: number
+            ambang_waspada:
+              type: number
+              nullable: true
+            baseline:
+              type: number
+              nullable: true
+              description: Kosong sampai ditetapkan pemangku kepentingan
+            periode_mulai:
+              type: string
+              format: date
+        nilai:
+          allOf:
+            - $ref: "#/components/schemas/KpiNilai"
+          nullable: true
+        tren:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiNilai"
+        status:
+          type: string
+          enum: [TERCAPAI, WASPADA, TIDAK_TERCAPAI, TANPA_TARGET, MENUNGGU_DATA]
+
+    KpiListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Kpi"
+
+    KpiRiwayatResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            kpi:
+              $ref: "#/components/schemas/Kpi"
+            riwayat:
+              type: array
+              items:
+                $ref: "#/components/schemas/KpiNilai"
 
     SumberAngka:
       type: string

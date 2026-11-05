@@ -7,6 +7,7 @@ import {
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
+import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse } from "./kpi";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
@@ -75,6 +76,10 @@ export const api = {
     /** Jeda atau lanjutkan sumber; mengubah status katalog (penjadwal nyata menyusul di 05-B). */
     bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
       MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
+  },
+  kpi: {
+    list: (): Promise<KpiIndikator[]> =>
+      MODE_MOCK ? mockDelay(kpiMock) : apiFetch<KpiResponse[]>("/v1/kpi").then((rows) => rows.map(toKpiIndikator)),
   },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
   rbac: { katalog: (): Promise<KatalogAkses> => (MODE_MOCK ? mockDelay(m.mockKatalogAkses) : penggunaApi.katalog()) },

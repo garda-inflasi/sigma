@@ -8,6 +8,7 @@ import (
 	ewsRoutes "github.com/garda-inflasi/api/internal/ews/routes"
 	hargaRoutes "github.com/garda-inflasi/api/internal/harga/routes"
 	intervensiRoutes "github.com/garda-inflasi/api/internal/intervensi/routes"
+	kpiRoutes "github.com/garda-inflasi/api/internal/kpi/routes"
 	lapanganRoutes "github.com/garda-inflasi/api/internal/lapangan/routes"
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
 	policyBriefRoutes "github.com/garda-inflasi/api/internal/policy-brief/routes"
@@ -37,4 +38,5 @@ func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr 
 	lapanganRoutes.Register(v1, &lapanganRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	masterRoutes.Register(v1, &masterRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	spasialRoutes.Register(v1, &spasialRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
+	kpiRoutes.Register(v1, &kpiRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 }

@@ -66,6 +66,7 @@ export function useSumberBulk() {
   });
 }
 
+export const useKpi = () => useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
 export const usePengguna = (search?: string) =>
   useQuery({
     queryKey: qk.pengguna.list(search),

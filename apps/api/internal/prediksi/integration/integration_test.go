@@ -395,6 +395,8 @@ func TestPrediksi_RegistryListsModelsWithStatus(t *testing.T) {
 
 func TestPrediksi_ExportIsDownloadableCSV(t *testing.T) {
 	s := sharedSuite(t)
+	const qEkspor = `SELECT COUNT(*) FROM audit_log WHERE aksi = 'EKSPOR_DATA' AND entitas = 'proyeksi_harga' AND entitas_id = 'CBM-KRT'`
+	sebelum := s.hitung(t, qEkspor)
 
 	w := s.call(t, "/v1/prediksi/CBM-KRT/export", emailBerhak)
 
@@ -429,6 +431,7 @@ func TestPrediksi_ExportIsDownloadableCSV(t *testing.T) {
 		adaProyeksi = adaProyeksi || b[6] != ""
 	}
 	assert.True(t, adaAktual && adaProyeksi, "CSV memuat riwayat aktual dan jalur proyeksi")
+	assert.Equal(t, sebelum+1, s.hitung(t, qEkspor), "ekspor tercatat di audit trail")
 
 	assert.Equal(t, http.StatusNotFound, s.call(t, "/v1/prediksi/XXX/export", emailBerhak).Code)
 	assert.Equal(t, http.StatusBadRequest, s.call(t, "/v1/prediksi/CBM-KRT/export?horizon=0", emailBerhak).Code)

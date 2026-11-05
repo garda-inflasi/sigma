@@ -23,13 +23,13 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	handler := http.New(usecase.New(repo))
+	auditWriter := audit.NewWriter(deps.DB)
+	handler := http.New(usecase.New(repo), auditWriter)
 
 	ml := deps.ML
 	if ml == nil {
 		ml = mlclient.FromEnv()
 	}
-	auditWriter := audit.NewWriter(deps.DB)
 	mlops := http.NewMLOps(usecase.NewMLOps(repo, ml, auditWriter, deps.Logger))
 	simulasi := http.NewSimulasi(usecase.NewSimulasi(repo, auditWriter, deps.Logger))
 

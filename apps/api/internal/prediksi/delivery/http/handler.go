@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/garda-inflasi/api/internal/prediksi/dto"
 	"github.com/garda-inflasi/api/internal/prediksi/usecase"
@@ -15,11 +16,12 @@ import (
 )
 
 type Handler struct {
-	uc *usecase.UseCase
+	uc    *usecase.UseCase
+	audit audit.Writer
 }
 
-func New(uc *usecase.UseCase) *Handler {
-	return &Handler{uc: uc}
+func New(uc *usecase.UseCase, auditWriter audit.Writer) *Handler {
+	return &Handler{uc: uc, audit: auditWriter}
 }
 
 // bindQuery membaca kabupaten dan horizon, memakai bawaan bila kosong. Mengembalikan
@@ -110,6 +112,17 @@ func (h *Handler) Export(c *gin.Context) {
 	w.Flush()
 	if err := w.Error(); err != nil {
 		response.InternalError(c, "Gagal menyusun berkas proyeksi")
+		return
+	}
+
+	// Ekspor adalah keluarnya data: bila tidak tercatat di audit, berkas tidak diserahkan.
+	err := h.audit.Write(audit.RequestContext(c), audit.Entry{
+		AktorID: c.GetString("user_id"), Aksi: "EKSPOR_DATA", Entitas: "proyeksi_harga", EntitasID: p.KomoditasKode,
+		Hasil:    audit.HasilBerhasil,
+		Metadata: map[string]any{"kabupaten": p.KabupatenKode, "horizon_hari": p.HorizonHari, "baris": len(p.Seri)},
+	})
+	if err != nil {
+		response.InternalError(c, "Gagal mencatat ekspor proyeksi")
 		return
 	}
 

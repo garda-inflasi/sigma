@@ -117,10 +117,10 @@ export DB_NAME="${DB_NAME:-$POSTGRES_DB}"
 #  Compose helper — always --no-build (the VM must never build)
 # ------------------------------------------------------------------------------
 compose_infra() {
-  docker compose -f "$COMPOSE_INFRA" -f "$COMPOSE_PROD" "$@"
+  docker compose --project-directory "$REMOTE_DIR" -f "$COMPOSE_INFRA" -f "$COMPOSE_PROD" "$@"
 }
 compose_app() {
-  docker compose -f "$COMPOSE_APP" -f "$COMPOSE_PROD" "$@"
+  docker compose --project-directory "$REMOTE_DIR" -f "$COMPOSE_APP" -f "$COMPOSE_PROD" "$@"
 }
 
 # ------------------------------------------------------------------------------

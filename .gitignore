@@ -41,6 +41,7 @@ apps/web/prisma/migrations/
 
 # === Build artifacts ===
 dist/
+backups/
 build/
 *.log
 

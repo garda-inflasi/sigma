@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -73,6 +73,22 @@ db/seed/admin: ## Seed akun admin awal (SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD)
 
 db/seed/demo: ## Seed data demo (ditolak bila APP_ENV=production)
 	cd apps/api && go run ./cmd/seed demo
+
+# ── Backup & restore (scripts/backup, lihat docs/DEPLOYMENT.md §10) ─────
+# Berjalan lewat `docker exec` ke container Postgres (PG_CONTAINER, bawaan garda-postgres).
+# Ganti PG_CONTAINER/PGUSER/PGDATABASE/BACKUP_DIR lewat environment bila perlu.
+db/backup: ## Backup database (pg_dump -Fc + checksum + manifest) ke ./backups
+	@sh scripts/backup/backup.sh
+
+db/backup/verify: ## Buktikan backup bisa dipulihkan (restore ke DB sementara, bandingkan, hapus)
+	@sh scripts/backup/verify-restore.sh $(if $(FILE),--file $(FILE),)
+
+db/restore: ## Restore dump ke database BARU: make db/restore FILE=backups/x.dump TARGET=garda_pulih
+	@if [ -z "$(FILE)" ] || [ -z "$(TARGET)" ]; then echo "Usage: make db/restore FILE=<dump> TARGET=<database baru>"; exit 1; fi
+	@sh scripts/backup/restore.sh "$(FILE)" --target-db "$(TARGET)"
+
+docker/backup/up: ## Nyalakan backup terjadwal (profile backup di compose.infra.yaml)
+	docker compose -f compose.infra.yaml --profile backup up -d backup
 
 # ── Docker Compose targets ──────────────────────────────────────────────
 

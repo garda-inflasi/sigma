@@ -187,7 +187,8 @@ fi
 
 # 5. Deploy scripts needed on the VM (remote-deploy + keep-last-n)
 log_info "[5/5] Script deploy untuk VM ..."
-vm_ssh "mkdir -p '${REMOTE_DIR}/scripts/deploy' '${REMOTE_DIR}/scripts/rollback' '${REMOTE_DIR}/scripts/lib'"
+vm_ssh "mkdir -p '${REMOTE_DIR}/scripts/deploy' '${REMOTE_DIR}/scripts/rollback' '${REMOTE_DIR}/scripts/lib' '${REMOTE_DIR}/scripts/backup'"
+vm_rsync "${GARDA_ROOT}/scripts/backup/" "${REMOTE_DIR}/scripts/backup/"
 vm_rsync "${GARDA_ROOT}/scripts/deploy/remote-deploy.sh" "${REMOTE_DIR}/scripts/deploy/"
 vm_rsync "${GARDA_ROOT}/scripts/rollback/keep-last-n-images.sh" "${REMOTE_DIR}/scripts/rollback/"
 vm_rsync "${GARDA_ROOT}/scripts/lib/common.sh" "${REMOTE_DIR}/scripts/lib/"

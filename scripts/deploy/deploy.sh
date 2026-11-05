@@ -93,7 +93,11 @@ main() {
   # ── Step 4: optional database backup ───────────────────────────────────
   if [[ "$DO_BACKUP" -eq 1 ]]; then
     log_section "Backup database di VM"
-    backup_cmd="cd '${REMOTE_DIR}' && mkdir -p backups && docker exec garda-postgres pg_dump -U \"\${POSTGRES_USER:-garda}\" \"\${POSTGRES_DB:-garda_inflasi}\" | gzip > backups/\$(date +%F-%H%M).sql.gz && ls -lh backups | tail -3"
+    # Skrip backup dikirim dulu (transfer penuh baru terjadi setelah langkah ini).
+    # Hasil: dump -Fc + .sha256 + .manifest di ${REMOTE_DIR}/backups (retensi ikut berlaku).
+    vm_ssh "mkdir -p '${REMOTE_DIR}/scripts/backup' '${REMOTE_DIR}/backups'"
+    vm_rsync "${GARDA_ROOT}/scripts/backup/" "${REMOTE_DIR}/scripts/backup/"
+    backup_cmd="cd '${REMOTE_DIR}' && set -a && . ./.env && set +a && BACKUP_DIR=backups sh scripts/backup/backup.sh && ls -lh backups | tail -4"
     if [[ "$DRY_RUN" == "1" ]]; then
       echo_cmd "ssh ${VM_USER}@${VM_HOST} \"${backup_cmd}\""
     else

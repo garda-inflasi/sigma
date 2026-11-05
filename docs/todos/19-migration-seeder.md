@@ -173,7 +173,7 @@ Dikerjakan **setelah** 01-A, 02-A, dan 04-A, karena isinya dipindah ke seeder ol
 
 ## 7. Operasional database (setelah Fase P, sebelum produksi)
 
-- [ ] Backup terjadwal (`pg_dump` atau WAL archiving) dan **uji restore** ke lingkungan lain; catat hasilnya di [DEPLOYMENT.md](../DEPLOYMENT.md).
+- [x] Backup terjadwal (`pg_dump` atau WAL archiving) dan **uji restore** ke lingkungan lain; catat hasilnya di [DEPLOYMENT.md](../DEPLOYMENT.md). Selesai: `scripts/backup/{backup,restore,verify-restore}.sh`, target `make db/backup`, `db/restore`, `db/backup/verify`, service compose profile `backup`. `verify-restore` terbukti pada Postgres demo (goose 51, 42 tabel cocok, database sementara dihapus); hasil dan RPO/RTO ada di [DEPLOYMENT.md §10](../DEPLOYMENT.md). Belum: salinan backup ke luar VM dan WAL/PITR.
 - [ ] Kebijakan rollback: kapan `goose down`, kapan migrasi koreksi ke depan. Larang `down` yang menghapus data produksi tanpa backup.
 - [ ] Job pemeliharaan: partisi bulanan, refresh materialized view, pembersihan `jwt_blacklist`/`refresh_tokens` kedaluwarsa, retensi data mentah.
 - [ ] Pengguna DB aplikasi berhak minimum (tanpa DDL, tanpa `UPDATE/DELETE` pada `audit_log`); pengguna terpisah untuk migrasi.

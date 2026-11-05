@@ -25,10 +25,59 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-garda} -d ${POSTGRES_DB:-garda_inflasi}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-garda} -d ${POSTGRES_DB:-garda_inflasi}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - garda_inflasi_net
+
+  # Backup terjadwal (opsional): docker compose -f compose.infra.yaml --profile backup up -d backup
+  # Menjalankan scripts/backup/backup.sh tiap BACKUP_INTERVAL_SECONDS (bawaan 24 jam),
+  # dump + checksum + manifest ke ./backups dengan retensi. Uji pemulihannya berkala
+  # dengan scripts/backup/verify-restore.sh (make db/backup/verify). Lihat docs/DEPLOYMENT.md.
+  backup:
+    image: postgres:16-alpine
+    container_name: garda-backup
+    profiles: ["backup"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sh /scripts/backup.sh >/dev/null || echo "backup GAGAL" >&2
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+        done
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-garda}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-garda_secret}
+      PGDATABASE: ${POSTGRES_DB:-garda_inflasi}
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_SECONDS: "${BACKUP_INTERVAL_SECONDS:-86400}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-14}"
+      BACKUP_KEEP_MIN: "${BACKUP_KEEP_MIN:-3}"
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
+    healthcheck:
+      # Sehat bila ada dump yang lebih baru dari 2x interval.
+      test:
+        [
+          "CMD-SHELL",
+          "find /backups -name '*.dump' -mmin -$$((BACKUP_INTERVAL_SECONDS * 2 / 60)) | grep -q .",
+        ]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+      start_period: 5m
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - garda_inflasi_net
 

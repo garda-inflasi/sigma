@@ -145,4 +145,4 @@ Belum boleh deploy ke produksi sebelum semuanya tercentang:
 - [x] **01-A** admin awal dari env dengan `wajib_ganti_password`.
 - [x] **F0-7** cookie `Secure` dan proteksi CSRF.
 - [x] Seeder `demo` terbukti menolak `APP_ENV=production`.
-- [ ] Backup dan uji restore ([19 §7](19-migration-seeder.md)).
+- [x] Backup dan uji restore ([19 §7](19-migration-seeder.md)); bukti di [DEPLOYMENT.md §10](../DEPLOYMENT.md).

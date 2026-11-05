@@ -401,31 +401,54 @@ echo "$PREV" > .last-deploy
 
 ## 10. Backup Database
 
-```bash
-# Backup otomatis sebelum deploy
-make deploy ARGS=--backup
+Skrip di [`scripts/backup/`](../scripts/backup) (POSIX sh, dipakai juga oleh container backup):
 
-# Backup manual
-ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 '
-  cd ~/garda-inflasi
-  set -a; . ./.env; set +a
-  mkdir -p backups
-  docker exec garda-postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
-    | gzip > "backups/$(date -u +%F-%H%M).sql.gz"
-  ls -lh backups/ | tail -5
-'
+| Skrip | Fungsi |
+| --- | --- |
+| `backup.sh` | `pg_dump` format custom (`-Fc`) + `.sha256` + `.manifest` (versi goose dan jumlah baris tiap tabel sebelum/sesudah dump) + retensi |
+| `restore.sh` | memulihkan dump ke database **baru** (checksum diperiksa dulu; menolak menimpa database hidup tanpa konfirmasi eksplisit) |
+| `verify-restore.sh` | backup baru → restore ke database sementara `garda_verify_*` → bandingkan goose version dan jumlah baris semua tabel → hapus database sementara |
+
+Semua berjalan lewat `docker exec` ke container `garda-postgres` (ganti dengan `PG_CONTAINER`), atau langsung bila `PGHOST` diisi (mode container backup).
+
+```bash
+make db/backup                                   # ./backups/garda_inflasi-<UTC>.dump (+ .sha256, .manifest)
+make db/backup/verify                            # bukti backup bisa dipulihkan (RTO terukur dicetak)
+make db/backup/verify FILE=backups/x.dump        # verifikasi dump yang sudah ada
+make db/restore FILE=backups/x.dump TARGET=garda_pulih   # restore ke database BARU
+```
+
+Variabel: `BACKUP_DIR` (`./backups`), `BACKUP_RETENTION_DAYS` (14), `BACKUP_KEEP_MIN` (3 dump terbaru tidak pernah dihapus), `BACKUP_MANIFEST=0` (lewati manifest bila tabel sangat besar), `VERIFY_TABLES` (batasi tabel yang dibandingkan), `VERIFY_KEEP_DB=1` (simpan database sementara untuk diselidiki). Pengguna DB perlu hak `CREATEDB` (dan superuser agar ekstensi `uuid-ossp`/`pgcrypto` terbentuk); pada produksi dengan pengguna aplikasi berhak minimum, jalankan verifikasi dengan `PGUSER` admin.
+
+### Backup terjadwal
+
+Service opsional `backup` (profile `backup`) di `compose.infra.yaml` menjalankan `backup.sh` tiap `BACKUP_INTERVAL_SECONDS` (bawaan 86400 = harian) ke `${BACKUP_HOST_DIR:-./backups}`. Healthcheck-nya gagal bila tidak ada dump yang lebih baru dari 2x interval.
+
+```bash
+make docker/backup/up                                   # lokal
+# di VM: tambahkan COMPOSE_PROFILES=backup ke ~/garda-inflasi/.env, lalu deploy seperti biasa
+make deploy ARGS=--backup                               # backup sekali sebelum deploy (memakai backup.sh yang sama)
 ```
 
 ### Restore
 
 ```bash
-ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 '
-  cd ~/garda-inflasi
-  set -a; . ./.env; set +a
-  gunzip -c backups/2026-10-16-0900.sql.gz \
-    | docker exec -i garda-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
-'
+# 1. Pulihkan ke database baru, periksa isinya
+make db/restore FILE=backups/garda_inflasi-20261105T071503Z.dump TARGET=garda_pulih
+# 2. Bila memang harus menimpa database hidup: hentikan api/worker/web, ambil backup baru, lalu
+GARDA_RESTORE_CONFIRM=garda_inflasi sh scripts/backup/restore.sh backups/<dump> --target-db garda_inflasi
 ```
+
+### RPO dan RTO (sederhana)
+
+- **RPO** = interval backup. Bawaan harian, jadi kehilangan data maksimum sampai 24 jam (turunkan `BACKUP_INTERVAL_SECONDS` untuk RPO lebih kecil; di bawah itu butuh WAL archiving/PITR, belum disediakan).
+- **RTO** = waktu restore + restart aplikasi. Terukur pada data demo (database ~880 KB terkompresi, 16 ribu baris `entri_harga`): restore ke database kosong **1 detik**, seluruh `verify-restore` 2-3 detik. Pada produksi RTO tumbuh kira-kira linear dengan ukuran data; ukur ulang dengan `make db/backup/verify` setelah data nyata masuk dan catat angkanya di sini.
+- Salinan backup **harus** dikopi ke luar VM (mis. `rsync` ke penyimpanan lain); backup di disk yang sama tidak melindungi dari kerusakan disk/VM. Ini belum diotomatiskan.
+- Jadwalkan `make db/backup/verify` berkala (mis. mingguan) dan simpan hasilnya; backup yang tidak pernah diuji dianggap tidak ada.
+
+### Catatan hasil uji (2026-11-05, Postgres 16.11, demo `garda-postgres`)
+
+`make db/backup/verify` terhadap `garda_inflasi` yang sedang melayani demo: goose version 51 cocok, 42 tabel/matview cocok baris-per-baris (mis. `entri_harga` 16.142, `agregat_harga_harian` 14.559), database sementara dihapus, `garda_inflasi` tidak disentuh. Jalur negatif juga diuji: checksum rusak ditolak, manifest yang dimanipulasi menggagalkan verifikasi (database sementara tetap dihapus), restore ke database hidup tanpa konfirmasi ditolak, retensi menyisakan 3 dump terbaru dan hanya menghapus dump yang lebih tua dari 14 hari.
 
 ---
 

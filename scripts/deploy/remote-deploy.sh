@@ -75,6 +75,7 @@ COMPOSE_APP="compose/compose.yaml"
 COMPOSE_PROD="compose/compose.prod.yaml"
 TARBALL="dist/garda-images-${GIT_SHA}.tar.gz"
 NETWORK_NAME="garda_inflasi_net"
+INFRA_SERVICE_COUNT=2   # postgres, redis
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-60}"
 HTTP_HEALTH_RETRIES="${HTTP_HEALTH_RETRIES:-10}"
 HTTP_HEALTH_DELAY="${HTTP_HEALTH_DELAY:-3}"
@@ -161,7 +162,7 @@ fi
 # ------------------------------------------------------------------------------
 #  4. Bring up infrastructure
 # ------------------------------------------------------------------------------
-log_section "4/8 — Up infra (postgres, mongodb, redis)"
+log_section "4/8 — Up infra (postgres, redis)"
 compose_infra up -d --no-build --remove-orphans
 
 # ------------------------------------------------------------------------------
@@ -190,46 +191,42 @@ while [[ "$(date +%s)" -lt "$deadline" ]]; do
   healthy_count="$(count_healthy)"
   [[ -z "$healthy_count" ]] && healthy_count=0
 
-  if [[ "$healthy_count" -ge 3 ]]; then
+  if [[ "$healthy_count" -ge "$INFRA_SERVICE_COUNT" ]]; then
     break
   fi
-  log_debug "Infra healthy: ${healthy_count}/3 — tunggu 5s ..."
+  log_debug "Infra healthy: ${healthy_count}/${INFRA_SERVICE_COUNT} — tunggu 5s ..."
   sleep 5
 done
 
-if [[ "$healthy_count" -lt 3 ]]; then
-  log_error "Hanya ${healthy_count}/3 service infra yang healthy setelah ${HEALTH_TIMEOUT_SECONDS}s."
+if [[ "$healthy_count" -lt "$INFRA_SERVICE_COUNT" ]]; then
+  log_error "Hanya ${healthy_count}/${INFRA_SERVICE_COUNT} service infra yang healthy setelah ${HEALTH_TIMEOUT_SECONDS}s."
   compose_infra ps || true
   compose_infra logs --tail=80 || true
   die "Healthcheck infra gagal." \
       "Periksa log di atas. Umumnya: port bentrok, volume korup, atau kredensial .env salah."
 fi
-log_success "Infra healthy (${healthy_count}/3)."
+log_success "Infra healthy (${healthy_count}/${INFRA_SERVICE_COUNT})."
 
 # ------------------------------------------------------------------------------
-#  6. Database migrations (optional, one-shot)
+#  6. Database migrations + reference seed (hard failure)
+#
+#  Migrasi dan seed berjalan dari image API yang sama dengan aplikasi (service
+#  `migrate` dan `seed` di compose.yaml). Kegagalan menghentikan deploy
+#  (set -e + ERR trap) sehingga aplikasi tidak pernah naik di atas skema rusak.
+#  Produksi hanya mengisi lapis reference dan admin, tidak pernah demo
+#  (lihat compose.prod.yaml).
 # ------------------------------------------------------------------------------
-log_section "6/8 — Migrasi database"
-if [[ -d "db/migrations" ]] && [[ -n "$(ls -A db/migrations 2>/dev/null || true)" ]]; then
-  if docker run --rm \
-      --network "$NETWORK_NAME" \
-      -e DATABASE_URL="postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=disable" \
-      --entrypoint sh \
-      "garda-api:${GIT_SHA}" \
-      -c 'command -v goose >/dev/null 2>&1 && goose -dir /migrations postgres "$DATABASE_URL" up || echo "goose tidak tersedia di image — migrasi dilewati"'; then
-    log_success "Migrasi selesai (atau dilewati dengan aman)."
-  else
-    log_warn "Migrasi gagal — deploy dilanjutkan. Jalankan manual bila perlu."
-  fi
-else
-  log_info "Tidak ada db/migrations — dilewati."
-fi
+log_section "6/8 — Migrasi database & seed referensi"
+compose_app run --rm --no-deps -T migrate
+log_success "Migrasi selesai (versi skema tercetak di atas)."
+compose_app run --rm --no-deps -T seed
+log_success "Seed referensi/admin selesai."
 
 # ------------------------------------------------------------------------------
 #  7. Bring up the application
 # ------------------------------------------------------------------------------
 log_section "7/8 — Up aplikasi (api, web, caddy)"
-compose_app up -d --no-build --remove-orphans
+compose_app up -d --no-build --no-deps --remove-orphans api web caddy
 
 # ------------------------------------------------------------------------------
 #  8. HTTP healthcheck

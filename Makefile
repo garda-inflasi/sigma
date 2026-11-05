@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/seed docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -35,8 +35,11 @@ test/api: ## Run all Go tests
 test/api/short: ## Run short Go tests (no integration)
 	cd apps/api && go test ./... -v -count=1 -short
 
+# Paket integrasi: tiap yang memakai Docker (dockertest). Tambahkan paket baru di sini.
+INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/platform/... ./cmd/migrate/...
+
 test/api/integration: ## Run Go integration tests (requires Docker)
-	cd apps/api && go test ./internal/auth/integration/... ./internal/cold-storage/integration/... -v -count=1
+	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1
 
 test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test
@@ -51,18 +54,29 @@ gen-module: ## Generate a new module scaffold: make gen-module name=<module>
 	@if [ -z "$(name)" ]; then echo "Usage: make gen-module name=<module>"; exit 1; fi
 	@bash scripts/gen-module.sh $(name)
 
-db/migrate: ## Run database migrations (Goose)
-	cd apps/api && goose -dir ../../db/migrations postgres "$$DATABASE_URL" up
+# Migrasi dijalankan cmd/migrate (library goose), program yang sama dengan service
+# `migrate` di Docker; tidak perlu memasang CLI goose.
+db/migrate: ## Terapkan migrasi database
+	cd apps/api && MIGRATIONS_DIR=../../db/migrations go run ./cmd/migrate up
 
-db/migrate/down: ## Rollback last migration
-	cd apps/api && goose -dir ../../db/migrations postgres "$$DATABASE_URL" down
+db/migrate/down: ## Batalkan satu migrasi terakhir
+	cd apps/api && MIGRATIONS_DIR=../../db/migrations go run ./cmd/migrate down
 
-db/seed: ## Run database seeder
-	cd apps/api && go run ./cmd/seed
+db/migrate/version: ## Cetak versi skema saat ini
+	cd apps/api && MIGRATIONS_DIR=../../db/migrations go run ./cmd/migrate version
+
+db/seed/reference: ## Seed data referensi (aman di produksi)
+	cd apps/api && go run ./cmd/seed reference
+
+db/seed/admin: ## Seed akun admin awal (SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD)
+	cd apps/api && go run ./cmd/seed admin
+
+db/seed/demo: ## Seed data demo (ditolak bila APP_ENV=production)
+	cd apps/api && go run ./cmd/seed demo
 
 # ── Docker Compose targets ──────────────────────────────────────────────
 
-docker/infra/up: ## Start infrastructure services (Postgres, MongoDB, Redis)
+docker/infra/up: ## Start infrastructure services (Postgres, Redis)
 	docker compose -f compose.infra.yaml up -d
 
 docker/infra/down: ## Stop infrastructure services
@@ -99,6 +113,30 @@ docker/rebuild: ## Rebuild and restart all services
 	docker compose build --no-cache
 	docker compose -f compose.infra.yaml up -d
 	docker compose up -d
+
+# Demo lengkap (infra + migrasi + seed + aplikasi) di port host alternatif supaya
+# tidak bentrok dengan proyek lain. Ganti dengan mis. `make docker/demo/up DEMO_CADDY_HTTP_PORT=9000`.
+DEMO_POSTGRES_PORT ?= 5433
+DEMO_REDIS_PORT ?= 6380
+DEMO_CADDY_HTTP_PORT ?= 8090
+DEMO_CADDY_HTTPS_PORT ?= 8453
+DEMO_ENV = POSTGRES_PORT=$(DEMO_POSTGRES_PORT) REDIS_PORT=$(DEMO_REDIS_PORT) \
+	CADDY_HTTP_PORT=$(DEMO_CADDY_HTTP_PORT) CADDY_HTTPS_PORT=$(DEMO_CADDY_HTTPS_PORT) \
+	APP_ALLOWED_ORIGINS=http://localhost:$(DEMO_CADDY_HTTP_PORT),https://localhost:$(DEMO_CADDY_HTTPS_PORT) \
+	COOKIE_SECURE=false
+
+docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu aplikasi
+	$(DEMO_ENV) docker compose -f compose.infra.yaml up -d --wait
+	$(DEMO_ENV) docker compose build
+	$(DEMO_ENV) docker compose run --rm migrate
+	$(DEMO_ENV) docker compose run --rm seed
+	$(DEMO_ENV) docker compose up -d api web caddy
+	@echo ""
+	@echo "✓ Demo berjalan: http://localhost:$(DEMO_CADDY_HTTP_PORT)  (login: superadmin@gardainflasi.id / Garda2024!)"
+
+docker/demo/down: ## Matikan demo (data tetap di volume)
+	$(DEMO_ENV) docker compose down
+	$(DEMO_ENV) docker compose -f compose.infra.yaml down
 
 clean: ## Clean build artifacts
 	rm -rf apps/api/bin

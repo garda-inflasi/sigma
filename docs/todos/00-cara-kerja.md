@@ -62,7 +62,7 @@ Kerjakan seluruh Fase P dulu. Alasannya: setiap fitur Fase F membutuhkan tabel, 
 **Cara memverifikasi di lokal (setelah F0-1):**
 
 ```
-make docker/infra/up          # Postgres, MongoDB, Redis
+make docker/infra/up          # Postgres, Redis
 make db/migrate
 make db/seed/reference && make db/seed/demo
 make dev/api                  # terminal 1
@@ -140,9 +140,9 @@ Setelah #17: **tahap kelengkapan Fase P** — `NEXT_PUBLIC_API_BASE_URL=/api` bi
 
 Belum boleh deploy ke produksi sebelum semuanya tercentang:
 
-- [ ] **F0-6** migrasi nyata saat deploy.
+- [x] **F0-6** migrasi nyata saat deploy.
 - [ ] **F1** seed di migrasi dinetralkan (tidak ada akun demo/`DELETE role_permissions` di DB produksi).
 - [ ] **01-A** admin awal dari env dengan `wajib_ganti_password`.
-- [ ] **F0-7** cookie `Secure` dan proteksi CSRF.
-- [ ] Seeder `demo` terbukti menolak `APP_ENV=production`.
+- [x] **F0-7** cookie `Secure` dan proteksi CSRF.
+- [x] Seeder `demo` terbukti menolak `APP_ENV=production`.
 - [ ] Backup dan uji restore ([19 §7](19-migration-seeder.md)).

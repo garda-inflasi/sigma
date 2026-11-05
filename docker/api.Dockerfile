@@ -17,9 +17,11 @@ RUN go mod download
 WORKDIR /app
 COPY apps/api/ ./apps/api/
 
-# Build the binary
+# Build the binaries: API server, migration runner, and seeder.
 WORKDIR /app/apps/api
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/api ./cmd/api \
+ && CGO_ENABLED=0 GOOS=linux go build -o /app/bin/migrate ./cmd/migrate \
+ && CGO_ENABLED=0 GOOS=linux go build -o /app/bin/seed ./cmd/seed
 
 # ── Runtime stage ──────────────────────────────────────────────────────
 FROM alpine:3.21
@@ -32,6 +34,11 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
 COPY --from=builder /app/bin/api ./api
+COPY --from=builder /app/bin/migrate ./migrate
+COPY --from=builder /app/bin/seed ./seed
+# Migrations ship inside the image so deploy never depends on files on the VM.
+COPY db/migrations /migrations
+ENV MIGRATIONS_DIR=/migrations
 
 # Use non-root user
 USER appuser

@@ -7,7 +7,7 @@
 #      bash scripts/deploy/logs.sh [service] [options]
 #
 #  Arguments:
-#      service         api | web | caddy | postgres | mongodb | redis | all
+#      service         api | web | caddy | postgres | redis | all
 #                      (default: api)
 #
 #  Options:
@@ -71,7 +71,7 @@ cd "$GARDA_ROOT"
 # ------------------------------------------------------------------------------
 #  Validate the service name
 # ------------------------------------------------------------------------------
-INFRA_SERVICES=(postgres mongodb redis)
+INFRA_SERVICES=(postgres redis)
 APP_SERVICES=(api web caddy)
 
 if [[ "$SERVICE" != "all" ]]; then
@@ -81,7 +81,7 @@ if [[ "$SERVICE" != "all" ]]; then
   done
   if [[ "$valid" -ne 1 ]]; then
     die "Service tidak dikenal: '$SERVICE'" \
-        "Pilih salah satu: api, web, caddy, postgres, mongodb, redis, all"
+        "Pilih salah satu: api, web, caddy, postgres, redis, all"
   fi
 fi
 

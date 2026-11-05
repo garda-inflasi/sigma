@@ -27,11 +27,26 @@ services:
       APP_ADDR: ":8080"
     restart: unless-stopped
 
+  # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
+  # menghentikan deploy.
+  migrate:
+    image: garda-api:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  # Produksi hanya mengisi referensi dan admin awal, tidak pernah demo.
+  seed:
+    image: garda-api:${IMAGE_TAG:-latest}
+    build: !reset null
+    command: ["./seed", "reference", "admin"]
+    environment:
+      APP_ENV: production
+
   web:
     image: garda-web:${IMAGE_TAG:-latest}
     build: !reset null
     environment:
       NODE_ENV: production
+      COOKIE_SECURE: "true"
     restart: unless-stopped
 
   caddy:
@@ -44,11 +59,6 @@ services:
   # listed here only to pin restart policy and keep the override symmetric.
   postgres:
     image: postgres:16-alpine
-    build: !reset null
-    restart: unless-stopped
-
-  mongodb:
-    image: mongo:8
     build: !reset null
     restart: unless-stopped
 

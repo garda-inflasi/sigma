@@ -11,6 +11,10 @@
 #   make docker/infra/up
 #   make docker/up
 #
+# `docker compose up` juga menjalankan service sekali-jalan:
+#   migrate → menerapkan db/migrations (api menunggu sampai selesai)
+#   seed    → mengisi data (lapis reference+admin+demo; produksi hanya reference+admin)
+#
 # Caddy menyediakan:
 #   http://localhost/       → Next.js frontend
 #   http://localhost/api/*  → Go backend API (strips /api prefix)
@@ -18,11 +22,51 @@
 
 name: garda-app
 
+# Satu image berisi api, migrate, dan seed.
+x-api-image: &api-image
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
+  image: garda-api:${IMAGE_TAG:-latest}
+
+# Variabel koneksi basis data yang dipakai api, migrate, dan seed.
+x-database-env: &database-env
+  DATABASE_URL: "postgres://${DB_USER:-garda}:${DB_PASSWORD:-garda_secret}@postgres:5432/${DB_NAME:-garda_inflasi}?sslmode=disable"
+
 services:
+  migrate:
+    <<: *api-image
+    container_name: garda-migrate
+    command: ["./migrate", "up"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    environment:
+      <<: *database-env
+    networks:
+      - garda_inflasi_net
+
+  seed:
+    <<: *api-image
+    container_name: garda-seed
+    # Lokal: semua lapis. Produksi menimpanya di compose.prod.yaml (tanpa demo).
+    command: ["./seed", "all"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    environment:
+      <<: *database-env
+      APP_ENV: "${APP_ENV:-development}"
+      SEED_ADMIN_EMAIL: "${SEED_ADMIN_EMAIL:-}"
+      SEED_ADMIN_PASSWORD: "${SEED_ADMIN_PASSWORD:-}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - garda_inflasi_net
+
   api:
-    build:
-      context: .
-      dockerfile: docker/api.Dockerfile
+    <<: *api-image
     container_name: garda-api
     restart: unless-stopped
     environment:
@@ -34,14 +78,17 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
       DB_NAME: "${DB_NAME:-garda_inflasi}"
       DB_SSLMODE: disable
-      DATABASE_URL: "postgres://${DB_USER:-garda}:${DB_PASSWORD:-garda_secret}@postgres:5432/${DB_NAME:-garda_inflasi}?sslmode=disable"
+      <<: *database-env
       REDIS_URL: "redis://redis:6379"
-      MONGO_URI: "mongodb://garda:garda_secret@mongodb:27017/garda_inflasi?authSource=admin"
-      MONGO_DB: "garda_inflasi"
+      # Origin publik yang boleh mengubah data lewat cookie (proteksi CSRF di Go).
+      APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
       JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
-    # depends_on dihapus karena postgres, redis, dan mongodb
-    # sudah berjalan di compose.infra.yaml secara terpisah
+    # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
+    # api hanya menunggu skema selesai dimigrasi.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     networks:
       - garda_inflasi_net
 
@@ -65,6 +112,9 @@ services:
       # origin check). Comma-separated. Must include the origin the browser
       # actually visits (Caddy's public origin), not the internal Next.js one.
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
+      # Cookie token memakai flag Secure hanya bila true (HTTPS publik). Lokal
+      # lewat http://localhost harus false; compose.prod.yaml menyalakannya.
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       # Must match JWT_SECRET in api service
       GARDA_JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
     depends_on:

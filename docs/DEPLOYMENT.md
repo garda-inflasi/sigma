@@ -52,11 +52,13 @@ VM **tidak pernah** build apa pun (`--no-build` wajib di semua `docker compose u
 │  5. ssh 'bash -s' ───────────┼────────>│  6. gunzip -c | docker load          │
 │     < remote-deploy.sh       │         │  7. docker network ensure            │
 │                              │         │  8. compose up -d --no-build (infra) │
-│                              │         │  9. wait healthcheck (3/3)           │
-│                              │         │ 10. compose up -d --no-build (app)   │
-│                              │         │ 11. curl /healthz                    │
-│                              │         │ 12. tulis .last-deploy               │
-│ 13. healthcheck gagal?       │         │                                      │
+│                              │         │  9. wait healthcheck (2/2)           │
+│                              │         │ 10. migrate + seed referensi (gagal  │
+│                              │         │     keras: deploy berhenti)          │
+│                              │         │ 11. compose up -d --no-build (app)   │
+│                              │         │ 12. curl /healthz                    │
+│                              │         │ 13. tulis .last-deploy               │
+│ 14. healthcheck gagal?       │         │                                      │
 │     └─> auto rollback        │<────────┤                                      │
 └──────────────────────────────┘         └──────────────────────────────────────┘
 ```
@@ -70,6 +72,8 @@ VM **tidak pernah** build apa pun (`--no-build` wajib di semua `docker compose u
 | Tidak ada registry | `docker save` + `docker load`; VM tidak butuh internet untuk pull image |
 | Aman dari deploy ganda | Lock atomik `.deploy.lock` (mkdir) |
 | Gagal → balik sendiri | Healthcheck gate + auto rollback |
+| Migrasi nyata | Service `migrate` (image API berisi `./migrate` + `db/migrations`) jalan sebelum aplikasi naik; kegagalannya menghentikan deploy |
+| Tanpa data demo | Service `seed` di produksi hanya `reference` dan `admin`; seeder `demo` menolak `APP_ENV=production` |
 | Secret tidak bocor | `.env` **tidak pernah** ditransfer; `mask_secret` di semua log |
 
 ---
@@ -175,10 +179,6 @@ DATABASE_URL=postgres://garda:GANTI_DENGAN_PASSWORD_KUAT@postgres:5432/garda_inf
 
 # ── Redis ───────────────────────────────────────────────────────────────
 REDIS_URL=redis://redis:6379/0
-
-# ── MongoDB ─────────────────────────────────────────────────────────────
-MONGO_URI=mongodb://mongodb:27017
-MONGO_DB=garda_inflasi
 
 # ── Secrets (WAJIB diganti, minimal 32 karakter acak) ───────────────────
 JWT_SECRET=GANTI_DENGAN_RANDOM_32_KARAKTER
@@ -491,12 +491,12 @@ sudo ufw enable
 | 9 | `image ... not found` saat `up` | Tarball belum di-load / SHA salah | Cek `docker images \| grep garda`; ulangi `make deploy` (tanpa `--skip-transfer`) |
 | 10 | `exec format error` / container restart loop | Platform mismatch (build arm64, VM amd64) | Set `TARGET_PLATFORM=linux/amd64` di `.env.deploy`, rebuild |
 | 11 | `HEALTHCHECK FAILED` setelah `up` | Service tidak siap / config salah | `make logs SERVICE=api`; cek `.env` di VM; auto-rollback sudah jalan |
-| 12 | `Healthcheck infra gagal (2/3 healthy)` | Postgres/Mongo/Redis tidak start | `make logs SERVICE=postgres`; cek kredensial `.env`; cek volume korup |
+| 12 | `Healthcheck infra gagal (1/2 healthy)` | Postgres/Redis tidak start | `make logs SERVICE=postgres`; cek kredensial `.env`; cek volume korup |
 | 13 | `docker-compose: command not found` | VM punya Compose v1 | Install plugin v2: `sudo apt install docker-compose-plugin`; script hanya pakai `docker compose` |
 | 14 | `Deploy lain sedang berjalan (lock: ...)` | Deploy sebelumnya crash / masih jalan | Tunggu; kalau yakin tidak ada proses: `rm -rf .deploy.lock` |
 | 15 | `Build dari working tree kotor` | Ada perubahan belum di-commit | `git commit` dulu, atau `make deploy ARGS=--allow-dirty` |
 | 16 | `Wajib ada .env di VM` | `.env` production belum dibuat | Lihat §3.6 — buat manual di VM (tidak pernah ditransfer) |
-| 17 | `services.mongodb.build must be a string` | `compose.prod.yaml` memakai `build: null` | Gunakan `build: !reset null` (sudah diperbaiki di repo ini) |
+| 17 | `services.<nama>.build must be a string` | `compose.prod.yaml` memakai `build: null` | Gunakan `build: !reset null` (sudah diperbaiki di repo ini) |
 | 18 | `Tarball korup / ukuran tidak cocok` | Transfer terputus | Ulangi `make deploy/transfer`; rsync `--partial` akan melanjutkan |
 | 19 | `jq: command not found` di VM | `jq` tidak terinstall | Opsional — script fallback ke `grep`. Atau `sudo apt install jq` |
 | 20 | Login gagal / redirect loop setelah deploy | HSTS aktif di HTTP, atau `NEXT_PUBLIC_API_BASE_URL` absolut | Pastikan akses via HTTPS; set `NEXT_PUBLIC_API_BASE_URL=/api` (relatif) |
@@ -541,7 +541,6 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Kredensial Postgres |
 | `DATABASE_URL` | DSN lengkap untuk Go |
 | `REDIS_URL` | DSN Redis |
-| `MONGO_URI` / `MONGO_DB` | DSN MongoDB |
 | `JWT_SECRET` | Signing key JWT (≥32 char acak) |
 | `AES_KEY` | Enkripsi at-rest (≥32 char acak) |
 | `GARDA_JWT_SECRET` | Secret untuk BFF Next.js |

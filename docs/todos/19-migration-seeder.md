@@ -78,7 +78,7 @@ Akibat lain yang terverifikasi dari kode: route yang meminta `lapangan.lihat`, `
 | D1  | Sumber kebenaran skema: migrasi atau entity?           | **Migrasi.** Skemanya lebih kaya, cocok dengan tipe di web (`id` string, `kabupaten_kode`, enum), dan jadi pola yang sudah terbukti di `cold-storage`. Entity mengikuti.                                                               |
 | D2  | Rebaseline atau hanya migrasi maju?                    | **Migrasi maju (tanpa rebaseline).** Cocok dengan cara kerja per task: tiap slice menambah migration baru. Satu-satunya berkas lama yang disentuh adalah 000006 (murni data) pada task `F1`, setelah isinya dipindah ke seeder. Rebaseline baru dipertimbangkan bila terbukti ada konflik skema yang tak bisa diselesaikan dengan migrasi maju. |
 | D3  | RBAC: peta di kode (A) atau tabel di DB (B)?           | Lihat [02](02-pengguna-rbac.md). **B** bila izin per pengguna dan UI matriks yang bisa diubah memang dibutuhkan; **A** (hapus tabel mati) bila tidak.                                                                                  |
-| D4  | Data analitik: Postgres saja, atau Postgres + MongoDB? | Satu sumber per jenis data. Rekomendasi: Postgres untuk semua data transaksional dan agregat; MongoDB hanya bila ada alasan teknis yang jelas (sekarang `analytics` tidak dipanggil web).                                              |
+| D4  | Data analitik: Postgres saja, atau Postgres + MongoDB? | **Diputuskan: Postgres saja** (modul `analytics`, `cmd/seed-analytics`, `pkg/database/mongo.go`, dan layanan mongodb dihapus). Semula: satu sumber per jenis data. Rekomendasi: Postgres untuk semua data transaksional dan agregat; MongoDB hanya bila ada alasan teknis yang jelas (sekarang `analytics` tidak dipanggil web).                                              |
 | D5  | Domain email akun demo                                 | Pilih satu (`@gardainflasi.id` sudah di seed) dan seragamkan test, `env.example`, OpenAPI, dokumentasi.                                                                                                                                |
 | D6  | Penyimpanan time-series (harga, cuaca, suhu, audit)    | Partisi deklaratif Postgres per bulan (tanpa ekstensi tambahan) dulu; TimescaleDB bila volume memaksa.                                                                                                                                 |
 
@@ -121,38 +121,38 @@ Urutan semua task (Fase P/F) ada di [00 §6](00-cara-kerja.md). Berikut rincian 
 > **Perubahan dari versi awal berkas ini:** langkah "selaraskan semua modul dengan migrasi" (dulu M1) **tidak lagi dikerjakan terpusat di depan.** Setiap modul diselaraskan di slice `-A`-nya sendiri, dan dibuktikan oleh tes kontrak skema (F0-3) lewat daftar `belumSelaras` yang berkurang satu per slice.
 
 ### F0-1 — Dev proxy dan alur lokal
-- [ ] Tambah `rewrites` di [next.config.ts](../../apps/web/next.config.ts): `/api/v1/:path*` → `${GO_API_BASE_URL}/:path*` (hanya dev). Tanpa ini, `NEXT_PUBLIC_API_BASE_URL=/api` memberi 404 pada `make dev/web` karena Caddy tidak berjalan.
-- [ ] Makefile: `db/seed/reference`, `db/seed/demo`, `db/seed/admin` (sekarang hanya `db/seed`); perluas `test/api/integration` agar mencakup semua paket integrasi.
-- [ ] README akar: alur lokal `docker/infra/up → db/migrate → db/seed/* → dev/api → dev/web`.
+- [x] Tambah `rewrites` di [next.config.ts](../../apps/web/next.config.ts): `/api/v1/:path*` → `${GO_API_BASE_URL}/:path*` (hanya dev). Tanpa ini, `NEXT_PUBLIC_API_BASE_URL=/api` memberi 404 pada `make dev/web` karena Caddy tidak berjalan.
+- [x] Makefile: `db/seed/reference`, `db/seed/demo`, `db/seed/admin` (sekarang hanya `db/seed`); perluas `test/api/integration` agar mencakup semua paket integrasi.
+- [x] README akar: alur lokal `docker/infra/up → db/migrate → db/seed/* → dev/api → dev/web`.
 
 ### F0-2 — Domain email dan 4 tes cold-storage
-- [ ] Pilih satu domain (seed sudah `@gardainflasi.id`) dan seragamkan di [integration_test.go](../../apps/api/internal/cold-storage/integration/integration_test.go) (baris 258–263), `env.example`, `packages/contracts/openapi.yaml`, serta tes lain yang memakai `@garda-inflasi.id`.
-- [ ] `go test ./internal/cold-storage/...` hijau.
+- [x] Pilih satu domain (seed sudah `@gardainflasi.id`) dan seragamkan di [integration_test.go](../../apps/api/internal/cold-storage/integration/integration_test.go) (baris 258–263), `env.example`, `packages/contracts/openapi.yaml`, serta tes lain yang memakai `@garda-inflasi.id`.
+- [x] `go test ./internal/cold-storage/...` hijau.
 
 ### F0-3 — Tes kontrak skema
-- [ ] Paket tes (dockertest) yang: (1) menerapkan semua migrasi memakai library `github.com/pressly/goose/v3` (ganti `splitGoose` buatan sendiri di tes), (2) mengambil daftar entity ber-`TableName()`, (3) membandingkan tabel, kolom, dan kompatibilitas tipe dengan `information_schema`.
-- [ ] **Daftar `belumSelaras`**: peta `modul → alasan` berisi modul yang saat ini terbukti tidak cocok (`ews`, `harga`, `intervensi`, `lapangan`, `policy-brief`, `prediksi`, `siklus`, `spasial`, `sumber-data`, plus tabel fiktif dashboard). Modul di daftar ini dilewati dengan peringatan; modul di luar daftar harus lulus. Menghapus entri dari daftar adalah bagian DoD tiap slice `-A`.
-- [ ] Tes gagal bila modul di `belumSelaras` ternyata sudah cocok (agar daftar tidak basi).
-- [ ] CI: jalankan `up → down → up` pada DB kosong.
+- [x] Paket tes (dockertest) yang: (1) menerapkan semua migrasi memakai library `github.com/pressly/goose/v3` (ganti `splitGoose` buatan sendiri di tes), (2) mengambil daftar entity ber-`TableName()`, (3) membandingkan tabel, kolom, dan kompatibilitas tipe dengan `information_schema`.
+- [x] **Daftar `belumSelaras`**: peta `modul → alasan` berisi modul yang saat ini terbukti tidak cocok (`ews`, `harga`, `intervensi`, `lapangan`, `policy-brief`, `prediksi`, `siklus`, `spasial`, `sumber-data`, plus tabel fiktif dashboard). Modul di daftar ini dilewati dengan peringatan; modul di luar daftar harus lulus. Menghapus entri dari daftar adalah bagian DoD tiap slice `-A`.
+- [x] Tes gagal bila modul di `belumSelaras` ternyata sudah cocok (agar daftar tidak basi).
+- [x] `up → down → up` pada DB kosong diuji (`TestMigrationsApplyUpDownUp`); berkas CI sendiri belum ada ([18 §F](18-platform-lintas-fitur.md)).
 
 ### F0-4 — Seeder kit
-- [ ] Paket `internal/seedkit`: antarmuka `Seeder { Name; Tier; DependsOn; Run(ctx, db, now) }`, registry, pengurut topologis, ringkasan hasil.
-- [ ] `cmd/seed` menerima subperintah `reference | admin | demo | all` dan menolak `demo` bila `APP_ENV=production`.
-- [ ] Pindahkan seeder cold-storage ke registry (fasilitas = `reference`, lot = `demo`; lihat [13](13-cold-storage.md)).
-- [ ] Putuskan nasib `cmd/seed-analytics` (MongoDB): idempoten dan masuk registry, atau dihapus bila D4 memutuskan tanpa Mongo.
-- [ ] Tes: menjalankan seeder dua kali tidak menambah baris; `demo` menolak produksi.
+- [x] Paket `internal/seedkit`: antarmuka `Seeder { Name; Tier; DependsOn; Run(ctx, db, now) }`, registry, pengurut topologis, ringkasan hasil.
+- [x] `cmd/seed` menerima subperintah `reference | admin | demo | all` dan menolak `demo` bila `APP_ENV=production`.
+- [x] Pindahkan seeder cold-storage ke registry (fasilitas = `reference`, lot = `demo`; lihat [13](13-cold-storage.md)).
+- [x] `cmd/seed-analytics` dihapus bersama modul `analytics` dan MongoDB (D4: Postgres saja).
+- [x] Tes: menjalankan seeder dua kali tidak menambah baris; `demo` menolak produksi.
 
 ### F0-5 — Tes asap seed
-- [ ] Setelah `reference + demo`, setiap endpoint GET utama web dipanggil dengan token peran yang berhak dan harus mengembalikan data tidak kosong. Daftar endpoint bertambah satu per slice `-A`.
+- [x] Kerangka selesai (`internal/platform/smoketest`, kasus cold storage sebagai contoh). Daftar endpoint bertambah satu per slice `-A`: tiap slice menambah `smoke_<modul>_test.go`.
 
 ### F0-6 — Migrasi nyata saat deploy (gerbang produksi)
-- [ ] Sediakan service/image `migrate` (binary goose + `db/migrations`, atau `cmd/migrate` dengan migrasi di-`embed`) di `compose.prod.yaml`, dijalankan sebelum API.
-- [ ] Hapus pola `A && B || echo` di [remote-deploy.sh](../../scripts/deploy/remote-deploy.sh) langkah 6; kegagalan migrasi harus menghentikan deploy. Cetak versi skema terakhir.
-- [ ] Deploy hanya menjalankan seeder `reference` dan `admin`, tidak pernah `demo`.
+- [x] Sediakan service/image `migrate` (binary goose + `db/migrations`, atau `cmd/migrate` dengan migrasi di-`embed`) di `compose.prod.yaml`, dijalankan sebelum API.
+- [x] Hapus pola `A && B || echo` di [remote-deploy.sh](../../scripts/deploy/remote-deploy.sh) langkah 6; kegagalan migrasi harus menghentikan deploy. Cetak versi skema terakhir.
+- [x] Deploy hanya menjalankan seeder `reference` dan `admin`, tidak pernah `demo`.
 
 ### F0-7 — Proteksi CSRF dan cookie
-- [ ] Middleware Go: untuk request ber-cookie (tanpa header `Authorization`) yang mengubah data, wajibkan `Origin`/`Referer` sama dengan origin aplikasi atau header `X-CSRF-Token` yang valid. Saat ini Go tidak memeriksa CSRF sama sekali.
-- [ ] [cookies.ts](../../apps/web/src/lib/bff/cookies.ts) memakai `const isDev = true` permanen, sehingga cookie token tidak pernah `Secure`. Ganti dengan deteksi lingkungan (atau konfigurasi TLS di Caddy) dan tambahkan tes.
+- [x] Middleware Go: untuk request ber-cookie (tanpa header `Authorization`) yang mengubah data, wajibkan `Origin`/`Referer` sama dengan origin aplikasi atau header `X-CSRF-Token` yang valid. Saat ini Go tidak memeriksa CSRF sama sekali.
+- [x] [cookies.ts](../../apps/web/src/lib/bff/cookies.ts) memakai `const isDev = true` permanen, sehingga cookie token tidak pernah `Secure`. Ganti dengan deteksi lingkungan (atau konfigurasi TLS di Caddy) dan tambahkan tes.
 
 ### F1 — Netralkan seed di migrasi 000006 (gerbang produksi)
 Dikerjakan **setelah** 01-A, 02-A, dan 04-A, karena isinya dipindah ke seeder oleh ketiganya:

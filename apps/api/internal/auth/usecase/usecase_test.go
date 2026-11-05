@@ -123,9 +123,9 @@ func (m *mockRepository) GetResetToken(ctx context.Context, tokenHash string) (*
 	return args.Get(0).(*domain.ResetToken), args.Error(1)
 }
 
-func (m *mockRepository) MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error {
-	args := m.Called(ctx, id, usedAt)
-	return args.Error(0)
+func (m *mockRepository) ConsumeResetToken(ctx context.Context, id int64, now time.Time) (bool, error) {
+	args := m.Called(ctx, id, now)
+	return args.Bool(0), args.Error(1)
 }
 
 func (m *mockRepository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {
@@ -594,7 +594,7 @@ func TestResetPassword_Success(t *testing.T) {
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("MarkResetTokenUsed", mock.Anything, int64(1), mock.Anything).Return(nil)
+	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 
 	err := uc.ResetPassword(context.Background(), "valid-token-hash", "NewPass1@")
@@ -657,6 +657,48 @@ func TestResetPassword_UsedToken(t *testing.T) {
 	assert.ErrorIs(t, err, ErrResetTokenInvalid)
 
 	repo.AssertExpectations(t)
+}
+
+func TestResetPassword_TokenClaimedByConcurrentRequest(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
+	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(false, nil)
+
+	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
+
+	assert.ErrorIs(t, err, ErrResetTokenInvalid)
+	repo.AssertNotCalled(t, "UpdateUser", mock.Anything, mock.Anything)
+	repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
+}
+
+func TestResetPassword_WeakPasswordDoesNotConsumeToken(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
+
+	err := uc.ResetPassword(context.Background(), "token", "lemahsekali")
+
+	assert.ErrorIs(t, err, ErrWeakPassword)
+	repo.AssertNotCalled(t, "ConsumeResetToken", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestResetPassword_SessionRevocationFailureIsReported(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
+	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
+	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db mati"))
+
+	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
+
+	require.Error(t, err)
 }
 
 // ── Password Validation Tests ─────────────────────────────────────────

@@ -160,11 +160,15 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	}
 
 	if err := h.uc.ResetPassword(audit.RequestContext(c), req.Token, req.Password); err != nil {
-		switch err {
-		case usecase.ErrResetTokenInvalid, usecase.ErrResetTokenExpired:
-			response.Unauthorized(c, "Token reset tidak valid atau sudah kedaluwarsa")
-		case usecase.ErrWeakPassword:
-			response.BadRequest(c, "Password terlalu lemah")
+		switch {
+		case errors.Is(err, usecase.ErrResetTokenExpired):
+			response.Unauthorized(c, "Tautan atur ulang sudah kedaluwarsa. Minta tautan baru.")
+		case errors.Is(err, usecase.ErrResetTokenInvalid), errors.Is(err, usecase.ErrUserNotFound):
+			response.Unauthorized(c, "Tautan atur ulang tidak valid atau sudah dipakai. Minta tautan baru.")
+		case errors.Is(err, usecase.ErrWeakPassword):
+			response.BadRequest(c, err.Error())
+		case errors.Is(err, usecase.ErrPasswordReuse):
+			response.BadRequest(c, "Password baru tidak boleh sama dengan password lama")
 		default:
 			response.InternalError(c, "Gagal mereset password")
 		}

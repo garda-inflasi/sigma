@@ -23,6 +23,9 @@ type Repository interface {
 	CountRecentFailedAttempts(ctx context.Context, userID string, since time.Time) (int64, error)
 	SaveResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
 	GetResetToken(ctx context.Context, tokenHash string) (*ResetToken, error)
-	MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error
+	// ConsumeResetToken memakai token satu kali secara atomik: berhasil hanya bila token belum dipakai dan
+	// belum kedaluwarsa pada now, lalu menghanguskan token lain milik pengguna yang sama. Mengembalikan
+	// false bila token sudah dipakai (mis. oleh permintaan serentak) atau kedaluwarsa.
+	ConsumeResetToken(ctx context.Context, id int64, now time.Time) (bool, error)
 	BulkUpdateUsers(ctx context.Context, ids []string, action BulkUserAction) (int64, error)
 }

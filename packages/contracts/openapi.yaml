@@ -225,6 +225,11 @@ paths:
   /v1/auth/reset-password:
     post:
       summary: Mereset password dengan token dari email
+      description: |
+        Token berlaku 30 menit dan hanya dapat dipakai satu kali (dipakai secara atomik: permintaan serentak
+        dengan token sama hanya satu yang berhasil). Setelah berhasil, penanda wajib ganti password dimatikan,
+        seluruh sesi lama dicabut, dan token lain milik akun yang sama dihanguskan. Tautan di email mengarah
+        ke halaman web `/reset-password?token=...` (alamat dasar dari env `APP_PUBLIC_URL`).
       operationId: authResetPassword
       tags:
         - Authentication
@@ -242,13 +247,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
         "400":
-          description: Password terlalu lemah
+          description: Password melanggar kebijakan (pesan memuat alasannya) atau sama dengan password lama
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Token reset tidak valid atau sudah kedaluwarsa
+          description: Token tidak valid, sudah dipakai, atau kedaluwarsa (pesan membedakan kedaluwarsa dari tidak valid/terpakai)
           content:
             application/json:
               schema:

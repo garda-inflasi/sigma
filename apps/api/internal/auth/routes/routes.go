@@ -44,6 +44,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		Password: os.Getenv("SMTP_PASSWORD"),
 		From:     os.Getenv("SMTP_FROM"),
 		FromName: "Garda Inflasi",
+		BaseURL:  os.Getenv("APP_PUBLIC_URL"),
 	}
 	if emailCfg.From == "" {
 		emailCfg.From = "noreply@gardainflasi.id"

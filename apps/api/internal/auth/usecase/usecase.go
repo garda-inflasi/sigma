@@ -372,18 +372,25 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 		return ErrPasswordReuse
 	}
 
+	// Token dipakai lebih dulu dan atomik: dua permintaan serentak dengan token yang sama
+	// tidak bisa sama-sama mengganti kata sandi.
+	claimed, err := uc.repo.ConsumeResetToken(ctx, stored.ID, time.Now())
+	if err != nil {
+		return fmt.Errorf("consume reset token: %w", err)
+	}
+	if !claimed {
+		return ErrResetTokenInvalid
+	}
+
 	if err := uc.setPassword(ctx, user, newPassword, false); err != nil {
+		uc.log.Error("reset password: gagal menyimpan kata sandi setelah token dipakai", map[string]interface{}{"user_id": user.ID, "error": err.Error()})
 		return err
 	}
 
-	// Mark token as used
-	now := time.Now()
-	if err := uc.repo.MarkResetTokenUsed(ctx, stored.ID, now); err != nil {
-		uc.log.Warn("reset password: failed to mark token used", map[string]interface{}{"token_id": stored.ID})
-	}
-
 	// Revoke all sessions
-	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, stored.UserID)
+	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, stored.UserID); err != nil {
+		return fmt.Errorf("revoke sessions: %w", err)
+	}
 
 	uc.recordAudit(ctx, stored.UserID, "RESET_PASSWORD", stored.UserID)
 	uc.log.Info("password reset success", map[string]interface{}{"user_id": stored.UserID})

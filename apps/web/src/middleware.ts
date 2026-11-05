@@ -21,7 +21,6 @@ import { ROLES } from "@/lib/rbac/roles";
 // Routes that don't require authentication
 const PUBLIC_ROUTES = [
   "/masuk",
-  "/daftar",
   "/lupa-password",
   "/reset-password",
   "/api/auth/login",

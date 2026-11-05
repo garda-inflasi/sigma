@@ -44,12 +44,12 @@
 
 **Tujuan:** tautan di email reset tidak lagi berujung 404. Tanpa migration.
 
-1. **API**: sudah ada (`POST /v1/auth/reset-password`). Verifikasi masa berlaku dan pemakaian satu kali token.
+1. **API** (selesai): token dipakai atomik (`ConsumeResetToken`), kedaluwarsa dan terpakai dibedakan di pesan, token lain akun yang sama hangus, sesi dicabut; tautan email mengarah ke `/reset-password` (`APP_PUBLIC_URL`).
 2. **FE**
-   - [ ] Halaman `/reset-password` (token dari query, form password baru + konfirmasi, aturan password policy). BFF `/api/auth/reset-password` sudah ada; rute sudah ada di `PUBLIC_ROUTES`.
-   - [ ] Pesan jelas untuk token kedaluwarsa/terpakai, lalu arahkan ke `/masuk`.
-   - [ ] Hapus `/daftar` dari `PUBLIC_ROUTES` bila tidak ada halamannya.
-3. **TES**: komponen form; e2e forgot → reset → login.
+   - [x] Halaman `/reset-password` (token dari query, form password baru + konfirmasi, aturan password policy). BFF `/api/auth/reset-password` sudah ada; rute sudah ada di `PUBLIC_ROUTES`.
+   - [x] Pesan jelas untuk token kedaluwarsa/terpakai, lalu arahkan ke `/masuk`.
+   - [x] Hapus `/daftar` dari `PUBLIC_ROUTES` bila tidak ada halamannya.
+3. **TES** (selesai): logika form (`lib/auth/reset-password.test.ts`) dan alur reset → login di integrasi Go. Form `lupa-password` diperbaiki agar memanggil BFF `/api/auth/forgot-password` (sebelumnya endpoint salah). E2E browser belum ada.
 
 ---
 

@@ -149,11 +149,32 @@ func (r *Repository) GetResetToken(ctx context.Context, tokenHash string) (*doma
 	return &rt, nil
 }
 
-func (r *Repository) MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error {
-	return r.db.WithContext(ctx).Exec(
-		"UPDATE password_reset_tokens SET used_at = ? WHERE id = ?",
-		usedAt, id,
-	).Error
+func (r *Repository) ConsumeResetToken(ctx context.Context, id int64, now time.Time) (bool, error) {
+	var claimed bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var userIDs []string
+		if err := tx.Raw(
+			"UPDATE password_reset_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ? RETURNING user_id",
+			now, id, now,
+		).Scan(&userIDs).Error; err != nil {
+			return fmt.Errorf("pakai token reset: %w", err)
+		}
+		if len(userIDs) == 0 {
+			return nil
+		}
+		claimed = true
+		if err := tx.Exec(
+			"UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+			now, userIDs[0],
+		).Error; err != nil {
+			return fmt.Errorf("hanguskan token reset lain: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return claimed, nil
 }
 
 // ── Revoke All User Refresh Tokens ────────────────────────────────────

@@ -125,6 +125,83 @@ export function geometriKeFeatureCollection(
   };
 }
 
+/** Isian optimasi rute; nilai kosong memakai bawaan server. */
+export interface OptimasiParams {
+  komoditasKode: string;
+  /** Tambahan/kurangan surplus (ton) per wilayah untuk simulasi skenario; tidak dapat disimpan. */
+  penyesuaian?: { kabupatenKode: string; ton: number }[];
+  maksJamTempuh?: number;
+  simpan?: boolean;
+}
+
+export interface OptimasiResponse {
+  komoditas_kode: string;
+  komoditas_nama: string;
+  periode: string;
+  rute: {
+    asal_kode: string;
+    asal: string;
+    tujuan_kode: string;
+    tujuan: string;
+    volume_ton: number;
+    jarak_km: number;
+    jam_tempuh: number;
+    biaya: number;
+  }[];
+  total_volume_ton: number;
+  total_biaya: number;
+  belum_terpenuhi: { kode: string; nama: string; ton: number }[];
+  surplus_sisa: { kode: string; nama: string; ton: number }[];
+  optimasi_id: string | null;
+}
+
+export interface RencanaOptimasi {
+  komoditasNama: string;
+  periode: string;
+  rute: Rute[];
+  totalVolumeTon: number;
+  totalBiaya: number;
+  /** Defisit yang tidak tertutup: nama wilayah dan ton. */
+  belumTerpenuhi: { kode: string; nama: string; ton: number }[];
+  surplusSisa: { kode: string; nama: string; ton: number }[];
+  /** Terisi bila rencana disimpan sebagai usulan rute. */
+  optimasiId: string | null;
+}
+
+/** Badan permintaan POST /v1/spasial/optimasi-rute (snake_case, kolom kosong dibuang). */
+export function toOptimasiBody(p: OptimasiParams): Record<string, unknown> {
+  return {
+    komoditas_kode: p.komoditasKode,
+    penyesuaian: p.penyesuaian?.length
+      ? p.penyesuaian.map((a) => ({ kabupaten_kode: a.kabupatenKode, ton: a.ton }))
+      : undefined,
+    maks_jam_tempuh: p.maksJamTempuh || undefined,
+    simpan: p.simpan || undefined,
+  };
+}
+
+export function toRencanaOptimasi(r: OptimasiResponse): RencanaOptimasi {
+  return {
+    komoditasNama: r.komoditas_nama,
+    periode: r.periode,
+    rute: r.rute.map((x) => ({
+      id: `${x.asal_kode}-${x.tujuan_kode}`,
+      asal: formatWilayah(x.asal),
+      tujuan: formatWilayah(x.tujuan),
+      komoditas: r.komoditas_nama,
+      volumeTon: x.volume_ton,
+      jarakKm: x.jarak_km,
+      jamTempuh: x.jam_tempuh,
+      biaya: x.biaya,
+    })),
+    totalVolumeTon: r.total_volume_ton,
+    totalBiaya: r.total_biaya,
+    belumTerpenuhi: r.belum_terpenuhi.map((s) => ({ ...s, nama: formatWilayah(s.nama) })),
+    surplusSisa: r.surplus_sisa.map((s) => ({ ...s, nama: formatWilayah(s.nama) })),
+    optimasiId: r.optimasi_id,
+  };
+}
+
 export function toMarker(r: MarkerResponse): MarkerWilayah {
   return {
     kode: r.kode,

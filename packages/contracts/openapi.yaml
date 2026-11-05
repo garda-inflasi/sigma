@@ -2530,6 +2530,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/spasial/optimasi-rute:
+    post:
+      summary: Menghitung (dan menyimpan) rencana distribusi optimal surplus ke defisit
+      description: |
+        Masalah transportasi min-cost flow atas neraca satu komoditas dan periode: pasokan = wilayah
+        bersurplus, kebutuhan = wilayah berdefisit. Penyelesaian eksak (bukan serakah): volume tersalur
+        dimaksimalkan lebih dulu, lalu ton-km diminimalkan. Jarak memakai cache `jarak_antar_wilayah`
+        (mis. hasil OSRM) bila ada, selain itu jarak garis lurus × `faktor_jalan`; waktu tempuh dihitung
+        pada 45 km/jam. `maks_jam_tempuh` melarang rute yang terlalu lama (komoditas mudah rusak).
+        `penyesuaian` mensimulasikan skenario pasokan (ton positif menambah surplus); skenario tidak
+        dapat disimpan.
+
+        Simulasi memerlukan `spasial.lihat`. `simpan = true` memerlukan `logistik.kelola`: rencana
+        ditulis ke `optimasi_rute`, rute menjadi usulan di `/v1/spasial/rute` (sumber `OPTIMASI`),
+        rencana lama untuk komoditas dan periode yang sama ditandai `DIGANTIKAN`, dan aksi tercatat
+        di audit trail (`OPTIMASI_RUTE`).
+      operationId: optimasiRute
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptimasiRuteRequest"
+      responses:
+        "200":
+          description: Rencana distribusi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimasiRuteResponse"
+        "400":
+          description: Validasi gagal, atau skenario (penyesuaian) disertai `simpan`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`, atau `simpan` tanpa `logistik.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Belum ada neraca untuk komoditas dan periode itu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: Rencana optimasi yang pernah disimpan
+      description: Memerlukan izin `spasial.lihat`. Paling banyak 20 rencana, terbaru dulu.
+      operationId: listOptimasiRute
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar rencana
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RencanaOptimasiListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/spasial/neraca:
     get:
       summary: Neraca surplus/defisit per komoditas dan wilayah
@@ -4960,6 +5034,165 @@ components:
                   geometry:
                     type: object
                     description: GeoJSON Polygon atau MultiPolygon
+
+    OptimasiRuteRequest:
+      type: object
+      required: [komoditas_kode]
+      properties:
+        komoditas_kode:
+          type: string
+          example: CBM-KRT
+        periode:
+          type: string
+          format: date
+          description: Bawaan periode neraca terbaru
+        penyesuaian:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [kabupaten_kode]
+            properties:
+              kabupaten_kode:
+                type: string
+              ton:
+                type: number
+                format: double
+                description: Positif menambah surplus (mengurangi defisit), negatif sebaliknya
+        tarif_per_ton_km:
+          type: number
+          format: double
+          default: 4200
+        faktor_jalan:
+          type: number
+          format: double
+          minimum: 1
+          maximum: 3
+          default: 1.35
+        maks_jam_tempuh:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 240
+          description: 0 = tanpa batas
+        simpan:
+          type: boolean
+          default: false
+
+    OptimasiRuteResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            komoditas_kode:
+              type: string
+            komoditas_nama:
+              type: string
+            periode:
+              type: string
+              format: date
+            rute:
+              type: array
+              items:
+                type: object
+                properties:
+                  asal_kode:
+                    type: string
+                  asal:
+                    type: string
+                  tujuan_kode:
+                    type: string
+                  tujuan:
+                    type: string
+                  volume_ton:
+                    type: number
+                    format: double
+                  jarak_km:
+                    type: number
+                    format: double
+                  jam_tempuh:
+                    type: number
+                    format: double
+                  biaya:
+                    type: integer
+                    format: int64
+            total_volume_ton:
+              type: number
+              format: double
+            total_biaya:
+              type: integer
+              format: int64
+            belum_terpenuhi:
+              type: array
+              description: Defisit yang tidak tertutup
+              items:
+                $ref: "#/components/schemas/SisaWilayah"
+            surplus_sisa:
+              type: array
+              description: Surplus yang tidak tersalurkan
+              items:
+                $ref: "#/components/schemas/SisaWilayah"
+            optimasi_id:
+              type: string
+              nullable: true
+              description: Terisi bila rencana disimpan
+
+    SisaWilayah:
+      type: object
+      properties:
+        kode:
+          type: string
+        nama:
+          type: string
+        ton:
+          type: number
+          format: double
+
+    RencanaOptimasiListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              komoditas_kode:
+                type: string
+              komoditas_nama:
+                type: string
+              periode:
+                type: string
+                format: date
+              total_volume_ton:
+                type: number
+                format: double
+              total_biaya:
+                type: integer
+                format: int64
+              belum_terpenuhi_ton:
+                type: number
+                format: double
+              dibuat_oleh:
+                type: string
+                nullable: true
+              dibuat_pada:
+                type: string
+                format: date-time
 
     SpasialLokasiResponse:
       type: object

@@ -23,7 +23,7 @@ import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekut
 import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
 import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
 import { toKartu, type KartuResponse } from "./intervensi";
-import { toGeometri, toKandidat, toMarker, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
+import { toGeometri, toKandidat, toMarker, toOptimasiBody, toRencanaOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
 import {
@@ -93,6 +93,11 @@ export const api = {
       MODE_MOCK ? mockDelay(mockBarisModel) : apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel)),
   },
   spasial: {
+    /** Rencana distribusi optimal surplus → defisit; `simpan` menulisnya sebagai usulan rute. */
+    optimasi: (p: OptimasiParams): Promise<RencanaOptimasi> =>
+      MODE_MOCK
+        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], optimasiId: null }), 400, 800)
+        : apiFetch<OptimasiResponse>("/v1/spasial/optimasi-rute", { method: "POST", body: JSON.stringify(toOptimasiBody(p)) }).then(toRencanaOptimasi),
     /** Poligon wilayah (perkiraan pada data demo); mode mock tidak punya geometri. */
     geometri: (zoom: number): Promise<GeometriWilayah[]> =>
       MODE_MOCK ? mockDelay(() => []) : apiFetch<GeometriResponse>(`/v1/spasial/geometri?zoom=${zoom}`).then(toGeometri),

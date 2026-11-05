@@ -10,6 +10,7 @@ import type { HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { TransaksiPayload } from "@/lib/api/cold-storage";
+import type { OptimasiParams } from "@/lib/api/spasial";
 import type { StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
@@ -29,6 +30,22 @@ export const useHeatmap = () => useQuery({ queryKey: qk.operasional.heatmap(), q
 export const useAktivitasLapangan = () => useQuery({ queryKey: qk.operasional.aktivitas(), queryFn: api.operasional.aktivitas, refetchInterval: LIVE });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
 export const useRuteDistribusi = () => useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
+/** Menghitung rencana distribusi; bila disimpan, daftar rute disegarkan. */
+export function useOptimasiRute() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: OptimasiParams) => api.spasial.optimasi(p),
+    onSuccess: (res) => {
+      if (res.optimasiId) {
+        qc.invalidateQueries({ queryKey: qk.spasial.rute() });
+        toast.success("Rencana disimpan sebagai usulan rute", { description: "Tercatat di audit trail." });
+      }
+    },
+    onError: (err) => {
+      toast.error("Optimasi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 export const useGeometriWilayah = (zoom: number) =>
   useQuery({ queryKey: qk.spasial.geometri(zoom), queryFn: () => api.spasial.geometri(zoom), staleTime: 60 * 60_000 });
 export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });

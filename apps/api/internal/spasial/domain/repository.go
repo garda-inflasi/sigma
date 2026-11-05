@@ -15,3 +15,18 @@ type Repository interface {
 	// diberikan, hanya yang kotak pembatasnya beririsan.
 	ListGeometri(ctx context.Context, bbox *BBox) ([]GeometriWilayah, error)
 }
+
+// OptimasiRepository adalah akses data untuk optimasi rute.
+type OptimasiRepository interface {
+	// ListMarker dipakai untuk koordinat pusat wilayah.
+	ListMarker(ctx context.Context) ([]Marker, error)
+	ListNeraca(ctx context.Context, q NeracaQuery) ([]Neraca, error)
+	// ListJarak mengembalikan seluruh cache jarak antar wilayah.
+	ListJarak(ctx context.Context) ([]JarakAntarWilayah, error)
+	// SimpanOptimasi menulis rencana, menandai rute optimasi lama untuk komoditas
+	// dan periode yang sama sebagai DIGANTIKAN, menyisipkan rute baru, dan mengisi
+	// cache jarak (pasangan yang sudah ada tidak ditimpa) dalam satu transaksi.
+	SimpanOptimasi(ctx context.Context, rencana OptimasiRute, rute []RuteDistribusi, jarak []JarakAntarWilayah) error
+	// ListOptimasi mengembalikan rencana tersimpan, terbaru lebih dulu.
+	ListOptimasi(ctx context.Context, limit int) ([]RencanaOptimasi, error)
+}

@@ -9,6 +9,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { RegionMap } from "@/components/map/region-map";
+import { OptimasiPanel } from "./optimasi-panel";
 import { exportCsv } from "@/lib/csv";
 import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
 import { useGeometriWilayah, useKandidatColdStorage, useMarkerWilayah, useRuteDistribusi } from "@/lib/query/hooks";
@@ -56,6 +57,7 @@ export function PetaPage() {
           </ul>
         </section>
       </div>
+      <OptimasiPanel markers={markers ?? []} />
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="space-y-3 xl:col-span-8">
           <PanelTitle title="Rekomendasi rute distribusi" description="Biaya dihitung Rp4.200/ton-km dengan faktor jalan 1,35" />

@@ -52,8 +52,9 @@
 
 ## 12-C — Optimasi rute dan skenario *(Fase F, gelombang F-5, PRD P1)*
 
-- [ ] Matriks jarak jalan nyata (OSRM/OpenRouteService) di-cache di `jarak_antar_wilayah` (migration).
-- [ ] Optimasi rute dan biaya logistik: model transportasi/min-cost flow (OR-Tools), lalu kendala kapasitas dan waktu.
-- [ ] Skor kandidat cold storage: jarak ke sentra produksi, volume surplus, kapasitas listrik, akses jalan.
-- [ ] Simulasi skenario pasokan, cuaca, dan kebijakan pada peta (what-if); filter komoditas dan periode; klik wilayah → detail (tren, EWS, stok terdekat).
-- [ ] Tes optimasi dengan kasus kecil yang jawabannya diketahui; tes komponen peta (data kosong dan sangat banyak titik).
+- [x] Cache matriks jarak `jarak_antar_wilayah` (migrasi `000102_12c_optimasi_rute.sql`): `ESTIMASI` (garis lurus × faktor jalan 1,35, 45 km/jam) diisi saat rencana disimpan; `OSRM` disediakan untuk impor jarak jalan nyata dan tidak ditimpa estimasi. **Impor OSRM/OpenRouteService belum ada** (butuh layanan routing eksternal).
+- [x] Optimasi rute dan biaya logistik: model transportasi min-cost flow eksak (successive shortest path, murni Go, `internal/spasial/domain/optimasi.go`; bukan OR-Tools). Kapasitas = surplus/defisit `neraca_wilayah`; kendala waktu = `maks_jam_tempuh`. Volume tersalur dimaksimalkan lebih dulu, lalu ton-km diminimalkan. Kendala kapasitas kendaraan belum dimodelkan.
+- [x] API: `POST /v1/spasial/optimasi-rute` (simulasi `spasial.lihat`; `simpan` butuh `logistik.kelola`, menulis `optimasi_rute` + rute usulan `sumber = OPTIMASI`, menggantikan rencana lama komoditas/periode yang sama, audit `OPTIMASI_RUTE`), `GET /v1/spasial/optimasi-rute` (riwayat).
+- [ ] Skor kandidat cold storage: jarak ke sentra produksi, volume surplus, kapasitas listrik, akses jalan (data kapasitas listrik/akses jalan belum ada; skor demo tetap statis).
+- [x] Simulasi skenario pasokan (what-if) lewat `penyesuaian` per wilayah (ton) di panel optimasi `/peta`; skenario tidak dapat disimpan. Skenario cuaca/kebijakan, filter periode di UI, dan klik wilayah → detail (tren, EWS, stok terdekat) belum ada.
+- [x] Tes optimasi: kasus hitung tangan (kalahkan serakah 40 vs 1010 ton-km, 450 ton-km seimbang, pasokan kurang, batas waktu, resolusi 0,1 ton), 300 instans acak dibandingkan brute force, kendala kapasitas; usecase dan integrasi (izin, validasi, simpan/gantikan, cache jarak, migrasi Up/Down). Tes komponen peta (data kosong/banyak titik) belum ada.

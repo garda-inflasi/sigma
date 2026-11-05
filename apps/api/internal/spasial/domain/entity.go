@@ -69,6 +69,8 @@ type RuteDistribusi struct {
 	Status        string    `gorm:"column:status"`
 	Sumber        string    `gorm:"column:sumber"`
 	DibuatPada    time.Time `gorm:"column:dibuat_pada;default:now()"`
+	// OptimasiID menunjuk rencana optimasi yang menghasilkan rute ini (kosong untuk rute lain).
+	OptimasiID *string `gorm:"column:optimasi_id"`
 }
 
 func (RuteDistribusi) TableName() string { return "rute_distribusi" }
@@ -157,4 +159,48 @@ type LokasiWilayah struct {
 	DiDalam bool
 	// JarakPusatKm adalah jarak garis lurus titik ke titik pusat wilayah.
 	JarakPusatKm float64
+}
+
+// Sumber rute dan status rute yang terkait optimasi.
+const (
+	SumberRuteOptimasi   = "OPTIMASI"
+	StatusRuteUsulan     = "USULAN"
+	StatusRuteDigantikan = "DIGANTIKAN"
+	// SumberJarakEstimasi menandai jarak garis lurus x faktor jalan.
+	SumberJarakEstimasi = "ESTIMASI"
+)
+
+// JarakAntarWilayah memetakan tabel jarak_antar_wilayah (cache matriks jarak).
+type JarakAntarWilayah struct {
+	AsalKode       string    `gorm:"column:asal_kode;primaryKey"`
+	TujuanKode     string    `gorm:"column:tujuan_kode;primaryKey"`
+	JarakKm        float64   `gorm:"column:jarak_km"`
+	JamTempuh      float64   `gorm:"column:jam_tempuh"`
+	Sumber         string    `gorm:"column:sumber"`
+	DiperbaruiPada time.Time `gorm:"column:diperbarui_pada;default:now()"`
+}
+
+func (JarakAntarWilayah) TableName() string { return "jarak_antar_wilayah" }
+
+// OptimasiRute memetakan tabel optimasi_rute: satu rencana distribusi yang disimpan.
+// Parameter adalah dokumen JSON parameter yang dipakai.
+type OptimasiRute struct {
+	ID                string    `gorm:"column:id;primaryKey"`
+	KomoditasKode     string    `gorm:"column:komoditas_kode"`
+	Periode           time.Time `gorm:"column:periode"`
+	Parameter         string    `gorm:"column:parameter;type:jsonb"`
+	TotalVolumeTon    float64   `gorm:"column:total_volume_ton"`
+	TotalBiaya        int64     `gorm:"column:total_biaya"`
+	BelumTerpenuhiTon float64   `gorm:"column:belum_terpenuhi_ton"`
+	DibuatOleh        *string   `gorm:"column:dibuat_oleh"`
+	DibuatPada        time.Time `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (OptimasiRute) TableName() string { return "optimasi_rute" }
+
+// RencanaOptimasi adalah rencana tersimpan beserta nama komoditas dan pembuatnya.
+type RencanaOptimasi struct {
+	OptimasiRute
+	KomoditasNama  string
+	DibuatOlehNama *string
 }

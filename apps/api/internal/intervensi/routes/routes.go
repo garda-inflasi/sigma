@@ -20,7 +20,7 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
+	uc := usecase.New(repo, repo, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
 	group := engine.Group("/intervensi")
@@ -29,6 +29,13 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		group.GET("", middleware.RequirePermission("intervensi.lihat"), handler.List)
 		group.GET("/tahap", middleware.RequirePermission("intervensi.lihat"), handler.ListTahap)
 		group.POST("", middleware.RequirePermission("intervensi.kelola"), handler.Create)
+		group.GET("/alur", middleware.RequirePermission("intervensi.lihat"), handler.ListAlur)
+		group.GET("/persetujuan", middleware.RequirePermission("intervensi.lihat"), handler.ListPersetujuan)
+		group.POST("/:id/persetujuan", middleware.RequirePermission("intervensi.kelola"), handler.Ajukan)
+		group.POST("/persetujuan/:pid/keputusan",
+			middleware.RequireAnyPermission("intervensi.setujui", "intervensi.setujui_fiskal"), handler.Putus)
+		group.POST("/bulk", middleware.RequirePermission("intervensi.kelola"), handler.Bulk)
+		group.GET("/:id/riwayat", middleware.RequirePermission("intervensi.lihat"), handler.ListRiwayat)
 		// Peran penyetuju memindahkan kartu ke tahap persetujuan tanpa izin kelola;
 		// izin yang tepat menurut tahap tujuan diperiksa di usecase.
 		group.PATCH("/:id/tahap",

@@ -79,8 +79,12 @@
 	# Declared before the general /api/* rule for readability; Caddy
 	# evaluates handle directives by most-specific-path match, so
 	# /api/v1/* always wins over /api/* regardless of order.
+	# flush_interval -1: teruskan tiap byte segera, jangan di-buffer. Wajib untuk SSE
+	# (GET /api/v1/ews/stream); tanpa ini event alert tertahan di proxy.
 	handle_path /api/v1/* {
-		reverse_proxy api:8080
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
 	}
 
 	# ── BFF routes (Next.js API Route Handlers) ────────────────────

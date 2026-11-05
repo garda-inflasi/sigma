@@ -9,7 +9,7 @@
 - **API Go:** `GET /v1/ews` (filter `status`/`severity`/`jenis`/`kabupaten_kode`, paginasi `page`/`limit`, header `X-Total-Count`), `GET /v1/ews/:id`, `GET /v1/ews/aturan` (`ews.lihat`), dan `POST /v1/ews/bulk` (`ews.akui`; `eskalasi` menuntut `ews.eskalasi`; hanya transisi sah, dicatat di audit). Tes usecase, seeder, integrasi (Postgres sungguhan), dan asap.
 - **Skema:** `ews_alert` (`id` VARCHAR, `severity`, `jenis`, `judul`, `pesan`, `komoditas_kode`, `kabupaten_kode`, `nilai`, `satuan_nilai`, `skor_dampak`, `status`, `sumber`, `dibuat_pada`, `diakui_*`, `aturan_id`) dan `aturan_ews` (ambang, `jendela_hari`, `kanal`, `aktif`, `keterangan`, `CHECK` waspada < siaga < kritis); entity cocok (migrasi 000030). Seeder `ews.reference` (9 aturan: pilot x lonjakan harga/stok/cuaca) dan `ews.demo` (17 alert).
 - **Web:** `/ews` membaca alert dan aturan dari API (`lib/api/ews.ts`); simulasi acak hanya di `MODE_MOCK`. Ambang tampil baca-saja sampai 10-B.
-- **Yang tidak ada:** pembuat alert (tidak ada deteksi lonjakan/anomali), `GET /v1/ews/stream` (SSE), Redis pub/sub di Go.
+- **Yang belum ada:** deteksi anomali statistik/ML, WhatsApp. Rule engine (10-B), SSE (10-C), dan notifikasi email/push (10-D) sudah ada.
 
 ---
 
@@ -33,38 +33,44 @@
 
 ---
 
-## 10-B — Rule engine dan deteksi anomali *(Fase F, gelombang F-2)*
+## 10-B — Rule engine dan deteksi anomali *(Fase F, gelombang F-2)* — ✅ rule engine (z-score/ML belum)
 
 **Tujuan:** alert dibuat otomatis dari data harga, bukan hanya seed.
 **Bergantung pada:** 10-A, 06-A.
 
-1. **MIG**
-   - [ ] `ews_alert`: `dedup_key` dengan UNIQUE parsial `WHERE status <> 'SELESAI'`, `dieskalasi_pada`/`dieskalasi_oleh`, `selesai_pada`.
-   - [ ] `ews_riwayat` (`alert_id`, `dari`, `ke`, `oleh`, `waktu`, `catatan`).
-   - [ ] `aturan_ews`: `kabupaten_kode` opsional, `versi`, `diubah_oleh`, `diubah_pada` + riwayat perubahan ambang.
-   - [ ] Index `(status, severity, dibuat_pada DESC)`, `(komoditas_kode, kabupaten_kode, dibuat_pada DESC)`.
+1. **MIG** (`000070_10b_ews_rule_engine.sql`)
+   - [x] `ews_alert`: `dedup_key` dengan UNIQUE parsial `WHERE status <> 'SELESAI'`, `dieskalasi_pada`/`dieskalasi_oleh_id`, `selesai_pada`, sequence id `EWS-2000+`.
+   - [x] `ews_riwayat` (`alert_id`, `dari`, `ke`, `oleh`, `waktu`, `catatan`); aksi massal akui/eskalasi/selesai ikut mencatat.
+   - [x] `aturan_ews`: `kabupaten_kode` opsional, `cooldown_jam`, `versi` (optimistic locking), `diubah_oleh_id`, `diubah_pada`; `aturan_ews_riwayat` menyimpan foto tiap versi.
+   - [x] Index `(status, severity, dibuat_pada DESC)`, `(komoditas_kode, kabupaten_kode, dibuat_pada DESC)`.
 2. **API**
-   - [ ] Mesin aturan terjadwal dan dipicu publikasi harga: lonjakan harga (% harian/mingguan), kelangkaan stok cold storage, deviasi dari harga acuan; peredaman (cooldown) dan deduplikasi.
-   - [ ] CRUD ambang (izin `ews.atur_ambang`); siklus hidup BARU → DIAKUI → DIESKALASI → SELESAI; eskalasi (`ews.eskalasi`).
-   - [ ] Deteksi anomali statistik dulu (z-score musiman/STL); model ML belakangan. Target PRD §12: F1 ≥ 0,88, AUC-ROC ≥ 0,94.
-   - [ ] Alert memicu siklus tekanan ([08-B](08-dashboard-operasional.md)) dan kartu intervensi ([14-C](14-intervensi.md)).
-3. **FE**: UI ubah ambang + simulasi "bagaimana jika" pada data historis.
-4. **TES**: rule engine dengan deret sintetis (lonjakan, plateau, data hilang); evaluasi F1/AUC pada data historis berlabel, hasil disimpan.
+   - [x] `internal/ews/engine`: mengukur data nyata (harga konsumen tervalidasi/dipublikasi: kenaikan 24 jam terakhir vs rata-rata jendela; stok cold storage layak simpan: penurunan vs awal jendela; curah hujan kumulatif) menjadi alert idempoten per kondisi (`jenis|komoditas|kabupaten`), naik tingkat bila memburuk, peredaman (`cooldown_jam`) setelah ditutup. Terjadwal di `cmd/api` (`EWS_EVAL_INTERVAL`, bawaan 15m, `off` mematikan) dan manual `POST /v1/ews/evaluasi` (`ews.atur_ambang`).
+   - [x] `PUT /v1/ews/aturan/:id` (`ews.atur_ambang`, 409 bila versi usang, audit), `GET /v1/ews/:id/riwayat`. Siklus hidup BARU, DIAKUI, DIESKALASI, SELESAI lewat aksi massal (`ews.akui`/`ews.eskalasi`).
+   - [ ] Deteksi anomali statistik (z-score musiman/STL), model ML, evaluasi F1/AUC. Pemicu saat harga dipublikasi, serta pemicu siklus tekanan ([08-B](08-dashboard-operasional.md)): belum.
+   - [x] Kartu intervensi otomatis dari alert: [14-C](14-intervensi.md).
+3. **FE**: dialog ubah ambang (+kanal, jendela, peredaman, aktif) dan tombol "Evaluasi sekarang" untuk peran `ews.atur_ambang`. Simulasi "bagaimana jika": belum.
+4. **TES**: unit engine (ambang, pesan, idempoten, galat), integrasi Postgres (lonjakan, naik tingkat, cooldown, stok, cuaca, aturan nonaktif, optimistic locking, audit, riwayat), seeder (riwayat, reseed tidak menimpa aturan yang sudah diubah).
 
 ---
 
-## 10-C — Real-time (SSE) *(Fase F, gelombang F-2)*
+## 10-C — Real-time (SSE) *(Fase F, gelombang F-2)* — ✅
 
-1. **MIG**: tabel `ews_outbox` (pola outbox) bila memilih `LISTEN/NOTIFY` alih-alih Redis. Redis sudah ada di `compose.infra.yaml`.
-2. **API**: `GET /v1/ews/stream` (SSE, event `alert`) dengan autentikasi cookie/token, heartbeat, `Last-Event-ID`; pub/sub antar instance (Redis).
-3. **FE**: uji `use-ews-stream` dengan SSE nyata (reconnect, tab tidak aktif); feed dashboard ([08-B](08-dashboard-operasional.md)).
-4. **TES**: koneksi, reconnect, event tidak terduplikasi.
+1. **MIG** (`000071_10c_ews_event.sql`): `ews_event` (outbox peristiwa alert, id berurut = `Last-Event-ID`), ditulis dalam transaksi yang sama dengan alert, diserialkan dengan kunci advisory agar id tak pernah terlihat tidak berurutan. Redis tidak jadi sumber kebenaran: hanya membangunkan pembaca.
+2. **API**: `GET /v1/ews/stream` (`ews.lihat`; Bearer atau cookie `garda_access`): event `alert` (alert baru atau naik tingkat), `retry: 5000`, heartbeat `: ping` 25 detik, `Last-Event-ID` (tanpa header mulai dari sekarang), batas tulis server dimatikan per koneksi. Antar-instance: Redis pub/sub (`REDIS_URL`), cadangan polling DB (30 detik dengan Redis, 3 detik tanpa). Peristiwa dibuang setelah 7 hari. Caddy: `flush_interval -1` pada `/api/v1/*`.
+3. **FE**: `use-ews-stream` memetakan payload lewat `toEwsAlert` (`lib/api/ews-stream.ts`), mengganti alert yang sudah ada (naik tingkat) alih-alih menduplikasi, mengumumkan hanya alert baru/naik tingkat, dan menyegarkan daftar setelah tersambung ulang. Feed dashboard [08-B](08-dashboard-operasional.md): belum.
+4. **TES**: Streamer (frame, resume, tanpa duplikat, polling, heartbeat, paginasi), Hub, RedisBus dengan miniredis (dua instance, Redis mati), integrasi HTTP nyata (cookie, 401/403, resume, melewati `WriteTimeout`), logika FE.
 
 ---
 
-## 10-D — Notifikasi multi-kanal *(Fase F, gelombang F-4)*
+## 10-D — Notifikasi multi-kanal *(Fase F, gelombang F-4)* — ✅ email dan push; WhatsApp belum
 
-1. **MIG**: `ews_notifikasi` (`alert_id`, `kanal`, `tujuan`, `status`, `percobaan`, `dikirim_pada`, `galat`), `preferensi_notifikasi` (`user_id`, `kanal`, `severity_min`, `aktif`).
-2. **API**: email (`pkg/email` sudah ada), push (PWA), WhatsApp; retry; preferensi per pengguna/peran; eskalasi otomatis bila tidak diakui dalam N menit.
-3. **FE**: halaman preferensi notifikasi.
-4. **TES**: pengiriman dengan penyedia palsu, retry, eskalasi.
+1. **MIG** (`000072_10d_ews_notifikasi.sql`): `ews_notifikasi` (outbox; UNIQUE `alert x pengguna x kanal` membuat antrean idempoten; status `MENUNGGU`, `TERKIRIM`, `GAGAL`, `DICATAT`), `preferensi_notifikasi` (`pengguna_id`, `kanal`, `severity_min`, `aktif`), `langganan_push`.
+2. **API** (`internal/ews/notifikasi`):
+   - [x] Penerima = pengguna aktif berperan dengan izin `ews.akui`, dibatasi kanal aturan alert (`aturan_ews.kanal`), preferensi (bawaan aktif, minimum SIAGA), dan tingkat alert. Alert yang naik tingkat hanya menotifikasi yang baru memenuhi syarat.
+   - [x] Adaptor yang dapat diganti (`domain.Pengirim`): email SMTP (`pkg/email`, aktif bila `SMTP_HOST`) dan Web Push (aktif bila `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`). Tanpa konfigurasi, tidak ada layanan luar yang dipanggil: baris outbox berstatus `DICATAT`.
+   - [x] Pekerja pengiriman di `cmd/api` (`EWS_NOTIF_INTERVAL`, 30s): klaim dengan lease (aman multi-instance), retry dengan backoff 1m..1j, `GAGAL` setelah 5 percobaan; langganan push yang ditolak (404/410) dibuang.
+   - [x] Eskalasi otomatis alert BARU >= SIAGA yang tidak diakui dalam N menit (`EWS_ESKALASI_MENIT`, bawaan 0 = mati): status DIESKALASI, riwayat oleh sistem, audit.
+   - [x] `GET/PUT /v1/ews/notifikasi/preferensi`, `PUT/DELETE /v1/ews/notifikasi/langganan-push` (`ews.akui`, diaudit).
+   - [ ] WhatsApp: kanal ada di kosakata tetapi belum ada adaptor maupun nomor telepon pengguna. Preferensi per peran (selain per pengguna): belum.
+3. **FE**: kartu "Notifikasi saya" di `/ews` (kanal, tingkat minimum, penanda bila server belum mengonfigurasi pengiriman, tombol aktifkan push + handler push di `sw.js`).
+4. **TES**: service dengan adaptor palsu (kirim, DICATAT, retry/backoff, GAGAL, eskalasi, preferensi), adaptor email (escape, tautan, timeout) dan Web Push terhadap endpoint localhost (enkripsi, VAPID, 410), integrasi Postgres (penerima per peran/preferensi/tingkat, idempoten, lease, eskalasi otomatis, endpoint 401/403/400).

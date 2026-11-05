@@ -22,8 +22,14 @@ import {
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
 import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
-import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
-import { toKartu, type KartuResponse } from "./intervensi";
+import {
+  toEwsAlert, toEwsAturan, toPreferensiBody, toPreferensiView, toUbahAturanBody,
+  type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
+} from "./ews";
+import {
+  toKartu, toPersetujuan,
+  type AksiKartu, type BulkKartuResult, type KartuResponse, type KeputusanPersetujuan, type Persetujuan, type PersetujuanResponse,
+} from "./intervensi";
 import { toGeometri, toKandidat, toMarker, toOptimasiBody, toRencanaOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
@@ -159,12 +165,57 @@ export const api = {
     /** Aturan ambang per komoditas dan jenis, beserta kanal notifikasi. */
     aturan: (): Promise<EwsAturan[]> =>
       MODE_MOCK ? mockDelay(m.mockEwsAturan) : apiFetch<EwsAturanResponse[]>("/v1/ews/aturan").then((rows) => rows.map(toEwsAturan)),
+    /** Mengubah ambang aturan; 409 (ApiError) bila aturan sudah diubah pengguna lain sejak dibaca. */
+    ubahAturan: (id: string, input: UbahAturanInput): Promise<EwsAturan> =>
+      MODE_MOCK
+        ? mockDelay(() => ({ ...m.mockEwsAturan().find((a) => a.id === id)!, ...input, versi: input.versi + 1 }), 200, 400)
+        : apiFetch<EwsAturanResponse>(`/v1/ews/aturan/${id}`, { method: "PUT", body: JSON.stringify(toUbahAturanBody(input)) }).then(toEwsAturan),
+    /** Menjalankan rule engine sekarang (di luar jadwal). */
+    evaluasi: (): Promise<EvaluasiEws> =>
+      MODE_MOCK
+        ? mockDelay({ aturan: 9, diukur: 0, dibuat: 0, dinaikkan: 0, dilewati: 0, diredam: 0, galat: 0 }, 300, 600)
+        : apiFetch<EvaluasiEws>("/v1/ews/evaluasi", { method: "POST" }),
+    /** Preferensi notifikasi milik pengguna yang masuk (bawaan bila belum diatur). */
+    preferensi: (): Promise<PreferensiView> =>
+      MODE_MOCK
+        ? mockDelay<PreferensiView>({ vapidPublicKey: "", preferensi: [{ kanal: "EMAIL", severityMin: "SIAGA", aktif: true, tersedia: false }, { kanal: "PUSH", severityMin: "SIAGA", aktif: true, tersedia: false }] })
+        : apiFetch<PreferensiNotifikasiResponse>("/v1/ews/notifikasi/preferensi").then(toPreferensiView),
+    simpanPreferensi: (prefs: PreferensiNotifikasi[]): Promise<PreferensiView> =>
+      MODE_MOCK
+        ? mockDelay<PreferensiView>({ vapidPublicKey: "", preferensi: prefs }, 200, 400)
+        : apiFetch<PreferensiNotifikasiResponse>("/v1/ews/notifikasi/preferensi", { method: "PUT", body: JSON.stringify(toPreferensiBody(prefs)) }).then(toPreferensiView),
+    /** Mendaftarkan perangkat ini untuk Web Push. */
+    daftarPush: (body: { endpoint: string; p256dh: string; auth: string }) =>
+      MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch("/v1/ews/notifikasi/langganan-push", { method: "PUT", body: JSON.stringify(body) }),
   },
   intervensi: {
     list: (): Promise<KartuIntervensi[]> =>
       MODE_MOCK ? mockDelay(m.mockKanban) : apiFetch<KartuResponse[]>("/v1/intervensi").then((rows) => rows.map(toKartu)),
-    pindah: (id: string, tahap: string, urutan: number) =>
-      MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan }) }),
+    /** Memindahkan kartu; mengembalikan versi baru. 409 (ApiError) bila kartu sudah diubah pengguna lain. */
+    pindah: (id: string, tahap: string, urutan: number, versi: number): Promise<{ versi: number }> =>
+      MODE_MOCK
+        ? mockDelay({ versi: versi + 1 }, 200, 400)
+        : apiFetch<{ versi: number }>(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan, versi }) }),
+    /** Antrean permintaan persetujuan (terbaru dahulu); status kosong = semua. */
+    persetujuan: (status?: Persetujuan["status"]): Promise<Persetujuan[]> =>
+      MODE_MOCK
+        ? mockDelay<Persetujuan[]>([])
+        : apiFetch<PersetujuanResponse[]>(`/v1/intervensi/persetujuan${status ? `?status=${status}` : ""}`).then((rows) => rows.map(toPersetujuan)),
+    /** Meminta persetujuan memindahkan kartu ke tahap persetujuan atau sesudahnya. */
+    ajukan: (id: string, tahapTujuan: string, catatan = ""): Promise<Persetujuan> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Persetujuan membutuhkan backend aktif."))
+        : apiFetch<PersetujuanResponse>(`/v1/intervensi/${id}/persetujuan`, { method: "POST", body: JSON.stringify({ tahap_tujuan: tahapTujuan, catatan }) }).then(toPersetujuan),
+    /** Memutuskan langkah yang menunggu; TOLAK wajib bercatatan. */
+    putus: (id: number, keputusan: KeputusanPersetujuan, catatan = ""): Promise<Persetujuan> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Persetujuan membutuhkan backend aktif."))
+        : apiFetch<PersetujuanResponse>(`/v1/intervensi/persetujuan/${id}/keputusan`, { method: "POST", body: JSON.stringify({ keputusan, catatan }) }).then(toPersetujuan),
+    /** Menugaskan kartu ke pengguna yang masuk, atau mengeskalasinya ke Dewan Pengarah; hasil per kartu. */
+    aksi: (aksi: AksiKartu, ids: string[]): Promise<BulkKartuResult> =>
+      MODE_MOCK
+        ? mockDelay({ berhasil: ids.length, gagal: 0, hasil: ids.map((id) => ({ id, berhasil: true })) }, 300, 600)
+        : apiFetch<BulkKartuResult>("/v1/intervensi/bulk", { method: "POST", body: JSON.stringify({ action: aksi, ids }) }),
   },
   coldStorage: {
     list: listColdStorage,

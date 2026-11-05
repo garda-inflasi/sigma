@@ -1,6 +1,6 @@
 # 14 — Intervensi (kanban 3 siklus) & workflow engine
 
-**Prioritas:** P0 (Fase 3, PRD Layer 4) · **Status:** UI ✅ · Backend 🟡 (daftar, buat, pindah tahap; belum riwayat/konkurensi) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
+**Prioritas:** P0 (Fase 3, PRD Layer 4) · **Status:** UI ✅ · Backend 🟡 (daftar, buat, pindah tahap, riwayat, konkurensi, tugaskan/eskalasi, persetujuan berjenjang, kartu otomatis; what-if/AI belum) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -34,34 +34,38 @@
 
 ---
 
-## 14-B — Izin per tahap, riwayat, konkurensi *(Fase F, gelombang F-2)*
+## 14-B — Izin per tahap, riwayat, konkurensi *(Fase F, gelombang F-2)* — ✅ (komentar/lampiran belum)
 
 **Tujuan:** aturan persetujuan berjenjang ditegakkan di backend dan setiap perpindahan tercatat.
 **Bergantung pada:** 14-A, 03-A.
 
-1. **MIG**
-   - [ ] `intervensi_riwayat` (`kartu_id`, `dari`, `ke`, `oleh`, `waktu`, `alasan`).
-   - [ ] `intervensi`: `versi` INT untuk optimistic locking pada drag-and-drop bersamaan.
-   - [ ] Urutan kartu: indeks pecahan (`urutan` NUMERIC / LexoRank) atau `UNIQUE (siklus, tahap, urutan) DEFERRABLE INITIALLY DEFERRED`.
+1. **MIG** (`000073_14b_intervensi_riwayat_versi.sql`)
+   - [x] `intervensi_riwayat` (`intervensi_id`, `aksi` BUAT/PINDAH_TAHAP/TUGASKAN/ESKALASI, `dari`, `ke`, `oleh` NULL = sistem, `waktu`, `alasan`).
+   - [x] `intervensi`: `versi` INT untuk optimistic locking, `dieskalasi_pada`/`dieskalasi_oleh_id`.
+   - [x] Urutan kartu: tetap nomor bulat yang dinomori ulang dalam transaksi dengan `FOR UPDATE` (cukup untuk konkurensi; indeks pecahan tidak diperlukan).
    - [ ] `intervensi_komentar`, `intervensi_lampiran`.
-2. **SEED** (`demo`): riwayat dan komentar untuk kartu demo.
+2. **SEED** (`demo`): riwayat tiap kartu demo (dibuat di tahap pertama, lalu dipindah sampai tahap sekarang); dibangun ulang tiap seed. Komentar: belum.
 3. **API**
-   - [x] **Tegakkan** (sudah di 14-A, dari `tahap_intervensi_def.izin_dibutuhkan`): tahap "Petakan suplai" dan "Selesai" butuh `intervensi.setujui`; "Dukungan instrumen belanja" hanya `intervensi.setujui_fiskal`. Sekarang route hanya meminta `intervensi.kelola`, jadi aturan hanya hidup di UI.
-   - [ ] Validasi transisi tahap; respons galat jelas; tolak bila `versi` usang; tulis audit.
-   - [ ] Aksi `bulk` dengan hasil per kartu; row scope sesuai peran.
-4. **FE**: dialog buat/ubah kartu (penanggung jawab, tenggat, prioritas); pesan jelas bila drop ditolak (izin atau aturan) alih-alih hanya animasi kembali.
-5. **TES**: izin per tahap (peran × tahap); konkurensi pergeseran; `kanban-store` dan komponen drag-and-drop.
+   - [x] Izin per tahap dari `tahap_intervensi_def.izin_dibutuhkan` (14-A) ditambah aturan berjenjang: pemindahan maju tidak boleh melompati tahap persetujuan yang izinnya tidak dimiliki; galat 403 menyebut tahap dan izinnya.
+   - [x] `PATCH /:id/tahap` wajib `versi`; versi usang 409; respons membawa versi baru; audit sukses dan penolakan.
+   - [x] `POST /v1/intervensi/bulk` (`intervensi.kelola`, field `action`): `tugaskan` (jadikan pemanggil penanggung jawab) dan `eskalasi` (tandai ke Dewan Pengarah, prioritas TINGGI), hasil per kartu, audit. Row scope per peran/wilayah: belum.
+   - [x] `GET /:id/riwayat` (`intervensi.lihat`).
+4. **FE**: "Tugaskan ke saya" dan "Eskalasi ke Dewan Pengarah" memanggil API (tidak lagi toast simulasi), papan memakai dan memperbarui `versi`, 409 memuat ulang papan dengan pesan jelas, pesan izin dari server saat drop ditolak, lencana Eskalasi pada kartu. Dialog buat/ubah kartu: belum.
+5. **TES**: unit usecase (versi, lompat tahap, bulk, riwayat), integrasi Postgres (versi usang 409, dua pemindahan bersamaan tepat satu menang, riwayat hanya saat tahap berganti, hasil bulk per kartu, 401/403/400), seeder, `kanban-store`.
 
 ---
 
-## 14-C — Workflow engine *(Fase F, gelombang F-5; PRD §4)*
+## 14-C — Workflow engine *(Fase F, gelombang F-5; PRD §4)* — ✅ persetujuan berjenjang, kartu otomatis, eskalasi SLA (sebagian)
 
 **Bergantung pada:** 10-B, 08-B.
 
-- [ ] **Pemicu otomatis siklus:** EWS tertentu → siklus Tekanan Harga; over-supply → Surplus; kembali Normal bila indikator pulih.
-- [ ] **Kartu otomatis** dari alert/rekomendasi AI dengan tautan ke sumbernya.
-- [ ] **Task management dan eskalasi:** penugasan otomatis ke unit, tenggat, pengingat, eskalasi bila lewat SLA (`tahap_intervensi_def.sla_hari`).
-- [ ] Definisi alur sebagai data agar bisa diubah tanpa deploy.
-- [ ] Simulasi what-if dan rekomendasi AI + validasi manusia + audit keputusan (PRD §4.3).
-- [ ] Integrasi ke perencanaan APBD/TPID **melalui policy brief** ([15](15-policy-brief.md)), bukan akun TPID/Pemda (mereka bukan pengguna sistem).
-- [ ] `checklist_item` bila checklist menjadi nyata (sekarang hanya dua counter).
+**MIG** (`000074_14c_workflow_persetujuan.sql`): `alur_persetujuan` + `alur_persetujuan_langkah` (definisi alur sebagai data), `intervensi_persetujuan` + `intervensi_persetujuan_langkah` (permintaan, rantai langkah yang disalin saat diajukan, keputusan per langkah), `intervensi.tahap_sejak` (jam SLA tahap), `dibuat_oleh_id` boleh NULL (kartu buatan sistem), UNIQUE satu kartu otomatis per alert. **SEED** `reference`: lima alur (petakan suplai, dukungan fiskal [Dewan Pengarah lalu Kanwil DJPb], dua penutupan, eskalasi), hanya ditambahkan bila belum ada sehingga perubahan lewat data bertahan; `demo`: satu permintaan terbuka (INT-304 ke Dukungan instrumen belanja).
+
+- [x] **Persetujuan berjenjang:** `POST /v1/intervensi/:id/persetujuan` (`intervensi.kelola`) membentuk rantai dari alur tiap tahap persetujuan yang dilalui; `POST /persetujuan/:pid/keputusan` (`intervensi.setujui` atau `setujui_fiskal` menurut langkah) dengan pemisahan tugas (pengaju dan pemutus langkah lain tidak boleh memutus), tolak wajib bercatatan, setuju di langkah akhir memindahkan kartu otomatis; `GET /persetujuan`, `GET /alur`. Semua tercatat di riwayat kartu dan audit. Satu permintaan terbuka per kartu.
+- [x] **Eskalasi nyata:** eskalasi (aksi massal 14-B atau SLA) membuka permintaan telaah Dewan Pengarah; menolaknya mencabut tanda eskalasi.
+- [x] **Kartu otomatis dari alert EWS:** alert >= `INTERVENSI_KARTU_OTOMATIS_MIN` (bawaan SIAGA; lonjakan harga, kelangkaan stok, dan cuaca memicu siklus Tekanan, over-supply memicu Surplus) menjadi kartu di tahap pertama dengan tautan `ews_alert_id`, tenggat dari SLA tahap pertama, ditugasi otomatis ke peran MANAJER_PROGRAM; idempoten, tidak menggandakan kartu yang sudah ada.
+- [x] **Eskalasi bila lewat SLA:** `INTERVENSI_SLA_INTERVAL` (bawaan mati) mengeskalasi kartu yang lebih lama di tahapnya daripada `sla_hari`.
+- [x] Definisi alur sebagai data (tabel, bukan kode). Antarmuka mengubah alur: belum (lewat basis data).
+- [x] FE: antrean "Menunggu persetujuan" di `/intervensi` (rantai langkah, setujui/tolak dengan catatan), tombol "Ajukan persetujuan" saat drop ditolak karena izin.
+- [ ] Pemicu siklus otomatis (siklus aktif berubah menurut indikator, kembali Normal bila pulih): siklus aktif dihitung modul 08, belum dipicu workflow.
+- [ ] Pengingat tenggat, simulasi what-if, rekomendasi AI + validasi manusia, integrasi ke APBD/TPID lewat policy brief, `checklist_item`.

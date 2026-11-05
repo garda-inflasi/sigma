@@ -3,9 +3,18 @@ package dto
 import "time"
 
 // UpdateTahapRequest memindahkan kartu ke tahap (kode_tahap) dan posisi (indeks dari 0) baru.
+// Versi adalah versi kartu yang dibaca klien (optimistic locking): bila kartu sudah berubah, 409.
 type UpdateTahapRequest struct {
 	Tahap  string `json:"tahap" binding:"required,max=100"`
 	Urutan int    `json:"urutan" binding:"min=0"`
+	Versi  int    `json:"versi" binding:"required,min=1"`
+}
+
+// BulkIntervensiRequest menerapkan satu aksi pada beberapa kartu: "tugaskan" menambahkan
+// pemanggil sebagai penanggung jawab; "eskalasi" mengeskalasi ke Dewan Pengarah.
+type BulkIntervensiRequest struct {
+	Action string   `json:"action" binding:"required,oneof=tugaskan eskalasi"`
+	IDs    []string `json:"ids" binding:"required,min=1,max=100,dive,required"`
 }
 
 // CreateIntervensiRequest membuat kartu baru di tahap pertama siklusnya.
@@ -26,4 +35,21 @@ type ListIntervensiRequest struct {
 	Siklus    string `form:"siklus" binding:"omitempty,oneof=NORMAL TEKANAN SURPLUS"`
 	Tahap     string `form:"tahap" binding:"omitempty,max=100"`
 	Prioritas string `form:"prioritas" binding:"omitempty,oneof=TINGGI SEDANG RENDAH"`
+}
+
+// AjukanPersetujuanRequest meminta persetujuan memindahkan kartu ke tahap tujuan.
+type AjukanPersetujuanRequest struct {
+	TahapTujuan string `json:"tahap_tujuan" binding:"required,max=100"`
+	Catatan     string `json:"catatan" binding:"max=500"`
+}
+
+// PutusPersetujuanRequest memutuskan langkah persetujuan yang sedang menunggu. Penolakan wajib bercatatan.
+type PutusPersetujuanRequest struct {
+	Keputusan string `json:"keputusan" binding:"required,oneof=SETUJU TOLAK"`
+	Catatan   string `json:"catatan" binding:"max=500"`
+}
+
+// ListPersetujuanRequest menyaring permintaan menurut status (opsional).
+type ListPersetujuanRequest struct {
+	Status string `form:"status" binding:"omitempty,oneof=MENUNGGU DISETUJUI DITOLAK"`
 }

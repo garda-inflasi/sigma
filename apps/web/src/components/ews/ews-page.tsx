@@ -1,9 +1,9 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, ChevronsUp, CircleCheckBig, Download } from "lucide-react";
+import { Check, ChevronsUp, CircleCheckBig, Download, Pencil, Play } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import { EwsSummary } from "@/components/eksekutif/exec-side";
@@ -15,16 +15,24 @@ import type { EwsAlert, StatusEws } from "@/lib/data/types";
 import { severityMeta, toneClass, type Severity } from "@/lib/design/tokens";
 import { satuanAmbang } from "@/lib/api/ews";
 import { formatAngka, formatRelatif } from "@/lib/format";
-import { useBulkAction, useEwsAturan, useEwsList } from "@/lib/query/hooks";
+import { SpringButton } from "@/components/garda/spring-button";
+import { useCan } from "@/lib/auth/session-context";
+import type { EwsAturan } from "@/lib/api/ews";
+import { useBulkAction, useEvaluasiEws, useEwsAturan, useEwsList } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
+import { AturanDialog } from "./aturan-dialog";
+import { NotifikasiPreferensi } from "./notifikasi-preferensi";
 import { JENIS_EWS, JenisIcon, formatNilaiEws } from "./ews-meta";
 
 const KANAL_LABEL: Record<string, string> = { DASHBOARD: "Dashboard", PUSH: "Push", EMAIL: "Email", WHATSAPP: "WhatsApp" };
 
-/** Aturan ambang & kanal notifikasi dari basis data. Perubahan ambang menyusul di slice 10-B. */
+/** Aturan ambang & kanal notifikasi dari basis data; dapat diubah oleh peran dengan `ews.atur_ambang`. */
 function AturanAmbang() {
   const { data, isLoading } = useEwsAturan();
+  const bisaAtur = useCan("ews.atur_ambang");
+  const evaluasi = useEvaluasiEws();
+  const [diubah, setDiubah] = useState<EwsAturan | null>(null);
   const aktif = useMemo(() => (data ?? []).filter((a) => a.aktif), [data]);
   const kanal = useMemo(() => [...new Set(aktif.flatMap((a) => a.kanal))], [aktif]);
   return (
@@ -32,20 +40,27 @@ function AturanAmbang() {
       <PanelTitle title="Ambang peringatan" description="Per komoditas dan jenis; satuan menurut jenis (Δ% harga/stok terhadap rata-rata jendela, atau mm hujan)" />
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[420px] text-sm">
-          <thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Aturan</th>{(["WASPADA", "SIAGA", "KRITIS"] as Severity[]).map((s) => <th key={s} className={cn("py-2 font-medium", toneClass[severityMeta[s].tone].text)}>{severityMeta[s].label}</th>)}</tr></thead>
+          <thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Aturan</th>{(["WASPADA", "SIAGA", "KRITIS"] as Severity[]).map((s) => <th key={s} className={cn("py-2 font-medium", toneClass[severityMeta[s].tone].text)}>{severityMeta[s].label}</th>)}{bisaAtur && <th className="w-8" />}</tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={4} className="py-4 text-center text-xs text-muted-foreground">Memuat ambang…</td></tr>}
-            {!isLoading && aktif.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-xs text-muted-foreground">Belum ada aturan ambang aktif.</td></tr>}
+            {isLoading && <tr><td colSpan={bisaAtur ? 5 : 4} className="py-4 text-center text-xs text-muted-foreground">Memuat ambang…</td></tr>}
+            {!isLoading && aktif.length === 0 && <tr><td colSpan={bisaAtur ? 5 : 4} className="py-4 text-center text-xs text-muted-foreground">Belum ada aturan ambang aktif.</td></tr>}
             {aktif.map((a) => (
               <tr key={a.id} className="border-t border-border/60">
                 <td className="py-2.5"><span className="block">{a.komoditasNama ?? "Semua komoditas"}</span><span className="block text-xs text-muted-foreground">{JENIS_EWS[a.jenis].label} · {a.jendelaHari} hari</span></td>
                 {[a.waspada, a.siaga, a.kritis].map((v, j) => <td key={j} className="num py-2.5 text-center">{formatAngka(v)}{satuanAmbang(a.jenis)}</td>)}
+                {bisaAtur && <td className="py-2.5 text-right"><button type="button" aria-label={`Ubah ambang ${a.komoditasNama ?? "semua komoditas"} ${JENIS_EWS[a.jenis].label}`} onClick={() => setDiubah(a)} className="rounded-md p-1 text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"><Pencil className="size-3.5" /></button></td>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {aktif[0] && <p className="mt-3 text-xs text-muted-foreground">{aktif[0].keterangan}</p>}
+      {bisaAtur && (
+        <SpringButton variant="soft" size="sm" className="mt-4" disabled={evaluasi.isPending} onClick={() => evaluasi.mutate()}>
+          <Play /> {evaluasi.isPending ? "Mengevaluasi…" : "Evaluasi sekarang"}
+        </SpringButton>
+      )}
+      <AturanDialog aturan={diubah} onClose={() => setDiubah(null)} />
       <p className="mt-5 text-sm font-medium">Kanal notifikasi</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {kanal.map((k) => <span key={k} className="glass-subtle flex h-9 items-center rounded-xl px-3 text-sm">{KANAL_LABEL[k] ?? k}</span>)}
@@ -132,7 +147,7 @@ export function EwsPage() {
             rowTone={(a) => (a.id === sorot ? "data" : undefined)}
           />
         </div>
-        <div className="xl:col-span-4"><AturanAmbang /></div>
+        <div className="space-y-6 xl:col-span-4"><AturanAmbang /><NotifikasiPreferensi /></div>
       </div>
     </div>
   );

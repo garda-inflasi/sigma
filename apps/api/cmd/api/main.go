@@ -11,6 +11,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
+	ewsjobs "github.com/garda-inflasi/api/internal/ews/jobs"
+	intervensiworkflow "github.com/garda-inflasi/api/internal/intervensi/workflow"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/internal/platform/prodcheck"
 	"github.com/garda-inflasi/api/pkg/database"
@@ -101,13 +103,25 @@ func main() {
 	// Register all other modules
 	modules.RegisterAll(v1, db, log, tokenMgr)
 
-	// Agregat dashboard disegarkan berkala, selain setelah harga divalidasi atau dipublikasi
-	// (yang terakhir tetap di sini). Penyegaran BERKALA dimiliki cmd/worker bila ada:
-	// set API_BACKGROUND_JOBS=false di compose agar API tidak menjalankannya juga.
+	// Pekerjaan latar belakang berhenti bersama server.
+	bgCtx, stopBackground := context.WithCancel(context.Background())
+	defer stopBackground()
+
+	// EWS dan workflow intervensi memakai komponen yang sama dengan route; alert dari evaluasi
+	// manual (POST /v1/ews/evaluasi) ikut menjadi kartu intervensi otomatis.
+	ews := ewsjobs.Shared(db, log)
+	workflow := intervensiworkflow.Shared(db, log)
+	ews.Engine.AddObserver(workflow)
+	// Penerima sinyal SSE selalu di API karena API yang melayani koneksi /v1/ews/stream.
+	go ews.RunStream(bgCtx)
+
+	// Job berkala (refresh dashboard, rule engine dan notifikasi EWS, SLA intervensi) dimiliki
+	// cmd/worker: compose menyetel API_BACKGROUND_JOBS=false. Tanpa worker (mis. make dev/api)
+	// API menjalankannya sendiri. Penyegaran dashboard setelah harga berubah tetap di API.
 	if os.Getenv("API_BACKGROUND_JOBS") != "false" {
-		refreshCtx, stopRefresh := context.WithCancel(context.Background())
-		defer stopRefresh()
-		go refresher.Shared(db, log).Run(refreshCtx, dashboardRefreshInterval)
+		go refresher.Shared(db, log).Run(bgCtx, dashboardRefreshInterval)
+		go ews.RunBerkala(bgCtx)
+		go workflow.Run(bgCtx)
 	} else {
 		log.Info("job berkala dinonaktifkan di API (dimiliki cmd/worker)")
 	}

@@ -33,6 +33,29 @@ x-api-image: &api-image
 x-database-env: &database-env
   DATABASE_URL: "postgres://${DB_USER:-garda}:${DB_PASSWORD:-garda_secret}@postgres:5432/${DB_NAME:-garda_inflasi}?sslmode=disable"
 
+# Pengiriman email (reset kata sandi, notifikasi EWS) dan Web Push. Kosong = tidak dikirim:
+# email menjadi no-op dan notifikasi hanya dicatat di outbox.
+x-notifikasi-env: &notifikasi-env
+  SMTP_HOST: "${SMTP_HOST:-}"
+  SMTP_PORT: "${SMTP_PORT:-587}"
+  SMTP_USERNAME: "${SMTP_USERNAME:-}"
+  SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+  SMTP_FROM: "${SMTP_FROM:-}"
+  VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+  VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+  VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
+  # Origin publik untuk tautan di email (reset kata sandi, notifikasi).
+  APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost}"
+
+# EWS dan workflow intervensi. Job berkalanya (evaluasi, notifikasi, SLA) dijalankan worker;
+# api memakai nilai yang sama untuk evaluasi manual dan kartu otomatis.
+x-ews-env: &ews-env
+  EWS_EVAL_INTERVAL: "${EWS_EVAL_INTERVAL:-15m}"
+  EWS_NOTIF_INTERVAL: "${EWS_NOTIF_INTERVAL:-30s}"
+  EWS_ESKALASI_MENIT: "${EWS_ESKALASI_MENIT:-0}"
+  INTERVENSI_KARTU_OTOMATIS_MIN: "${INTERVENSI_KARTU_OTOMATIS_MIN:-SIAGA}"
+  INTERVENSI_SLA_INTERVAL: "${INTERVENSI_SLA_INTERVAL:-0}"
+
 services:
   migrate:
     <<: *api-image
@@ -84,7 +107,7 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
       DB_NAME: "${DB_NAME:-garda_inflasi}"
       DB_SSLMODE: disable
-      <<: *database-env
+      <<: [*database-env, *notifikasi-env, *ews-env]
       REDIS_URL: "redis://redis:6379"
       # Origin publik yang boleh mengubah data lewat cookie (proteksi CSRF di Go).
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
@@ -103,8 +126,6 @@ services:
       LLM_MODEL: "${LLM_MODEL:-claude-opus-5-5}"
       # production mewajibkan MFA bagi peran wajib; lokal/demo tidak dipaksa (MFA_ENFORCE menimpa).
       MFA_ENFORCE: "${MFA_ENFORCE:-}"
-      # Origin publik untuk tautan di email (reset kata sandi).
-      APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
     depends_on:
@@ -113,8 +134,8 @@ services:
     networks:
       - garda_inflasi_net
 
-  # Job berkala di luar API: refresh materialized view dashboard, perhitungan KPI, dan
-  # penjadwal cron ingestion (bila INGEST_SCHEDULER=on).
+  # Job berkala di luar API: refresh materialized view dashboard, perhitungan KPI, rule engine
+  # dan notifikasi EWS, SLA intervensi, dan penjadwal cron ingestion (bila INGEST_SCHEDULER=on).
   # Interval lewat JOB_<NAMA>_INTERVAL (off = nonaktif). Aman >1 instance (advisory lock).
   worker:
     <<: *api-image
@@ -138,6 +159,9 @@ services:
       BPS_API_KEY: "${BPS_API_KEY:-}"
       INGEST_USER_AGENT: "${INGEST_USER_AGENT:-}"
       INGEST_JEDA_MS: "${INGEST_JEDA_MS:-}"
+      # Sinyal SSE ke api lewat Redis pub/sub (tanpa Redis, api membaca outbox ews_event).
+      REDIS_URL: "redis://redis:6379"
+      <<: [*notifikasi-env, *ews-env]
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
       interval: 30s

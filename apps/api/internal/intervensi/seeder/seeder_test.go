@@ -170,12 +170,52 @@ func TestSeed_IsIdempotent(t *testing.T) {
 		demo, err := SeedDemo(ctx, db, seedNow)
 		require.NoError(t, err)
 		assert.Equal(t, 19, demo.Kartu)
+		assert.Equal(t, 19+jumlahPindah(), demo.Riwayat)
 	}
 
 	assert.EqualValues(t, 16, count(t, db, "tahap_intervensi_def"))
+	assert.EqualValues(t, 19+jumlahPindah(), count(t, db, "intervensi_riwayat"), "riwayat tidak boleh bertambah")
 	assert.EqualValues(t, 19, count(t, db, "intervensi"))
 	_, pj := BuildKartu(seedNow)
 	assert.EqualValues(t, len(pj), count(t, db, "intervensi_pj"), "penanggung jawab tidak boleh bertambah")
+}
+
+// jumlahPindah adalah banyaknya pemindahan tahap pada riwayat demo: tiap kartu dipindah
+// dari tahap pertama sampai tahap sekarang, jadi sebanyak (posisi tahap - 1).
+func jumlahPindah() int {
+	posisi := map[string]int{}
+	n := map[string]int{}
+	for _, t := range tahapSeeds {
+		n[t.siklus]++
+		posisi[t.kode] = n[t.siklus]
+	}
+	total := 0
+	for _, k := range kartuSeeds {
+		total += posisi[k.tahap] - 1
+	}
+	return total
+}
+
+func TestBuildRiwayat_EachCardStartsCreatedAndWalksToItsCurrentTahap(t *testing.T) {
+	kartu, pj := BuildKartu(seedNow)
+	rows := BuildRiwayat(kartu, pj)
+
+	byCard := map[string][]domain.IntervensiRiwayat{}
+	for _, r := range rows {
+		byCard[r.IntervensiID] = append(byCard[r.IntervensiID], r)
+	}
+	for _, k := range kartu {
+		path := byCard[k.ID]
+		require.NotEmpty(t, path, k.ID)
+		assert.Equal(t, domain.AksiBuat, path[0].Aksi, k.ID)
+		last := path[len(path)-1]
+		assert.Equal(t, k.Tahap, *last.Ke, "%s berakhir di tahapnya sekarang", k.ID)
+		for i := 1; i < len(path); i++ {
+			assert.Equal(t, domain.AksiPindahTahap, path[i].Aksi, k.ID)
+			assert.Equal(t, *path[i-1].Ke, *path[i].Dari, "%s: rantai tahap tak putus", k.ID)
+			assert.True(t, path[i].Waktu.After(path[i-1].Waktu), k.ID)
+		}
+	}
 }
 
 func TestSeedDemo_ResetsAssigneesToTheirInitialState(t *testing.T) {

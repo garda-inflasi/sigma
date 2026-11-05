@@ -158,6 +158,8 @@ type kartuRow struct {
 	} `json:"progres"`
 	EwsAlertID      *string `json:"ews_alert_id"`
 	SelesaiPada     *string `json:"selesai_pada"`
+	Versi           int     `json:"versi"`
+	DieskalasiPada  *string `json:"dieskalasi_pada"`
 	PenanggungJawab []struct {
 		ID   string `json:"id"`
 		Nama string `json:"nama"`
@@ -349,8 +351,17 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 
 func TestIntervensi_MoveEnforcesTahapPermissionsAndKeepsOrder(t *testing.T) {
 	s := newSuite(t, "intervensi_move")
+	// versiTerkini memakai versi kartu saat ini (1 bila kartu tidak ada) seperti klien yang baru memuat papan.
+	versiTerkini := func(id string) int {
+		for _, k := range listCards(t, s, "") {
+			if k.ID == id {
+				return k.Versi
+			}
+		}
+		return 1
+	}
 	move := func(email, id, tahap string, urutan int) *httptest.ResponseRecorder {
-		return s.call(t, http.MethodPatch, "/v1/intervensi/"+id+"/tahap", email, map[string]any{"tahap": tahap, "urutan": urutan})
+		return s.call(t, http.MethodPatch, "/v1/intervensi/"+id+"/tahap", email, map[string]any{"tahap": tahap, "urutan": urutan, "versi": versiTerkini(id)})
 	}
 
 	t.Run("pindah antartahap menyisipkan di posisi dan menomori ulang kolom", func(t *testing.T) {

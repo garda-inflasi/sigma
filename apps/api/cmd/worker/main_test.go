@@ -35,15 +35,18 @@ func TestBuildSchedulerRegistersDefaultJobs(t *testing.T) {
 }
 
 func TestBuildDaemonsIngestionOnlyWhenEnabled(t *testing.T) {
-	for _, nilai := range []string{"", "off", "false", "0"} {
+	jumlah := func(nilai string) int {
 		daemons, err := buildDaemons(deps{log: quiet(), getenv: env(map[string]string{"INGEST_SCHEDULER": nilai})})
 		require.NoError(t, err)
-		assert.Empty(t, daemons, "INGEST_SCHEDULER=%q tidak boleh menyalakan penjadwal", nilai)
+		return len(daemons)
+	}
+	dasar := jumlah("")
+	assert.Equal(t, 1, dasar, "job berkala EWS dan intervensi selalu terdaftar")
+	for _, nilai := range []string{"off", "false", "0"} {
+		assert.Equal(t, dasar, jumlah(nilai), "INGEST_SCHEDULER=%q tidak boleh menyalakan penjadwal", nilai)
 	}
 	for _, nilai := range []string{"on", "true", "1", " ON "} {
-		daemons, err := buildDaemons(deps{log: quiet(), getenv: env(map[string]string{"INGEST_SCHEDULER": nilai})})
-		require.NoError(t, err)
-		assert.Len(t, daemons, 1, "INGEST_SCHEDULER=%q", nilai)
+		assert.Equal(t, dasar+1, jumlah(nilai), "INGEST_SCHEDULER=%q", nilai)
 	}
 }
 

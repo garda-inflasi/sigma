@@ -1,7 +1,7 @@
 // Perintah worker menjalankan job berkala di luar proses API: penyegaran
 // agregat dashboard dan perhitungan KPI (job lain mendaftar lewat
-// register_<modul>.go) serta daemon seperti penjadwal cron ingestion
-// (INGEST_SCHEDULER=on). Aman dijalankan lebih dari satu instance: tiap job
+// register_<modul>.go) serta daemon: rule engine dan notifikasi EWS, SLA
+// intervensi, dan penjadwal cron ingestion (INGEST_SCHEDULER=on). Aman dijalankan lebih dari satu instance: tiap job
 // dilindungi advisory lock Postgres, dan eksekusi ingestion dijaga indeks unik
 // satu run BERJALAN per sumber.
 //

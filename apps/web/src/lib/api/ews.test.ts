@@ -3,7 +3,13 @@ import { describe, it } from "node:test";
 import {
   satuanAmbang,
   toEwsAlert,
+  kunciVapidKeBytes,
   toEwsAturan,
+  toLanggananPushBody,
+  toPreferensiBody,
+  toPreferensiView,
+  toUbahAturanBody,
+  validasiAmbang,
   type EwsAlertResponse,
 } from "./ews";
 
@@ -69,16 +75,22 @@ describe("toEwsAturan", () => {
       id: "ATR-LH-CBM-KRT",
       komoditas_kode: "CBM-KRT",
       komoditas_nama: "Cabai merah keriting",
+      kabupaten_kode: null,
       jenis: "LONJAKAN_HARGA",
       ambang_waspada: 8,
       ambang_siaga: 12,
       ambang_kritis: 18,
       jendela_hari: 7,
+      cooldown_jam: 24,
       kanal: ["DASHBOARD", "PUSH"],
       aktif: true,
       keterangan: "Ambang awal",
+      versi: 3,
     });
     assert.deepEqual([row.waspada, row.siaga, row.kritis], [8, 12, 18]);
+    assert.equal(row.versi, 3);
+    assert.equal(row.cooldownJam, 24);
+    assert.equal(row.kabupatenKode, undefined);
     assert.deepEqual(row.kanal, ["DASHBOARD", "PUSH"]);
     assert.equal(row.komoditasNama, "Cabai merah keriting");
   });
@@ -89,5 +101,63 @@ describe("satuanAmbang", () => {
     assert.equal(satuanAmbang("ANOMALI_CUACA"), "mm");
     assert.equal(satuanAmbang("LONJAKAN_HARGA"), "%");
     assert.equal(satuanAmbang("KELANGKAAN_STOK"), "%");
+  });
+});
+
+describe("toUbahAturanBody", () => {
+  it("menerjemahkan masukan formulir ke badan PUT snake_case dengan versi yang dibaca", () => {
+    assert.deepEqual(
+      toUbahAturanBody({ waspada: 5, siaga: 10, kritis: 20, jendelaHari: 7, cooldownJam: 12, kanal: ["EMAIL"], aktif: true, keterangan: "x", versi: 2 }),
+      { versi: 2, ambang_waspada: 5, ambang_siaga: 10, ambang_kritis: 20, jendela_hari: 7, cooldown_jam: 12, kanal: ["EMAIL"], aktif: true, keterangan: "x" },
+    );
+  });
+});
+
+describe("validasiAmbang", () => {
+  it("menerima ambang positif yang menaik", () => {
+    assert.equal(validasiAmbang({ waspada: 1, siaga: 2, kritis: 3 }), null);
+  });
+  it("menolak urutan sama, menurun, nol, dan bukan angka", () => {
+    for (const a of [
+      { waspada: 5, siaga: 5, kritis: 9 },
+      { waspada: 9, siaga: 5, kritis: 1 },
+      { waspada: 0, siaga: 5, kritis: 9 },
+      { waspada: Number.NaN, siaga: 5, kritis: 9 },
+    ]) assert.notEqual(validasiAmbang(a), null);
+  });
+});
+
+describe("preferensi notifikasi", () => {
+  it("memetakan jawaban API ke tampilan dan kembali ke badan PUT", () => {
+    const view = toPreferensiView({
+      preferensi: [
+        { kanal: "EMAIL", severity_min: "SIAGA", aktif: true, tersedia: false },
+        { kanal: "PUSH", severity_min: "KRITIS", aktif: false, tersedia: true },
+      ],
+      vapid_public_key: "BKey",
+    });
+    assert.equal(view.vapidPublicKey, "BKey");
+    assert.deepEqual(view.preferensi[1], { kanal: "PUSH", severityMin: "KRITIS", aktif: false, tersedia: true });
+    assert.deepEqual(toPreferensiBody(view.preferensi), {
+      preferensi: [
+        { kanal: "EMAIL", severity_min: "SIAGA", aktif: true },
+        { kanal: "PUSH", severity_min: "KRITIS", aktif: false },
+      ],
+    });
+  });
+});
+
+describe("langganan push", () => {
+  it("mengambil endpoint dan kunci dari PushSubscription.toJSON()", () => {
+    assert.deepEqual(toLanggananPushBody({ endpoint: "https://push.example/a", keys: { p256dh: "k", auth: "a" } }), { endpoint: "https://push.example/a", p256dh: "k", auth: "a" });
+  });
+  it("menolak langganan yang tidak lengkap", () => {
+    assert.equal(toLanggananPushBody({}), null);
+    assert.equal(toLanggananPushBody({ endpoint: "https://x", keys: { p256dh: "k" } }), null);
+    assert.equal(toLanggananPushBody({ keys: { p256dh: "k", auth: "a" } }), null);
+  });
+  it("mengubah kunci VAPID base64url menjadi bytes", () => {
+    // "AQID_w" = bytes 01 02 03 ff (base64url tanpa padding, memakai '_' )
+    assert.deepEqual([...kunciVapidKeBytes("AQID_w")], [1, 2, 3, 255]);
   });
 });

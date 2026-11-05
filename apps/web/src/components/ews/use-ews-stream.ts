@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { API_BASE, MODE_MOCK } from "@/lib/api/client";
+import { layakDiumumkan, mergeAlert, parseAlertEvent } from "@/lib/api/ews-stream";
 import { randomEws } from "@/lib/api/mock";
 import { useSession } from "@/lib/auth/session-context";
 import type { EwsAlert } from "@/lib/data/types";
@@ -33,7 +34,9 @@ export function useEwsStream() {
     if (!can(role, "ews.lihat")) return;
 
     const handle = (a: EwsAlert) => {
-      qc.setQueryData<EwsAlert[]>(qk.ews.list(), (old) => (old ? [a, ...old] : old));
+      const diumumkan = layakDiumumkan(qc.getQueryData<EwsAlert[]>(qk.ews.list()), a);
+      qc.setQueryData<EwsAlert[]>(qk.ews.list(), (old) => mergeAlert(old, a));
+      if (!diumumkan) return;
       catat(a.id);
       if (severityMeta[a.severity].rank >= 2) {
         notifyEws(a, {
@@ -63,10 +66,24 @@ export function useEwsStream() {
     }
 
     setStatus("menghubungkan");
+    // Cookie sesi ikut terkirim (same-origin). EventSource menyambung ulang sendiri dengan
+    // Last-Event-ID, jadi server melanjutkan tanpa celah atau duplikat.
     const es = new EventSource(`${API_BASE}/v1/ews/stream`, { withCredentials: true });
-    es.onopen = () => setStatus("terhubung");
-    es.onerror = () => setStatus("terputus"); // EventSource menyambung ulang otomatis
-    es.addEventListener("alert", (e) => handle(JSON.parse((e as MessageEvent<string>).data) as EwsAlert));
+    let pernahTerputus = false;
+    es.onopen = () => {
+      setStatus("terhubung");
+      // Perubahan status (diakui pengguna lain, dst.) tidak lewat aliran: segarkan daftar setelah tersambung ulang.
+      if (pernahTerputus) qc.invalidateQueries({ queryKey: qk.ews.list() });
+      pernahTerputus = false;
+    };
+    es.onerror = () => {
+      pernahTerputus = true;
+      setStatus("terputus");
+    };
+    es.addEventListener("alert", (e) => {
+      const alert = parseAlertEvent((e as MessageEvent<string>).data);
+      if (alert) handle(alert);
+    });
     return () => es.close();
   }, [role, qc, router, catat, setStatus]);
 }

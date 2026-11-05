@@ -15,3 +15,41 @@ type BulkEWSRequest struct {
 	Action string   `json:"action" binding:"required,oneof=akui eskalasi selesai"`
 	IDs    []string `json:"ids" binding:"required,min=1,max=500,dive,required"`
 }
+
+// UpdateAturanRequest mengubah ambang suatu aturan. Versi adalah versi yang dibaca
+// klien; permintaan ditolak (409) bila aturan sudah berubah sejak itu.
+type UpdateAturanRequest struct {
+	Versi         int      `json:"versi" binding:"required,min=1"`
+	AmbangWaspada float64  `json:"ambang_waspada" binding:"required,gt=0"`
+	AmbangSiaga   float64  `json:"ambang_siaga" binding:"required,gt=0"`
+	AmbangKritis  float64  `json:"ambang_kritis" binding:"required,gt=0"`
+	JendelaHari   int      `json:"jendela_hari" binding:"required,min=1,max=90"`
+	CooldownJam   int      `json:"cooldown_jam" binding:"min=0,max=720"`
+	Kanal         []string `json:"kanal" binding:"required,min=1,max=4,dive,oneof=DASHBOARD PUSH EMAIL WHATSAPP"`
+	Aktif         *bool    `json:"aktif" binding:"required"`
+	Keterangan    string   `json:"keterangan" binding:"max=500"`
+}
+
+// PreferensiItem mengatur satu kanal notifikasi pengguna.
+type PreferensiItem struct {
+	Kanal       string `json:"kanal" binding:"required,oneof=EMAIL PUSH"`
+	SeverityMin string `json:"severity_min" binding:"required,oneof=INFO WASPADA SIAGA KRITIS"`
+	Aktif       *bool  `json:"aktif" binding:"required"`
+}
+
+// SimpanPreferensiRequest menyimpan preferensi notifikasi milik pengguna yang masuk.
+type SimpanPreferensiRequest struct {
+	Preferensi []PreferensiItem `json:"preferensi" binding:"required,min=1,max=2,dive"`
+}
+
+// DaftarPushRequest adalah langganan Web Push dari PushSubscription.toJSON() browser.
+type DaftarPushRequest struct {
+	Endpoint string `json:"endpoint" binding:"required,url,max=2048"`
+	P256dh   string `json:"p256dh" binding:"required,max=255"`
+	Auth     string `json:"auth" binding:"required,max=255"`
+}
+
+// BatalPushRequest menyebut langganan yang dibatalkan.
+type BatalPushRequest struct {
+	Endpoint string `json:"endpoint" binding:"required,max=2048"`
+}

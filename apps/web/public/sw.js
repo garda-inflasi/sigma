@@ -54,3 +54,32 @@ self.addEventListener("sync", (e) => {
     e.waitUntil(self.clients.matchAll().then((cs) => cs.forEach((c) => c.postMessage("garda:sinkron"))));
   }
 });
+
+/* Web Push: notifikasi alert EWS (payload JSON {title, body, url, tag} dari server). */
+self.addEventListener("push", (e) => {
+  let pesan = {};
+  try {
+    pesan = e.data ? e.data.json() : {};
+  } catch {
+    pesan = { body: e.data ? e.data.text() : "" };
+  }
+  e.waitUntil(
+    self.registration.showNotification(pesan.title || "Garda Inflasi", {
+      body: pesan.body || "",
+      tag: pesan.tag,
+      icon: "/icons/icon-192.png",
+      data: { url: pesan.url || "/ews" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/ews";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+      const buka = cs.find((c) => "focus" in c);
+      return buka ? buka.navigate(url).then((c) => c && c.focus()) : self.clients.openWindow(url);
+    }),
+  );
+});

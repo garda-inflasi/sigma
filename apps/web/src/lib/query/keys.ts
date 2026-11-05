@@ -39,8 +39,8 @@ export const qk = {
     riwayat: (id: string) => ["harga", "riwayat", id] as const,
     ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
   },
-  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const },
-  intervensi: { list: () => ["intervensi", "list"] as const },
+  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const, preferensi: () => ["ews", "preferensi"] as const },
+  intervensi: { list: () => ["intervensi", "list"] as const, persetujuan: () => ["intervensi", "persetujuan"] as const },
   coldStorage: {
     all: () => ["cold-storage"] as const,
     list: (params: ColdStorageParams) => ["cold-storage", "list", params] as const,

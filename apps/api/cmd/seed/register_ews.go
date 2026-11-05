@@ -26,7 +26,7 @@ func init() {
 		DependsOn: []string{"ews.reference", "auth.demo"},
 		Run: func(ctx context.Context, db *gorm.DB, now time.Time) (seedkit.Result, error) {
 			sum, err := ewsseeder.SeedDemo(ctx, db, now)
-			return seedkit.Result{"alert": sum.Alert}, err
+			return seedkit.Result{"alert": sum.Alert, "riwayat": sum.Riwayat}, err
 		},
 	})
 }

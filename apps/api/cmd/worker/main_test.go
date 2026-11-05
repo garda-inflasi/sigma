@@ -28,7 +28,7 @@ func quiet() *logger.Logger { return logger.New(logger.ERROR, os.Stderr) }
 func TestBuildSchedulerRegistersDefaultJobs(t *testing.T) {
 	s, err := buildScheduler(deps{log: quiet(), getenv: env(nil)})
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"dashboard_refresh", "kpi_hitung"}, s.Names())
+	assert.ElementsMatch(t, []string{"auth_pembersihan", "dashboard_refresh", "kpi_hitung"}, s.Names())
 	for _, st := range s.Statuses() {
 		assert.NotEqual(t, "0s", st.Interval, st.Name)
 	}
@@ -91,7 +91,7 @@ func TestRunJobsAgainstMigratedDatabase(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	for _, name := range []string{"dashboard_refresh", "kpi_hitung"} {
+	for _, name := range []string{"dashboard_refresh", "kpi_hitung", "auth_pembersihan"} {
 		ran, err := s.RunOnce(ctx, name)
 		require.NoError(t, err, name)
 		assert.True(t, ran, name)

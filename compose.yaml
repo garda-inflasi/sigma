@@ -138,7 +138,7 @@ services:
     networks:
       - garda_inflasi_net
 
-  # Job berkala di luar API: refresh materialized view dashboard, perhitungan KPI, rule engine
+  # Job berkala di luar API: refresh materialized view dashboard, perhitungan KPI, pembersihan tabel auth, rule engine
   # dan notifikasi EWS, SLA intervensi, dan penjadwal cron ingestion (bila INGEST_SCHEDULER=on).
   # Interval lewat JOB_<NAMA>_INTERVAL (off = nonaktif). Aman >1 instance (advisory lock).
   worker:
@@ -158,6 +158,11 @@ services:
       JOB_DASHBOARD_REFRESH_INTERVAL: "${JOB_DASHBOARD_REFRESH_INTERVAL:-5m}"
       JOB_KPI_HITUNG_INTERVAL: "${JOB_KPI_HITUNG_INTERVAL:-1h}"
       JOB_KPI_HITUNG_BULAN: "${JOB_KPI_HITUNG_BULAN:-2}"
+      # Pembersihan baris auth kedaluwarsa (jwt_blacklist, refresh_tokens, token reset, login_attempts).
+      JOB_AUTH_PEMBERSIHAN_INTERVAL: "${JOB_AUTH_PEMBERSIHAN_INTERVAL:-1h}"
+      JOB_AUTH_PEMBERSIHAN_LOGIN_HARI: "${JOB_AUTH_PEMBERSIHAN_LOGIN_HARI:-90}"
+      JOB_AUTH_PEMBERSIHAN_RESET_HARI: "${JOB_AUTH_PEMBERSIHAN_RESET_HARI:-7}"
+      JOB_AUTH_PEMBERSIHAN_BATCH: "${JOB_AUTH_PEMBERSIHAN_BATCH:-1000}"
       # Penjadwal cron ingestion (PIHPS, BMKG, BPS). Bawaan mati: lokal/demo tidak memanggil internet.
       INGEST_SCHEDULER: "${INGEST_SCHEDULER:-}"
       BPS_API_KEY: "${BPS_API_KEY:-}"

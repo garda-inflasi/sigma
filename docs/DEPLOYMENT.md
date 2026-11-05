@@ -196,6 +196,7 @@ CADDY_TLS=admin@garda.id
 # COMPOSE_PROFILES=backup              # nyalakan container backup terjadwal (§10)
 # JOB_DASHBOARD_REFRESH_INTERVAL=5m    # interval job worker (off = nonaktif)
 # JOB_KPI_HITUNG_INTERVAL=1h
+# JOB_AUTH_PEMBERSIHAN_INTERVAL=1h     # pembersihan baris auth kedaluwarsa (lihat tabel di bawah)
 ENVEOF
 
 ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 'chmod 600 ~/garda-inflasi/.env'
@@ -599,6 +600,10 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `CADDY_SITE_ADDRESS` / `CADDY_TLS` | Domain publik dan email ACME |
 | `COMPOSE_PROFILES` | `backup` untuk backup terjadwal |
 | `JOB_<NAMA>_INTERVAL` | Interval job worker, `off` menonaktifkan |
+| `JOB_AUTH_PEMBERSIHAN_INTERVAL` | Jeda job `auth_pembersihan` yang menghapus baris auth mati: `jwt_blacklist` dan `refresh_tokens` kedaluwarsa, `password_reset_tokens` kedaluwarsa/terpakai, `login_attempts` lama. Bawaan `1h`; `off` menonaktifkan. Tabel tumbuh terus tanpa job ini |
+| `JOB_AUTH_PEMBERSIHAN_LOGIN_HARI` | Masa simpan `login_attempts` dalam hari (bawaan `90`, minimal `1`; `off` = tidak pernah dihapus). Baris yang lebih muda dari 1 hari tidak pernah dihapus karena dipakai penghitungan penguncian akun |
+| `JOB_AUTH_PEMBERSIHAN_RESET_HARI` | Masa simpan token reset sesudah kedaluwarsa/terpakai (bawaan `7`; `0` = langsung). Selama masa ini tautan lama masih dijawab "sudah kedaluwarsa", bukan "tidak valid" |
+| `JOB_AUTH_PEMBERSIHAN_BATCH` | Baris per pernyataan DELETE (bawaan `1000`, maks `100000`); satu putaran memproses paling banyak 500 batch per tabel |
 | `APP_ENV` | `production` di server (dipasang compose.prod.yaml): menolak rahasia bawaan dan menyalakan penegakan MFA |
 | `MFA_ENFORCE` | Menimpa penegakan MFA (`true`/`false`); kosong = ikut `APP_ENV` |
 | `APP_PUBLIC_URL` | Origin publik untuk tautan di email (reset kata sandi) |

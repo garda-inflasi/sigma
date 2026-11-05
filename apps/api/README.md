@@ -122,7 +122,8 @@ supaya API bisa diskalakan tanpa menggandakan job dan job berat tidak mengganggu
   (`pg_try_advisory_xact_lock`) per nama job. Dua instance worker (atau worker + API) tidak pernah
   menjalankan job yang sama bersamaan; yang kalah melewati putaran itu. Lock lepas otomatis bila proses mati.
 - **Interval dari env:** `JOB_<NAMA>_INTERVAL` (durasi Go: `30s`, `5m`, `1h`; `off` menonaktifkan).
-  Bawaan: `JOB_DASHBOARD_REFRESH_INTERVAL=5m`, `JOB_KPI_HITUNG_INTERVAL=1h`, `JOB_KPI_HITUNG_BULAN=2`.
+  Bawaan: `JOB_DASHBOARD_REFRESH_INTERVAL=5m`, `JOB_KPI_HITUNG_INTERVAL=1h`, `JOB_KPI_HITUNG_BULAN=2`,
+  `JOB_AUTH_PEMBERSIHAN_INTERVAL=1h` (+ `JOB_AUTH_PEMBERSIHAN_{LOGIN_HARI=90,RESET_HARI=7,BATCH=1000}`; lihat `cmd/worker/register_auth.go`).
   `WORKER_HEALTH_ADDR` (bawaan `:8081`, `off` mematikan) menyajikan `/healthz` berisi status tiap job.
 - **CLI:** `worker list` mencetak job dan interval efektif; `worker run <job>` menjalankan satu putaran (tetap berlock).
 

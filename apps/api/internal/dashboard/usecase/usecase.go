@@ -50,19 +50,3 @@ func (uc *UseCase) GetHeatmap(ctx context.Context, periode string) (*domain.Heat
 	return data, nil
 }
 
-// ── Eksekutif ─────────────────────────────────────────────────────────
-
-func (uc *UseCase) GetRingkasanEksekutif(ctx context.Context, periode string) (*domain.RingkasanEksekutif, error) {
-	if periode == "" {
-		periode = "bulan_ini"
-	}
-
-	data, err := uc.repo.GetRingkasanEksekutif(ctx, periode)
-	if err != nil {
-		uc.log.Error("dashboard: get ringkasan eksekutif failed", map[string]interface{}{"error": err.Error(), "periode": periode})
-		return nil, fmt.Errorf("get ringkasan eksekutif: %w", err)
-	}
-
-	return data, nil
-}
-

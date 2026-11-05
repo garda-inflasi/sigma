@@ -30,11 +30,6 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		operasional.GET("/heatmap", handler.GetHeatmap)
 	}
 
-	// Eksekutif — requires dashboard.eksekutif permission
-	eksekutif := engine.Group("/dashboard/eksekutif")
-	eksekutif.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("dashboard.eksekutif"))
-	{
-		eksekutif.GET("", handler.GetRingkasanEksekutif)
-	}
+	// Eksekutif: modul internal/eksekutif (GET /dashboard/eksekutif).
 }
 

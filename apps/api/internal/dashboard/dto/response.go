@@ -14,9 +14,3 @@ type HeatmapResponse struct {
 	Sel       []domain.SelHeatmap `json:"sel"`
 }
 
-// ── Eksekutif Responses ───────────────────────────────────────────────
-
-type RingkasanEksekutifResponse struct {
-	Data *domain.RingkasanEksekutif `json:"data"`
-}
-

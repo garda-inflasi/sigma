@@ -237,25 +237,38 @@ export interface MasterPasarRow {
   aktif: boolean;
 }
 
+/** Asal angka dashboard eksekutif; "DEMO" = data contoh, bukan angka resmi. */
+export type SumberAngka = "BPS" | "BI" | "DJPB" | "BAPANAS" | "DEMO";
+
+/** Satu layar eksekutif. Blok null = datanya belum ada (fiskal juga null tanpa izin `fiskal.lihat`). */
 export interface RingkasanEksekutif {
+  /** Benar bila ada angka contoh di salah satu blok; UI wajib menampilkan label demo. */
+  demo: boolean;
   inflasi: {
+    /** Bulan data, ISO lokal (siang hari agar aman dari pergeseran zona waktu). */
+    periode: string;
+    sumber: SumberAngka;
     yoy: number;
     mtm: number;
     ytd: number;
     sasaran: { bawah: number; atas: number };
-    rilis: string;
     seri: { bulan: string; yoy: number }[];
     penyumbang: { nama: string; andil: number }[];
-  };
-  neraca: { komoditasKode: string; nama: string; produksi: number; kebutuhan: number }[];
+  } | null;
+  neraca: {
+    periode: string;
+    sumber: SumberAngka;
+    items: { komoditasKode: string; nama: string; produksi: number; kebutuhan: number }[];
+  } | null;
   fiskal: {
+    sumber: SumberAngka;
     pagu: number;
     realisasi: number;
     skor: number;
     status: "MEMADAI" | "TERBATAS" | "KRITIS";
     perTanggal: string;
     instrumen: { nama: string; pagu: number; realisasi: number }[];
-  };
+  } | null;
   ews: Record<Severity, number>;
   intervensi: Record<Siklus, { aktif: number; selesai: number }>;
   siklusDominan: Siklus;

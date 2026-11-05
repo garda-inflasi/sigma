@@ -6,6 +6,7 @@ import {
   toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
+import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
@@ -40,7 +41,8 @@ export const api = {
       get<ReturnType<typeof m.mockTrenHarga>>(`/v1/harga/tren?komoditas=${kode}&wilayah=${kab}`, () => m.mockTrenHarga(kode, kab)),
   },
   eksekutif: {
-    ringkasan: () => get<RingkasanEksekutif>("/v1/dashboard/eksekutif", m.mockEksekutif),
+    ringkasan: (): Promise<RingkasanEksekutif> =>
+      MODE_MOCK ? mockDelay(m.mockEksekutif) : apiFetch<RingkasanEksekutifResponse>("/v1/dashboard/eksekutif").then(toRingkasanEksekutif),
     xai: (kode: string) => get<ProyeksiXai>(`/v1/prediksi/${kode}`, () => m.mockXai(kode)),
   },
   harga: { list: () => get<EntriHarga[]>("/v1/harga?limit=500", () => m.mockEntri()) },

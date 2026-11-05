@@ -10,7 +10,7 @@ import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { ease } from "@/lib/motion/presets";
 
 /** Ruang fiskal (perspektif Kanwil DJPb): serapan instrumen belanja pengendalian inflasi. */
-export function FiscalSpace({ data }: { data: RingkasanEksekutif["fiskal"] }) {
+export function FiscalSpace({ data }: { data: NonNullable<RingkasanEksekutif["fiskal"]> }) {
   const pct = (data.realisasi / data.pagu) * 100;
   const sisa = data.pagu - data.realisasi;
   const tone = data.status === "MEMADAI" ? "normal" : data.status === "TERBATAS" ? "waspada" : "defisit";
@@ -18,7 +18,7 @@ export function FiscalSpace({ data }: { data: RingkasanEksekutif["fiskal"] }) {
     <section className="glass h-full rounded-xl p-5 sm:p-6">
       <PanelTitle
         title="Ruang fiskal"
-        description={`Kanwil DJPb, per ${formatTanggal(data.perTanggal)}`}
+        description={`${data.sumber === "DEMO" ? "Data demo" : "Kanwil DJPb"}, per ${formatTanggal(data.perTanggal)}`}
         actions={<StatusBadge tone={tone}>{data.status === "MEMADAI" ? "Memadai" : data.status === "TERBATAS" ? "Terbatas" : "Kritis"}</StatusBadge>}
       />
       <div className="mt-4 grid items-center gap-5 sm:grid-cols-[180px_1fr]">

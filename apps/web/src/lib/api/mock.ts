@@ -367,15 +367,19 @@ export function mockEksekutif(): RingkasanEksekutif {
     selesai: k.filter((c) => c.siklus === s && c.tahap.endsWith("selesai")).length,
   });
   return {
+    demo: true,
     inflasi: {
-      yoy: 2.84, mtm: 0.41, ytd: 1.92, sasaran: { bawah: 1.5, atas: 3.5 }, rilis: "2026-10-01",
+      periode: "2026-09-01T12:00:00", sumber: "DEMO",
+      yoy: 2.84, mtm: 0.41, ytd: 1.92, sasaran: { bawah: 1.5, atas: 3.5 },
       seri: bulan.map((b, i) => ({ bulan: b, yoy: yoy[i] })),
       penyumbang: [
         { nama: "Cabai merah", andil: 0.18 }, { nama: "Bawang merah", andil: 0.06 }, { nama: "Ikan tongkol", andil: 0.04 },
         { nama: "Beras", andil: 0.03 }, { nama: "Tomat", andil: -0.02 }, { nama: "Kentang", andil: -0.01 },
       ],
     },
-    neraca: [
+    neraca: {
+      periode: "2026-09-01T12:00:00", sumber: "DEMO",
+      items: [
       { komoditasKode: "BRS-MED", nama: "Beras", produksi: 146200, kebutuhan: 52400 },
       { komoditasKode: "KTG", nama: "Kentang", produksi: 9800, kebutuhan: 3200 },
       { komoditasKode: "TMT", nama: "Tomat", produksi: 4100, kebutuhan: 2900 },
@@ -384,9 +388,10 @@ export function mockEksekutif(): RingkasanEksekutif {
       { komoditasKode: "TLR", nama: "Telur ayam", produksi: 4800, kebutuhan: 5600 },
       { komoditasKode: "CBM-KRT", nama: "Cabai merah", produksi: 3100, kebutuhan: 3900 },
       { komoditasKode: "BWM", nama: "Bawang merah", produksi: 900, kebutuhan: 2600 },
-    ],
+      ],
+    },
     fiskal: {
-      pagu: 186e9, realisasi: 54.2e9, skor: 72, status: "MEMADAI", perTanggal: "2026-09-30",
+      sumber: "DEMO", pagu: 186e9, realisasi: 54.2e9, skor: 72, status: "MEMADAI", perTanggal: "2026-09-30",
       instrumen: [
         { nama: "Belanja tidak terduga (BTT)", pagu: 120e9, realisasi: 31.2e9 },
         { nama: "Operasi pasar murah", pagu: 24e9, realisasi: 11.2e9 },

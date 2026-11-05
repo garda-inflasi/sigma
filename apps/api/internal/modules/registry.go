@@ -4,6 +4,7 @@ import (
 	auditRoutes "github.com/garda-inflasi/api/internal/audit/routes"
 	coldStorageRoutes "github.com/garda-inflasi/api/internal/cold-storage/routes"
 	dashboardRoutes "github.com/garda-inflasi/api/internal/dashboard/routes"
+	eksekutifRoutes "github.com/garda-inflasi/api/internal/eksekutif/routes"
 	ewsRoutes "github.com/garda-inflasi/api/internal/ews/routes"
 	hargaRoutes "github.com/garda-inflasi/api/internal/harga/routes"
 	intervensiRoutes "github.com/garda-inflasi/api/internal/intervensi/routes"
@@ -22,6 +23,7 @@ import (
 
 // RegisterAll registers all module routes under the given router group.
 func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr *token.Manager) {
+	eksekutifRoutes.Register(v1, &eksekutifRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	siklusRoutes.Register(v1, &siklusRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	dashboardRoutes.Register(v1, &dashboardRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	hargaRoutes.Register(v1, &hargaRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})

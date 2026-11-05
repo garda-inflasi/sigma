@@ -32,7 +32,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 6   | Validasi harga                            | `/data/harga`              | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [06-harga-validasi.md](06-harga-validasi.md)               |
 | 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ⬜     |      ⬜      | ⬜  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
 | 8   | Dashboard operasional                     | `/operasional`             | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
-| 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
+| 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
 | 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [10-ews.md](10-ews.md)                                     |
 | 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   ⬜    |    ⬜     |      ⬜      | ⬜  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
 | 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   ⬜    |    🟡     |      ⬜      | ⬜  | [12-peta-spasial.md](12-peta-spasial.md)                   |

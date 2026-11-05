@@ -896,6 +896,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/dashboard/eksekutif:
+    get:
+      summary: Ringkasan dashboard eksekutif
+      description: |
+        Satu layar eksekutif untuk Aceh: inflasi bulanan terbaru dengan seri 12
+        bulan dan penyumbang, neraca pangan, ruang fiskal, serta hitungan
+        peringatan EWS dan kartu intervensi. Butuh izin `dashboard.eksekutif`.
+
+        **Setiap angka membawa `sumber`.** `DEMO` berarti data contoh, bukan angka
+        resmi; `demo` bernilai true bila ada blok ber-sumber DEMO dan UI wajib
+        menampilkan label demo. Angka resmi (BPS, BI, DJPB) hanya masuk lewat impor.
+
+        Blok yang datanya belum ada bernilai `null` (bukan galat). `fiskal` juga
+        `null` untuk peran tanpa izin `fiskal.lihat`.
+      operationId: getRingkasanEksekutif
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Ringkasan eksekutif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RingkasanEksekutifResponse"
+        "403":
+          description: Tanpa izin `dashboard.eksekutif`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/lapangan/tugas/{id}:
     get:
       summary: Mendapatkan detail tugas lapangan
@@ -1773,6 +1806,163 @@ components:
           items:
             type: string
           example: ["SRC-BPS", "SRC-BI"]
+
+    SumberAngka:
+      type: string
+      enum: [BPS, BI, DJPB, BAPANAS, DEMO]
+      description: Asal angka; DEMO = data contoh, bukan angka resmi
+
+    RingkasanEksekutif:
+      type: object
+      properties:
+        demo:
+          type: boolean
+          description: Benar bila ada blok ber-sumber DEMO
+        inflasi:
+          type: object
+          nullable: true
+          properties:
+            periode:
+              type: string
+              format: date
+              description: Bulan data (tanggal 1)
+            sumber:
+              $ref: "#/components/schemas/SumberAngka"
+            diimpor_pada:
+              type: string
+              format: date-time
+            ihk:
+              type: number
+            yoy:
+              type: number
+            mtm:
+              type: number
+            ytd:
+              type: number
+            sasaran:
+              type: object
+              properties:
+                tahun:
+                  type: integer
+                bawah:
+                  type: number
+                atas:
+                  type: number
+            seri:
+              type: array
+              description: Paling banyak 12 bulan, urut naik
+              items:
+                type: object
+                properties:
+                  periode:
+                    type: string
+                    format: date
+                  yoy:
+                    type: number
+            penyumbang:
+              type: array
+              description: Paling banyak 6 komoditas, andil terbesar lebih dulu
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  nama:
+                    type: string
+                  andil:
+                    type: number
+                    description: Poin persen
+        neraca:
+          type: object
+          nullable: true
+          properties:
+            periode:
+              type: string
+              format: date
+            sumber:
+              $ref: "#/components/schemas/SumberAngka"
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  nama:
+                    type: string
+                  produksi_ton:
+                    type: number
+                  konsumsi_ton:
+                    type: number
+                  stok_ton:
+                    type: number
+                    nullable: true
+        fiskal:
+          type: object
+          nullable: true
+          description: Null bila belum ada data atau peran tanpa `fiskal.lihat`
+          properties:
+            sumber:
+              $ref: "#/components/schemas/SumberAngka"
+            per_tanggal:
+              type: string
+              format: date
+            pagu:
+              type: integer
+              format: int64
+            realisasi:
+              type: integer
+              format: int64
+            skor:
+              type: integer
+              description: Indikatif, dari porsi pagu yang belum terealisasi (0-100)
+            status:
+              type: string
+              enum: [MEMADAI, TERBATAS, KRITIS]
+            instrumen:
+              type: array
+              items:
+                type: object
+                properties:
+                  nama:
+                    type: string
+                  pagu:
+                    type: integer
+                    format: int64
+                  realisasi:
+                    type: integer
+                    format: int64
+        ews:
+          type: object
+          description: Peringatan belum selesai per severity
+          additionalProperties:
+            type: integer
+          example: { INFO: 0, WASPADA: 2, SIAGA: 1, KRITIS: 0 }
+        intervensi:
+          type: object
+          description: Kartu per siklus (normal, tekanan, surplus)
+          additionalProperties:
+            type: object
+            properties:
+              aktif:
+                type: integer
+              selesai:
+                type: integer
+        siklus_dominan:
+          type: string
+          enum: [normal, tekanan, surplus]
+
+    RingkasanEksekutifResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/RingkasanEksekutif"
 
     SumberData:
       type: object

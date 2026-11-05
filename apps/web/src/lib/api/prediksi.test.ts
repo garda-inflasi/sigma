@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  modelUsang,
   toBarisModel,
   toBarisProyeksi,
   toProyeksiXai,
@@ -122,21 +123,53 @@ describe("toBarisModel", () => {
     drift: 0.03,
     dilatih_pada: "2026-10-29T00:00:00Z",
     sumber: "DEMO",
+    catatan: "Data contoh seeder.",
+    baseline_mape: null,
+    mape_realisasi: null,
+    n_evaluasi: 0,
   };
 
   it("memetakan registri", () => {
     assert.deepEqual(toBarisModel({ ...model, status: "KANDIDAT" }), {
       id: "MDL-X",
+      komoditasKode: "X",
       komoditas: "Beras medium",
       versi: "v2.3.1",
       mape: 2.2,
+      baselineMape: null,
+      mapeRealisasi: null,
+      nEvaluasi: 0,
       drift: 0.03,
       status: "KANDIDAT",
+      dilatihPada: "2026-10-29T00:00:00Z",
+      catatan: "Data contoh seeder.",
       demo: true,
     });
   });
 
+  it("model hasil pelatihan membawa baseline dan MAPE realisasi", () => {
+    const baris = toBarisModel({ ...model, status: "PRODUKSI", sumber: "MODEL", baseline_mape: 3.1, mape_realisasi: 2.8, n_evaluasi: 12 });
+
+    assert.equal(baris.demo, false);
+    assert.equal(baris.baselineMape, 3.1);
+    assert.equal(baris.mapeRealisasi, 2.8);
+    assert.equal(baris.nEvaluasi, 12);
+  });
+
   it("status tak dikenal dianggap ARSIP, bukan produksi", () => {
     assert.equal(toBarisModel({ ...model, status: "AKTIF" }).status, "ARSIP");
+  });
+});
+
+describe("modelUsang", () => {
+  const sekarang = new Date("2026-11-05T00:00:00Z");
+
+  it("model sungguhan lebih tua dari 30 hari dinyatakan usang", () => {
+    assert.equal(modelUsang({ demo: false, dilatihPada: "2026-10-01T00:00:00Z" }, sekarang), true);
+    assert.equal(modelUsang({ demo: false, dilatihPada: "2026-10-10T00:00:00Z" }, sekarang), false);
+  });
+
+  it("model demo tidak pernah ditandai usang", () => {
+    assert.equal(modelUsang({ demo: true, dilatihPada: "2025-01-01T00:00:00Z" }, sekarang), false);
   });
 });

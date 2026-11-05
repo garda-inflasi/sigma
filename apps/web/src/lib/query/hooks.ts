@@ -35,6 +35,22 @@ export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.rin
 export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
 export const useProyeksiRingkasan = () => useQuery({ queryKey: qk.prediksi.ringkasan(), queryFn: api.prediksi.ringkasan });
 export const useModelPrediksi = () => useQuery({ queryKey: qk.prediksi.model(), queryFn: api.prediksi.model });
+/** Status layanan ML; `enabled` mencegah 403 bagi peran tanpa `prediksi.lihat`. */
+export const useStatusMl = (enabled = true) => useQuery({ queryKey: qk.prediksi.ml(), queryFn: api.prediksi.statusMl, enabled, staleTime: 30_000 });
+/** Melatih model kandidat lalu menyegarkan registri; galat (mis. 503 layanan ML mati) ditampilkan sebagai toast. */
+export function useLatihModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (komoditasKode: string) => api.prediksi.latih(komoditasKode),
+    onSuccess: (m) => {
+      qc.invalidateQueries({ queryKey: qk.prediksi.all() });
+      toast.success(`Model kandidat ${m.versi} dilatih`, { description: `MAPE backtest ${m.mape.toLocaleString("id-ID")}%. Promosikan setelah ditelaah.` });
+    },
+    onError: (err) => {
+      toast.error("Pelatihan model gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 /** Daftar entri harga yang disaring server; `enabled` mencegah 403 bagi peran tanpa `harga.lihat`. */
 export const useEntriHarga = (params: HargaParams = {}, enabled = true) =>
   useQuery({ queryKey: qk.harga.list(params), queryFn: () => api.harga.list(params), enabled, placeholderData: keepPreviousData });

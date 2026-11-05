@@ -1,0 +1,381 @@
+package usecase
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/audit/audittest"
+	"github.com/garda-inflasi/api/internal/prediksi/domain"
+	"github.com/garda-inflasi/api/internal/prediksi/mlclient"
+	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+)
+
+type fakeMLRepo struct {
+	seri      []domain.SeriHarian
+	produksi  *domain.ModelRegistry
+	err       error
+	evaluasi  int64
+	disimpan  *domain.ModelRegistry
+	proyeksi  []domain.PrediksiHarga
+	seriDari  time.Time
+	hariIniEv time.Time
+}
+
+func (r *fakeMLRepo) SeriKonsumen(_ context.Context, _ string, dari time.Time) ([]domain.SeriHarian, error) {
+	r.seriDari = dari
+	return r.seri, r.err
+}
+
+func (r *fakeMLRepo) SimpanModel(_ context.Context, m *domain.ModelRegistry, p []domain.PrediksiHarga) error {
+	r.disimpan, r.proyeksi = m, p
+	return r.err
+}
+
+func (r *fakeMLRepo) SimpanProyeksi(_ context.Context, p []domain.PrediksiHarga) error {
+	r.proyeksi = p
+	return r.err
+}
+
+func (r *fakeMLRepo) ModelProduksi(context.Context, string) (*domain.ModelRegistry, error) {
+	if r.produksi == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return r.produksi, nil
+}
+
+func (r *fakeMLRepo) GetModelView(_ context.Context, id string) (*domain.ModelView, error) {
+	return &domain.ModelView{ID: id}, r.err
+}
+
+func (r *fakeMLRepo) EvaluasiJatuhTempo(_ context.Context, hariIni time.Time) (int64, error) {
+	r.hariIniEv = hariIni
+	return r.evaluasi, r.err
+}
+
+type fakeML struct {
+	train    *mlclient.TrainResponse
+	predict  *mlclient.PredictResponse
+	err      error
+	health   *mlclient.Health
+	gotTrain mlclient.TrainRequest
+	gotPred  mlclient.PredictRequest
+}
+
+func (f *fakeML) Train(_ context.Context, req mlclient.TrainRequest) (*mlclient.TrainResponse, error) {
+	f.gotTrain = req
+	return f.train, f.err
+}
+
+func (f *fakeML) Predict(_ context.Context, req mlclient.PredictRequest) (*mlclient.PredictResponse, error) {
+	f.gotPred = req
+	return f.predict, f.err
+}
+
+func (f *fakeML) Health(context.Context) (*mlclient.Health, error) { return f.health, f.err }
+
+var sekarang = time.Date(2026, 11, 5, 14, 3, 12, 0, time.UTC)
+
+func uc(repo *fakeMLRepo, ml mlclient.Client) (*MLOps, *audittest.Recorder) {
+	rec := &audittest.Recorder{}
+	u := NewMLOps(repo, ml, rec, logger.NewDefault())
+	u.now = func() time.Time { return sekarang }
+	return u, rec
+}
+
+func seriContoh(kab string) domain.SeriHarian {
+	return domain.SeriHarian{KabupatenKode: kab, Titik: []domain.TitikHarga{
+		{Tanggal: time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC), Harga: 50000},
+		{Tanggal: time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC), Harga: 51000},
+	}}
+}
+
+func hasilOK(id string) mlclient.HasilSeri {
+	return mlclient.HasilSeri{
+		ID: id, Status: "OK", Algoritma: "holt",
+		Params:     map[string]float64{"alpha": 0.5, "beta": 0.2, "gamma": 0, "phi": 0.95},
+		GalatRMSE:  map[string]float64{"7": 400, "14": 600},
+		Metrik:     mlclient.Metrik{Mape: 2.5, Rmse: 1200, BaselineMape: 3.0, BaselineRmse: 1500},
+		HargaDasar: 51000, TanggalDasar: "2026-11-04", NHari: 90,
+		Ramalan: []mlclient.Ramalan{
+			{HorizonHari: 7, TanggalTarget: "2026-11-11", Nilai: 52000, Bawah: 51000, Atas: 53000, Faktor: []mlclient.Faktor{{Nama: "Tren harga", Kontribusi: 2.0, Detail: "d"}}},
+			{HorizonHari: 14, TanggalTarget: "2026-11-18", Nilai: 53000, Bawah: 51500, Atas: 54500, Faktor: []mlclient.Faktor{{Nama: "Tren harga", Kontribusi: 3.9, Detail: "d"}, {Nama: "Pola musiman mingguan", Kontribusi: 0.1, Detail: "m"}}},
+		},
+	}
+}
+
+func jawabanLatih(seri ...mlclient.HasilSeri) *mlclient.TrainResponse {
+	return &mlclient.TrainResponse{
+		VersiLayanan: "0.1.0", KomoditasKode: "CBM-KRT", Seri: seri,
+		Ringkasan: mlclient.Ringkasan{NSeriOK: 1, Mape: 2.5, Rmse: 1200, BaselineMape: 3.0, BaselineRmse: 1500, Algoritma: map[string]int{"holt": 1}},
+	}
+}
+
+func TestLatih_MenyimpanKandidatDanProyeksiBersumberModel(t *testing.T) {
+	repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}
+	ml := &fakeML{train: jawabanLatih(hasilOK("1171"))}
+	u, rec := uc(repo, ml)
+
+	view, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+	require.NoError(t, err)
+	assert.Equal(t, "MDL-CBM-KRT-ml-20261105-140312", view.ID)
+
+	// Permintaan ke ML: seri dari entri harga, horizon tetap, riwayat 180 hari.
+	assert.Equal(t, "CBM-KRT", ml.gotTrain.KomoditasKode)
+	assert.Equal(t, []int{7, 14, 30}, ml.gotTrain.Horizon)
+	assert.Equal(t, []mlclient.Titik{{Tanggal: "2026-11-03", Nilai: 50000}, {Tanggal: "2026-11-04", Nilai: 51000}}, ml.gotTrain.Seri[0].Titik)
+	assert.Equal(t, sekarang.AddDate(0, 0, -180), repo.seriDari)
+
+	m := repo.disimpan
+	require.NotNil(t, m)
+	assert.Equal(t, domain.StatusKandidat, m.Status, "model baru tidak langsung dipakai")
+	assert.Equal(t, domain.SumberModel, m.Sumber)
+	assert.Equal(t, "ml-20261105-140312", m.Versi)
+	assert.Equal(t, 2.5, m.Mape)
+	assert.Equal(t, "ml://garda-ml/0.1.0", *m.ArtefakURI)
+	assert.Equal(t, "holt×1", *m.Algorithm)
+	assert.Contains(t, m.Catatan, "backtest walk-forward")
+
+	metrik, err := domain.BacaMetrik(m.Metrics)
+	require.NoError(t, err)
+	assert.Equal(t, 3.0, metrik.BaselineMape)
+	assert.Equal(t, []int{7, 14, 30}, metrik.Horizon)
+	assert.Equal(t, 0.5, metrik.Seri["1171"].Params["alpha"])
+	assert.Equal(t, 600.0, metrik.Seri["1171"].GalatRMSE["14"])
+
+	require.Len(t, repo.proyeksi, 2)
+	p := repo.proyeksi[1]
+	assert.Equal(t, "PRM-CBM-KRT-1171-14-ml-20261105-140312-20261118", p.ID)
+	assert.Equal(t, domain.SumberModel, p.Sumber)
+	assert.Equal(t, "ml-20261105-140312", p.ModelVersi)
+	assert.Equal(t, [3]int{51500, 53000, 54500}, [3]int{p.Bawah, p.Nilai, p.Atas})
+	assert.Equal(t, 51000, p.HargaDasar)
+	assert.Contains(t, p.Faktor, `"kontribusi":3.9`)
+
+	e, ok := rec.Last()
+	require.True(t, ok)
+	assert.Equal(t, "LATIH_MODEL", e.Aksi)
+	assert.Equal(t, "u-1", e.AktorID)
+	assert.Equal(t, audit.HasilBerhasil, e.Hasil)
+}
+
+func TestLatih_ImportansiFaktorDinormalkan(t *testing.T) {
+	got := importansiFaktor([]mlclient.HasilSeri{hasilOK("1171")})
+
+	require.Len(t, got, 2)
+	assert.Equal(t, "Tren harga", got[0].Nama)
+	assert.InDelta(t, 5.9/6.0, got[0].Bobot, 0.001)
+	assert.InDelta(t, 1.0, got[0].Bobot+got[1].Bobot, 0.002)
+}
+
+func TestImportansiFaktor_NolSemuaMenjadiKosong(t *testing.T) {
+	s := hasilOK("1171")
+	for i := range s.Ramalan {
+		s.Ramalan[i].Faktor = []mlclient.Faktor{{Nama: "Harga terakhir dipertahankan", Kontribusi: 0}}
+	}
+	assert.Empty(t, importansiFaktor([]mlclient.HasilSeri{s}))
+}
+
+func TestLatih_TanpaLayananML(t *testing.T) {
+	u, rec := uc(&fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}, nil)
+
+	_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+	assert.ErrorIs(t, err, ErrLayananMLMati)
+	assert.Empty(t, rec.Entries(), "tidak ada yang berubah, tidak ada audit")
+}
+
+func TestLatih_GalatLayanan(t *testing.T) {
+	kasus := []struct {
+		nama string
+		err  error
+		want error
+	}{
+		{"layanan mati", mlclient.ErrTidakTersedia, ErrLayananMLMati},
+		{"layanan menolak", mlclient.ErrDitolak, ErrMLGagal},
+	}
+	for _, k := range kasus {
+		t.Run(k.nama, func(t *testing.T) {
+			repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}
+			u, _ := uc(repo, &fakeML{err: k.err})
+
+			_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+			assert.ErrorIs(t, err, k.want)
+			assert.Nil(t, repo.disimpan, "tidak ada model yang tersimpan")
+		})
+	}
+}
+
+func TestLatih_DataTidakCukup(t *testing.T) {
+	t.Run("tanpa entri harga", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{}, &fakeML{})
+		_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+		assert.ErrorIs(t, err, ErrDataTidakCukup)
+	})
+
+	t.Run("semua seri dilewati ML", func(t *testing.T) {
+		repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}
+		ml := &fakeML{train: &mlclient.TrainResponse{Seri: []mlclient.HasilSeri{{ID: "1171", Status: "DILEWATI", Alasan: "riwayat kurang"}}}}
+		u, _ := uc(repo, ml)
+
+		_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+		assert.ErrorIs(t, err, ErrDataTidakCukup)
+		assert.ErrorContains(t, err, "riwayat kurang")
+		assert.Nil(t, repo.disimpan)
+	})
+}
+
+func TestLatih_SeriDilewatiDicatatDiMetrik(t *testing.T) {
+	repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171"), seriContoh("1101")}}
+	ml := &fakeML{train: jawabanLatih(hasilOK("1171"), mlclient.HasilSeri{ID: "1101", Status: "DILEWATI", Alasan: "cakupan rendah"})}
+	ml.train.Ringkasan.NSeriDilewati = 1
+	u, _ := uc(repo, ml)
+
+	_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+	require.NoError(t, err)
+	metrik, err := domain.BacaMetrik(repo.disimpan.Metrics)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"1101": "cakupan rendah"}, metrik.Dilewati)
+	assert.Contains(t, repo.disimpan.Catatan, "1 kabupaten dilewati")
+	assert.Len(t, repo.proyeksi, 2, "hanya seri OK yang punya proyeksi")
+}
+
+func TestLatih_PelanggaranKontrakDitolak(t *testing.T) {
+	kasus := map[string]func(*mlclient.HasilSeri){
+		"seri tidak diminta":       func(s *mlclient.HasilSeri) { s.ID = "9999" },
+		"interval terbalik":        func(s *mlclient.HasilSeri) { s.Ramalan[0].Bawah = s.Ramalan[0].Nilai + 1 },
+		"nilai di atas batas atas": func(s *mlclient.HasilSeri) { s.Ramalan[0].Atas = s.Ramalan[0].Nilai - 1 },
+		"tanggal rusak":            func(s *mlclient.HasilSeri) { s.Ramalan[0].TanggalTarget = "kemarin" },
+		"harga dasar nol":          func(s *mlclient.HasilSeri) { s.HargaDasar = 0 },
+	}
+	for nama, ubah := range kasus {
+		t.Run(nama, func(t *testing.T) {
+			s := hasilOK("1171")
+			ubah(&s)
+			repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}
+			u, _ := uc(repo, &fakeML{train: jawabanLatih(s)})
+
+			_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+			assert.ErrorIs(t, err, ErrMLGagal)
+			assert.Nil(t, repo.disimpan)
+		})
+	}
+}
+
+func TestLatih_GalatAuditTidakMenggagalkanPelatihan(t *testing.T) {
+	repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}
+	u, rec := uc(repo, &fakeML{train: jawabanLatih(hasilOK("1171"))})
+	rec.Err = errors.New("audit down")
+
+	_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+
+	require.NoError(t, err)
+}
+
+func modelProduksiHasilLatih(t *testing.T) *domain.ModelRegistry {
+	t.Helper()
+	repo := &fakeMLRepo{seri: []domain.SeriHarian{seriContoh("1171")}}
+	u, _ := uc(repo, &fakeML{train: jawabanLatih(hasilOK("1171"))})
+	_, err := u.Latih(t.Context(), "u-1", "CBM-KRT")
+	require.NoError(t, err)
+	repo.disimpan.Status = domain.StatusProduksi
+	return repo.disimpan
+}
+
+func TestSegarkan_MemakaiParameterTerlatihTanpaMelatihUlang(t *testing.T) {
+	model := modelProduksiHasilLatih(t)
+	repo := &fakeMLRepo{produksi: model, seri: []domain.SeriHarian{seriContoh("1171"), seriContoh("1101")}}
+	ml := &fakeML{predict: &mlclient.PredictResponse{Seri: []mlclient.HasilSeri{hasilOK("1171")}}}
+	u, rec := uc(repo, ml)
+
+	n, err := u.Segarkan(t.Context(), "u-1", "CBM-KRT")
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	require.Len(t, ml.gotPred.Seri, 1, "kabupaten yang tak ikut dilatih tidak diramal")
+	assert.Equal(t, "holt", ml.gotPred.Seri[0].Algoritma)
+	assert.Equal(t, 0.5, ml.gotPred.Seri[0].Params["alpha"])
+	assert.Equal(t, 400.0, ml.gotPred.Seri[0].GalatRMSE["7"])
+	assert.Equal(t, []int{7, 14, 30}, ml.gotPred.Horizon)
+	assert.Equal(t, model.Versi, repo.proyeksi[0].ModelVersi)
+	e, _ := rec.Last()
+	assert.Equal(t, "SEGARKAN_PROYEKSI", e.Aksi)
+}
+
+func TestSegarkan_Penolakan(t *testing.T) {
+	t.Run("tanpa layanan ML", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{}, nil)
+		_, err := u.Segarkan(t.Context(), "u-1", "CBM-KRT")
+		assert.ErrorIs(t, err, ErrLayananMLMati)
+	})
+	t.Run("tanpa model produksi", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{}, &fakeML{})
+		_, err := u.Segarkan(t.Context(), "u-1", "CBM-KRT")
+		assert.ErrorIs(t, err, ErrModelTidakAda)
+	})
+	t.Run("model produksi adalah data demo", func(t *testing.T) {
+		demo := &domain.ModelRegistry{Sumber: domain.SumberDemo, Metrics: "{}"}
+		u, _ := uc(&fakeMLRepo{produksi: demo}, &fakeML{})
+		_, err := u.Segarkan(t.Context(), "u-1", "CBM-KRT")
+		assert.ErrorIs(t, err, ErrBukanHasilLatih)
+	})
+	t.Run("tanpa data harga", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{produksi: modelProduksiHasilLatih(t)}, &fakeML{})
+		_, err := u.Segarkan(t.Context(), "u-1", "CBM-KRT")
+		assert.ErrorIs(t, err, ErrDataTidakCukup)
+	})
+	t.Run("layanan mati", func(t *testing.T) {
+		repo := &fakeMLRepo{produksi: modelProduksiHasilLatih(t), seri: []domain.SeriHarian{seriContoh("1171")}}
+		u, _ := uc(repo, &fakeML{err: mlclient.ErrTidakTersedia})
+		_, err := u.Segarkan(t.Context(), "u-1", "CBM-KRT")
+		assert.ErrorIs(t, err, ErrLayananMLMati)
+	})
+}
+
+func TestEvaluasi_MencatatJumlahDanAudit(t *testing.T) {
+	repo := &fakeMLRepo{evaluasi: 7}
+	u, rec := uc(repo, nil)
+
+	n, err := u.Evaluasi(t.Context(), "u-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), n)
+	assert.Equal(t, sekarang, repo.hariIniEv)
+	e, _ := rec.Last()
+	assert.Equal(t, "EVALUASI_PREDIKSI", e.Aksi)
+}
+
+func TestEvaluasi_GalatRepositori(t *testing.T) {
+	boom := errors.New("db down")
+	u, rec := uc(&fakeMLRepo{err: boom}, nil)
+
+	_, err := u.Evaluasi(t.Context(), "u-1")
+
+	assert.ErrorIs(t, err, boom)
+	assert.Empty(t, rec.Entries())
+}
+
+func TestStatus(t *testing.T) {
+	t.Run("tidak dikonfigurasi", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{}, nil)
+		assert.Equal(t, StatusML{}, u.Status(t.Context()))
+	})
+	t.Run("tersedia", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{}, &fakeML{health: &mlclient.Health{Status: "ok", Versi: "0.1.0"}})
+		assert.Equal(t, StatusML{Dikonfigurasi: true, Tersedia: true, Versi: "0.1.0"}, u.Status(t.Context()))
+	})
+	t.Run("mati", func(t *testing.T) {
+		u, _ := uc(&fakeMLRepo{}, &fakeML{err: mlclient.ErrTidakTersedia})
+		assert.Equal(t, StatusML{Dikonfigurasi: true}, u.Status(t.Context()))
+	})
+}

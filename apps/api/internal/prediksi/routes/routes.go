@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/prediksi/delivery/http"
+	"github.com/garda-inflasi/api/internal/prediksi/mlclient"
 	"github.com/garda-inflasi/api/internal/prediksi/repository/postgres"
 	"github.com/garda-inflasi/api/internal/prediksi/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -15,19 +17,32 @@ type Dependencies struct {
 	DB     *gorm.DB
 	Logger *logger.Logger
 	Token  *token.Manager
+	// ML adalah klien layanan ML; nil memakai ML_SERVICE_URL, dan tanpa itu pelatihan menjawab 503.
+	ML mlclient.Client
 }
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo)
-	handler := http.New(uc)
+	handler := http.New(usecase.New(repo))
+
+	ml := deps.ML
+	if ml == nil {
+		ml = mlclient.FromEnv()
+	}
+	mlops := http.NewMLOps(usecase.NewMLOps(repo, ml, audit.NewWriter(deps.DB), deps.Logger))
 
 	prediksi := engine.Group("/prediksi")
 	prediksi.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("prediksi.lihat"))
 	{
 		prediksi.GET("", handler.List)
 		prediksi.GET("/registri", handler.Registri)
+		prediksi.GET("/ml", mlops.Status)
 		prediksi.GET("/:kode", handler.GetByKode)
 		prediksi.GET("/:kode/export", handler.Export)
+
+		kelola := middleware.RequirePermission("model.kelola")
+		prediksi.POST("/latih", kelola, mlops.Latih)
+		prediksi.POST("/segarkan", kelola, mlops.Segarkan)
+		prediksi.POST("/evaluasi", kelola, mlops.Evaluasi)
 	}
 }

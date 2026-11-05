@@ -36,6 +36,8 @@ const (
 	intervalZ = 1.28
 	// hariDilatih adalah umur model produksi saat seed dijalankan.
 	hariDilatih = 7
+
+	catatanDemo = "Data contoh seeder, bukan keluaran model sungguhan."
 )
 
 // Horizons adalah horizon proyeksi demo, dalam hari.
@@ -116,7 +118,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"nama", "mape", "drift", "status", "dilatih_pada", "algorithm", "sumber"}),
+			DoUpdates: clause.AssignmentColumns([]string{"nama", "mape", "drift", "status", "dilatih_pada", "algorithm", "sumber", "catatan"}),
 		}).Create(&models).Error
 		if err != nil {
 			return fmt.Errorf("model_registry: %w", err)
@@ -166,12 +168,12 @@ func BuildModels(now time.Time) ([]domain.ModelRegistry, error) {
 			domain.ModelRegistry{
 				ID: modelID(k.Kode, VersiProduksi), KomoditasKode: k.Kode, Nama: namaModel, Versi: VersiProduksi,
 				Mape: mape, Drift: math.Round(float64(i%5)*0.03*100) / 100, Status: domain.StatusProduksi,
-				DilatihPada: dilatih, Algorithm: &algoritma, Metrics: "{}", FeatureImportance: "[]", Sumber: domain.SumberDemo,
+				DilatihPada: dilatih, Algorithm: &algoritma, Metrics: "{}", FeatureImportance: "[]", Sumber: domain.SumberDemo, Catatan: catatanDemo,
 			},
 			domain.ModelRegistry{
 				ID: modelID(k.Kode, VersiKandidat), KomoditasKode: k.Kode, Nama: namaModel, Versi: VersiKandidat,
 				Mape: math.Round(mape*0.93*10) / 10, Status: domain.StatusKandidat,
-				DilatihPada: hariKe(now, -1), Algorithm: &algoritma, Metrics: "{}", FeatureImportance: "[]", Sumber: domain.SumberDemo,
+				DilatihPada: hariKe(now, -1), Algorithm: &algoritma, Metrics: "{}", FeatureImportance: "[]", Sumber: domain.SumberDemo, Catatan: catatanDemo,
 			},
 		)
 	}

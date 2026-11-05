@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowRightLeft, Download } from "lucide-react";
+import { ArrowRightLeft, Cpu, Download } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -10,12 +10,14 @@ import { XaiPanel } from "@/components/eksekutif/xai-panel";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { PanelSkeleton } from "@/components/garda/shimmer";
+import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { CountUp } from "@/components/motion/count-up";
-import type { BarisModel, BarisProyeksi } from "@/lib/api/prediksi";
+import { modelUsang, type BarisModel, type BarisProyeksi } from "@/lib/api/prediksi";
+import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
-import { formatPersen, formatRupiah } from "@/lib/format";
-import { useModelPrediksi, useProyeksiRingkasan, useXai } from "@/lib/query/hooks";
+import { formatPersen, formatRelatif, formatRupiah } from "@/lib/format";
+import { useLatihModel, useModelPrediksi, useProyeksiRingkasan, useStatusMl, useXai } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
 function Slider({ label, v, set, min, max, unit }: { label: string; v: number; set: (n: number) => void; min: number; max: number; unit: string }) {
@@ -57,6 +59,10 @@ export function PrediksiPage() {
   const { data: proyeksi, isLoading: memuatProyeksi } = useProyeksiRingkasan();
   const { data: model, isLoading: memuatModel } = useModelPrediksi();
   const { data: cabai } = useXai("CBM-KRT");
+  const bisaKelola = useCan("model.kelola");
+  const { data: statusMl } = useStatusMl();
+  const latih = useLatihModel();
+  const namaTerpilih = proyeksi?.find((p) => p.id === kode)?.nama ?? kode;
   const demo = [...(proyeksi ?? []), ...(model ?? [])].some((r) => r.demo);
 
   const kolomProyeksi = useMemo<ColumnDef<BarisProyeksi>[]>(() => [
@@ -71,7 +77,10 @@ export function PrediksiPage() {
   const kolomModel = useMemo<ColumnDef<BarisModel>[]>(() => [
     { accessorKey: "komoditas", header: "Komoditas" },
     { accessorKey: "versi", header: "Versi", cell: ({ getValue }) => <span className="num">{getValue<string>()}</span> },
-    { accessorKey: "mape", header: "MAPE", cell: ({ getValue }) => <span className="num">{formatPersen(getValue<number>())}</span> },
+    { accessorKey: "mape", header: "MAPE backtest", cell: ({ getValue }) => <span className="num">{formatPersen(getValue<number>())}</span> },
+    { accessorKey: "baselineMape", header: "Baseline naif", cell: ({ getValue }) => { const v = getValue<number | null>(); return <span className="num text-muted-foreground">{v === null ? "–" : formatPersen(v)}</span>; } },
+    { accessorKey: "mapeRealisasi", header: "MAPE realisasi", cell: ({ row: { original: r } }) => <span className="num text-muted-foreground">{r.mapeRealisasi === null ? "–" : `${formatPersen(r.mapeRealisasi)} (${r.nEvaluasi})`}</span> },
+    { accessorKey: "dilatihPada", header: "Dilatih", cell: ({ row: { original: r } }) => <span className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground">{formatRelatif(r.dilatihPada)}{modelUsang(r) && <StatusBadge tone="waspada">Usang</StatusBadge>}{r.demo && <StatusBadge tone="netral">Demo</StatusBadge>}</span> },
     { accessorKey: "drift", header: "Drift (PSI)", cell: ({ getValue }) => { const v = getValue<number>(); return <span className={cn("num", v > 0.1 ? "text-waspada-ink" : "text-muted-foreground")}>{v.toFixed(2).replace(".", ",")}</span>; } },
     { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ getValue }) => { const s = getValue<BarisModel["status"]>(); return <StatusBadge tone={s === "PRODUKSI" ? "normal" : s === "KANDIDAT" ? "data" : "netral"}>{s === "PRODUKSI" ? "Produksi" : s === "KANDIDAT" ? "Kandidat" : "Arsip"}</StatusBadge>; } },
   ], []);
@@ -98,7 +107,16 @@ export function PrediksiPage() {
           ]} />
       </section>
       <section className="space-y-3">
-        <PanelTitle title="Registri model" description="Versi, akurasi, dan drift per komoditas. Promosi kandidat ke produksi menyusul bersama MLOps." />
+        <PanelTitle title="Registri model" description="Versi, akurasi backtest, dan drift per komoditas. MAPE backtest bukan jaminan akurasi ke depan; MAPE realisasi dihitung dari proyeksi yang sudah jatuh tempo (jumlah proyeksi dalam kurung)." />
+        {bisaKelola && (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <SpringButton disabled={latih.isPending || !statusMl?.tersedia} onClick={() => latih.mutate(kode)}><Cpu /> Latih model {namaTerpilih}</SpringButton>
+            <span role="status" className="text-muted-foreground">
+              {statusMl?.tersedia ? `Layanan ML ${statusMl.versi} siap. ` : "Layanan ML tidak tersedia; proyeksi demo tetap tampil. "}
+              Model baru berstatus kandidat sampai dipromosikan.
+            </span>
+          </div>
+        )}
         <DataTable data={model} isLoading={memuatModel} columns={kolomModel} getRowId={(r) => r.id} entityLabel="model" pageSize={10} searchPlaceholder="Cari model"
           facets={[{ columnId: "status", label: "Status", options: [{ value: "PRODUKSI", label: "Produksi" }, { value: "KANDIDAT", label: "Kandidat" }, { value: "ARSIP", label: "Arsip" }] }]} />
       </section>

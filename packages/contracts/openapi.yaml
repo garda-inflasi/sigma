@@ -2278,6 +2278,172 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/prediksi/ml:
+    get:
+      summary: Status layanan ML
+      description: |
+        Apakah `ML_SERVICE_URL` dikonfigurasi dan layanan ML menjawab. Layanan mati tidak
+        membuat API gagal: pelatihan menjawab 503 dan proyeksi demo tetap tampil.
+      operationId: statusMlPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Status layanan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiStatusMlResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/latih:
+    post:
+      summary: Latih model prediksi satu komoditas
+      description: |
+        Melatih model dari harga konsumen tervalidasi (rata-rata harian per kabupaten, 180 hari
+        terakhir) lewat layanan ML: baseline naif, seasonal naive, Holt, dan Holt-Winters dipilih
+        dengan backtest walk-forward. Hasilnya berupa baris registri berstatus KANDIDAT bersumber
+        MODEL (MAPE/RMSE dari lipatan uji, MAPE baseline pada lipatan yang sama) dan proyeksi
+        horizon 7, 14, 30 hari. Model baru belum dipakai sebelum dipromosikan. Izin `model.kelola`;
+        dicatat di audit trail (`LATIH_MODEL`).
+      operationId: latihModelPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrediksiKomoditasRequest"
+      responses:
+        "201":
+          description: Model kandidat tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiModelResponse"
+        "400":
+          description: "`komoditas_kode` kosong"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Entri harga tervalidasi belum cukup untuk dilatih
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Layanan ML menolak permintaan atau menjawab di luar kontrak
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Layanan ML tidak dikonfigurasi, mati, atau kehabisan waktu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/segarkan:
+    post:
+      summary: Segarkan proyeksi model produksi hasil pelatihan
+      description: |
+        Meramal ulang dari harga terbaru dengan parameter model PRODUKSI yang sudah dilatih
+        (tanpa melatih ulang); idempoten menurut tanggal target. Model produksi berupa data demo
+        ditolak (409). Izin `model.kelola`; audit `SEGARKAN_PROYEKSI`.
+      operationId: segarkanPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrediksiKomoditasRequest"
+      responses:
+        "200":
+          description: Jumlah proyeksi yang ditulis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiSegarkanResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Komoditas tanpa model produksi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Model produksi adalah data demo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Tidak ada harga terbaru untuk diramal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Layanan ML tidak tersedia
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/evaluasi:
+    post:
+      summary: Evaluasi proyeksi yang sudah jatuh tempo
+      description: |
+        Membandingkan proyeksi bersumber MODEL yang tanggal targetnya sudah lewat dengan harga
+        konsumen rata-rata hari itu (dasar `mape_realisasi` di registri). Idempoten; proyeksi tanpa
+        data harga dilewati. Izin `model.kelola`; audit `EVALUASI_PREDIKSI`.
+      operationId: evaluasiPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Jumlah proyeksi yang baru dievaluasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiEvaluasiResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/prediksi/registri:
     get:
       summary: Registri model prediksi
@@ -4718,6 +4884,67 @@ components:
         status: {type: string, enum: [PRODUKSI, KANDIDAT, ARSIP]}
         dilatih_pada: {type: string, format: date-time}
         sumber: {type: string, enum: [MODEL, DEMO]}
+        catatan: {type: string}
+        baseline_mape:
+          type: number
+          format: double
+          nullable: true
+          description: MAPE baseline naif pada backtest yang sama; null bila tidak diukur (model demo).
+        mape_realisasi:
+          type: number
+          format: double
+          nullable: true
+          description: Rata-rata |galat| proyeksi model yang sudah jatuh tempo; null bila belum ada.
+        n_evaluasi: {type: integer}
+
+    PrediksiKomoditasRequest:
+      type: object
+      required: [komoditas_kode]
+      properties:
+        komoditas_kode: {type: string, example: CBM-KRT}
+
+    PrediksiStatusMl:
+      type: object
+      properties:
+        dikonfigurasi: {type: boolean}
+        tersedia: {type: boolean}
+        versi: {type: string}
+
+    PrediksiStatusMlResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/PrediksiStatusMl"
+
+    PrediksiModelResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/PrediksiModel"
+
+    PrediksiSegarkanResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            proyeksi: {type: integer}
+
+    PrediksiEvaluasiResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            dievaluasi: {type: integer}
 
     PrediksiRingkasanListResponse:
       type: object

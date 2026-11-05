@@ -57,6 +57,19 @@ export interface ModelResponse {
   status: string;
   dilatih_pada: string;
   sumber: string;
+  catatan: string;
+  /** MAPE baseline naif pada backtest yang sama; null bila tidak diukur (model demo). */
+  baseline_mape: number | null;
+  /** Rata-rata |galat| proyeksi yang sudah jatuh tempo; null bila belum ada. */
+  mape_realisasi: number | null;
+  n_evaluasi: number;
+}
+
+/** Status layanan ML dari GET /v1/prediksi/ml. */
+export interface StatusMl {
+  dikonfigurasi: boolean;
+  tersedia: boolean;
+  versi: string;
 }
 
 /** Satu baris tabel "Proyeksi seluruh komoditas". */
@@ -76,12 +89,29 @@ export interface BarisProyeksi {
 /** Satu baris tabel "Registri model". */
 export interface BarisModel {
   id: string;
+  komoditasKode: string;
   komoditas: string;
   versi: string;
+  /** MAPE backtest (lipatan uji) untuk model hasil pelatihan; bukan jaminan akurasi ke depan. */
   mape: number;
+  baselineMape: number | null;
+  mapeRealisasi: number | null;
+  nEvaluasi: number;
   drift: number;
   status: "PRODUKSI" | "KANDIDAT" | "ARSIP";
+  dilatihPada: string;
+  catatan: string;
   demo: boolean;
+}
+
+/** Model hasil pelatihan yang lebih tua dari ini dianggap usang. */
+export const MODEL_USANG_HARI = 30;
+
+/** True bila model sungguhan (bukan demo) sudah lebih dari MODEL_USANG_HARI sejak dilatih. */
+export function modelUsang(b: Pick<BarisModel, "demo" | "dilatihPada">, sekarang: Date = new Date()): boolean {
+  if (b.demo) return false;
+  const umurHari = (sekarang.getTime() - new Date(b.dilatihPada).getTime()) / 86_400_000;
+  return umurHari > MODEL_USANG_HARI;
 }
 
 const STATUS_MODEL: readonly BarisModel["status"][] = [
@@ -133,13 +163,19 @@ export function toBarisProyeksi(r: RingkasanResponse): BarisProyeksi {
 export function toBarisModel(r: ModelResponse): BarisModel {
   return {
     id: r.id,
+    komoditasKode: r.komoditas_kode,
     komoditas: r.komoditas_nama,
     versi: r.versi,
     mape: r.mape,
+    baselineMape: r.baseline_mape,
+    mapeRealisasi: r.mape_realisasi,
+    nEvaluasi: r.n_evaluasi,
     drift: r.drift,
     status: (STATUS_MODEL as readonly string[]).includes(r.status)
       ? (r.status as BarisModel["status"])
       : "ARSIP",
+    dilatihPada: r.dilatih_pada,
+    catatan: r.catatan,
     demo: isDemo(r.sumber),
   };
 }

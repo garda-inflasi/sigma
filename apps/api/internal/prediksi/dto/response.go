@@ -78,6 +78,12 @@ type ModelResponse struct {
 	Status        string  `json:"status"`
 	DilatihPada   string  `json:"dilatih_pada"`
 	Sumber        string  `json:"sumber"`
+	Catatan       string  `json:"catatan"`
+	// BaselineMape adalah MAPE baseline naif pada backtest yang sama; null bila tidak diukur.
+	BaselineMape *float64 `json:"baseline_mape"`
+	// MapeRealisasi adalah rata-rata |galat| proyeksi yang sudah jatuh tempo; null bila belum ada.
+	MapeRealisasi *float64 `json:"mape_realisasi"`
+	NEvaluasi     int      `json:"n_evaluasi"`
 }
 
 func ToRingkasan(items []domain.Ringkasan) []RingkasanResponse {
@@ -94,15 +100,37 @@ func ToRingkasan(items []domain.Ringkasan) []RingkasanResponse {
 	return res
 }
 
+func ToModel(m domain.ModelView) ModelResponse {
+	return ModelResponse{
+		ID: m.ID, KomoditasKode: m.KomoditasKode, KomoditasNama: m.KomoditasNama, Nama: m.Nama, Versi: m.Versi,
+		Mape: m.Mape, Drift: m.Drift, Status: m.Status, DilatihPada: m.DilatihPada.Format(time.RFC3339), Sumber: m.Sumber,
+		Catatan: m.Catatan, BaselineMape: m.BaselineMape, MapeRealisasi: m.MapeRealisasi, NEvaluasi: m.NEvaluasi,
+	}
+}
+
 func ToModels(items []domain.ModelView) []ModelResponse {
 	res := make([]ModelResponse, len(items))
 	for i, m := range items {
-		res[i] = ModelResponse{
-			ID: m.ID, KomoditasKode: m.KomoditasKode, KomoditasNama: m.KomoditasNama, Nama: m.Nama, Versi: m.Versi,
-			Mape: m.Mape, Drift: m.Drift, Status: m.Status, DilatihPada: m.DilatihPada.Format(time.RFC3339), Sumber: m.Sumber,
-		}
+		res[i] = ToModel(m)
 	}
 	return res
+}
+
+// StatusMLResponse melaporkan keadaan layanan ML.
+type StatusMLResponse struct {
+	Dikonfigurasi bool   `json:"dikonfigurasi"`
+	Tersedia      bool   `json:"tersedia"`
+	Versi         string `json:"versi"`
+}
+
+// SegarkanResponse melaporkan jumlah proyeksi yang ditulis ulang.
+type SegarkanResponse struct {
+	Proyeksi int `json:"proyeksi"`
+}
+
+// EvaluasiResponse melaporkan jumlah proyeksi yang baru dievaluasi.
+type EvaluasiResponse struct {
+	Dievaluasi int64 `json:"dievaluasi"`
 }
 
 // ToProyeksi menyusun seri grafik: riwayat aktual, titik sambung pada hari dasar

@@ -7,6 +7,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const tanggalSQL = "2006-01-02"
@@ -100,15 +101,123 @@ func (r *Repository) Riwayat(ctx context.Context, kode, kabupaten string, dari, 
 	return titik, nil
 }
 
+// modelView memilih kolom ModelView: registri digabung nama komoditas, MAPE baseline
+// dari metrik pelatihan, dan MAPE realisasi dari evaluasi proyeksi model itu.
+func (r *Repository) modelView(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Table("model_registry AS m").
+		Select(`m.id, m.komoditas_kode, k.nama AS komoditas_nama, m.nama, m.versi, m.mape, m.drift,
+			m.status::text AS status, m.dilatih_pada, m.sumber, m.catatan,
+			(m.metrics->>'baseline_mape')::float8 AS baseline_mape,
+			ev.mape_realisasi, COALESCE(ev.n_evaluasi, 0) AS n_evaluasi`).
+		Joins("JOIN komoditas k ON k.kode = m.komoditas_kode").
+		Joins(`LEFT JOIN (
+				SELECT p.komoditas_kode, p.model_versi, AVG(ABS(e.galat_pct))::float8 AS mape_realisasi, COUNT(*)::int AS n_evaluasi
+				FROM prediksi_evaluasi e JOIN prediksi_harga p ON p.id = e.prediksi_id
+				GROUP BY p.komoditas_kode, p.model_versi
+			) ev ON ev.komoditas_kode = m.komoditas_kode AND ev.model_versi = m.versi`)
+}
+
 func (r *Repository) ListModel(ctx context.Context) ([]domain.ModelView, error) {
 	var items []domain.ModelView
-	err := r.db.WithContext(ctx).Table("model_registry AS m").
-		Select("m.id, m.komoditas_kode, k.nama AS komoditas_nama, m.nama, m.versi, m.mape, m.drift, m.status::text AS status, m.dilatih_pada, m.sumber").
-		Joins("JOIN komoditas k ON k.kode = m.komoditas_kode").
-		Order("m.komoditas_kode, m.dilatih_pada DESC, m.versi DESC").
-		Scan(&items).Error
+	err := r.modelView(ctx).Order("m.komoditas_kode, m.dilatih_pada DESC, m.versi DESC").Scan(&items).Error
 	if err != nil {
 		return nil, fmt.Errorf("list model: %w", err)
 	}
 	return items, nil
+}
+
+func (r *Repository) GetModelView(ctx context.Context, id string) (*domain.ModelView, error) {
+	var item domain.ModelView
+	res := r.modelView(ctx).Where("m.id = ?", id).Limit(1).Scan(&item)
+	if res.Error != nil {
+		return nil, fmt.Errorf("get model: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &item, nil
+}
+
+func (r *Repository) SeriKonsumen(ctx context.Context, kode string, dari time.Time) ([]domain.SeriHarian, error) {
+	var rows []struct {
+		KabupatenKode string    `gorm:"column:kabupaten_kode"`
+		Tanggal       time.Time `gorm:"column:tanggal"`
+		Harga         int       `gorm:"column:harga"`
+	}
+	err := r.db.WithContext(ctx).Table("entri_harga AS e").
+		Select("ps.kabupaten_kode, e.dicatat_pada::date AS tanggal, ROUND(AVG(e.harga))::int AS harga").
+		Joins("JOIN pasar ps ON ps.id = e.pasar_id").
+		Where("e.komoditas_kode = ? AND e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')", kode).
+		Where("e.dicatat_pada >= ?::date", dari.Format(tanggalSQL)).
+		Group("ps.kabupaten_kode, e.dicatat_pada::date").Order("ps.kabupaten_kode, tanggal").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("seri harga konsumen: %w", err)
+	}
+
+	var seri []domain.SeriHarian
+	for _, row := range rows {
+		if len(seri) == 0 || seri[len(seri)-1].KabupatenKode != row.KabupatenKode {
+			seri = append(seri, domain.SeriHarian{KabupatenKode: row.KabupatenKode})
+		}
+		s := &seri[len(seri)-1]
+		s.Titik = append(s.Titik, domain.TitikHarga{Tanggal: row.Tanggal, Harga: row.Harga})
+	}
+	return seri, nil
+}
+
+func (r *Repository) SimpanModel(ctx context.Context, m *domain.ModelRegistry, proyeksi []domain.PrediksiHarga) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(m).Error; err != nil {
+			return fmt.Errorf("simpan model: %w", err)
+		}
+		return upsertProyeksi(tx, proyeksi)
+	})
+}
+
+func (r *Repository) SimpanProyeksi(ctx context.Context, proyeksi []domain.PrediksiHarga) error {
+	return upsertProyeksi(r.db.WithContext(ctx), proyeksi)
+}
+
+func upsertProyeksi(db *gorm.DB, proyeksi []domain.PrediksiHarga) error {
+	if len(proyeksi) == 0 {
+		return nil
+	}
+	err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"nilai", "bawah", "atas", "harga_dasar", "faktor", "sumber", "dibuat_pada"}),
+	}).CreateInBatches(&proyeksi, 200).Error
+	if err != nil {
+		return fmt.Errorf("simpan proyeksi: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) ModelProduksi(ctx context.Context, kode string) (*domain.ModelRegistry, error) {
+	var m domain.ModelRegistry
+	err := r.db.WithContext(ctx).Where("komoditas_kode = ? AND status = ?", kode, domain.StatusProduksi).First(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+func (r *Repository) EvaluasiJatuhTempo(ctx context.Context, hariIni time.Time) (int64, error) {
+	res := r.db.WithContext(ctx).Exec(`
+		INSERT INTO prediksi_evaluasi (prediksi_id, realisasi, galat_pct)
+		SELECT p.id, a.harga, ROUND((p.nilai - a.harga)::numeric / a.harga * 100, 2)
+		FROM prediksi_harga p
+		JOIN LATERAL (
+			SELECT ROUND(AVG(e.harga))::int AS harga
+			FROM entri_harga e JOIN pasar ps ON ps.id = e.pasar_id
+			WHERE e.komoditas_kode = p.komoditas_kode AND ps.kabupaten_kode = p.kabupaten_kode
+			  AND e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+			  AND e.dicatat_pada::date = p.tanggal_target
+		) a ON a.harga IS NOT NULL
+		WHERE p.sumber = 'MODEL' AND p.tanggal_target < ?::date
+		ON CONFLICT (prediksi_id) DO NOTHING`, hariIni.Format(tanggalSQL))
+	if res.Error != nil {
+		return 0, fmt.Errorf("evaluasi proyeksi: %w", res.Error)
+	}
+	return res.RowsAffected, nil
 }

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/ml test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -40,6 +40,9 @@ INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/i
 
 test/api/integration: ## Run Go integration tests (requires Docker)
 	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1
+
+test/ml: ## Jalankan tes unit layanan ML (Python, tanpa dependensi)
+	cd apps/ml && python3 -m unittest discover -s tests -t .
 
 test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test
@@ -132,7 +135,7 @@ docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu ap
 	$(DEMO_ENV) docker compose build
 	$(DEMO_ENV) docker compose run --rm migrate
 	$(DEMO_ENV) docker compose run --rm seed
-	$(DEMO_ENV) docker compose up -d api web caddy
+	$(DEMO_ENV) docker compose up -d api ml web caddy
 	@echo ""
 	@echo "✓ Demo berjalan: http://localhost:$(DEMO_CADDY_HTTP_PORT)  (login: superadmin@gardainflasi.id / Garda2024!)"
 

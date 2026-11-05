@@ -24,7 +24,7 @@ import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
 import {
   toBarisModel, toBarisProyeksi, toProyeksiXai,
-  type BarisModel, type BarisProyeksi, type ModelResponse, type ProyeksiResponse, type RingkasanResponse,
+  type BarisModel, type BarisProyeksi, type ModelResponse, type ProyeksiResponse, type RingkasanResponse, type StatusMl,
 } from "./prediksi";
 import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
@@ -87,6 +87,14 @@ export const api = {
     /** Registri model seluruh komoditas. */
     model: (): Promise<BarisModel[]> =>
       MODE_MOCK ? mockDelay(mockBarisModel) : apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel)),
+    /** Keadaan layanan ML (pelatihan hanya bisa bila tersedia). */
+    statusMl: (): Promise<StatusMl> =>
+      MODE_MOCK ? mockDelay<StatusMl>(() => ({ dikonfigurasi: false, tersedia: false, versi: "" })) : apiFetch<StatusMl>("/v1/prediksi/ml"),
+    /** Melatih model kandidat dari harga tervalidasi; galat 503 bila layanan ML mati. */
+    latih: (komoditasKode: string): Promise<BarisModel> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Pelatihan model memerlukan backend dan layanan ML."))
+        : apiFetch<ModelResponse>("/v1/prediksi/latih", { method: "POST", body: JSON.stringify({ komoditas_kode: komoditasKode }) }).then(toBarisModel),
   },
   spasial: {
     rute: (): Promise<Rute[]> =>

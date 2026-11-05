@@ -2,10 +2,9 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { AnimatePresence, motion } from "motion/react";
-import { CheckCircle2, Download, FileText, Loader2, Send, Sparkles } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Send, Sparkles } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
@@ -99,8 +98,7 @@ export function BriefPage() {
         facets={[{ columnId: "status", label: "Status", options: Object.entries(STATUS).map(([value, v]) => ({ value, label: v.label })) }]}
         bulkActions={[
           { id: "telaah", label: "Ajukan telaah", icon: Send, perm: "brief.susun", enabled: (r) => r.every((x) => x.status === "DRAF"), run: (r) => mut.mutateAsync({ aksi: "telaah", ids: ids(r), label: "Diajukan untuk ditelaah" }) },
-          { id: "setujui", label: "Setujui", icon: CheckCircle2, perm: "brief.setujui", tone: "data", enabled: (r) => r.every((x) => x.status === "TELAAH" || x.status === "DRAF"), confirm: { title: "Setujui policy brief?", description: (n) => `${n} brief akan berstatus disetujui dan siap didistribusikan. Persetujuan tercatat atas nama Anda.`, actionLabel: "Setujui" }, run: (r) => mut.mutateAsync({ aksi: "setujui", ids: ids(r), label: "Brief disetujui" }) },
-          { id: "unduh", label: "Unduh PDF", icon: Download, run: (r) => { toast.success(`${r.length} PDF sedang disiapkan`, { description: "Tautan unduhan dikirim ke email Anda." }); } },
+          { id: "setujui", label: "Setujui", icon: CheckCircle2, perm: "brief.setujui", tone: "data", enabled: (r) => r.every((x) => x.status === "TELAAH"), confirm: { title: "Setujui policy brief?", description: (n) => `${n} brief akan berstatus disetujui dan siap didistribusikan. Persetujuan tercatat atas nama Anda.`, actionLabel: "Setujui" }, run: (r) => mut.mutateAsync({ aksi: "setujui", ids: ids(r), label: "Brief disetujui" }) },
         ]} />
       <GeneratorBrief open={gen} onOpenChange={setGen} />
     </div>

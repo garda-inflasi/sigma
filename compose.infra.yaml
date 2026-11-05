@@ -50,9 +50,9 @@ services:
 
 volumes:
   postgres_data:
-    name: garda_postgres_data
+    name: ${POSTGRES_VOLUME:-garda_postgres_data}
   redis_data:
-    name: garda_redis_data
+    name: ${REDIS_VOLUME:-garda_redis_data}
 
 networks:
   garda_inflasi_net:

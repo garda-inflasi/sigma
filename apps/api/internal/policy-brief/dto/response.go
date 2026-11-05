@@ -35,3 +35,9 @@ func ToBriefResponses(items []domain.BriefView) []PolicyBriefResponse {
 	}
 	return res
 }
+
+// BulkResponse melaporkan jumlah brief yang berubah dan yang tidak.
+type BulkResponse struct {
+	Berhasil int `json:"berhasil"`
+	Gagal    int `json:"gagal"`
+}

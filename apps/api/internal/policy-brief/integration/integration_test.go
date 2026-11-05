@@ -240,3 +240,70 @@ func TestPolicyBrief_GenerateRejectsDuplicateAndInvalidPeriod(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
+
+func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
+	s := sharedSuite(t)
+	const emailPenyetuju = "strategis.djpb@gardainflasi.id" // brief.setujui, tanpa brief.susun
+
+	created := s.call(t, http.MethodPost, "/v1/policy-brief/generate", emailPenyusun, map[string]string{"periode": "2027-02"})
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	ids := []string{"PB-2027-02", "tidak-ada"}
+
+	statusBrief := func() string {
+		var status string
+		require.NoError(t, s.db.Raw("SELECT status::text FROM policy_brief WHERE id = ?", "PB-2027-02").Scan(&status).Error)
+		return status
+	}
+
+	t.Run("izin per aksi ditegakkan", func(t *testing.T) {
+		telaah := map[string]any{"action": "telaah", "ids": ids}
+		setujui := map[string]any{"action": "setujui", "ids": ids}
+		assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", "", telaah).Code)
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPembaca, telaah).Code)
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyetuju, telaah).Code)
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, setujui).Code)
+		assert.Equal(t, "DRAF", statusBrief())
+	})
+
+	t.Run("aksi dan id tidak valid", func(t *testing.T) {
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "hapus", "ids": ids}).Code)
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": []string{}}).Code)
+	})
+
+	t.Run("setujui dari DRAF dilewati", func(t *testing.T) {
+		w := s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyetuju, map[string]any{"action": "setujui", "ids": ids})
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, bulkRes{Gagal: 2}, decode[bulkRes](t, w))
+		assert.Equal(t, "DRAF", statusBrief())
+	})
+
+	t.Run("telaah lalu setujui, sekali jalan per tahap", func(t *testing.T) {
+		w := s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": ids})
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, bulkRes{Berhasil: 1, Gagal: 1}, decode[bulkRes](t, w))
+		assert.Equal(t, "TELAAH", statusBrief())
+
+		again := s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": ids})
+		assert.Equal(t, bulkRes{Gagal: 2}, decode[bulkRes](t, again), "mengulang tidak mengubah apa pun")
+
+		w = s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyetuju, map[string]any{"action": "setujui", "ids": ids})
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, bulkRes{Berhasil: 1, Gagal: 1}, decode[bulkRes](t, w))
+		assert.Equal(t, "DISETUJUI", statusBrief())
+	})
+
+	t.Run("setiap perubahan tercatat tepat sekali", func(t *testing.T) {
+		for aksi, aktor := range map[string]string{"BRIEF_TELAAH": "manajer_kebijakan", "BRIEF_SETUJUI": "strategis_djpb"} {
+			var rows []auditdomain.AuditLog
+			require.NoError(t, s.db.Where("aksi = ? AND entitas_id = ?", aksi, "PB-2027-02").Find(&rows).Error)
+			require.Len(t, rows, 1, aksi)
+			require.NotNil(t, rows[0].AktorID)
+			assert.Equal(t, aktor, *rows[0].AktorID)
+		}
+	})
+}
+
+type bulkRes struct {
+	Berhasil int `json:"berhasil"`
+	Gagal    int `json:"gagal"`
+}

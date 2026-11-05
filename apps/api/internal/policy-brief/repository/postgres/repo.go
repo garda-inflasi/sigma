@@ -53,3 +53,13 @@ func (r *Repository) Create(ctx context.Context, pb *domain.PolicyBrief) (bool, 
 	}
 	return res.RowsAffected > 0, nil
 }
+
+func (r *Repository) Transisi(ctx context.Context, id, dari, ke string) (bool, error) {
+	res := r.db.WithContext(ctx).Model(&domain.PolicyBrief{}).
+		Where("id = ? AND status = ?", id, dari).
+		Updates(map[string]any{"status": ke, "diperbarui": gorm.Expr("now()")})
+	if res.Error != nil {
+		return false, fmt.Errorf("ubah status policy brief: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}

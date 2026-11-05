@@ -28,5 +28,6 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	{
 		group.GET("", handler.List)
 		group.POST("/generate", middleware.RequirePermission("brief.susun"), handler.Generate)
+		group.POST("/bulk", handler.Bulk)
 	}
 }

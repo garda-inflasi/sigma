@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
@@ -14,6 +15,7 @@ import (
 var (
 	ErrPeriodeTidakValid = errors.New("periode harus berformat YYYY-MM")
 	ErrPeriodeSudahAda   = errors.New("brief untuk periode ini sudah ada")
+	ErrAksiTidakValid    = errors.New("aksi tidak valid")
 )
 
 // Penanda draf otomatis: Generate belum memakai LLM atau model (Fase F, 15-B).
@@ -80,5 +82,53 @@ func (uc *UseCase) catatAudit(ctx context.Context, penyusunID string, pb *domain
 	})
 	if err != nil {
 		uc.log.Warn("policy-brief: gagal mencatat audit", map[string]interface{}{"id": pb.ID, "error": err.Error()})
+	}
+}
+
+// BulkResult adalah hasil aksi massal: yang berpindah status dan yang dilewati.
+type BulkResult struct {
+	Berhasil int
+	Gagal    int
+}
+
+// transisiAksi memetakan aksi ke status asal dan tujuannya.
+var transisiAksi = map[string][2]string{
+	domain.AksiTelaah:  {domain.StatusDraf, domain.StatusTelaah},
+	domain.AksiSetujui: {domain.StatusTelaah, domain.StatusDisetujui},
+}
+
+// BulkAction memajukan status brief. Brief yang tidak ada atau bukan di status asal
+// dihitung gagal; setiap perubahan dicatat di audit.
+func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID string) (BulkResult, error) {
+	rute, ok := transisiAksi[aksi]
+	if !ok {
+		return BulkResult{}, ErrAksiTidakValid
+	}
+
+	var hasil BulkResult
+	for _, id := range ids {
+		berubah, err := uc.repo.Transisi(ctx, id, rute[0], rute[1])
+		if err != nil {
+			return hasil, err
+		}
+		if !berubah {
+			hasil.Gagal++
+			continue
+		}
+		hasil.Berhasil++
+		uc.catatTransisi(ctx, aktorID, id, aksi, rute)
+	}
+	return hasil, nil
+}
+
+func (uc *UseCase) catatTransisi(ctx context.Context, aktorID, id, aksi string, rute [2]string) {
+	err := uc.audit.Write(ctx, audit.Entry{
+		AktorID: aktorID, Aksi: "BRIEF_" + strings.ToUpper(aksi), Entitas: "policy_brief", EntitasID: id,
+		Hasil:   audit.HasilBerhasil,
+		Sebelum: map[string]any{"status": rute[0]},
+		Sesudah: map[string]any{"status": rute[1]},
+	})
+	if err != nil {
+		uc.log.Warn("policy-brief: gagal mencatat audit", map[string]interface{}{"id": id, "error": err.Error()})
 	}
 }

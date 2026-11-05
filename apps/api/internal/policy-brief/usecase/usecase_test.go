@@ -28,6 +28,16 @@ func (r *fakeRepo) Get(_ context.Context, id string) (*domain.BriefView, error) 
 	return &domain.BriefView{ID: pb.ID, Periode: pb.Periode, Judul: pb.Judul, Status: pb.Status, Ringkasan: pb.Ringkasan, DisusunOleh: "Penyusun"}, nil
 }
 
+func (r *fakeRepo) Transisi(_ context.Context, id, dari, ke string) (bool, error) {
+	pb, ada := r.rows[id]
+	if !ada || pb.Status != dari {
+		return false, nil
+	}
+	pb.Status = ke
+	r.rows[id] = pb
+	return true, nil
+}
+
 func (r *fakeRepo) Create(_ context.Context, pb *domain.PolicyBrief) (bool, error) {
 	if r.createErr != nil {
 		return false, r.createErr
@@ -133,4 +143,38 @@ func TestGenerate_PropagatesRepositoryError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Empty(t, rec.Entries())
+}
+
+func TestBulkAction_MemajukanStatusDanMencatatAudit(t *testing.T) {
+	repo := newFakeRepo()
+	repo.rows["PB-2026-09"] = domain.PolicyBrief{ID: "PB-2026-09", Status: domain.StatusDraf}
+	repo.rows["PB-2026-08"] = domain.PolicyBrief{ID: "PB-2026-08", Status: domain.StatusDisetujui}
+	uc, rec := newUseCase(repo)
+
+	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09", "PB-2026-08", "tidak-ada"}, domain.AksiTelaah, "u1")
+
+	require.NoError(t, err)
+	assert.Equal(t, BulkResult{Berhasil: 1, Gagal: 2}, hasil)
+	assert.Equal(t, domain.StatusTelaah, repo.rows["PB-2026-09"].Status)
+	assert.Equal(t, domain.StatusDisetujui, repo.rows["PB-2026-08"].Status)
+	assert.Len(t, rec.Entries(), 1)
+}
+
+func TestBulkAction_SetujuiHanyaDariTelaah(t *testing.T) {
+	repo := newFakeRepo()
+	repo.rows["PB-2026-09"] = domain.PolicyBrief{ID: "PB-2026-09", Status: domain.StatusDraf}
+	uc, _ := newUseCase(repo)
+
+	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09"}, domain.AksiSetujui, "u1")
+
+	require.NoError(t, err)
+	assert.Equal(t, BulkResult{Gagal: 1}, hasil)
+}
+
+func TestBulkAction_AksiTidakValid(t *testing.T) {
+	uc, _ := newUseCase(newFakeRepo())
+
+	_, err := uc.BulkAction(context.Background(), []string{"x"}, "hapus", "u1")
+
+	assert.ErrorIs(t, err, ErrAksiTidakValid)
 }

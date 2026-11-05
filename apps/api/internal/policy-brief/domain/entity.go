@@ -10,6 +10,12 @@ const (
 	StatusDidistribusikan = "DIDISTRIBUSIKAN"
 )
 
+// Aksi massal atas brief.
+const (
+	AksiTelaah  = "telaah"
+	AksiSetujui = "setujui"
+)
+
 // PolicyBrief memetakan tabel policy_brief. ID berbentuk PB-YYYY-MM sehingga satu
 // periode hanya bisa punya satu brief.
 type PolicyBrief struct {

@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"net/http"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/lapangan/dto"
@@ -75,4 +76,25 @@ func (h *Handler) Bulk(c *gin.Context) {
 	}
 
 	response.Success(c, dto.BulkTugasResponse{Berhasil: hasil.Berhasil, Gagal: hasil.Gagal})
+}
+
+// GET /v1/lapangan/acuan
+//
+// Mengirim ETag dari versi data; permintaan dengan If-None-Match yang sama dijawab 304
+// tanpa isi sehingga unduhan ulang di perangkat murah.
+func (h *Handler) Acuan(c *gin.Context) {
+	data, err := h.uc.Acuan(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil data acuan")
+		return
+	}
+
+	etag := `"` + data.Versi + `"`
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", "private, no-cache")
+	if c.GetHeader("If-None-Match") == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	response.Success(c, dto.ToAcuanResponse(data))
 }

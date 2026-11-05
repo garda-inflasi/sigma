@@ -86,3 +86,31 @@ func (r *Repository) TandaiSelesai(ctx context.Context, ids []string, petugasID 
 	}
 	return changed, nil
 }
+
+// Acuan membaca komoditas dan pasar aktif serta median harga resmi (DIVALIDASI atau
+// DIPUBLIKASI) per komoditas, kabupaten, dan tipe sejak waktu itu, hanya bila
+// sampelnya minimal minSampel.
+func (r *Repository) Acuan(ctx context.Context, sejak time.Time, minSampel int) (domain.DataAcuan, error) {
+	var data domain.DataAcuan
+	tx := r.db.WithContext(ctx)
+
+	if err := tx.Raw(`SELECT kode, nama, satuan, harga_acuan FROM komoditas WHERE status = 'AKTIF' ORDER BY kode`).Scan(&data.Komoditas).Error; err != nil {
+		return data, fmt.Errorf("baca komoditas acuan: %w", err)
+	}
+	if err := tx.Raw(`SELECT id, nama, kabupaten_kode, lat, lng, radius_meter FROM pasar WHERE aktif ORDER BY id`).Scan(&data.Pasar).Error; err != nil {
+		return data, fmt.Errorf("baca pasar acuan: %w", err)
+	}
+	err := tx.Raw(`
+		SELECT e.komoditas_kode, p.kabupaten_kode, e.tipe::text AS tipe,
+		       percentile_cont(0.5) WITHIN GROUP (ORDER BY e.harga) AS median, COUNT(*) AS sampel
+		  FROM entri_harga e
+		  JOIN pasar p ON p.id = e.pasar_id
+		 WHERE e.status IN ('DIVALIDASI', 'DIPUBLIKASI') AND e.dicatat_pada >= ?
+		 GROUP BY e.komoditas_kode, p.kabupaten_kode, e.tipe
+		HAVING COUNT(*) >= ?
+		 ORDER BY e.komoditas_kode, p.kabupaten_kode, e.tipe`, sejak, minSampel).Scan(&data.Median).Error
+	if err != nil {
+		return data, fmt.Errorf("baca median acuan: %w", err)
+	}
+	return data, nil
+}

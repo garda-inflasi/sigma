@@ -36,8 +36,13 @@ type CreateHargaRequest struct {
 	Tipe          string     `json:"tipe" binding:"required,oneof=PRODUSEN KONSUMEN"`
 	Harga         int        `json:"harga" binding:"required,min=1"`
 	Kualitas      string     `json:"kualitas" binding:"omitempty,oneof=PREMIUM MEDIUM ASALAN"`
+	KodePedagang  *string    `json:"kode_pedagang" binding:"omitempty,max=100"`
 	Catatan       *string    `json:"catatan" binding:"omitempty,max=1000"`
 	DicatatPada   *time.Time `json:"dicatat_pada"`
+	Lat           *float64   `json:"lat" binding:"omitempty,min=-90,max=90"`
+	Lng           *float64   `json:"lng" binding:"omitempty,min=-180,max=180"`
+	// Pertahankan menyimpan entri walau bentrok dengan entri petugas lain.
+	Pertahankan bool `json:"pertahankan"`
 }
 
 // BulkHargaRequest adalah isian POST /v1/harga/bulk.

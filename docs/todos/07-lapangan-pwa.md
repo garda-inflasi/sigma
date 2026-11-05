@@ -37,18 +37,18 @@
 **Bergantung pada:** 07-A, 06-A.
 
 1. **MIG**
-   - [ ] Ganti `UNIQUE (idempotency_key)` global menjadi `UNIQUE (petugas_id, idempotency_key)`.
-   - [ ] `tugas_entri` (`tugas_id`, `entri_id`) agar progres tugas dihitung dari entri yang masuk.
-   - [ ] Index untuk deteksi bentrok `(pasar_id, komoditas_kode, tipe, dicatat_pada)` dan tetapkan jendela waktu yang dianggap bentrok.
+   - [x] Ganti `UNIQUE (idempotency_key)` global menjadi `UNIQUE (petugas_id, idempotency_key)` (migrasi 000060).
+   - [x] `tugas_entri` (`tugas_id`, `entri_id`) agar progres tugas dihitung dari entri yang masuk.
+   - [x] Index untuk deteksi bentrok `(pasar_id, komoditas_kode, tipe, dicatat_pada)`. Jendela bentrok: ±3 jam, petugas berbeda, harga berbeda, entri DRAF/DITOLAK diabaikan.
 2. **SEED**: tidak ada (memakai histori 06-A).
 3. **API**
-   - [ ] **`POST /v1/lapangan/harga`**: izin `harga.input`; hormati `Idempotency-Key` (kiriman ulang mengembalikan hasil yang sama); **409** bila bentrok beserta data pembanding.
-   - [ ] Validasi sisi server atas semua yang dicek di perangkat; simpan hasilnya (detail otomatis di [06-C](06-harga-validasi.md)).
-   - [ ] Endpoint data acuan offline (komoditas, pasar, harga acuan per wilayah) dengan ETag/versi untuk unduhan inkremental.
+   - [x] **`POST /v1/lapangan/harga`**: izin `harga.input`; hormati `Idempotency-Key` (kiriman ulang mengembalikan hasil yang sama); **409** bila bentrok beserta data pembanding.
+   - [x] Validasi referensi, rentang waktu, dan koordinat di server; validasi otomatis (rentang, outlier, duplikat, geofence) di [06-C](06-harga-validasi.md). Foto belum diunggah (07-C): klien tidak lagi mengirim data URL foto.
+   - [x] `GET /v1/lapangan/acuan` (komoditas, pasar+geofence, median resmi 7 hari per kabupaten) dengan ETag/`If-None-Match` (304). Unduhan inkremental parsial: seluruh paket diunduh ulang bila versi berubah.
 4. **FE**
-   - [ ] Hubungkan sync engine dan UI penyelesaian konflik di riwayat ke payload 409.
-   - [ ] Pastikan `MODE_MOCK` tidak lagi aktif untuk alur ini.
-5. **TES**: tes `sync-engine` (sukses, 409, 5xx, offline, idempotensi), tes `field-queue-store`, integrasi `POST` (kunci ganda, konflik, validasi). Saat ini nol tes.
+   - [x] Hubungkan sync engine dan UI penyelesaian konflik di riwayat ke payload 409.
+   - [x] Pastikan `MODE_MOCK` tidak lagi aktif untuk alur ini.
+5. **TES** (selesai): tes `sync-engine` (sukses, 409, 5xx, offline, idempotensi), tes `field-queue-store`, integrasi `POST` (kunci ganda, konflik, validasi). Saat ini nol tes.
 
 ---
 

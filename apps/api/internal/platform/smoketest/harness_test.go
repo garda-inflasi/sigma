@@ -146,6 +146,11 @@ func readEnvelope(t *testing.T, w *httptest.ResponseRecorder) envelope {
 
 func (s *stack) do(t *testing.T, method, path, bearer string, body any) *httptest.ResponseRecorder {
 	t.Helper()
+	return s.doWith(t, method, path, bearer, nil, body)
+}
+
+func (s *stack) doWith(t *testing.T, method, path, bearer string, headers map[string]string, body any) *httptest.ResponseRecorder {
+	t.Helper()
 	var payload io.Reader = http.NoBody
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -154,6 +159,9 @@ func (s *stack) do(t *testing.T, method, path, bearer string, body any) *httptes
 	}
 	req := httptest.NewRequest(method, path, payload)
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}

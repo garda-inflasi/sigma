@@ -629,12 +629,17 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Mencatat entri harga baru
-      description: Entri disimpan berstatus DIAJUKAN atas nama pengguna. Memerlukan izin `harga.input`. Tercatat di audit trail.
+      description: |
+        Entri disimpan berstatus DIAJUKAN atas nama pengguna. Memerlukan izin `harga.input`. Tercatat di audit trail.
+        Header `Idempotency-Key` bersifat opsional di sini; bila dikirim, kiriman ulang oleh pengguna yang sama
+        mengembalikan entri semula (200).
       operationId: createHarga
       tags:
         - Harga
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -1401,6 +1406,119 @@ paths:
                 $ref: "#/components/schemas/KpiRiwayatResponse"
         "404":
           description: KPI tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/lapangan/harga:
+    post:
+      summary: Mengirim entri harga dari aplikasi lapangan (idempoten)
+      description: |
+        Dipakai sync engine PWA. Memerlukan izin `harga.input`. Header `Idempotency-Key` wajib dan unik per
+        petugas: kiriman ulang dengan kunci yang sama mengembalikan entri semula dengan status 200 dan
+        header `Idempotent-Replayed: true`, tanpa menyimpan atau mencatat audit ulang.
+
+        Bila petugas lain sudah mengirim harga yang berbeda untuk pasar, komoditas, dan tipe yang sama dalam
+        3 jam dari waktu pencatatan (entri DRAF dan DITOLAK diabaikan), kiriman ditolak dengan 409 beserta
+        versi server sebagai pembanding. Kirim ulang dengan `pertahankan: true` untuk tetap menyimpan versi
+        sendiri. Entri ditautkan ke tugas lapangan petugas yang meminta pasar, tipe, dan komoditas ini, dan
+        progres tugas bertambah satu per komoditas.
+      operationId: kirimHargaLapangan
+      tags:
+        - Lapangan
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHargaRequest"
+      responses:
+        "201":
+          description: Entri baru tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateHargaResponse"
+        "200":
+          description: Kiriman ulang; entri semula dikembalikan
+          headers:
+            Idempotent-Replayed:
+              schema:
+                type: string
+                example: "true"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateHargaResponse"
+        "400":
+          description: Validasi gagal, Idempotency-Key tidak ada, komoditas atau pasar tidak ada, atau waktu pencatatan di masa depan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Bentrok dengan harga petugas lain; `data.versi_server` memuat pembandingnya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HargaBentrokResponse"
+
+  /v1/lapangan/acuan:
+    get:
+      summary: Mengunduh data acuan untuk validasi harga offline
+      description: |
+        Komoditas aktif, pasar aktif beserta geofence, dan median harga resmi (DIVALIDASI atau DIPUBLIKASI)
+        7 hari terakhir per komoditas, kabupaten, dan tipe (hanya bila minimal 3 sampel) dengan rentang wajar
+        ±`toleransi`. Memerlukan izin `harga.input`. `versi` juga dikirim sebagai `ETag`; kirim kembali di
+        `If-None-Match` agar server menjawab 304 tanpa isi bila data tidak berubah.
+      operationId: getDataAcuan
+      tags:
+        - Lapangan
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Data acuan
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataAcuanResponse"
+        "304":
+          description: Data tidak berubah sejak versi di If-None-Match
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.input`
           content:
             application/json:
               schema:
@@ -2416,6 +2534,13 @@ components:
       description: Masukkan token JWT yang diperoleh dari endpoint login
 
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: Kunci unik per kiriman (mis. UUID dari perangkat), maksimal 255 karakter
+      schema:
+        type: string
+        maxLength: 255
     HargaStatus:
       name: status
       in: query
@@ -3292,6 +3417,10 @@ components:
           type: string
           enum: [PREMIUM, MEDIUM, ASALAN]
           default: MEDIUM
+        kode_pedagang:
+          type: string
+          maxLength: 100
+          description: Kode pedagang, bukan nama atau nomor telepon
         catatan:
           type: string
           maxLength: 1000
@@ -3299,6 +3428,18 @@ components:
           type: string
           format: date-time
           description: Waktu pencatatan di lapangan; bawaan sekarang, tidak boleh di masa depan
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+          description: Harus diisi bersamaan dengan `lng`
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        pertahankan:
+          type: boolean
+          description: Simpan walau bentrok dengan harga petugas lain
 
     CreateHargaResponse:
       type: object
@@ -3313,6 +3454,102 @@ components:
           properties:
             id:
               type: string
+            status:
+              type: string
+              enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+
+    HargaBentrokResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "409"
+        message:
+          type: string
+          example: harga bentrok dengan entri petugas lain
+        data:
+          type: object
+          properties:
+            versi_server:
+              type: object
+              properties:
+                id:
+                  type: string
+                harga:
+                  type: integer
+                dicatat_pada:
+                  type: string
+                  format: date-time
+                petugas:
+                  type: string
+                  description: Nama petugas yang mengirim lebih dulu
+
+    DataAcuanResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            versi:
+              type: string
+            toleransi:
+              type: number
+              example: 0.25
+            komoditas:
+              type: array
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  nama:
+                    type: string
+                  satuan:
+                    type: string
+                  harga_acuan:
+                    type: integer
+            pasar:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  nama:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  lat:
+                    type: number
+                  lng:
+                    type: number
+                  radius_meter:
+                    type: integer
+            harga_acuan:
+              type: array
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  tipe:
+                    type: string
+                    enum: [PRODUSEN, KONSUMEN]
+                  median:
+                    type: integer
+                  bawah:
+                    type: integer
+                  atas:
+                    type: integer
+                  sampel:
+                    type: integer
 
     BulkHargaRequest:
       type: object

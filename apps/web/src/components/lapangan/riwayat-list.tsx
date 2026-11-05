@@ -198,10 +198,10 @@ export function RiwayatList() {
             </div>
           )}
           <div className="grid gap-2 p-4">
-            <SpringButton size="lg" onClick={() => { if (konflik) { perbarui(konflik.localId, { status: "ANTRE", catatan: `${konflik.catatan ?? ""} [pertahankan versi perangkat]`.trim() }); window.dispatchEvent(new CustomEvent("garda:sinkron")); toast.success("Versi Anda dikirim sebagai pembanding"); } setKonflik(null); }}>
+            <SpringButton size="lg" onClick={() => { if (konflik) { perbarui(konflik.localId, { status: "ANTRE", pertahankan: true, galat: undefined }); window.dispatchEvent(new CustomEvent("garda:sinkron")); toast.success("Versi Anda dikirim sebagai pembanding"); } setKonflik(null); }}>
               Pertahankan versi saya
             </SpringButton>
-            <SpringButton size="lg" variant="soft" onClick={() => { if (konflik) { perbarui(konflik.localId, { status: "TERSINKRON", harga: konflik.versiServer?.harga ?? konflik.harga }); toast("Versi server dipakai"); } setKonflik(null); }}>
+            <SpringButton size="lg" variant="soft" onClick={() => { if (konflik) { hapus([konflik.localId]); toast("Versi server dipakai, entri perangkat dihapus"); } setKonflik(null); }}>
               Gunakan versi server
             </SpringButton>
           </div>

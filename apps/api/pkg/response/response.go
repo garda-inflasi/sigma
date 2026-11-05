@@ -48,6 +48,15 @@ func Error(c *gin.Context, httpStatus int, code, message string) {
 	})
 }
 
+// ErrorWithData sends an error response that carries a data payload.
+func ErrorWithData(c *gin.Context, httpStatus int, code, message string, data interface{}) {
+	c.JSON(httpStatus, Envelope{
+		Code:    code,
+		Message: message,
+		Data:    data,
+	})
+}
+
 // BadRequest sends a 400 Bad Request response
 func BadRequest(c *gin.Context, message string) {
 	Error(c, http.StatusBadRequest, "400", message)

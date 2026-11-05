@@ -2,7 +2,9 @@ package http
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
@@ -117,28 +119,71 @@ func (h *Handler) GetTren(c *gin.Context) {
 	response.Success(c, items)
 }
 
+// idempotencyKeyHeader membawa kunci yang membuat kiriman ulang aman; maksimal sepanjang kolom basis data.
+const (
+	idempotencyKeyHeader = "Idempotency-Key"
+	maxIdempotencyKey    = 255
+	replayedHeader       = "Idempotent-Replayed"
+)
+
 // POST /v1/harga
+//
+// Header Idempotency-Key bersifat opsional di sini.
 func (h *Handler) CreateHarga(c *gin.Context) {
+	h.create(c, false)
+}
+
+// POST /v1/lapangan/harga
+//
+// Dipakai sync engine PWA: Idempotency-Key wajib, kiriman ulang mengembalikan
+// entri semula, dan 409 memuat versi server dari harga yang bentrok.
+func (h *Handler) KirimLapangan(c *gin.Context) {
+	h.create(c, true)
+}
+
+func (h *Handler) create(c *gin.Context, kunciWajib bool) {
 	var req dto.CreateHargaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
-
-	entri, err := h.uc.CreateHarga(audit.RequestContext(c), usecase.CreateInput{
-		KomoditasKode: req.KomoditasKode, PasarID: req.PasarID, Tipe: req.Tipe, Harga: req.Harga,
-		Kualitas: req.Kualitas, Catatan: req.Catatan, DicatatPada: req.DicatatPada,
-	}, c.GetString("user_id"))
-	if err != nil {
-		if errors.Is(err, usecase.ErrValidasi) {
-			response.BadRequest(c, err.Error())
-			return
-		}
-		response.InternalError(c, "Gagal menyimpan data harga")
+	kunci := strings.TrimSpace(c.GetHeader(idempotencyKeyHeader))
+	if kunciWajib && kunci == "" {
+		response.BadRequest(c, "Header "+idempotencyKeyHeader+" wajib diisi")
+		return
+	}
+	if len(kunci) > maxIdempotencyKey {
+		response.BadRequest(c, "Header "+idempotencyKeyHeader+" terlalu panjang")
 		return
 	}
 
-	response.Created(c, dto.CreateHargaResponse{ID: entri.ID})
+	hasil, err := h.uc.CreateHarga(audit.RequestContext(c), usecase.CreateInput{
+		KomoditasKode: req.KomoditasKode, PasarID: req.PasarID, Tipe: req.Tipe, Harga: req.Harga,
+		Kualitas: req.Kualitas, KodePedagang: req.KodePedagang, Catatan: req.Catatan, DicatatPada: req.DicatatPada,
+		Lat: req.Lat, Lng: req.Lng, IdempotencyKey: kunci, Pertahankan: req.Pertahankan,
+	}, c.GetString("user_id"))
+	if err != nil {
+		var bentrok *usecase.BentrokError
+		switch {
+		case errors.As(err, &bentrok):
+			response.ErrorWithData(c, http.StatusConflict, "409", bentrok.Error(), dto.BentrokResponse{VersiServer: dto.VersiServerResponse{
+				ID: bentrok.Server.ID, Harga: bentrok.Server.Harga, DicatatPada: bentrok.Server.DicatatPada, Petugas: bentrok.Server.PetugasNama,
+			}})
+		case errors.Is(err, usecase.ErrValidasi):
+			response.BadRequest(c, err.Error())
+		default:
+			response.InternalError(c, "Gagal menyimpan data harga")
+		}
+		return
+	}
+
+	body := dto.CreateHargaResponse{ID: hasil.Entri.ID, Status: hasil.Entri.Status}
+	if hasil.Diulang {
+		c.Header(replayedHeader, "true")
+		response.Success(c, body)
+		return
+	}
+	response.Created(c, body)
 }
 
 // GET /v1/harga/:id

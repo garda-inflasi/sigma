@@ -8,6 +8,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/harga/domain"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // wib adalah zona waktu pengelompokan harian: hari pencatatan mengikuti hari di Aceh.
@@ -171,10 +172,135 @@ func (r *Repository) SatuanKomoditas(ctx context.Context, komoditasKode, pasarID
 	return satuan[0], nil
 }
 
-// Create menyimpan entri baru.
-func (r *Repository) Create(ctx context.Context, entri *domain.EntriHarga) error {
-	if err := r.db.WithContext(ctx).Create(entri).Error; err != nil {
-		return fmt.Errorf("simpan entri harga: %w", err)
+// Simpan menyimpan entri dalam satu transaksi: kiriman ulang (kunci idempotensi
+// yang sama) mengembalikan entri semula, entri petugas lain yang bentrok menolak
+// penyimpanan, dan entri baru ditautkan ke tugas lapangan yang dipenuhinya.
+func (r *Repository) Simpan(ctx context.Context, kirim domain.Pengiriman) (domain.HasilSimpan, error) {
+	entri := kirim.Entri
+	var hasil domain.HasilSimpan
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		hasil = domain.HasilSimpan{}
+
+		ada, err := entriDenganKunci(tx, entri)
+		if err != nil {
+			return err
+		}
+		if ada != nil {
+			hasil.Entri, hasil.Diulang = ada, true
+			return nil
+		}
+
+		if !kirim.Pertahankan {
+			if hasil.Bentrok, err = cariBentrok(tx, entri); err != nil || hasil.Bentrok != nil {
+				return err
+			}
+		}
+
+		// Dua kiriman serentak dengan kunci sama: yang kalah tidak menambah baris.
+		res := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "petugas_id"}, {Name: "idempotency_key"}},
+			DoNothing: true,
+		}).Create(entri)
+		if res.Error != nil {
+			return fmt.Errorf("simpan entri harga: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			if ada, err = entriDenganKunci(tx, entri); err != nil {
+				return err
+			}
+			hasil.Entri, hasil.Diulang = ada, true
+			return nil
+		}
+
+		hasil.Entri = entri
+		return tautkanTugas(tx, entri)
+	})
+	if err != nil {
+		return domain.HasilSimpan{}, err
+	}
+	return hasil, nil
+}
+
+// entriDenganKunci mengembalikan entri petugas yang sama dengan kunci idempotensi
+// yang sama, atau nil bila belum ada (atau entri tidak membawa kunci).
+func entriDenganKunci(tx *gorm.DB, entri *domain.EntriHarga) (*domain.EntriHarga, error) {
+	if entri.IdempotencyKey == nil || entri.PetugasID == nil {
+		return nil, nil
+	}
+	var ada []domain.EntriHarga
+	err := tx.Where("petugas_id = ? AND idempotency_key = ?", *entri.PetugasID, *entri.IdempotencyKey).Limit(1).Find(&ada).Error
+	if err != nil {
+		return nil, fmt.Errorf("cari entri berkunci: %w", err)
+	}
+	if len(ada) == 0 {
+		return nil, nil
+	}
+	return &ada[0], nil
+}
+
+// cariBentrok mengembalikan entri petugas lain, terdekat dalam waktu, yang
+// harganya berbeda pada pasar, komoditas, dan tipe yang sama dalam JendelaBentrok.
+func cariBentrok(tx *gorm.DB, entri *domain.EntriHarga) (*domain.Bentrok, error) {
+	var found []domain.Bentrok
+	err := tx.Raw(`
+		SELECT e.id, e.harga, e.dicatat_pada, e.petugas_id, COALESCE(u.nama, '') AS petugas_nama
+		  FROM entri_harga e
+		  LEFT JOIN pengguna u ON u.id = e.petugas_id
+		 WHERE e.pasar_id = @pasar AND e.komoditas_kode = @komoditas AND e.tipe = @tipe
+		   AND e.petugas_id IS DISTINCT FROM @petugas
+		   AND e.status NOT IN ('DRAF', 'DITOLAK')
+		   AND e.harga <> @harga
+		   AND e.dicatat_pada BETWEEN @dari AND @sampai
+		 ORDER BY abs(extract(epoch FROM e.dicatat_pada - CAST(@dicatat AS timestamptz))), e.id
+		 LIMIT 1`, map[string]any{
+		"pasar": entri.PasarID, "komoditas": entri.KomoditasKode, "tipe": entri.Tipe,
+		"petugas": entri.PetugasID, "harga": entri.Harga, "dicatat": entri.DicatatPada,
+		"dari": entri.DicatatPada.Add(-domain.JendelaBentrok), "sampai": entri.DicatatPada.Add(domain.JendelaBentrok),
+	}).Scan(&found).Error
+	if err != nil {
+		return nil, fmt.Errorf("cari bentrok harga: %w", err)
+	}
+	if len(found) == 0 {
+		return nil, nil
+	}
+	return &found[0], nil
+}
+
+// tautkanTugas menautkan entri ke tugas belum selesai milik petugas yang meminta
+// pasar, tipe, dan komoditas ini, lalu menambah progres tugas satu komoditas
+// (sekali per komoditas, paling banyak sebesar target).
+func tautkanTugas(tx *gorm.DB, entri *domain.EntriHarga) error {
+	if entri.PetugasID == nil {
+		return nil
+	}
+	var tugas []string
+	err := tx.Raw(`
+		SELECT id FROM tugas_lapangan
+		 WHERE petugas_id = ? AND pasar_id = ? AND tipe = ? AND status <> 'SELESAI'
+		   AND ? = ANY(komoditas) AND dibuat_pada <= ?
+		 ORDER BY tenggat, id
+		 LIMIT 1
+		 FOR UPDATE`, *entri.PetugasID, entri.PasarID, entri.Tipe, entri.KomoditasKode, entri.DicatatPada).Scan(&tugas).Error
+	if err != nil {
+		return fmt.Errorf("cari tugas lapangan: %w", err)
+	}
+	if len(tugas) == 0 {
+		return nil
+	}
+
+	if err := tx.Create(&domain.TugasEntri{TugasID: tugas[0], EntriID: entri.ID}).Error; err != nil {
+		return fmt.Errorf("tautkan entri ke tugas: %w", err)
+	}
+	err = tx.Exec(`
+		UPDATE tugas_lapangan t
+		   SET jumlah_selesai = LEAST(t.target, t.jumlah_selesai + 1)
+		 WHERE t.id = ?
+		   AND NOT EXISTS (
+		       SELECT 1 FROM tugas_entri te JOIN entri_harga e ON e.id = te.entri_id
+		        WHERE te.tugas_id = t.id AND e.komoditas_kode = ? AND te.entri_id <> ?)`,
+		tugas[0], entri.KomoditasKode, entri.ID).Error
+	if err != nil {
+		return fmt.Errorf("perbarui progres tugas: %w", err)
 	}
 	return nil
 }

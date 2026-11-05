@@ -47,8 +47,13 @@ func (m *mockRepository) SatuanKomoditas(ctx context.Context, komoditas, pasar s
 	return args.String(0), args.Error(1)
 }
 
-func (m *mockRepository) Create(ctx context.Context, entri *domain.EntriHarga) error {
-	return m.Called(ctx, entri).Error(0)
+func (m *mockRepository) Simpan(ctx context.Context, kirim domain.Pengiriman) (domain.HasilSimpan, error) {
+	args := m.Called(ctx, kirim)
+	hasil, _ := args.Get(0).(domain.HasilSimpan)
+	if hasil.Entri == nil && hasil.Bentrok == nil && args.Error(1) == nil {
+		hasil.Entri = kirim.Entri
+	}
+	return hasil, args.Error(1)
 }
 
 func (m *mockRepository) Transisi(ctx context.Context, ids []string, aksi domain.BulkAction, aktor string, waktu time.Time) ([]string, error) {
@@ -177,13 +182,15 @@ func TestCreateHarga_StoresPendingEntryAndAudits(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "PSR-1171-01").Return("kg", nil)
-	repo.On("Create", mock.Anything, mock.AnythingOfType("*domain.EntriHarga")).Return(nil)
+	repo.On("Simpan", mock.Anything, mock.AnythingOfType("domain.Pengiriman")).Return(domain.HasilSimpan{}, nil)
 
-	entri, err := uc.CreateHarga(t.Context(), CreateInput{
+	hasil, err := uc.CreateHarga(t.Context(), CreateInput{
 		KomoditasKode: "CBM-KRT", PasarID: "PSR-1171-01", Tipe: domain.TipeKonsumen, Harga: 52000,
 	}, "mahasiswa_1")
 
 	require.NoError(t, err)
+	entri := hasil.Entri
+	assert.False(t, hasil.Diulang)
 	assert.NotEmpty(t, entri.ID)
 	assert.Equal(t, domain.StatusDiajukan, entri.Status)
 	assert.Equal(t, "kg", entri.Satuan)
@@ -208,7 +215,7 @@ func TestCreateHarga_RejectsFutureTimestamp(t *testing.T) {
 	_, err := uc.CreateHarga(t.Context(), CreateInput{KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 1, DicatatPada: &masaDepan}, "u")
 
 	require.ErrorIs(t, err, ErrValidasi)
-	repo.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	repo.AssertNotCalled(t, "Simpan", mock.Anything, mock.Anything)
 	assert.Empty(t, recorder.Entries())
 }
 
@@ -223,11 +230,68 @@ func TestCreateHarga_UnknownReference(t *testing.T) {
 	assert.Empty(t, recorder.Entries())
 }
 
+func TestCreateHarga_PassesIdempotencyKeyAndPertahankan(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "P").Return("kg", nil)
+	repo.On("Simpan", mock.Anything, mock.MatchedBy(func(k domain.Pengiriman) bool {
+		return k.Pertahankan && k.Entri.IdempotencyKey != nil && *k.Entri.IdempotencyKey == "kunci-1"
+	})).Return(domain.HasilSimpan{}, nil)
+
+	_, err := uc.CreateHarga(t.Context(), CreateInput{
+		KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 1, IdempotencyKey: "kunci-1", Pertahankan: true,
+	}, "u")
+
+	require.NoError(t, err)
+	repo.AssertExpectations(t)
+}
+
+func TestCreateHarga_ReplayIsNotAuditedAgain(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	lama := &domain.EntriHarga{ID: "lama", Status: domain.StatusDiajukan}
+	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "P").Return("kg", nil)
+	repo.On("Simpan", mock.Anything, mock.Anything).Return(domain.HasilSimpan{Entri: lama, Diulang: true}, nil)
+
+	hasil, err := uc.CreateHarga(t.Context(), CreateInput{KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 1, IdempotencyKey: "k"}, "u")
+
+	require.NoError(t, err)
+	assert.True(t, hasil.Diulang)
+	assert.Equal(t, "lama", hasil.Entri.ID)
+	assert.Empty(t, recorder.Entries())
+}
+
+func TestCreateHarga_ConflictReturnsServerVersion(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	bentrok := &domain.Bentrok{ID: "e1", Harga: 52000, DicatatPada: fixedNow, PetugasNama: "Cut Nanda"}
+	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "P").Return("kg", nil)
+	repo.On("Simpan", mock.Anything, mock.Anything).Return(domain.HasilSimpan{Bentrok: bentrok}, nil)
+
+	_, err := uc.CreateHarga(t.Context(), CreateInput{KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 60000}, "u")
+
+	var got *BentrokError
+	require.ErrorAs(t, err, &got)
+	assert.Equal(t, *bentrok, got.Server)
+	assert.Empty(t, recorder.Entries(), "kiriman yang ditolak tidak mengubah data")
+}
+
+func TestCreateHarga_RejectsHalfCoordinates(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	lat := -5.5
+
+	_, err := uc.CreateHarga(t.Context(), CreateInput{KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 1, Lat: &lat}, "u")
+
+	require.ErrorIs(t, err, ErrValidasi)
+	repo.AssertNotCalled(t, "Simpan", mock.Anything, mock.Anything)
+}
+
 func TestCreateHarga_RepoErrorSkipsAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "P").Return("kg", nil)
-	repo.On("Create", mock.Anything, mock.Anything).Return(errors.New("db mati"))
+	repo.On("Simpan", mock.Anything, mock.Anything).Return(domain.HasilSimpan{}, errors.New("db mati"))
 
 	_, err := uc.CreateHarga(t.Context(), CreateInput{KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 1}, "u")
 

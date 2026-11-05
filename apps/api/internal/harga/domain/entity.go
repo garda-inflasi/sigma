@@ -60,6 +60,17 @@ func (EntriHarga) TableName() string {
 	return "entri_harga"
 }
 
+// TugasEntri menautkan entri harga ke tugas lapangan yang dipenuhinya (tabel tugas_entri).
+type TugasEntri struct {
+	TugasID       string    `gorm:"column:tugas_id;primaryKey"`
+	EntriID       string    `gorm:"column:entri_id;primaryKey"`
+	DitautkanPada time.Time `gorm:"column:ditautkan_pada;default:now()"`
+}
+
+func (TugasEntri) TableName() string {
+	return "tugas_entri"
+}
+
 // EntriView adalah baris entri_harga beserta nama komoditas, pasar, wilayah,
 // dan petugas, siap ditampilkan di daftar dan detail.
 type EntriView struct {

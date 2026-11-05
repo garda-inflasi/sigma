@@ -96,7 +96,21 @@ type TrenHargaResponse struct {
 }
 
 type CreateHargaResponse struct {
-	ID string `json:"id"`
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+// BentrokResponse adalah isi 409: entri petugas lain yang bentrok dengan kiriman.
+type BentrokResponse struct {
+	VersiServer VersiServerResponse `json:"versi_server"`
+}
+
+// VersiServerResponse adalah versi server dari harga yang bentrok.
+type VersiServerResponse struct {
+	ID          string    `json:"id"`
+	Harga       int       `json:"harga"`
+	DicatatPada time.Time `json:"dicatat_pada"`
+	Petugas     string    `json:"petugas"`
 }
 
 // BulkHargaResponse melaporkan entri yang berubah dan yang dilewati.

@@ -22,6 +22,8 @@ export interface EntriLokal {
   akurasiM?: number;
   dalamGeofence?: boolean;
   catatan?: string;
+  /** Petugas memilih mempertahankan versinya setelah konflik (dikirim ulang dengan kunci yang sama). */
+  pertahankan?: boolean;
   dicatatPada: string;
   status: StatusLokal;
   percobaan: number;

@@ -130,27 +130,55 @@ type CreateInput struct {
 	Tipe          string
 	Harga         int
 	Kualitas      string
+	KodePedagang  *string
 	Catatan       *string
 	DicatatPada   *time.Time
+	Lat, Lng      *float64
+	// IdempotencyKey kosong berarti kiriman tanpa jaminan idempotensi.
+	IdempotencyKey string
+	// Pertahankan menyimpan entri walau bentrok dengan entri petugas lain.
+	Pertahankan bool
+}
+
+// HasilKirim adalah entri yang tersimpan; Diulang true bila kiriman ini mengulang
+// kunci idempotensi yang sudah tersimpan.
+type HasilKirim struct {
+	Entri   *domain.EntriHarga
+	Diulang bool
+}
+
+// BentrokError dikembalikan bila petugas lain sudah mengirim harga berbeda untuk
+// pasar, komoditas, dan tipe yang sama; Server memuat versi pembandingnya.
+type BentrokError struct {
+	Server domain.Bentrok
+}
+
+func (e *BentrokError) Error() string {
+	return "harga bentrok dengan entri petugas lain"
 }
 
 // CreateHarga menyimpan entri berstatus DIAJUKAN atas nama petugas dan mencatatnya di audit trail.
-func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID string) (*domain.EntriHarga, error) {
+// Kiriman ulang dengan kunci idempotensi yang sama mengembalikan entri semula tanpa menyimpan atau
+// mencatat ulang; entri yang bentrok dengan petugas lain ditolak dengan *BentrokError.
+func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID string) (HasilKirim, error) {
 	now := uc.now()
 	dicatat := now
 	if in.DicatatPada != nil {
 		if in.DicatatPada.After(now.Add(toleransiWaktu)) {
-			return nil, fmt.Errorf("%w: waktu pencatatan di masa depan", ErrValidasi)
+			return HasilKirim{}, fmt.Errorf("%w: waktu pencatatan di masa depan", ErrValidasi)
 		}
 		dicatat = *in.DicatatPada
+	}
+	if (in.Lat == nil) != (in.Lng == nil) {
+		return HasilKirim{}, fmt.Errorf("%w: lat dan lng harus diisi bersamaan", ErrValidasi)
 	}
 
 	satuan, err := uc.repo.SatuanKomoditas(ctx, in.KomoditasKode, in.PasarID)
 	if err != nil {
 		if errors.Is(err, domain.ErrReferensiTidakAda) {
-			return nil, fmt.Errorf("%w: %w", ErrValidasi, err)
+			return HasilKirim{}, fmt.Errorf("%w: %w", ErrValidasi, err)
 		}
-		return nil, fmt.Errorf("cari referensi harga: %w", err)
+		return HasilKirim{}, fmt.Errorf("cari referensi harga: %w", err)
 	}
 
 	entri := &domain.EntriHarga{
@@ -163,27 +191,40 @@ func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID st
 		Kualitas:      in.Kualitas,
 		Sumber:        "LAPANGAN",
 		Status:        domain.StatusDiajukan,
+		KodePedagang:  in.KodePedagang,
 		Catatan:       in.Catatan,
+		Lat:           in.Lat,
+		Lng:           in.Lng,
 		DicatatPada:   dicatat,
 		PetugasID:     &petugasID,
 		DibuatPada:    now,
 		DiupdatePada:  now,
+	}
+	if in.IdempotencyKey != "" {
+		entri.IdempotencyKey = &in.IdempotencyKey
 	}
 	if entri.Kualitas == "" {
 		entri.Kualitas = "MEDIUM"
 	}
 	entri.DalamGeofence = true
 
-	if err := uc.repo.Create(ctx, entri); err != nil {
+	hasil, err := uc.repo.Simpan(ctx, domain.Pengiriman{Entri: entri, Pertahankan: in.Pertahankan})
+	if err != nil {
 		uc.log.Error("create harga failed", map[string]interface{}{"error": err.Error()})
-		return nil, fmt.Errorf("create harga: %w", err)
+		return HasilKirim{}, fmt.Errorf("create harga: %w", err)
+	}
+	if hasil.Bentrok != nil {
+		return HasilKirim{}, &BentrokError{Server: *hasil.Bentrok}
+	}
+	if hasil.Diulang {
+		return HasilKirim{Entri: hasil.Entri, Diulang: true}, nil
 	}
 
 	uc.catat(ctx, audit.Entry{
 		AktorID: petugasID, Aksi: "HARGA_INPUT", Entitas: "entri_harga", EntitasID: entri.ID,
 		Hasil: audit.HasilBerhasil, Sesudah: entri,
 	})
-	return entri, nil
+	return HasilKirim{Entri: entri}, nil
 }
 
 // HasilBulk melaporkan jumlah entri yang berubah dan yang dilewati.

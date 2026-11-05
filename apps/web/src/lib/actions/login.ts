@@ -3,14 +3,22 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { authApi } from "@/lib/bff/api-client";
-import { ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, cookieSecure } from "@/lib/bff/cookie-policy";
+import {
+  ACCESS_COOKIE,
+  CSRF_COOKIE,
+  REFRESH_COOKIE,
+  cookieSecure,
+} from "@/lib/bff/cookie-policy";
 import { generateCSRFToken } from "@/lib/bff/csrf";
 import { postLoginDestination } from "@/lib/auth/password-change";
+import { safeInternalPath } from "@/lib/auth/safe-path";
 
 export async function loginAction(formData: FormData) {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
-  const redirectTo = (formData.get("redirect") as string) || "/";
+  const redirectTo = safeInternalPath(
+    formData.get("redirect") as string | null,
+  );
 
   if (!email || !password) {
     return { error: "Email dan password wajib diisi." };
@@ -51,7 +59,9 @@ export async function loginAction(formData: FormData) {
     });
 
     // Akun yang wajib mengganti kata sandi dialihkan dulu ke halaman ganti kata sandi
-    redirect(postLoginDestination(result.user.wajib_ganti_password, redirectTo));
+    redirect(
+      postLoginDestination(result.user.wajib_ganti_password, redirectTo),
+    );
   } catch (error) {
     const message =
       error instanceof Error && "status" in error

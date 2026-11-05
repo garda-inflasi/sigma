@@ -1,5 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { safeInternalPath } from "@/lib/auth/safe-path";
 import { MasukForm } from "./masuk-form";
 
 export const metadata = { title: "Masuk" };
@@ -15,7 +16,7 @@ export default async function MasukPage({
   searchParams: Promise<{ lanjut?: string }>;
 }) {
   const { lanjut } = await searchParams;
-  const redirect = lanjut ?? "/";
+  const redirect = safeInternalPath(lanjut);
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const googleSso = `${apiBase}/v1/auth/sso/start?provider=google&redirect=${encodeURIComponent(redirect)}`;
 

@@ -24,6 +24,39 @@ export interface EwsAlertResponse {
   status: StatusEws;
   sumber: string;
   dibuat_pada: string;
+  diakui_oleh_id?: string | null;
+  diakui_pada?: string | null;
+  aturan_id?: string | null;
+  dieskalasi_pada?: string | null;
+  selesai_pada?: string | null;
+}
+
+/** Satu perubahan status alert (GET /v1/ews/{id}/riwayat); oleh kosong berarti sistem. */
+export interface EwsRiwayatResponse {
+  id: string;
+  dari: StatusEws | null;
+  ke: StatusEws;
+  oleh_id: string | null;
+  oleh_nama: string | null;
+  waktu: string;
+  catatan: string;
+}
+
+export interface EwsRiwayat {
+  id: string;
+  dari?: StatusEws;
+  ke: StatusEws;
+  olehNama?: string;
+  waktu: string;
+  catatan: string;
+}
+
+/** Alert lengkap dari GET /v1/ews/{id}: baris daftar ditambah jejak pengakuan, eskalasi, dan penutupan. */
+export interface EwsDetail extends EwsAlert {
+  aturanId?: string;
+  diakuiPada?: string;
+  dieskalasiPada?: string;
+  selesaiPada?: string;
 }
 
 export interface EwsAturanResponse {
@@ -107,6 +140,20 @@ export function toEwsAlert(r: EwsAlertResponse): EwsAlert {
     skorDampak: r.skor_dampak,
     sumber: r.sumber,
   };
+}
+
+export function toEwsDetail(r: EwsAlertResponse): EwsDetail {
+  return {
+    ...toEwsAlert(r),
+    aturanId: r.aturan_id ?? undefined,
+    diakuiPada: r.diakui_pada ?? undefined,
+    dieskalasiPada: r.dieskalasi_pada ?? undefined,
+    selesaiPada: r.selesai_pada ?? undefined,
+  };
+}
+
+export function toEwsRiwayat(r: EwsRiwayatResponse): EwsRiwayat {
+  return { id: r.id, dari: r.dari ?? undefined, ke: r.ke, olehNama: r.oleh_nama ?? undefined, waktu: r.waktu, catatan: r.catatan };
 }
 
 export function toEwsAturan(r: EwsAturanResponse): EwsAturan {
@@ -201,6 +248,11 @@ export function toLanggananPushBody(sub: { endpoint?: string; keys?: Record<stri
   const { endpoint, keys } = sub;
   if (!endpoint || !keys?.p256dh || !keys.auth) return null;
   return { endpoint, p256dh: keys.p256dh, auth: keys.auth };
+}
+
+/** Badan DELETE /v1/ews/notifikasi/langganan-push: server mengenali langganan dari endpoint-nya. */
+export function toBatalPushBody(endpoint: string) {
+  return { endpoint };
 }
 
 /** Kunci VAPID (base64url) → bytes untuk pushManager.subscribe. */

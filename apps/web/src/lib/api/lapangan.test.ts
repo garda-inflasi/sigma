@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cariAcuan, toTugasLapangan, toVersiServer, type DataAcuanResponse } from "./lapangan";
+import { cariAcuan, hrefIsiTugas, toTugasDetail, toTugasLapangan, toVersiServer, type DataAcuanResponse } from "./lapangan";
 
 describe("toTugasLapangan", () => {
   it("memetakan kolom API ke tugas UI", () => {
@@ -64,5 +64,42 @@ describe("toVersiServer", () => {
   it("tanpa versi server hasilnya undefined", () => {
     assert.equal(toVersiServer({ code: "409" }), undefined);
     assert.equal(toVersiServer(undefined), undefined);
+  });
+});
+
+describe("detail tugas", () => {
+  const tugas = {
+    id: "TGS-mahasiswa_1-2",
+    judul: "Verifikasi ulang harga cabai",
+    pasar_id: "PSR-1171-01",
+    pasar_nama: "Pasar Peunayong",
+    komoditas: ["CBM-KRT", "CBR-RWT"],
+    tenggat: "2026-10-16T09:30:00Z",
+    status: "BERJALAN" as const,
+    target: 2,
+    terisi: 1,
+    tipe: "KONSUMEN" as const,
+  };
+
+  it("toTugasDetail menambahkan rincian komoditas terisi dan belum", () => {
+    const d = toTugasDetail({
+      ...tugas,
+      rincian_komoditas: [
+        { kode: "CBM-KRT", nama: "Cabai merah keriting", terisi: true },
+        { kode: "CBR-RWT", nama: "Cabai rawit", terisi: false },
+      ],
+    });
+    assert.equal(d.pasarNama, "Pasar Peunayong");
+    assert.deepEqual(d.rincian, [
+      { kode: "CBM-KRT", nama: "Cabai merah keriting", terisi: true },
+      { kode: "CBR-RWT", nama: "Cabai rawit", terisi: false },
+    ]);
+  });
+
+  it("hrefIsiTugas memakai parameter yang dibaca form input", () => {
+    assert.equal(
+      hrefIsiTugas({ id: "TGS-1", pasarId: "PSR-1171-01", komoditas: ["CBM-KRT", "CBR-RWT"], tipe: "PRODUSEN" }),
+      "/lapangan/input?pasar=PSR-1171-01&komoditas=CBM-KRT,CBR-RWT&tipe=PRODUSEN&tugas=TGS-1",
+    );
   });
 });

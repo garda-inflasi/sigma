@@ -30,6 +30,12 @@ func (m *mockRepository) GetByID(ctx context.Context, id, petugasID string, semu
 	return item, args.Error(1)
 }
 
+func (m *mockRepository) Rincian(ctx context.Context, tugasID string, kode []string) ([]domain.RincianKomoditas, error) {
+	args := m.Called(ctx, tugasID, kode)
+	items, _ := args.Get(0).([]domain.RincianKomoditas)
+	return items, args.Error(1)
+}
+
 func (m *mockRepository) Aksesibel(ctx context.Context, ids []string, petugasID string, semua bool) ([]string, error) {
 	args := m.Called(ctx, ids, petugasID, semua)
 	found, _ := args.Get(0).([]string)
@@ -105,6 +111,43 @@ func TestGetByID(t *testing.T) {
 
 	_, err = uc.GetByID(t.Context(), "milik-lain", Pemanggil{ID: "u"})
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestGetDetail_RincianMengikutiUrutanTugasDanMelengkapiKodeTakDikenal(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	item := tugas("t1", domain.StatusBelum, time.Hour, 1)
+	item.Komoditas = domain.KodeKomoditas{"TLR", "XXX", "BWM"}
+	repo.On("GetByID", mock.Anything, "t1", "u", false).Return(&item, nil)
+	repo.On("GetByID", mock.Anything, "milik-lain", "u", false).Return(nil, domain.ErrNotFound)
+	repo.On("Rincian", mock.Anything, "t1", []string{"TLR", "XXX", "BWM"}).Return([]domain.RincianKomoditas{
+		{Kode: "BWM", Nama: "Bawang merah", Terisi: true},
+		{Kode: "TLR", Nama: "Telur ayam ras", Terisi: false},
+	}, nil)
+
+	got, err := uc.GetDetail(t.Context(), "t1", Pemanggil{ID: "u"})
+	require.NoError(t, err)
+	assert.Equal(t, []domain.RincianKomoditas{
+		{Kode: "TLR", Nama: "Telur ayam ras", Terisi: false},
+		{Kode: "XXX", Nama: "XXX", Terisi: false},
+		{Kode: "BWM", Nama: "Bawang merah", Terisi: true},
+	}, got.Rincian)
+
+	_, err = uc.GetDetail(t.Context(), "milik-lain", Pemanggil{ID: "u"})
+	assert.ErrorIs(t, err, ErrNotFound)
+	repo.AssertNotCalled(t, "Rincian", mock.Anything, "milik-lain", mock.Anything)
+}
+
+func TestGetDetail_GalatRepositoriDiteruskan(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	item := tugas("t1", domain.StatusBelum, time.Hour, 0)
+	repo.On("GetByID", mock.Anything, "t1", "u", false).Return(&item, nil)
+	repo.On("Rincian", mock.Anything, "t1", mock.Anything).Return(nil, errors.New("db mati"))
+
+	_, err := uc.GetDetail(t.Context(), "t1", Pemanggil{ID: "u"})
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNotFound)
 }
 
 func TestBulkAction_TandaiSelesaiAudits(t *testing.T) {

@@ -41,7 +41,7 @@ export const qk = {
     riwayat: (id: string) => ["harga", "riwayat", id] as const,
     ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
   },
-  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const, preferensi: () => ["ews", "preferensi"] as const },
+  ews: { all: () => ["ews"] as const, list: () => ["ews", "list"] as const, detail: (id: string) => ["ews", "detail", id] as const, riwayat: (id: string) => ["ews", "riwayat", id] as const, aturan: () => ["ews", "aturan"] as const, preferensi: () => ["ews", "preferensi"] as const },
   intervensi: {
     list: () => ["intervensi", "list"] as const,
     persetujuan: () => ["intervensi", "persetujuan"] as const,
@@ -56,6 +56,7 @@ export const qk = {
   },
   sumber: {
     list: () => ["sumber-data"] as const,
+    detail: (id: string) => ["sumber-data", "detail", id] as const,
     pipeline: () => ["sumber-data", "pipeline"] as const,
     eksekusi: (id: string) => ["sumber-data", "eksekusi", id] as const,
     sampel: (id: string) => ["sumber-data", "sampel", id] as const,
@@ -64,6 +65,7 @@ export const qk = {
   pengguna: {
     all: () => ["pengguna"] as const,
     list: (search?: string) => ["pengguna", "list", search ?? ""] as const,
+    detail: (id: string) => ["pengguna", "detail", id] as const,
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
   audit: {
@@ -71,7 +73,7 @@ export const qk = {
     detail: (id: string) => ["audit", "detail", id] as const,
   },
   brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
-  tugas: { saya: () => ["tugas", "saya"] as const },
+  tugas: { saya: () => ["tugas", "saya"] as const, detail: (id: string) => ["tugas", "detail", id] as const },
   master: {
     komoditas: () => ["master", "komoditas"] as const,
     wilayah: () => ["master", "wilayah"] as const,

@@ -21,6 +21,7 @@ import type { Tone } from "@/lib/design/tokens";
 import { useCan } from "@/lib/auth/session-context";
 import { formatAngka, formatRelatif } from "@/lib/format";
 import {
+  useSumberDetail,
   useSumberEksekusi,
   useSumberJalankan,
   useSumberSampel,
@@ -90,6 +91,15 @@ function BarisEksekusi({ e }: { e: EksekusiSumber }) {
   );
 }
 
+function BarisInfo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="text-right">{children}</dd>
+    </div>
+  );
+}
+
 /** Panel samping: riwayat eksekusi, galat, sampel data mentah, dan tombol jalankan sekarang. */
 export function SumberDetail({
   sumber,
@@ -99,6 +109,9 @@ export function SumberDetail({
   onClose: () => void;
 }) {
   const id = sumber?.id ?? null;
+  // Data segar dari GET /v1/sumber-data/{id}; baris daftar dipakai selama memuat atau bila gagal.
+  const { data: segar, isError: detailGagal } = useSumberDetail(id);
+  const info = segar ?? sumber;
   const bolehKelola = useCan("sumber.kelola");
   const { data: riwayat, isLoading } = useSumberEksekusi(id);
   const { data: sampel } = useSumberSampel(id);
@@ -119,22 +132,53 @@ export function SumberDetail({
   return (
     <Sheet open={!!sumber} onOpenChange={(o: boolean) => !o && onClose()}>
       <SheetContent className="glass-strong w-full overflow-y-auto border-0 sm:max-w-md">
-        {sumber && (
+        {info && (
           <>
             <SheetHeader>
-              <SheetTitle>{sumber.nama}</SheetTitle>
+              <SheetTitle>{info.nama}</SheetTitle>
               <SheetDescription>
-                {sumber.penyedia}, {sumber.jadwal}
+                {info.penyedia}, {info.jadwal}
               </SheetDescription>
             </SheetHeader>
             <div className="space-y-5 px-4 pb-6">
+              {detailGagal && (
+                <p className="text-xs text-muted-foreground">
+                  Data terbaru gagal dimuat; menampilkan data dari daftar.
+                </p>
+              )}
+
+              {segar && (
+                <section className="space-y-2">
+                  <h3 className="text-sm font-medium">Informasi sumber</h3>
+                  <dl className="space-y-1.5 rounded-xl bg-white/50 p-3 text-sm dark:bg-white/5">
+                    <BarisInfo label="Jenis">{segar.jenis === "SCRAPER" ? "Scraper" : "API"}</BarisInfo>
+                    <BarisInfo label="Cakupan">{segar.cakupan}</BarisInfo>
+                    <BarisInfo label="Jadwal cron (WIB)">
+                      <code className="text-xs">{segar.jadwalCron}</code>
+                    </BarisInfo>
+                    <BarisInfo label="Terakhir dijalankan">
+                      {segar.terakhir ? formatRelatif(segar.terakhir) : "Belum pernah"}
+                    </BarisInfo>
+                    <BarisInfo label="Keberhasilan 7 hari">
+                      {segar.keberhasilan7h === null ? "Belum ada data" : `${formatAngka(segar.keberhasilan7h, 1)}%`}
+                    </BarisInfo>
+                    <BarisInfo label="Latensi">{formatAngka(segar.latensiMs)} ms</BarisInfo>
+                    <BarisInfo label="Kepatuhan robots.txt">{segar.robotsTxtPatuh ? "Patuh" : "Tidak patuh"}</BarisInfo>
+                    <BarisInfo label="URL dasar">
+                      {segar.urlDasar ? <span className="break-all">{segar.urlDasar}</span> : "Tidak ada"}
+                    </BarisInfo>
+                    <BarisInfo label="Atribusi">{segar.atribusi}</BarisInfo>
+                  </dl>
+                </section>
+              )}
+
               {bolehKelola && (
                 <div className="space-y-1.5">
                   <Button
-                    onClick={() => jalankan.mutate(sumber.id)}
+                    onClick={() => jalankan.mutate(info.id)}
                     disabled={
-                      !sumber.bisaDijalankan ||
-                      sumber.status === "DIJEDA" ||
+                      !info.bisaDijalankan ||
+                      info.status === "DIJEDA" ||
                       berjalan ||
                       jalankan.isPending
                     }
@@ -147,12 +191,12 @@ export function SumberDetail({
                     )}
                     Jalankan sekarang
                   </Button>
-                  {!sumber.bisaDijalankan && (
+                  {!info.bisaDijalankan && (
                     <p className="text-xs text-muted-foreground">
                       Sumber ini belum memiliki konektor ingestion.
                     </p>
                   )}
-                  {sumber.status === "DIJEDA" && (
+                  {info.status === "DIJEDA" && (
                     <p className="text-xs text-muted-foreground">
                       Sumber dijeda; lanjutkan lebih dulu.
                     </p>

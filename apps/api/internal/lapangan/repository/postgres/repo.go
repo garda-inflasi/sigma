@@ -55,6 +55,26 @@ func (r *Repository) GetByID(ctx context.Context, id, petugasID string, semua bo
 	return &items[0], nil
 }
 
+// Rincian membaca nama komoditas dan apakah sudah ada entri harga yang tertaut ke tugas untuk tiap kode.
+func (r *Repository) Rincian(ctx context.Context, tugasID string, kode []string) ([]domain.RincianKomoditas, error) {
+	if len(kode) == 0 {
+		return nil, nil
+	}
+	var items []domain.RincianKomoditas
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT k.kode, k.nama,
+		       EXISTS (SELECT 1 FROM tugas_entri te JOIN entri_harga e ON e.id = te.entri_id
+		                WHERE te.tugas_id = @tugas AND e.komoditas_kode = k.kode) AS terisi
+		  FROM komoditas k
+		 WHERE k.kode IN @kode`,
+		map[string]any{"tugas": tugasID, "kode": kode},
+	).Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("rincian komoditas tugas: %w", err)
+	}
+	return items, nil
+}
+
 // Aksesibel menyaring ids ke tugas yang ada dan boleh disentuh pemanggil.
 func (r *Repository) Aksesibel(ctx context.Context, ids []string, petugasID string, semua bool) ([]string, error) {
 	q := r.db.WithContext(ctx).Table("tugas_lapangan").Select("id").Where("id IN ?", ids)

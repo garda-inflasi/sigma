@@ -138,6 +138,16 @@ type tugas struct {
 	Tipe      string   `json:"tipe"`
 }
 
+// tugasDetail adalah GET /v1/lapangan/tugas/{id}: tugas ditambah rincian per komoditas.
+type tugasDetail struct {
+	tugas
+	Rincian []struct {
+		Kode   string `json:"kode"`
+		Nama   string `json:"nama"`
+		Terisi bool   `json:"terisi"`
+	} `json:"rincian_komoditas"`
+}
+
 func data[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 	t.Helper()
 	var res struct {
@@ -205,7 +215,13 @@ func TestGet_OwnerAndManagerOnly(t *testing.T) {
 
 	w := s.call(t, http.MethodGet, path, emailMahasiswa1, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Equal(t, "TGS-mahasiswa_1-1", data[tugas](t, w).ID)
+	detail := data[tugasDetail](t, w)
+	assert.Equal(t, "TGS-mahasiswa_1-1", detail.ID)
+	require.Len(t, detail.Rincian, len(detail.Komoditas), "rincian mencakup semua komoditas tugas")
+	for i, kode := range detail.Komoditas {
+		assert.Equal(t, kode, detail.Rincian[i].Kode, "urutan rincian sama dengan tugas")
+		assert.NotEmpty(t, detail.Rincian[i].Nama)
+	}
 
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, path, emailMahasiswa2, nil).Code, "tugas petugas lain tidak terlihat")
 	assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, path, emailKoordinator, nil).Code, "tugas.kelola melihat tugas petugas lain")

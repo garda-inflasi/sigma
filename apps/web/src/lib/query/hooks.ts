@@ -141,6 +141,12 @@ export const useDetailHarga = (id: string | undefined) =>
 export const useRiwayatStatus = (id: string | undefined) =>
   useQuery({ queryKey: qk.harga.riwayat(id ?? ""), queryFn: () => api.harga.riwayat(id!), enabled: !!id });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
+/** Alert lengkap dari server; mati bila `id` kosong. */
+export const useEwsDetail = (id: string | null) =>
+  useQuery({ queryKey: qk.ews.detail(id ?? ""), queryFn: () => api.ews.detail(id!), enabled: !!id, retry: false });
+/** Riwayat perubahan status alert (timeline detail). */
+export const useEwsRiwayat = (id: string | null) =>
+  useQuery({ queryKey: qk.ews.riwayat(id ?? ""), queryFn: () => api.ews.riwayat(id!), enabled: !!id, retry: false });
 export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
 
 /** Preferensi notifikasi pengguna; `enabled` mencegah 403 bagi peran tanpa `ews.akui`. */
@@ -274,6 +280,9 @@ export const useColdStorage = (params: ColdStorageParams) =>
     refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
   });
 export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+/** Sumber lengkap dari server (dimuat ulang bersama katalog lewat prefix key). */
+export const useSumberDetail = (id: string | null) =>
+  useQuery({ queryKey: qk.sumber.detail(id ?? ""), queryFn: () => api.sumber.detail(id!), enabled: !!id, retry: false });
 export const useSumberPipeline = () => useQuery({ queryKey: qk.sumber.pipeline(), queryFn: api.sumber.pipeline, refetchInterval: LIVE * 2 });
 /** Riwayat eksekusi; dimuat ulang tiap 2 detik selama masih ada run BERJALAN. */
 export const useSumberEksekusi = (id: string | null) =>
@@ -339,6 +348,9 @@ export const usePengguna = (search?: string) =>
     queryKey: qk.pengguna.list(search),
     queryFn: () => (MODE_MOCK ? api.pengguna.list() : penggunaApi.list({ search })),
   });
+/** Pengguna lengkap dari server untuk dialog ubah; mati bila `id` kosong. Tanpa cache (gcTime 0): formulir selalu memakai data terbaru. */
+export const usePenggunaDetail = (id: string | null) =>
+  useQuery({ queryKey: qk.pengguna.detail(id ?? ""), queryFn: () => api.pengguna.detail(id!), enabled: !!id, retry: false, gcTime: 0 });
 export const useKatalogAkses = () => useQuery({ queryKey: qk.rbac.katalog(), queryFn: api.rbac.katalog, staleTime: 5 * 60_000 });
 /** Audit trail dengan filter dan paginasi cursor di server; `fetchNextPage` memuat halaman berikutnya. */
 export const useAudit = (filter: AuditFilter) =>
@@ -394,6 +406,9 @@ export function useSusunBrief() {
   });
 }
 export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn: api.tugas.saya });
+/** Detail tugas dengan status terisi tiap komoditas; gagal (mis. offline) tidak diulang agar sheet cepat jatuh ke data daftar. */
+export const useTugasDetail = (id: string | null) =>
+  useQuery({ queryKey: qk.tugas.detail(id ?? ""), queryFn: () => api.tugas.detail(id!), enabled: !!id, retry: false });
 /** Master data; `enabled` memuat hanya entitas yang sedang dibuka. */
 export const useMasterKomoditas = (enabled = true) => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas, enabled });
 export const useMasterWilayah = (enabled = true) => useQuery({ queryKey: qk.master.wilayah(), queryFn: api.master.wilayah, enabled });

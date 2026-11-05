@@ -93,6 +93,39 @@ func (uc *UseCase) GetByID(ctx context.Context, id string, p Pemanggil) (*Tugas,
 	return &uc.tampil(*item)[0], nil
 }
 
+// Detail adalah satu tugas beserta rincian tiap komoditasnya (urutan sesuai tugas).
+type Detail struct {
+	Tugas
+	Rincian []domain.RincianKomoditas
+}
+
+// GetDetail seperti GetByID, ditambah nama dan status terisi tiap komoditas tugas.
+func (uc *UseCase) GetDetail(ctx context.Context, id string, p Pemanggil) (*Detail, error) {
+	tugas, err := uc.GetByID(ctx, id, p)
+	if err != nil {
+		return nil, err
+	}
+	ada, err := uc.repo.Rincian(ctx, tugas.ID, tugas.Komoditas)
+	if err != nil {
+		uc.log.Error("lapangan: rincian tugas gagal", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, fmt.Errorf("rincian tugas: %w", err)
+	}
+	byKode := make(map[string]domain.RincianKomoditas, len(ada))
+	for _, r := range ada {
+		byKode[r.Kode] = r
+	}
+	rincian := make([]domain.RincianKomoditas, len(tugas.Komoditas))
+	for i, kode := range tugas.Komoditas {
+		// Kode yang sudah tak ada di master tetap tampil dengan kodenya sebagai nama.
+		r, ok := byKode[kode]
+		if !ok {
+			r = domain.RincianKomoditas{Kode: kode, Nama: kode}
+		}
+		rincian[i] = r
+	}
+	return &Detail{Tugas: *tugas, Rincian: rincian}, nil
+}
+
 // HasilBulk melaporkan tugas yang diproses dan yang dilewati.
 type HasilBulk struct {
 	Berhasil int

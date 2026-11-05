@@ -1,6 +1,6 @@
 /**
  * Pemetaan katalog sumber data dari representasi API Go (snake_case) ke model UI.
- * Endpoint: GET /v1/sumber-data, POST /v1/sumber-data/bulk.
+ * Endpoint: GET /v1/sumber-data, GET /v1/sumber-data/{id}, POST /v1/sumber-data/bulk.
  */
 
 import type { EksekusiSumber, PipelineSumber, SampelSumber, SumberData } from "@/lib/data/types";
@@ -97,6 +97,25 @@ export function formatJadwal(cron: string): string {
     if (isAngka(hari)) return `Mingguan ${HARI[Number(hari) % 7]} ${waktu}`;
   }
   return cron;
+}
+
+/** Sumber lengkap dari GET /v1/sumber-data/{id}: baris katalog ditambah kolom yang tidak dibawa daftar. */
+export interface SumberDetailData extends SumberData {
+  /** Ungkapan cron WIB mentah (jadwal terformat ada di `jadwal`). */
+  jadwalCron: string;
+  robotsTxtPatuh: boolean;
+  atribusi: string;
+  urlDasar: string | null;
+}
+
+export function toSumberDetail(s: SumberDataResponse): SumberDetailData {
+  return {
+    ...toSumberData(s),
+    jadwalCron: s.jadwal_cron,
+    robotsTxtPatuh: s.robots_txt_patuh,
+    atribusi: s.atribusi,
+    urlDasar: s.url_dasar,
+  };
 }
 
 export function toSumberData(s: SumberDataResponse): SumberData {

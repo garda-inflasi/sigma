@@ -12,7 +12,7 @@ import {
   usePreferensiNotifikasi,
   useSimpanPreferensi,
 } from "@/lib/query/hooks";
-import { aktifkanPush, pushDidukung } from "@/lib/push";
+import { aktifkanPush, nonaktifkanPush, pushDidukung } from "@/lib/push";
 
 const KANAL_LABEL: Record<KanalNotifikasi, string> = {
   EMAIL: "Email",
@@ -36,7 +36,22 @@ export function NotifikasiPreferensi() {
     simpan.mutate(
       data.preferensi.map((p) => (p.kanal === kanal ? { ...p, ...patch } : p)),
     );
+    // Push dimatikan: langganan perangkat ini ikut dilepas agar server berhenti mengirim ke sini.
+    if (kanal === "PUSH" && patch.aktif === false) void lepasPush();
   };
+
+  async function lepasPush() {
+    try {
+      const hasil = await nonaktifkanPush();
+      if (hasil === "dilepas")
+        toast.success("Push dinonaktifkan di perangkat ini");
+    } catch (err) {
+      toast.error("Langganan push belum terlepas", {
+        description:
+          err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    }
+  }
 
   async function pasangPush() {
     if (!data) return;

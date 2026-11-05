@@ -1,4 +1,4 @@
-import { apiFetch, mockDelay, MODE_MOCK } from "./client";
+import { ApiError, apiFetch, mockDelay, MODE_MOCK } from "./client";
 import {
   queryMockAudit, toAuditDetail, toAuditPage, toAuditQuery, toMockAuditDetail, unduhEksporAudit,
   type AuditDetailResponse, type AuditFilter, type AuditPage, type AuditPageResponse, type HasilEkspor,
@@ -19,12 +19,15 @@ import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery, toRiwayatStatus, toDetailHarga,
   type DetailHarga, type EntriHargaResponse, type HargaDetailResponse, type HargaParams, type RincianBulk, type RiwayatStatus, type RiwayatStatusResponse, type RingkasanHarga,
 } from "./harga";
-import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
+import { mockEwsDetail, mockEwsRiwayat } from "./ews-mock";
+import { mockSumberDetail } from "./sumber-mock";
+import { toTugasDetail, toTugasLapangan, type TugasDetail, type TugasDetailResponse, type TugasLapanganResponse } from "./lapangan";
+import { mockTugasDetail } from "./lapangan-mock";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
 import { kpiMock, kpiRiwayatMock, toKpiIndikator, toKpiRiwayat, type KpiIndikator, type KpiResponse as KpiIndikatorResponse, type KpiRiwayat, type KpiRiwayatResponse } from "./kpi";
 import {
-  toEwsAlert, toEwsAturan, toPreferensiBody, toPreferensiView, toUbahAturanBody,
-  type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
+  toBatalPushBody, toEwsAlert, toEwsAturan, toEwsDetail, toEwsRiwayat, toPreferensiBody, toPreferensiView, toUbahAturanBody,
+  type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type EwsDetail, type EwsRiwayat, type EwsRiwayatResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
 } from "./ews";
 import {
   toAlur, toBuatBody, toKartu, toPersetujuan, toRiwayat, toTahapPerSiklus,
@@ -45,9 +48,10 @@ import {
   type ProyeksiResponse, type RingkasanResponse, type SegarkanResponse, type SimulasiInput, type SimulasiResponse, type StatusMl,
 } from "./prediksi";
 import { mockBarisModel, mockBarisProyeksi, mockSimulasi } from "./prediksi-mock";
-import { penggunaApi, type KatalogAkses } from "./pengguna";
+import { penggunaApi, type KatalogAkses, type PenggunaDetail } from "./pengguna";
+import { mockPenggunaDetail } from "./pengguna-mock";
 import { USERS } from "@/lib/data/reference";
-import { toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
+import { toEksekusi, toPipeline, toSampel, toSumberData, toSumberDetail, type SumberDetailData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
   AuditDetail, ColdStorageView, DetailFasilitas, FasilitasColdStorage, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow,
@@ -188,6 +192,23 @@ export const api = {
   ews: {
     list: (): Promise<EwsAlert[]> =>
       MODE_MOCK ? mockDelay(m.mockEws) : apiFetch<EwsAlertResponse[]>("/v1/ews?limit=200").then((rows) => rows.map(toEwsAlert)),
+    /** Satu alert lengkap (jejak pengakuan, eskalasi, penutupan); 404 (ApiError) bila tidak ada. */
+    detail: (id: string): Promise<EwsDetail> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const a = m.mockEws().find((x) => x.id === id);
+            if (!a) throw new ApiError(404, "Alert EWS tidak ditemukan");
+            return mockEwsDetail(a);
+          })
+        : apiFetch<EwsAlertResponse>(`/v1/ews/${encodeURIComponent(id)}`).then(toEwsDetail),
+    /** Perubahan status alert (terlama dahulu): siapa, kapan, dan catatannya. */
+    riwayat: (id: string): Promise<EwsRiwayat[]> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const a = m.mockEws().find((x) => x.id === id);
+            return a ? mockEwsRiwayat(a) : [];
+          })
+        : apiFetch<EwsRiwayatResponse[]>(`/v1/ews/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toEwsRiwayat)),
     /** Aturan ambang per komoditas dan jenis, beserta kanal notifikasi. */
     aturan: (): Promise<EwsAturan[]> =>
       MODE_MOCK ? mockDelay(m.mockEwsAturan) : apiFetch<EwsAturanResponse[]>("/v1/ews/aturan").then((rows) => rows.map(toEwsAturan)),
@@ -213,6 +234,15 @@ export const api = {
     /** Mendaftarkan perangkat ini untuk Web Push. */
     daftarPush: (body: { endpoint: string; p256dh: string; auth: string }) =>
       MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch("/v1/ews/notifikasi/langganan-push", { method: "PUT", body: JSON.stringify(body) }),
+    /** Membatalkan langganan Web Push perangkat ini. 404 berarti server sudah tidak menyimpannya: sama saja bagi pemanggil. */
+    batalPush: async (endpoint: string): Promise<void> => {
+      if (MODE_MOCK) return void (await mockDelay(undefined, 200, 400));
+      try {
+        await apiFetch("/v1/ews/notifikasi/langganan-push", { method: "DELETE", body: JSON.stringify(toBatalPushBody(endpoint)) });
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 404)) throw err;
+      }
+    },
   },
   intervensi: {
     list: (): Promise<KartuIntervensi[]> =>
@@ -300,6 +330,15 @@ export const api = {
   sumber: {
     list: (): Promise<SumberData[]> =>
       MODE_MOCK ? mockDelay(m.mockSumber) : apiFetch<SumberDataResponse[]>("/v1/sumber-data").then((rows) => rows.map(toSumberData)),
+    /** Satu sumber lengkap dengan data segar (status, terakhir jalan, atribusi, URL dasar); 404 (ApiError) bila tidak ada. */
+    detail: (id: string): Promise<SumberDetailData> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const s = m.mockSumber().find((x) => x.id === id);
+            if (!s) throw new ApiError(404, "Sumber data tidak ditemukan");
+            return mockSumberDetail(s);
+          })
+        : apiFetch<SumberDataResponse>(`/v1/sumber-data/${encodeURIComponent(id)}`).then(toSumberDetail),
     /** Jeda atau lanjutkan sumber; sumber dijeda tidak dijadwalkan dan tidak bisa dijalankan manual. */
     bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
       MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
@@ -327,7 +366,17 @@ export const api = {
     riwayat: (kode: string): Promise<KpiRiwayat> =>
       MODE_MOCK ? mockDelay(() => kpiRiwayatMock(kode)) : apiFetch<KpiRiwayatResponse>(`/v1/kpi/${encodeURIComponent(kode)}/riwayat`).then(toKpiRiwayat),
   },
-  pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
+  pengguna: {
+    list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()),
+    detail: (id: string): Promise<PenggunaDetail> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const u = m.mockPengguna().find((x) => x.id === id);
+            if (!u) throw new ApiError(404, "Pengguna tidak ditemukan");
+            return mockPenggunaDetail(u);
+          })
+        : penggunaApi.get(id),
+  },
   rbac: { katalog: (): Promise<KatalogAkses> => (MODE_MOCK ? mockDelay(m.mockKatalogAkses) : penggunaApi.katalog()) },
   audit: {
     /** Satu halaman audit; filter dan paginasi cursor dijalankan server. */
@@ -381,6 +430,15 @@ export const api = {
   tugas: {
     saya: (): Promise<TugasLapangan[]> =>
       MODE_MOCK ? mockDelay(m.mockTugas) : apiFetch<TugasLapanganResponse[]>("/v1/lapangan/tugas/saya").then((rows) => rows.map(toTugasLapangan)),
+    /** Satu tugas dengan rincian komoditas terisi/belum; 404 (ApiError) bila bukan milik pemanggil. */
+    detail: (id: string): Promise<TugasDetail> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const t = m.mockTugas().find((x) => x.id === id);
+            if (!t) throw new ApiError(404, "Tugas tidak ditemukan");
+            return mockTugasDetail(t);
+          })
+        : apiFetch<TugasDetailResponse>(`/v1/lapangan/tugas/${encodeURIComponent(id)}`).then(toTugasDetail),
   },
   master: {
     komoditas: (): Promise<MasterKomoditasRow[]> =>

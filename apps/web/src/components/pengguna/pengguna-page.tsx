@@ -16,9 +16,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exportCsv } from "@/lib/csv";
 import type { PenggunaRow } from "@/lib/data/types";
-import { formatRelatif } from "@/lib/format";
+import { formatRelatif, formatTanggal } from "@/lib/format";
+import type { PenggunaDetail } from "@/lib/api/pengguna";
 import {
-  useAssignRolePengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna,
+  useAssignRolePengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
 } from "@/lib/query/hooks";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
@@ -67,8 +68,8 @@ function MatriksAkses() {
   );
 }
 
-/** Dialog buat/ubah pengguna. `user` null → mode buat. */
-function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+/** Isi dialog buat/ubah pengguna. `user` null → mode buat; `PenggunaDetail` (dari server) menambah rincian akun. */
+function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | PenggunaDetail | null; gagalMuat: boolean; onOpenChange: (v: boolean) => void }) {
   const buat = useCreatePengguna();
   const ubah = useUpdatePengguna();
   const [form, setForm] = useState(() => ({
@@ -98,8 +99,7 @@ function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+    <>
         <DialogHeader>
           <DialogTitle>{user ? "Ubah pengguna" : "Tambah pengguna"}</DialogTitle>
           <DialogDescription>
@@ -143,6 +143,17 @@ function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null
             <Label htmlFor="pg-lembaga">Lembaga</Label>
             <Input id="pg-lembaga" value={form.lembaga} onChange={(e) => setForm({ ...form, lembaga: e.target.value })} />
           </div>
+          {user && gagalMuat && <p className="text-xs text-muted-foreground">Data terbaru gagal dimuat; formulir memakai data dari daftar.</p>}
+          {user && "dibuatPada" in user && (
+            <dl aria-label="Rincian akun" className="grid gap-1.5 rounded-xl bg-mist-100/70 p-3 text-sm dark:bg-white/5">
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">ID pengguna</dt><dd className="num">{user.id}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Cakupan</dt><dd>{user.wilayah}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Status</dt><dd>{STATUS[user.status].label}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">MFA</dt><dd>{user.mfa ? "Aktif" : "Belum aktif"}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Terakhir masuk</dt><dd>{user.terakhirMasuk ? formatRelatif(user.terakhirMasuk) : "Belum pernah"}</dd></div>
+              <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Dibuat</dt><dd>{formatTanggal(user.dibuatPada)}</dd></div>
+            </dl>
+          )}
         </div>
 
         <DialogFooter>
@@ -151,6 +162,28 @@ function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null
             {sibuk ? "Menyimpan…" : user ? "Simpan perubahan" : "Buat pengguna"}
           </SpringButton>
         </DialogFooter>
+    </>
+  );
+}
+
+/** Dialog buat/ubah pengguna. Mode ubah memuat data segar dari GET /v1/users/{id} sebelum formulir tampil. */
+function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const detail = usePenggunaDetail(open && user ? user.id : null);
+  const siap = !user || detail.isSuccess || detail.isError;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        {siap ? (
+          <FormPengguna user={user ? (detail.data ?? user) : null} gagalMuat={detail.isError} onOpenChange={onOpenChange} />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Ubah pengguna</DialogTitle>
+              <DialogDescription>Memuat data pengguna…</DialogDescription>
+            </DialogHeader>
+            <div className="glass h-48 animate-pulse rounded-xl" aria-busy="true" />
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -261,7 +261,11 @@ func (h *Handler) GetUser(c *gin.Context) {
 	id := c.Param("id")
 	user, err := h.uc.GetUser(c.Request.Context(), id)
 	if err != nil {
-		response.NotFound(c, "Pengguna tidak ditemukan")
+		if errors.Is(err, usecase.ErrUserNotFound) {
+			response.NotFound(c, "Pengguna tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil pengguna")
 		return
 	}
 

@@ -98,9 +98,42 @@
 - [ ] Mekanisme lockout satu saja: hitung dari `login_attempts` (sudah ber-index) atau kolom `terkunci_sampai`; buka-kunci oleh admin.
 - [ ] Daftar dan pencabutan sesi aktif (`refresh_tokens`: `last_used_at`, `user_agent`; index `(user_id, revoked_at)`).
 - [ ] Rotasi refresh token dengan deteksi pemakaian ulang (verifikasi sudah ada).
-- [ ] Job pembersihan baris kedaluwarsa `jwt_blacklist`, `refresh_tokens`, `password_reset_tokens`.
+- [x] Job pembersihan baris kedaluwarsa `jwt_blacklist`, `refresh_tokens`, `password_reset_tokens` (+ `login_attempts`). Lihat "Pembersihan tabel auth" di bawah.
 - [ ] Pesan error login konsisten (akun terkunci, password kedaluwarsa, 429).
-- [ ] Logout membersihkan store offline lapangan (IndexedDB). Cache TanStack Query sudah bersih karena logout memuat ulang halaman penuh (lihat 01-D).
+- [x] Logout membersihkan store offline lapangan (IndexedDB). Lihat "Logout dan data offline lapangan" di bawah. Cache TanStack Query sudah bersih karena logout memuat ulang halaman penuh (lihat 01-D).
 - [ ] Coverage usecase auth dari 63% ke ≥ 80% (MFA, reset, lockout).
 - [ ] Tes `lib/bff/*` (cookies, csrf, rate-limit, safe-redirect), tes middleware. (E2E halaman auth sudah ada: 01-D.)
 - [x] Satukan tiga salinan OpenAPI (lihat [18 §B](18-platform-lintas-fitur.md)).
+
+---
+
+## Pembersihan tabel auth (job `auth_pembersihan`)
+
+Job worker (`cmd/worker/register_auth.go`, usecase `internal/auth/usecase/pembersihan.go`, SQL `internal/auth/repository/postgres/repo_pembersihan.go`) menghapus baris mati agar tabel auth tidak tumbuh tanpa batas. Tanpa migration.
+
+| Tabel | Dihapus bila | Dipertahankan |
+|---|---|---|
+| `jwt_blacklist` | `expires_at` sudah lewat | yang masih berlaku (pembacaan blacklist sudah mengabaikan yang kedaluwarsa, jadi perilaku tidak berubah) |
+| `refresh_tokens` | `expires_at` sudah lewat | token **dicabut tetapi belum kedaluwarsa**: `Refresh` memakainya untuk mendeteksi pemakaian ulang dan mencabut seluruh keluarga |
+| `password_reset_tokens` | kedaluwarsa atau terpakai lebih dari **7 hari** lalu | token hidup; token yang baru mati disimpan 7 hari karena `ResetPassword` membedakan "sudah kedaluwarsa" dari "tidak valid atau sudah dipakai" bagi tautan yang tidak ditemukan, dan barisnya berguna untuk debug keluhan pengguna |
+| `login_attempts` | lebih tua dari **90 hari** | yang lebih muda; **lantai mutlak 1 hari** (`MinRetensiLoginAttempt`) berapa pun konfigurasinya, karena perhitungan penguncian akun membaca jendela waktu pendek dari tabel ini |
+
+- **Batch:** tiap `DELETE` memilih paling banyak 1000 id (`ORDER BY id LIMIT … FOR UPDATE SKIP LOCKED`), berjalan dalam transaksi dengan `statement_timeout` 30 detik; baris yang sedang dikunci transaksi lain dilewati dan disapu putaran berikutnya. Satu putaran memproses paling banyak 500 batch per tabel (`terpotong` tercatat di log) dan dibatasi `Timeout` job 5 menit. Gagal di satu tabel tidak menghentikan tabel lain; galatnya digabung dan tercatat di `/healthz`.
+- **Jadwal dan env:** `JOB_AUTH_PEMBERSIHAN_INTERVAL` (bawaan `1h`, `off` menonaktifkan), `JOB_AUTH_PEMBERSIHAN_LOGIN_HARI` (bawaan `90`, minimal `1`, `off` = `login_attempts` tidak dihapus), `JOB_AUTH_PEMBERSIHAN_RESET_HARI` (bawaan `7`, `0` = langsung), `JOB_AUTH_PEMBERSIHAN_BATCH` (bawaan `1000`). Nilai di luar rentang membuat worker gagal start. Terdaftar di `env.example`, `compose.yaml` (service `worker`), dan `docs/DEPLOYMENT.md`. Manual: `worker run auth_pembersihan`.
+- **Menambah tabel (mis. sesi):** tambahkan satu `Langkah` di `langkahBawaan` (atau lewat argumen `tambahan` `NewPembersihan`) beserta metode di `domain.PembersihanRepository` dan repositori; orkestrasi tidak perlu diubah.
+- **Indeks:** `refresh_tokens.expires_at`, `password_reset_tokens.expires_at`, dan `login_attempts.attempted_at` tidak berindeks. Kueri memakai urutan kunci primer (id berkorelasi dengan waktu) sehingga memadai pada volume saat ini; bila tabel membesar, tambahkan indeks lewat migration terpisah.
+- **Tes:** `usecase/pembersihan_test.go` (orkestrasi dengan repositori palsu), `integration/pembersihan_test.go` (dockertest: baris mana yang terhapus tepat di batas, token dicabut-tapi-berlaku dipertahankan, lantai retensi, batch, kunci baris), `cmd/worker/register_auth_test.go` (env dan pendaftaran job).
+
+## Logout dan data offline lapangan
+
+Menu "Keluar" (topbar dan menu profil lapangan, lewat `keluarDariSesi()` di `lib/auth/logout-client.ts`) sekarang:
+
+1. Membaca antrean entri harga dari IndexedDB. Bila ada entri yang belum sampai di server (antre, gagal, konflik, draf), dialog (`components/auth/dialog-keluar.tsx`) menyebut jumlahnya dan menawarkan **Kirim dulu** (sinkronkan sekarang bila online; keluar otomatis bila semuanya terkirim, bila tidak dialog tetap terbuka dengan jumlah sisa), **Tetap keluar**, dan **Batal**. Tanpa entri tertahan, keluar langsung.
+2. Memanggil BFF logout (dibatasi 8 detik; gagal atau offline tidak menahan pengguna), lalu membersihkan data perangkat (`lib/offline/bersihkan.ts`, dipasang di `bersihkan-klien.ts`), lalu memuat ulang `/masuk`.
+
+Yang **dihapus**: seluruh isi IndexedDB aplikasi (antrean, cache data acuan, penanda pemilik) dan isi Cache Storage `garda-*` yang bukan aset statis (HTML navigasi `/lapangan/*`, `/masuk`: dirender server dengan nama dan wilayah pengguna, jadi pengguna berikutnya yang membuka aplikasi offline akan melihat halaman pengguna sebelumnya). Penulisan ke IndexedDB ditutup (`penutup.ts`) dan antrean di memori dikosongkan sebelum penghapusan, agar sinkronisasi yang masih berjalan tidak menghidupkan lagi datanya.
+Yang **dipertahankan**: `/_next/static/*`, `/icons/*`, berkas statis (woff2/png/svg/css/js), `/offline`, `/manifest.webmanifest` (sama untuk semua pengguna, dan `/offline` dibutuhkan service worker saat peramban luring; layout akar menyisipkan sesi ke semua HTML, jadi `public/sw.js` kini mengambil halaman publik itu dengan `credentials: "omit"` agar salinannya anonim, dan tidak menyimpan hasil navigasi ke `/offline`), serta cache pihak ketiga (mis. tile Mapbox). Service worker tetap terdaftar. Cache TanStack Query dan state in-memory sudah bersih karena pemuatan ulang penuh.
+
+**Sesi berakhir tanpa Keluar** (token habis, pengguna lain masuk di perangkat yang sama): IndexedDB mencatat id pemilik data (`garda-pemilik-offline`). `PenjagaDataOffline` (dirender di `app/providers.tsx`, semua halaman berpengguna) membandingkannya dengan pengguna sesi saat halaman dimuat; bila berbeda, data pengguna sebelumnya dihapus dan toast menyebut jumlah entri yang dibuang. `FieldShell` menunggu hasil yang sama **sebelum** memulihkan antrean dan mengunduh data acuan, supaya antrean milik A tidak terkirim atas nama B. Pengguna yang sama masuk lagi tetap memegang antreannya; data lama tanpa penanda diadopsi oleh pengguna pertama yang memuat aplikasi sesudah fitur ini. Logika murni dan teruji (`lib/offline/pemilik.ts`, `bersihkan.ts`, `lib/auth/konfirmasi-keluar.ts`, `lib/auth/logout.ts`); e2e: `apps/web/e2e/logout-offline.spec.ts` (butuh build produksi karena service worker hanya terdaftar di produksi).
+
+Keterbatasan: keluar saat **offline** tidak bisa mencabut sesi di server (BFF tak terjangkau); data perangkat tetap dibersihkan dan token server kedaluwarsa sendiri. Dua tab yang terbuka sekaligus dengan pengguna berbeda tidak disinkronkan lewat BroadcastChannel; tab lama yang masih memegang antrean di memori dapat menulisnya kembali sampai dimuat ulang.

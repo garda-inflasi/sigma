@@ -12,26 +12,38 @@ import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PageHeader } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { exportCsv } from "@/lib/csv";
-import { KABUPATEN, KOMODITAS, PASAR, kabupatenByKode } from "@/lib/data/reference";
 import { ENTITAS, type Entitas } from "@/lib/data/master";
+import type { MasterKomoditasRow, MasterPasarRow, MasterWilayahRow } from "@/lib/data/types";
+import { useMasterKomoditas, useMasterPasar, useMasterWilayah } from "@/lib/query/hooks";
 import { formatRupiah } from "@/lib/format";
 import { spring } from "@/lib/motion/presets";
 import { cn } from "@/lib/utils";
 
 type Status = "AKTIF" | "MENUNGGU_PERSETUJUAN" | "DIARSIPKAN";
 interface Baris { id: string; kode: string; nama: string; info: string; info2: string; versi: number; status: Status }
+/** Perubahan status/versi yang diajukan di sesi ini, di atas data dari API (belum disimpan ke server). */
+type Perubahan = Record<string, Pick<Baris, "versi" | "status">>;
 
-function bangun(e: Entitas): Baris[] {
-  if (e === "komoditas") return KOMODITAS.map((k, i) => ({ id: k.kode, kode: k.kode, nama: k.nama, info: `${k.kategori}, per ${k.satuan}${k.pilot ? ", pilot" : ""}`, info2: formatRupiah(k.hargaAcuan), versi: 1 + (i % 3), status: k.kode === "CBR-RWT" ? "MENUNGGU_PERSETUJUAN" : "AKTIF" }));
-  if (e === "wilayah") return KABUPATEN.map((k) => ({ id: k.kode, kode: k.kode, nama: `${k.jenis === "Kota" ? "Kota" : "Kab."} ${k.nama}`, info: `Ibu kota ${k.ibukota}`, info2: `${k.lat.toFixed(2)}, ${k.lng.toFixed(2)}`, versi: 1, status: "AKTIF" }));
-  return PASAR.map((p) => ({ id: p.id, kode: p.id, nama: p.nama, info: kabupatenByKode[p.kabupatenKode].nama, info2: `Geofence ${p.radiusMeter} m`, versi: 1, status: "AKTIF" }));
-}
+const barisKomoditas = (rows: MasterKomoditasRow[]): Baris[] =>
+  rows.map((k) => ({ id: k.id, kode: k.kode, nama: k.nama, info: `${k.kategori}, per ${k.satuan}${k.pilot ? ", pilot" : ""}`, info2: formatRupiah(k.hargaAcuan), versi: k.versi, status: k.status }));
+const barisWilayah = (rows: MasterWilayahRow[]): Baris[] =>
+  rows.map((k) => ({ id: k.id, kode: k.kode, nama: k.nama, info: `Ibu kota ${k.ibukota}`, info2: `${k.lat.toFixed(2)}, ${k.lng.toFixed(2)}`, versi: 1, status: "AKTIF" }));
+const barisPasar = (rows: MasterPasarRow[]): Baris[] =>
+  rows.map((p) => ({ id: p.id, kode: p.id, nama: p.nama, info: p.kabupaten, info2: `Geofence ${p.radiusMeter} m`, versi: 1, status: p.aktif ? "AKTIF" : "DIARSIPKAN" }));
 
 const STATUS: Record<Status, { tone: "normal" | "waspada" | "netral"; label: string }> = { AKTIF: { tone: "normal", label: "Aktif" }, MENUNGGU_PERSETUJUAN: { tone: "waspada", label: "Menunggu persetujuan" }, DIARSIPKAN: { tone: "netral", label: "Diarsipkan" } };
 
 /** Master data dengan versioning & persetujuan (pengaju ≠ penyetuju). */
 export function MasterPage({ entitas }: { entitas: Entitas }) {
-  const [rows, setRows] = useState<Baris[]>(() => bangun(entitas));
+  const komoditas = useMasterKomoditas(entitas === "komoditas");
+  const wilayah = useMasterWilayah(entitas === "wilayah");
+  const pasar = useMasterPasar(entitas === "pasar");
+  const [perubahan, setPerubahan] = useState<Perubahan>({});
+  const rows = useMemo<Baris[] | undefined>(() => {
+    const dasar = { komoditas: komoditas.data && barisKomoditas(komoditas.data), wilayah: wilayah.data && barisWilayah(wilayah.data), pasar: pasar.data && barisPasar(pasar.data) }[entitas];
+    return dasar?.map((r) => ({ ...r, ...perubahan[r.id] }));
+  }, [entitas, komoditas.data, wilayah.data, pasar.data, perubahan]);
+  const isLoading = { komoditas, wilayah, pasar }[entitas].isLoading;
   const kolom = useMemo<ColumnDef<Baris>[]>(() => [
     { accessorKey: "kode", header: "Kode", cell: ({ getValue }) => <span className="num text-xs">{getValue<string>()}</span> },
     { accessorKey: "nama", header: "Nama", cell: ({ row: { original: r } }) => <span className="flex items-center gap-2 font-medium">{entitas === "komoditas" && <KomoditasIcon kode={r.kode} className="text-muted-foreground" />}{r.nama}</span> },
@@ -40,7 +52,10 @@ export function MasterPage({ entitas }: { entitas: Entitas }) {
     { accessorKey: "versi", header: "Versi", cell: ({ getValue }) => <span className="num">v{getValue<number>()}</span> },
     { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ getValue }) => { const s = STATUS[getValue<Status>()]; return <StatusBadge tone={s.tone}>{s.label}</StatusBadge>; } },
   ], [entitas]);
-  const ubah = (ids: string[], fn: (r: Baris) => Baris) => { const set = new Set(ids); setRows((rs) => rs.map((r) => (set.has(r.id) ? fn(r) : r))); };
+  const ubah = (ids: string[], fn: (r: Baris) => Baris) => {
+    const set = new Set(ids);
+    setPerubahan((prev) => ({ ...prev, ...Object.fromEntries((rows ?? []).filter((r) => set.has(r.id)).map((r) => { const { status, versi } = fn(r); return [r.id, { status, versi }]; })) }));
+  };
   const actions: BulkAction<Baris>[] = [
     { id: "ajukan", label: "Ajukan perubahan", icon: FilePen, perm: "master.ajukan", enabled: (r) => r.every((x) => x.status === "AKTIF"), run: (r) => { ubah(r.map((x) => x.id), (x) => ({ ...x, status: "MENUNGGU_PERSETUJUAN" })); toast.success(`${r.length} perubahan diajukan`, { description: "Menunggu persetujuan Pimpinan FMIPA atau BPS." }); } },
     { id: "setujui", label: "Setujui", icon: CheckCircle2, perm: "master.setujui", tone: "data", enabled: (r) => r.every((x) => x.status === "MENUNGGU_PERSETUJUAN"), run: (r) => { ubah(r.map((x) => x.id), (x) => ({ ...x, status: "AKTIF", versi: x.versi + 1 })); toast.success(`${r.length} perubahan disetujui`, { description: "Versi baru berlaku untuk entri berikutnya." }); } },
@@ -58,7 +73,7 @@ export function MasterPage({ entitas }: { entitas: Entitas }) {
           </Link>
         ))}
       </nav>
-      <DataTable data={rows} columns={kolom} getRowId={(r) => r.id} entityLabel="data" bulkActions={actions} searchPlaceholder={`Cari ${ENTITAS[entitas].toLowerCase()}`}
+      <DataTable data={rows} isLoading={isLoading} columns={kolom} getRowId={(r) => r.id} entityLabel="data" bulkActions={actions} searchPlaceholder={`Cari ${ENTITAS[entitas].toLowerCase()}`}
         facets={[{ columnId: "status", label: "Status", options: Object.entries(STATUS).map(([value, v]) => ({ value, label: v.label })) }]} />
     </div>
   );

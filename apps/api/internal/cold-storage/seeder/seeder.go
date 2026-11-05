@@ -1,5 +1,6 @@
 // Package seeder mengisi data cold storage dalam dua lapis: fasilitas
 // (referensi, aman di produksi) dan lot stok (demo, bergeser mengikuti waktu).
+// Komoditas dan kabupaten berasal dari seeder master.reference.
 package seeder
 
 import (
@@ -14,7 +15,6 @@ import (
 
 // ReferenceSummary melaporkan baris yang ditulis oleh SeedReference.
 type ReferenceSummary struct {
-	Komoditas int // hanya komoditas yang baru ditambahkan
 	Fasilitas int
 }
 
@@ -45,22 +45,6 @@ type stokSeed struct {
 	Pemilik    string
 }
 
-type komoditasSeed struct {
-	Kode          string
-	Nama          string
-	Satuan        string
-	Kategori      string
-	HargaAcuan    int
-	ShelfLifeHari int
-}
-
-// komoditasPelengkap adalah komoditas hortikultura yang disimpan di cold storage
-// tetapi belum ada di master seed. Ditambahkan bila belum ada; tidak menimpa master.
-var komoditasPelengkap = []komoditasSeed{
-	{Kode: "tomat", Nama: "Tomat", Satuan: "Kg", Kategori: "Hortikultura", HargaAcuan: 12000, ShelfLifeHari: 14},
-	{Kode: "kentang", Nama: "Kentang", Satuan: "Kg", Kategori: "Hortikultura", HargaAcuan: 16000, ShelfLifeHari: 75},
-}
-
 // Wilayah dirujuk menurut nama, bukan kode: kode kabupaten diputuskan oleh
 // master wilayah, sehingga seeder tetap benar bila kode di sana berubah.
 var fasilitasSeeds = []fasilitasSeed{
@@ -79,52 +63,46 @@ var fasilitasSeeds = []fasilitasSeed{
 //   - sisa masa simpan paling sedikit 5 hari (MasaSimpan − UmurHari).
 var stokSeeds = []stokSeed{
 	// CS-01 Lambaro — 347,0 ton
-	{ID: "STK-CS01-01", Fasilitas: "CS-01", Komoditas: "cabai_merah_keriting", VolumeTon: 34.9, UmurHari: 16, MasaSimpan: 21, Risiko: 0.68, Pemilik: "KUD Pidie Jaya"},
-	{ID: "STK-CS01-02", Fasilitas: "CS-01", Komoditas: "cabai_rawit_merah", VolumeTon: 29.4, UmurHari: 6, MasaSimpan: 18, Risiko: 0.38, Pemilik: "CV Lambaro Segar"},
-	{ID: "STK-CS01-03", Fasilitas: "CS-01", Komoditas: "cabai_merah_keriting", VolumeTon: 27.8, UmurHari: 9, MasaSimpan: 21, Risiko: 0.47, Pemilik: "Koperasi Tani Gayo Makmur"},
-	{ID: "STK-CS01-04", Fasilitas: "CS-01", Komoditas: "cabai_merah_keriting", VolumeTon: 38.2, UmurHari: 5, MasaSimpan: 21, Risiko: 0.26, Pemilik: "Kelompok Tani Bener Meriah"},
-	{ID: "STK-CS01-05", Fasilitas: "CS-01", Komoditas: "cabai_rawit_merah", VolumeTon: 18.6, UmurHari: 3, MasaSimpan: 18, Risiko: 0.21, Pemilik: "KUD Pidie Jaya"},
-	{ID: "STK-CS01-06", Fasilitas: "CS-01", Komoditas: "cabai_merah_keriting", VolumeTon: 36.0, UmurHari: 3, MasaSimpan: 21, Risiko: 0.22, Pemilik: "Kelompok Tani Bener Meriah"},
-	{ID: "STK-CS01-07", Fasilitas: "CS-01", Komoditas: "bawang_merah", VolumeTon: 52.7, UmurHari: 38, MasaSimpan: 60, Risiko: 0.55, Pemilik: "Koperasi Tani Gayo Makmur"},
-	{ID: "STK-CS01-08", Fasilitas: "CS-01", Komoditas: "bawang_merah", VolumeTon: 61.4, UmurHari: 21, MasaSimpan: 60, Risiko: 0.31, Pemilik: "CV Lambaro Segar"},
-	{ID: "STK-CS01-09", Fasilitas: "CS-01", Komoditas: "bawang_merah", VolumeTon: 48.0, UmurHari: 10, MasaSimpan: 60, Risiko: 0.17, Pemilik: "KUD Pidie Jaya"},
+	{ID: "STK-CS01-01", Fasilitas: "CS-01", Komoditas: "CBM-KRT", VolumeTon: 34.9, UmurHari: 16, MasaSimpan: 21, Risiko: 0.68, Pemilik: "KUD Pidie Jaya"},
+	{ID: "STK-CS01-02", Fasilitas: "CS-01", Komoditas: "CBR-RWT", VolumeTon: 29.4, UmurHari: 6, MasaSimpan: 18, Risiko: 0.38, Pemilik: "CV Lambaro Segar"},
+	{ID: "STK-CS01-03", Fasilitas: "CS-01", Komoditas: "CBM-KRT", VolumeTon: 27.8, UmurHari: 9, MasaSimpan: 21, Risiko: 0.47, Pemilik: "Koperasi Tani Gayo Makmur"},
+	{ID: "STK-CS01-04", Fasilitas: "CS-01", Komoditas: "CBM-KRT", VolumeTon: 38.2, UmurHari: 5, MasaSimpan: 21, Risiko: 0.26, Pemilik: "Kelompok Tani Bener Meriah"},
+	{ID: "STK-CS01-05", Fasilitas: "CS-01", Komoditas: "CBR-RWT", VolumeTon: 18.6, UmurHari: 3, MasaSimpan: 18, Risiko: 0.21, Pemilik: "KUD Pidie Jaya"},
+	{ID: "STK-CS01-06", Fasilitas: "CS-01", Komoditas: "CBM-KRT", VolumeTon: 36.0, UmurHari: 3, MasaSimpan: 21, Risiko: 0.22, Pemilik: "Kelompok Tani Bener Meriah"},
+	{ID: "STK-CS01-07", Fasilitas: "CS-01", Komoditas: "BWM", VolumeTon: 52.7, UmurHari: 38, MasaSimpan: 60, Risiko: 0.55, Pemilik: "Koperasi Tani Gayo Makmur"},
+	{ID: "STK-CS01-08", Fasilitas: "CS-01", Komoditas: "BWM", VolumeTon: 61.4, UmurHari: 21, MasaSimpan: 60, Risiko: 0.31, Pemilik: "CV Lambaro Segar"},
+	{ID: "STK-CS01-09", Fasilitas: "CS-01", Komoditas: "BWM", VolumeTon: 48.0, UmurHari: 10, MasaSimpan: 60, Risiko: 0.17, Pemilik: "KUD Pidie Jaya"},
 
 	// CS-02 Lhokseumawe — 240,0 ton (beku, −20 °C)
-	{ID: "STK-CS02-01", Fasilitas: "CS-02", Komoditas: "ikan_tongkol", VolumeTon: 64.5, UmurHari: 101, MasaSimpan: 120, Risiko: 0.72, Pemilik: "Koperasi Nelayan Samudera Pasai"},
-	{ID: "STK-CS02-02", Fasilitas: "CS-02", Komoditas: "ikan_tongkol", VolumeTon: 42.3, UmurHari: 106, MasaSimpan: 120, Risiko: 0.81, Pemilik: "CV Mina Lhokseumawe"},
-	{ID: "STK-CS02-03", Fasilitas: "CS-02", Komoditas: "ikan_tongkol", VolumeTon: 52.8, UmurHari: 70, MasaSimpan: 120, Risiko: 0.38, Pemilik: "Koperasi Nelayan Samudera Pasai"},
-	{ID: "STK-CS02-04", Fasilitas: "CS-02", Komoditas: "ikan_tongkol", VolumeTon: 47.3, UmurHari: 44, MasaSimpan: 120, Risiko: 0.24, Pemilik: "CV Mina Lhokseumawe"},
-	{ID: "STK-CS02-05", Fasilitas: "CS-02", Komoditas: "ikan_tongkol", VolumeTon: 33.1, UmurHari: 12, MasaSimpan: 120, Risiko: 0.09, Pemilik: "Koperasi Nelayan Samudera Pasai"},
+	{ID: "STK-CS02-01", Fasilitas: "CS-02", Komoditas: "IKN-TGK", VolumeTon: 64.5, UmurHari: 101, MasaSimpan: 120, Risiko: 0.72, Pemilik: "Koperasi Nelayan Samudera Pasai"},
+	{ID: "STK-CS02-02", Fasilitas: "CS-02", Komoditas: "IKN-TGK", VolumeTon: 42.3, UmurHari: 106, MasaSimpan: 120, Risiko: 0.81, Pemilik: "CV Mina Lhokseumawe"},
+	{ID: "STK-CS02-03", Fasilitas: "CS-02", Komoditas: "IKN-TGK", VolumeTon: 52.8, UmurHari: 70, MasaSimpan: 120, Risiko: 0.38, Pemilik: "Koperasi Nelayan Samudera Pasai"},
+	{ID: "STK-CS02-04", Fasilitas: "CS-02", Komoditas: "IKN-TGK", VolumeTon: 47.3, UmurHari: 44, MasaSimpan: 120, Risiko: 0.24, Pemilik: "CV Mina Lhokseumawe"},
+	{ID: "STK-CS02-05", Fasilitas: "CS-02", Komoditas: "IKN-TGK", VolumeTon: 33.1, UmurHari: 12, MasaSimpan: 120, Risiko: 0.09, Pemilik: "Koperasi Nelayan Samudera Pasai"},
 
 	// CS-03 Takengon — 193,0 ton
-	{ID: "STK-CS03-01", Fasilitas: "CS-03", Komoditas: "tomat", VolumeTon: 31.0, UmurHari: 8, MasaSimpan: 14, Risiko: 0.63, Pemilik: "Kelompok Tani Bener Meriah"},
-	{ID: "STK-CS03-02", Fasilitas: "CS-03", Komoditas: "tomat", VolumeTon: 15.4, UmurHari: 8, MasaSimpan: 14, Risiko: 0.57, Pemilik: "CV Lambaro Segar"},
-	{ID: "STK-CS03-03", Fasilitas: "CS-03", Komoditas: "tomat", VolumeTon: 33.1, UmurHari: 7, MasaSimpan: 14, Risiko: 0.44, Pemilik: "KUD Pidie Jaya"},
-	{ID: "STK-CS03-04", Fasilitas: "CS-03", Komoditas: "cabai_merah_keriting", VolumeTon: 14.4, UmurHari: 11, MasaSimpan: 21, Risiko: 0.54, Pemilik: "KUD Pidie Jaya"},
-	{ID: "STK-CS03-05", Fasilitas: "CS-03", Komoditas: "kentang", VolumeTon: 41.3, UmurHari: 20, MasaSimpan: 75, Risiko: 0.18, Pemilik: "Koperasi Tani Gayo Makmur"},
-	{ID: "STK-CS03-06", Fasilitas: "CS-03", Komoditas: "kentang", VolumeTon: 36.5, UmurHari: 31, MasaSimpan: 75, Risiko: 0.33, Pemilik: "Kelompok Tani Bener Meriah"},
-	{ID: "STK-CS03-07", Fasilitas: "CS-03", Komoditas: "kentang", VolumeTon: 21.3, UmurHari: 12, MasaSimpan: 75, Risiko: 0.15, Pemilik: "KUD Pidie Jaya"},
+	{ID: "STK-CS03-01", Fasilitas: "CS-03", Komoditas: "TMT", VolumeTon: 31.0, UmurHari: 8, MasaSimpan: 14, Risiko: 0.63, Pemilik: "Kelompok Tani Bener Meriah"},
+	{ID: "STK-CS03-02", Fasilitas: "CS-03", Komoditas: "TMT", VolumeTon: 15.4, UmurHari: 8, MasaSimpan: 14, Risiko: 0.57, Pemilik: "CV Lambaro Segar"},
+	{ID: "STK-CS03-03", Fasilitas: "CS-03", Komoditas: "TMT", VolumeTon: 33.1, UmurHari: 7, MasaSimpan: 14, Risiko: 0.44, Pemilik: "KUD Pidie Jaya"},
+	{ID: "STK-CS03-04", Fasilitas: "CS-03", Komoditas: "CBM-KRT", VolumeTon: 14.4, UmurHari: 11, MasaSimpan: 21, Risiko: 0.54, Pemilik: "KUD Pidie Jaya"},
+	{ID: "STK-CS03-05", Fasilitas: "CS-03", Komoditas: "KTG", VolumeTon: 41.3, UmurHari: 20, MasaSimpan: 75, Risiko: 0.18, Pemilik: "Koperasi Tani Gayo Makmur"},
+	{ID: "STK-CS03-06", Fasilitas: "CS-03", Komoditas: "KTG", VolumeTon: 36.5, UmurHari: 31, MasaSimpan: 75, Risiko: 0.33, Pemilik: "Kelompok Tani Bener Meriah"},
+	{ID: "STK-CS03-07", Fasilitas: "CS-03", Komoditas: "KTG", VolumeTon: 21.3, UmurHari: 12, MasaSimpan: 75, Risiko: 0.15, Pemilik: "KUD Pidie Jaya"},
 
 	// CS-04 Meulaboh — 33,0 ton (dalam perawatan)
-	{ID: "STK-CS04-01", Fasilitas: "CS-04", Komoditas: "telur_ayam", VolumeTon: 12.9, UmurHari: 12, MasaSimpan: 30, Risiko: 0.41, Pemilik: "KUD Aceh Barat Sejahtera"},
-	{ID: "STK-CS04-02", Fasilitas: "CS-04", Komoditas: "bawang_merah", VolumeTon: 20.1, UmurHari: 27, MasaSimpan: 60, Risiko: 0.41, Pemilik: "KUD Aceh Barat Sejahtera"},
+	{ID: "STK-CS04-01", Fasilitas: "CS-04", Komoditas: "TLR", VolumeTon: 12.9, UmurHari: 12, MasaSimpan: 30, Risiko: 0.41, Pemilik: "KUD Aceh Barat Sejahtera"},
+	{ID: "STK-CS04-02", Fasilitas: "CS-04", Komoditas: "BWM", VolumeTon: 20.1, UmurHari: 27, MasaSimpan: 60, Risiko: 0.41, Pemilik: "KUD Aceh Barat Sejahtera"},
 }
 
 const day = 24 * time.Hour
 
-// SeedReference mengisi lima fasilitas dan komoditas pelengkapnya. Idempoten:
-// baris di-upsert menurut ID. Aman dijalankan di produksi.
+// SeedReference mengisi lima fasilitas. Idempoten: baris di-upsert menurut ID.
+// Aman dijalankan di produksi.
 //
-// Prasyarat: migrasi telah dijalankan (master kabupaten dan komoditas ada).
+// Prasyarat: seeder master.reference sudah dijalankan (kabupaten ada).
 func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 	var sum ReferenceSummary
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		added, err := insertKomoditasPelengkap(tx)
-		if err != nil {
-			return err
-		}
-		sum.Komoditas = added
-
 		kode, err := kodeKabupaten(tx)
 		if err != nil {
 			return err
@@ -159,22 +137,6 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	return DemoSummary{Stok: len(stok)}, nil
 }
 
-func insertKomoditasPelengkap(tx *gorm.DB) (int, error) {
-	added := 0
-	for _, k := range komoditasPelengkap {
-		res := tx.Exec(`
-			INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, pilot, shelf_life_hari)
-			VALUES (?, ?, ?, ?, ?, false, ?)
-			ON CONFLICT (kode) DO NOTHING`,
-			k.Kode, k.Nama, k.Satuan, k.Kategori, k.HargaAcuan, k.ShelfLifeHari)
-		if res.Error != nil {
-			return 0, fmt.Errorf("seed komoditas %s: %w", k.Kode, res.Error)
-		}
-		added += int(res.RowsAffected)
-	}
-	return added, nil
-}
-
 // kodeKabupaten memetakan nama wilayah tiap fasilitas ke kode kabupaten di master.
 func kodeKabupaten(tx *gorm.DB) (map[string]string, error) {
 	kode := make(map[string]string, len(fasilitasSeeds))
@@ -184,7 +146,7 @@ func kodeKabupaten(tx *gorm.DB) (map[string]string, error) {
 			return nil, fmt.Errorf("cari kabupaten %q: %w", f.Wilayah, err)
 		}
 		if k == "" {
-			return nil, fmt.Errorf("kabupaten %q tidak ditemukan; jalankan migrasi lebih dulu (make db/migrate)", f.Wilayah)
+			return nil, fmt.Errorf("kabupaten %q tidak ditemukan; jalankan seeder master.reference lebih dulu (make db/seed/reference)", f.Wilayah)
 		}
 		kode[f.Wilayah] = k
 	}

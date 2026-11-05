@@ -1,0 +1,510 @@
+{
+  "kabupaten": [
+    {
+      "kode": "1101",
+      "nama": "KABUPATEN SIMEULUE",
+      "jenis": "Kabupaten",
+      "ibukota": "Sinabang",
+      "lat": 2.48,
+      "lng": 96.38
+    },
+    {
+      "kode": "1102",
+      "nama": "KABUPATEN ACEH SINGKIL",
+      "jenis": "Kabupaten",
+      "ibukota": "Singkil",
+      "lat": 2.28,
+      "lng": 97.79
+    },
+    {
+      "kode": "1103",
+      "nama": "KABUPATEN ACEH SELATAN",
+      "jenis": "Kabupaten",
+      "ibukota": "Tapaktuan",
+      "lat": 3.26,
+      "lng": 97.18
+    },
+    {
+      "kode": "1104",
+      "nama": "KABUPATEN ACEH TENGGARA",
+      "jenis": "Kabupaten",
+      "ibukota": "Kutacane",
+      "lat": 3.49,
+      "lng": 97.8
+    },
+    {
+      "kode": "1105",
+      "nama": "KABUPATEN ACEH TIMUR",
+      "jenis": "Kabupaten",
+      "ibukota": "Idi Rayeuk",
+      "lat": 4.96,
+      "lng": 97.77
+    },
+    {
+      "kode": "1106",
+      "nama": "KABUPATEN ACEH TENGAH",
+      "jenis": "Kabupaten",
+      "ibukota": "Takengon",
+      "lat": 4.62,
+      "lng": 96.85
+    },
+    {
+      "kode": "1107",
+      "nama": "KABUPATEN ACEH BARAT",
+      "jenis": "Kabupaten",
+      "ibukota": "Meulaboh",
+      "lat": 4.14,
+      "lng": 96.13
+    },
+    {
+      "kode": "1108",
+      "nama": "KABUPATEN ACEH BESAR",
+      "jenis": "Kabupaten",
+      "ibukota": "Kota Jantho",
+      "lat": 5.3,
+      "lng": 95.63
+    },
+    {
+      "kode": "1109",
+      "nama": "KABUPATEN PIDIE",
+      "jenis": "Kabupaten",
+      "ibukota": "Sigli",
+      "lat": 5.38,
+      "lng": 95.96
+    },
+    {
+      "kode": "1110",
+      "nama": "KABUPATEN BIREUEN",
+      "jenis": "Kabupaten",
+      "ibukota": "Bireuen",
+      "lat": 5.2,
+      "lng": 96.7
+    },
+    {
+      "kode": "1111",
+      "nama": "KABUPATEN ACEH UTARA",
+      "jenis": "Kabupaten",
+      "ibukota": "Lhoksukon",
+      "lat": 5.05,
+      "lng": 97.32
+    },
+    {
+      "kode": "1112",
+      "nama": "KABUPATEN ACEH BARAT DAYA",
+      "jenis": "Kabupaten",
+      "ibukota": "Blangpidie",
+      "lat": 3.74,
+      "lng": 96.84
+    },
+    {
+      "kode": "1113",
+      "nama": "KABUPATEN GAYO LUES",
+      "jenis": "Kabupaten",
+      "ibukota": "Blangkejeren",
+      "lat": 3.98,
+      "lng": 97.35
+    },
+    {
+      "kode": "1114",
+      "nama": "KABUPATEN ACEH TAMIANG",
+      "jenis": "Kabupaten",
+      "ibukota": "Karang Baru",
+      "lat": 4.29,
+      "lng": 98.05
+    },
+    {
+      "kode": "1115",
+      "nama": "KABUPATEN NAGAN RAYA",
+      "jenis": "Kabupaten",
+      "ibukota": "Suka Makmue",
+      "lat": 4.13,
+      "lng": 96.47
+    },
+    {
+      "kode": "1116",
+      "nama": "KABUPATEN ACEH JAYA",
+      "jenis": "Kabupaten",
+      "ibukota": "Calang",
+      "lat": 4.63,
+      "lng": 95.58
+    },
+    {
+      "kode": "1117",
+      "nama": "KABUPATEN BENER MERIAH",
+      "jenis": "Kabupaten",
+      "ibukota": "Simpang Tiga Redelong",
+      "lat": 4.73,
+      "lng": 96.87
+    },
+    {
+      "kode": "1118",
+      "nama": "KABUPATEN PIDIE JAYA",
+      "jenis": "Kabupaten",
+      "ibukota": "Meureudu",
+      "lat": 5.25,
+      "lng": 96.25
+    },
+    {
+      "kode": "1171",
+      "nama": "KOTA BANDA ACEH",
+      "jenis": "Kota",
+      "ibukota": "Banda Aceh",
+      "lat": 5.55,
+      "lng": 95.32
+    },
+    {
+      "kode": "1172",
+      "nama": "KOTA SABANG",
+      "jenis": "Kota",
+      "ibukota": "Sabang",
+      "lat": 5.89,
+      "lng": 95.32
+    },
+    {
+      "kode": "1173",
+      "nama": "KOTA LANGSA",
+      "jenis": "Kota",
+      "ibukota": "Langsa",
+      "lat": 4.47,
+      "lng": 97.97
+    },
+    {
+      "kode": "1174",
+      "nama": "KOTA LHOKSEUMAWE",
+      "jenis": "Kota",
+      "ibukota": "Lhokseumawe",
+      "lat": 5.18,
+      "lng": 97.15
+    },
+    {
+      "kode": "1175",
+      "nama": "KOTA SUBULUSSALAM",
+      "jenis": "Kota",
+      "ibukota": "Subulussalam",
+      "lat": 2.64,
+      "lng": 98
+    }
+  ],
+  "pasar": [
+    {
+      "id": "PSR-1171-01",
+      "nama": "Pasar Peunayong",
+      "kabupaten_kode": "1171",
+      "lat": 5.5603,
+      "lng": 95.3237,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1171-02",
+      "nama": "Pasar Al-Mahirah Lamdingin",
+      "kabupaten_kode": "1171",
+      "lat": 5.5765,
+      "lng": 95.3352,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1108-01",
+      "nama": "Pasar Induk Lambaro",
+      "kabupaten_kode": "1108",
+      "lat": 5.5085,
+      "lng": 95.364,
+      "radius_meter": 600
+    },
+    {
+      "id": "PSR-1174-01",
+      "nama": "Pasar Inpres Lhokseumawe",
+      "kabupaten_kode": "1174",
+      "lat": 5.179,
+      "lng": 97.146,
+      "radius_meter": 450
+    },
+    {
+      "id": "PSR-1110-01",
+      "nama": "Pasar Inpres Bireuen",
+      "kabupaten_kode": "1110",
+      "lat": 5.203,
+      "lng": 96.703,
+      "radius_meter": 450
+    },
+    {
+      "id": "PSR-1109-01",
+      "nama": "Pasar Kota Sigli",
+      "kabupaten_kode": "1109",
+      "lat": 5.386,
+      "lng": 95.96,
+      "radius_meter": 450
+    },
+    {
+      "id": "PSR-1107-01",
+      "nama": "Pasar Bina Usaha Meulaboh",
+      "kabupaten_kode": "1107",
+      "lat": 4.145,
+      "lng": 96.129,
+      "radius_meter": 450
+    },
+    {
+      "id": "PSR-1106-01",
+      "nama": "Pasar Inpres Takengon",
+      "kabupaten_kode": "1106",
+      "lat": 4.627,
+      "lng": 96.846,
+      "radius_meter": 450
+    },
+    {
+      "id": "PSR-1173-01",
+      "nama": "Pasar Kota Langsa",
+      "kabupaten_kode": "1173",
+      "lat": 4.47,
+      "lng": 97.968,
+      "radius_meter": 450
+    },
+    {
+      "id": "PSR-1103-01",
+      "nama": "Pasar Tapaktuan",
+      "kabupaten_kode": "1103",
+      "lat": 3.26,
+      "lng": 97.183,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1104-01",
+      "nama": "Pasar Kutacane",
+      "kabupaten_kode": "1104",
+      "lat": 3.493,
+      "lng": 97.8,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1101-01",
+      "nama": "Pasar Sinabang",
+      "kabupaten_kode": "1101",
+      "lat": 2.48,
+      "lng": 96.38,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1102-01",
+      "nama": "Pasar Tradisional Singkil",
+      "kabupaten_kode": "1102",
+      "lat": 2.28,
+      "lng": 97.79,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1105-01",
+      "nama": "Pasar Tradisional Idi",
+      "kabupaten_kode": "1105",
+      "lat": 4.96,
+      "lng": 97.77,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1111-01",
+      "nama": "Pasar Tradisional Lhoksukon",
+      "kabupaten_kode": "1111",
+      "lat": 5.05,
+      "lng": 97.32,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1112-01",
+      "nama": "Pasar Tradisional Blangpidie",
+      "kabupaten_kode": "1112",
+      "lat": 3.74,
+      "lng": 96.84,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1113-01",
+      "nama": "Pasar Tradisional Blangkejeren",
+      "kabupaten_kode": "1113",
+      "lat": 3.98,
+      "lng": 97.35,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1114-01",
+      "nama": "Pasar Tradisional Karang Baru",
+      "kabupaten_kode": "1114",
+      "lat": 4.29,
+      "lng": 98.05,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1115-01",
+      "nama": "Pasar Tradisional Suka Makmue",
+      "kabupaten_kode": "1115",
+      "lat": 4.13,
+      "lng": 96.47,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1116-01",
+      "nama": "Pasar Tradisional Calang",
+      "kabupaten_kode": "1116",
+      "lat": 4.63,
+      "lng": 95.58,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1117-01",
+      "nama": "Pasar Tradisional Redelong",
+      "kabupaten_kode": "1117",
+      "lat": 4.73,
+      "lng": 96.87,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1118-01",
+      "nama": "Pasar Tradisional Meureudu",
+      "kabupaten_kode": "1118",
+      "lat": 5.25,
+      "lng": 96.25,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1172-01",
+      "nama": "Pasar Tradisional Sabang",
+      "kabupaten_kode": "1172",
+      "lat": 5.89,
+      "lng": 95.32,
+      "radius_meter": 400
+    },
+    {
+      "id": "PSR-1175-01",
+      "nama": "Pasar Tradisional Subulussalam",
+      "kabupaten_kode": "1175",
+      "lat": 2.64,
+      "lng": 98,
+      "radius_meter": 400
+    }
+  ],
+  "komoditas": [
+    {
+      "kode": "BRS-MED",
+      "nama": "Beras medium",
+      "satuan": "kg",
+      "kategori": "Pangan pokok",
+      "harga_acuan": 13900,
+      "pilot": true,
+      "shelf_life_hari": 180
+    },
+    {
+      "kode": "BRS-PRM",
+      "nama": "Beras premium",
+      "satuan": "kg",
+      "kategori": "Pangan pokok",
+      "harga_acuan": 15800,
+      "pilot": false,
+      "shelf_life_hari": 180
+    },
+    {
+      "kode": "CBM-KRT",
+      "nama": "Cabai merah keriting",
+      "satuan": "kg",
+      "kategori": "Hortikultura",
+      "harga_acuan": 52000,
+      "pilot": true,
+      "shelf_life_hari": 21
+    },
+    {
+      "kode": "CBR-RWT",
+      "nama": "Cabai rawit merah",
+      "satuan": "kg",
+      "kategori": "Hortikultura",
+      "harga_acuan": 58000,
+      "pilot": false,
+      "shelf_life_hari": 18
+    },
+    {
+      "kode": "BWM",
+      "nama": "Bawang merah",
+      "satuan": "kg",
+      "kategori": "Hortikultura",
+      "harga_acuan": 41000,
+      "pilot": true,
+      "shelf_life_hari": 60
+    },
+    {
+      "kode": "BWP",
+      "nama": "Bawang putih",
+      "satuan": "kg",
+      "kategori": "Hortikultura",
+      "harga_acuan": 38000,
+      "pilot": false,
+      "shelf_life_hari": 120
+    },
+    {
+      "kode": "TLR",
+      "nama": "Telur ayam ras",
+      "satuan": "kg",
+      "kategori": "Peternakan",
+      "harga_acuan": 29500,
+      "pilot": false,
+      "shelf_life_hari": 30
+    },
+    {
+      "kode": "DAG-AYM",
+      "nama": "Daging ayam ras",
+      "satuan": "kg",
+      "kategori": "Peternakan",
+      "harga_acuan": 36500,
+      "pilot": false,
+      "shelf_life_hari": 90
+    },
+    {
+      "kode": "DAG-SPI",
+      "nama": "Daging sapi",
+      "satuan": "kg",
+      "kategori": "Peternakan",
+      "harga_acuan": 148000,
+      "pilot": false,
+      "shelf_life_hari": 180
+    },
+    {
+      "kode": "IKN-TGK",
+      "nama": "Ikan tongkol",
+      "satuan": "kg",
+      "kategori": "Perikanan",
+      "harga_acuan": 38000,
+      "pilot": false,
+      "shelf_life_hari": 120
+    },
+    {
+      "kode": "MYK",
+      "nama": "Minyak goreng curah",
+      "satuan": "liter",
+      "kategori": "Pangan olahan",
+      "harga_acuan": 17500,
+      "pilot": false,
+      "shelf_life_hari": 365
+    },
+    {
+      "kode": "GLA",
+      "nama": "Gula pasir",
+      "satuan": "kg",
+      "kategori": "Pangan olahan",
+      "harga_acuan": 18000,
+      "pilot": false,
+      "shelf_life_hari": 365
+    },
+    {
+      "kode": "KTG",
+      "nama": "Kentang",
+      "satuan": "kg",
+      "kategori": "Hortikultura",
+      "harga_acuan": 16000,
+      "pilot": false,
+      "shelf_life_hari": 75
+    },
+    {
+      "kode": "TMT",
+      "nama": "Tomat",
+      "satuan": "kg",
+      "kategori": "Hortikultura",
+      "harga_acuan": 12000,
+      "pilot": false,
+      "shelf_life_hari": 14
+    }
+  ]
+}

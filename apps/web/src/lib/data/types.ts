@@ -211,9 +211,29 @@ export interface MasterKomoditasRow {
   nama: string;
   kategori: string;
   satuan: string;
+  hargaAcuan: number;
   pilot: boolean;
   versi: number;
   status: "AKTIF" | "MENUNGGU_PERSETUJUAN" | "DIARSIPKAN";
+}
+
+export interface MasterWilayahRow {
+  id: string;
+  kode: string;
+  /** Label ringkas, mis. "Kab. Aceh Besar" atau "Kota Langsa". */
+  nama: string;
+  ibukota: string;
+  lat: number;
+  lng: number;
+}
+
+export interface MasterPasarRow {
+  id: string;
+  nama: string;
+  /** Label kabupaten/kota pemilik pasar. */
+  kabupaten: string;
+  radiusMeter: number;
+  aktif: boolean;
 }
 
 export interface RingkasanEksekutif {

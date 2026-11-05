@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("master", &masterdomain.Komoditas{}, &masterdomain.Kabupaten{}, &masterdomain.Pasar{})
+	registerModels("master", &masterdomain.Provinsi{}, &masterdomain.Komoditas{}, &masterdomain.Kabupaten{}, &masterdomain.Pasar{})
 }

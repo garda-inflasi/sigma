@@ -11,12 +11,12 @@ import (
 
 func init() {
 	seedkit.Register(seedkit.Seeder{
-		Name:  "coldstorage.reference",
-		Tier:  seedkit.TierReference,
-		After: []string{"master.reference"},
+		Name:      "coldstorage.reference",
+		Tier:      seedkit.TierReference,
+		DependsOn: []string{"master.reference"},
 		Run: func(ctx context.Context, db *gorm.DB, _ time.Time) (seedkit.Result, error) {
 			sum, err := coldstorage.SeedReference(ctx, db)
-			return seedkit.Result{"fasilitas": sum.Fasilitas, "komoditas_baru": sum.Komoditas}, err
+			return seedkit.Result{"fasilitas": sum.Fasilitas}, err
 		},
 	})
 

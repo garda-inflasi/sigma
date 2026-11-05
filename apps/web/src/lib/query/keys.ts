@@ -31,5 +31,9 @@ export const qk = {
   audit: { list: (filter: AuditFilter) => ["audit", "list", filter] as const },
   brief: { list: () => ["policy-brief"] as const },
   tugas: { saya: () => ["tugas", "saya"] as const },
-  master: { komoditas: () => ["master", "komoditas"] as const },
+  master: {
+    komoditas: () => ["master", "komoditas"] as const,
+    wilayah: () => ["master", "wilayah"] as const,
+    pasar: () => ["master", "pasar"] as const,
+  },
 };

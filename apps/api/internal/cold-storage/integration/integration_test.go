@@ -19,8 +19,10 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
+	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	coldRoutes "github.com/garda-inflasi/api/internal/cold-storage/routes"
 	"github.com/garda-inflasi/api/internal/cold-storage/seeder"
+	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -33,7 +35,7 @@ import (
 
 const (
 	jwtSecret = "integration-test-secret-key-32chars!!"
-	// Kata sandi akun contoh dari migrasi 000006.
+	// Kata sandi akun demo (seeder auth.demo).
 	seedPassword = "Garda2024!"
 
 	contractPath = "../../../../../packages/contracts/openapi.yaml"
@@ -63,7 +65,7 @@ type suite struct {
 	tokens map[string]string // email → access token
 }
 
-// Akun contoh dari migrasi 000006 dan izin cold storage yang dibawa perannya
+// Akun demo (seeder auth.demo) dan izin cold storage yang dibawa perannya
 // (rolePermissions di modul auth).
 const (
 	userLihatSaja   = "manajer.risiko@gardainflasi.id"       // MANAJER_RISIKO: coldstorage.lihat
@@ -74,10 +76,20 @@ const (
 	userKoordinator = "koordinator.lapangan@gardainflasi.id" // OPS_KOORDINATOR: tidak ada izin cold storage
 )
 
+// seedMasterAndAccounts mengisi master referensi dan akun demo yang dipakai suite ini.
+func seedMasterAndAccounts(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err, "seed master")
+	_, err = authseeder.SeedDemo(t.Context(), db)
+	require.NoError(t, err, "seed akun demo")
+}
+
 // newSuite menyiapkan basis data (migrasi + seed), router, dan token login.
 func newSuite(t *testing.T, db *gorm.DB) *suite {
 	t.Helper()
 	pgtest.MigrateUp(t, db)
+	seedMasterAndAccounts(t, db)
 	_, err := seeder.SeedReference(t.Context(), db)
 	require.NoError(t, err, "seed fasilitas")
 	_, err = seeder.SeedDemo(t.Context(), db, time.Now())
@@ -207,13 +219,15 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 	db := pg.NewDatabase(t, "mig_000007")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 6))
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err, "master referensi pra-000007")
 
 	// Data yang sudah ada sebelum 000007 (tanpa kolom kedaluwarsa_pada).
 	execSQL(t, db, `
 		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
 		VALUES ('CS-LAMA', 'Fasilitas Lama', '1171', 5.5, 95.3, 100, 4, 'OPERASIONAL');
 		INSERT INTO stok_cold_storage (id, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, pemilik, risiko_food_loss)
-		VALUES ('STK-LAMA', 'CS-LAMA', 'cabai_merah_keriting', 10, '2026-10-01T00:00:00Z', 'Pemilik Lama', 0.5);
+		VALUES ('STK-LAMA', 'CS-LAMA', 'CBM-KRT', 10, '2026-10-01T00:00:00Z', 'Pemilik Lama', 0.5);
 	`, "data pra-000007")
 
 	require.NoError(t, migrator.UpTo(t.Context(), 7), "000007 up")
@@ -223,7 +237,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 		require.NoError(t, db.Raw(`
 			SELECT EXTRACT(EPOCH FROM (kedaluwarsa_pada - masuk_pada)) / 86400
 			  FROM stok_cold_storage WHERE id = 'STK-LAMA'`).Scan(&days).Error)
-		assert.Equal(t, 7.0, days, "cabai_merah_keriting memiliki shelf_life_hari = 7 pada master seed")
+		assert.Equal(t, 21.0, days, "CBM-KRT memiliki shelf_life_hari = 21 pada master seed")
 	})
 
 	t.Run("bentuk kolom", func(t *testing.T) {
@@ -247,7 +261,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 		insert := func(id string, volume, risiko float64) error {
 			return db.Exec(`
 				INSERT INTO stok_cold_storage (id, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, kedaluwarsa_pada, pemilik, risiko_food_loss)
-				VALUES (?, 'CS-LAMA', 'cabai_merah_keriting', ?, now(), now() + interval '3 day', 'x', ?)`, id, volume, risiko).Error
+				VALUES (?, 'CS-LAMA', 'CBM-KRT', ?, now(), now() + interval '3 day', 'x', ?)`, id, volume, risiko).Error
 		}
 		assert.Error(t, insert("S-RISIKO-1", 5, 1.5), "risiko > 1")
 		assert.Error(t, insert("S-RISIKO-2", 5, -0.1), "risiko < 0")
@@ -279,7 +293,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 		require.NoError(t, migrator.UpTo(t.Context(), 7), "000007 up (setelah down)")
 		var days float64
 		require.NoError(t, db.Raw(`SELECT EXTRACT(EPOCH FROM (kedaluwarsa_pada - masuk_pada)) / 86400 FROM stok_cold_storage WHERE id = 'STK-LAMA'`).Scan(&days).Error)
-		assert.Equal(t, 7.0, days)
+		assert.Equal(t, 21.0, days)
 	})
 }
 
@@ -290,6 +304,8 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_idem")
 	pgtest.MigrateUp(t, db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
 
 	count := func(table string) int64 {
 		var n int64
@@ -299,7 +315,7 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 
 	ref, err := seeder.SeedReference(t.Context(), db)
 	require.NoError(t, err)
-	assert.Equal(t, seeder.ReferenceSummary{Komoditas: 2, Fasilitas: 5}, ref)
+	assert.Equal(t, seeder.ReferenceSummary{Fasilitas: 5}, ref)
 
 	now := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 	demo, err := seeder.SeedDemo(t.Context(), db, now)
@@ -308,12 +324,12 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 
-	// Menjalankan ulang pada waktu lain: tidak menggandakan baris, komoditas
-	// sudah ada, tanggal bergeser mengikuti now.
+	// Menjalankan ulang pada waktu lain: tidak menggandakan baris, tanggal
+	// bergeser mengikuti now.
 	later := now.Add(10 * 24 * time.Hour)
 	ref, err = seeder.SeedReference(t.Context(), db)
 	require.NoError(t, err)
-	assert.Equal(t, seeder.ReferenceSummary{Komoditas: 0, Fasilitas: 5}, ref)
+	assert.Equal(t, seeder.ReferenceSummary{Fasilitas: 5}, ref)
 	demo, err = seeder.SeedDemo(t.Context(), db, later)
 	require.NoError(t, err)
 	assert.Equal(t, seeder.DemoSummary{Stok: 23}, demo)
@@ -323,12 +339,6 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	var masuk time.Time
 	require.NoError(t, db.Raw(`SELECT masuk_pada FROM stok_cold_storage WHERE id = 'STK-CS01-01'`).Scan(&masuk).Error)
 	assert.True(t, masuk.Equal(later.Add(-16*24*time.Hour)), "lot STK-CS01-01 berumur 16 hari pada waktu seed terakhir, dapat %s", masuk)
-
-	t.Run("komoditas pelengkap tersedia", func(t *testing.T) {
-		var kode []string
-		require.NoError(t, db.Raw(`SELECT kode FROM komoditas WHERE kode IN ('tomat', 'kentang') ORDER BY kode`).Scan(&kode).Error)
-		assert.Equal(t, []string{"kentang", "tomat"}, kode)
-	})
 
 	t.Run("wilayah dirujuk menurut nama master", func(t *testing.T) {
 		var rows []struct{ ID, Nama string }
@@ -364,7 +374,7 @@ func TestSeeder_FailsAtomicallyWhenMasterDataMissing(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tidak ditemukan")
-	assert.Contains(t, err.Error(), "migrasi")
+	assert.Contains(t, err.Error(), "master.reference")
 
 	var n int64
 	for _, table := range []string{"komoditas", "cold_storage", "stok_cold_storage"} {
@@ -461,8 +471,8 @@ func TestGetColdStorage_DefaultListIsShortestShelfLifeFirst(t *testing.T) {
 	}
 
 	first := stok[0]
-	assert.Equal(t, "Cabai Merah Keriting", first["komoditas_nama"])
-	assert.Equal(t, "cabai_merah_keriting", first["komoditas_kode"])
+	assert.Equal(t, "Cabai merah keriting", first["komoditas_nama"])
+	assert.Equal(t, "CBM-KRT", first["komoditas_kode"])
 	assert.Equal(t, "Cold Storage Lambaro", first["cold_storage_nama"])
 	assert.Equal(t, 34.9, first["volume_ton"])
 	assert.Equal(t, 0.68, first["risiko_food_loss"])

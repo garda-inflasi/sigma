@@ -27,7 +27,7 @@ const wire: ColdStorageWire = {
     { id: "CS-05", nama: "Gudang Dingin Langsa", kabupaten_kode: "1174", kabupaten_nama: "KOTA LANGSA", lat: 4.48, lng: 97.96, kapasitas_ton: 120, terisi_ton: 0, utilisasi_persen: 0, suhu_target_c: 4, suhu_aktual_c: null, status: "RENCANA" },
   ],
   stok: [
-    { id: "STK-CS01-01", cold_storage_id: "CS-01", cold_storage_nama: "Cold Storage Lambaro", komoditas_kode: "cabai_merah_keriting", komoditas_nama: "Cabai Merah Keriting", volume_ton: 34.9, masuk_pada: "2026-09-30T09:00:00+07:00", kedaluwarsa_pada: "2026-10-21T09:00:00+07:00", sisa_masa_simpan_hari: 5, risiko_food_loss: 0.68, pemilik: "KUD Pidie Jaya" },
+    { id: "STK-CS01-01", cold_storage_id: "CS-01", cold_storage_nama: "Cold Storage Lambaro", komoditas_kode: "CBM-KRT", komoditas_nama: "Cabai Merah Keriting", volume_ton: 34.9, masuk_pada: "2026-09-30T09:00:00+07:00", kedaluwarsa_pada: "2026-10-21T09:00:00+07:00", sisa_masa_simpan_hari: 5, risiko_food_loss: 0.68, pemilik: "KUD Pidie Jaya" },
   ],
   meta: { page: 1, limit: 10, total: 23, total_pages: 3, volume_hasil_ton: 813 },
   ringkasan: { total_lot: 23, total_volume_ton: 813, risiko_tinggi_lot: 4, risiko_tinggi_ton: 172.7, ambang_risiko_tinggi: 0.6 },
@@ -60,20 +60,20 @@ describe("sentenceCase", () => {
 
 describe("ikonKomoditas", () => {
   const kasus: [string, string][] = [
-    ["cabai_merah_keriting", "cabai"],
-    ["cabai_rawit_merah", "cabai"],
-    ["bawang_merah", "bawang"],
-    ["bawang_putih", "bawang"],
-    ["beras_medium", "beras"],
-    ["telur_ayam", "telur"],
-    ["daging_ayam", "ayam"],
-    ["daging_sapi", "sapi"],
-    ["ikan_tongkol", "ikan"],
-    ["minyak_goreng", "minyak"],
-    ["gula_pasir", "gula"],
-    ["tomat", "sayur"],
-    ["kentang", "sayur"],
-    ["komoditas_baru_tak_dikenal", "sayur"],
+    ["CBM-KRT", "cabai"],
+    ["CBR-RWT", "cabai"],
+    ["BWM", "bawang"],
+    ["BWP", "bawang"],
+    ["BRS-MED", "beras"],
+    ["TLR", "telur"],
+    ["DAG-AYM", "ayam"],
+    ["DAG-SPI", "sapi"],
+    ["IKN-TGK", "ikan"],
+    ["MYK", "minyak"],
+    ["GLA", "gula"],
+    ["TMT", "sayur"],
+    ["KTG", "sayur"],
+    ["KOMODITAS-BARU-TAK-DIKENAL", "sayur"],
   ];
   for (const [kode, ikon] of kasus) {
     it(`${kode} → ${ikon}`, () => assert.equal(ikonKomoditas(kode), ikon));

@@ -10,10 +10,10 @@ import {
   ANCHOR_DATE, KABUPATEN, KOMODITAS, PASAR, delta7, gauss, hashSeed, kabupatenBerpasar, mulberry32,
   namaWilayah, pick, proyeksi, seriCuaca, seriHarga,
 } from "@/lib/data/generators";
-import { COLD_STORAGE, USERS, komoditasByKode, pasarById } from "@/lib/data/reference";
+import { COLD_STORAGE, USERS, kabupatenByKode, komoditasByKode, pasarById } from "@/lib/data/reference";
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
 import type {
-  AuditRow, EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
+  AuditRow, EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StatusEntri, StokColdStorage, SumberData,
   TugasLapangan,
 } from "@/lib/data/types";
@@ -338,8 +338,20 @@ export function mockTugas(): TugasLapangan[] {
 
 export function mockMasterKomoditas(): MasterKomoditasRow[] {
   return KOMODITAS.map((k, i) => ({
-    id: k.kode, kode: k.kode, nama: k.nama, kategori: k.kategori, satuan: k.satuan, pilot: k.pilot,
+    id: k.kode, kode: k.kode, nama: k.nama, kategori: k.kategori, satuan: k.satuan, hargaAcuan: k.hargaAcuan, pilot: k.pilot,
     versi: 1 + (i % 3), status: i === 3 ? "MENUNGGU_PERSETUJUAN" : "AKTIF",
+  }));
+}
+
+export function mockMasterWilayah(): MasterWilayahRow[] {
+  return KABUPATEN.map((k) => ({
+    id: k.kode, kode: k.kode, nama: `${k.jenis === "Kota" ? "Kota" : "Kab."} ${k.nama}`, ibukota: k.ibukota, lat: k.lat, lng: k.lng,
+  }));
+}
+
+export function mockMasterPasar(): MasterPasarRow[] {
+  return PASAR.map((p) => ({
+    id: p.id, nama: p.nama, kabupaten: kabupatenByKode[p.kabupatenKode].nama, radiusMeter: p.radiusMeter, aktif: true,
   }));
 }
 

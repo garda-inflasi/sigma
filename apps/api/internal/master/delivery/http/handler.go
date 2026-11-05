@@ -1,11 +1,19 @@
 package http
 
 import (
+	"errors"
+	"strconv"
+
+	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/master/domain"
 	"github.com/garda-inflasi/api/internal/master/dto"
 	"github.com/garda-inflasi/api/internal/master/usecase"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// totalCountHeader membawa jumlah seluruh hasil pencarian untuk klien yang memaginasi.
+const totalCountHeader = "X-Total-Count"
 
 type Handler struct {
 	uc *usecase.UseCase
@@ -15,77 +23,59 @@ func New(uc *usecase.UseCase) *Handler {
 	return &Handler{uc: uc}
 }
 
-// GET /v1/master/komoditas
+// GET /v1/master/komoditas?q=&page=&limit=
 func (h *Handler) ListKomoditas(c *gin.Context) {
-	items, err := h.uc.ListKomoditas(c.Request.Context())
+	query, ok := bindListQuery(c)
+	if !ok {
+		return
+	}
+	items, total, err := h.uc.ListKomoditas(c.Request.Context(), query)
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data komoditas")
 		return
 	}
-
-	res := make([]dto.MasterKomoditasRowResponse, len(items))
-	for i, item := range items {
-		res[i] = dto.MasterKomoditasRowResponse{
-			Kode:     item.Kode,
-			Nama:     item.Nama,
-			Kategori: item.Kategori,
-			Satuan:   item.Satuan,
-			Pilot:    item.Pilot,
-			Status:   item.Status,
-		}
-	}
-
-	response.Success(c, res)
+	c.Header(totalCountHeader, strconv.FormatInt(total, 10))
+	response.Success(c, dto.ToKomoditasRows(items))
 }
 
-// GET /v1/master/wilayah
+// GET /v1/master/wilayah?provinsi_kode=&q=&page=&limit=
 func (h *Handler) ListWilayah(c *gin.Context) {
-	provinsiKode := c.Query("provinsi_kode")
-	items, err := h.uc.ListWilayah(c.Request.Context(), provinsiKode)
+	query, ok := bindListQuery(c)
+	if !ok {
+		return
+	}
+	items, total, err := h.uc.ListWilayah(c.Request.Context(), c.Query("provinsi_kode"), query)
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data wilayah")
 		return
 	}
-
-	res := make([]dto.MasterWilayahRowResponse, len(items))
-	for i, item := range items {
-		res[i] = dto.MasterWilayahRowResponse{
-			Kode:         item.Kode,
-			Nama:         item.Nama,
-			Jenis:        item.Jenis,
-			Ibukota:      item.Ibukota,
-			Lat:          item.Lat,
-			Lng:          item.Lng,
-			ProvinsiKode: item.ProvinsiKode,
-		}
-	}
-
-	response.Success(c, res)
+	c.Header(totalCountHeader, strconv.FormatInt(total, 10))
+	response.Success(c, dto.ToWilayahRows(items))
 }
 
-// GET /v1/master/pasar
+// GET /v1/master/pasar?kabupaten_kode=&q=&page=&limit=
 func (h *Handler) ListPasar(c *gin.Context) {
-	kabupatenKode := c.Query("kabupaten_kode")
-	items, err := h.uc.ListPasar(c.Request.Context(), kabupatenKode)
+	query, ok := bindListQuery(c)
+	if !ok {
+		return
+	}
+	items, total, err := h.uc.ListPasar(c.Request.Context(), c.Query("kabupaten_kode"), query)
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data pasar")
 		return
 	}
+	c.Header(totalCountHeader, strconv.FormatInt(total, 10))
+	response.Success(c, dto.ToPasarRows(items))
+}
 
-	res := make([]dto.MasterPasarRowResponse, len(items))
-	for i, item := range items {
-		res[i] = dto.MasterPasarRowResponse{
-			ID:            item.ID,
-			Nama:          item.Nama,
-			KabupatenKode: item.KabupatenKode,
-			Lat:           item.Lat,
-			Lng:           item.Lng,
-			RadiusMeter:   item.RadiusMeter,
-			Aktif:         item.Aktif,
-		}
+// bindListQuery membaca q/page/limit; ok false berarti respons 400 sudah dikirim.
+func bindListQuery(c *gin.Context) (domain.ListQuery, bool) {
+	var req dto.ListRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return domain.ListQuery{}, false
 	}
-
-	response.Success(c, res)
+	return domain.ListQuery{Search: req.Q, Page: req.Page, Limit: req.Limit}, true
 }
 
 // POST /v1/master/komoditas/bulk
@@ -96,16 +86,14 @@ func (h *Handler) BulkKomoditas(c *gin.Context) {
 		return
 	}
 
-	count, err := h.uc.BulkKomoditas(c.Request.Context(), req.Kode, req.Action)
+	count, err := h.uc.BulkKomoditas(audit.RequestContext(c), req.Kode, req.Action, c.GetString("user_id"))
 	if err != nil {
-		switch err {
-		case usecase.ErrInvalidAction:
+		if errors.Is(err, usecase.ErrInvalidAction) {
 			response.BadRequest(c, "Aksi tidak valid")
-		default:
-			response.InternalError(c, "Gagal memproses aksi massal")
+			return
 		}
+		response.InternalError(c, "Gagal memproses aksi massal")
 		return
 	}
-
 	response.Success(c, dto.BulkKomoditasResponse{Berhasil: int(count)})
 }

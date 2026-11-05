@@ -4,7 +4,7 @@
  */
 
 import type { Tone } from "@/lib/design/tokens";
-import type { IkonKomoditas } from "@/lib/data/reference";
+import { komoditasByKode, type IkonKomoditas } from "@/lib/data/reference";
 import type {
   ColdStorageView,
   FasilitasColdStorage,
@@ -117,24 +117,9 @@ export function formatWilayah(namaResmi: string): string {
   return titleCase(nama);
 }
 
-/** Kode komoditas backend (slug) → ikon; yang tak dikenal memakai ikon sayur. */
-const IKON_PREFIKS: [string, IkonKomoditas][] = [
-  ["cabai", "cabai"],
-  ["bawang", "bawang"],
-  ["beras", "beras"],
-  ["telur", "telur"],
-  ["daging_ayam", "ayam"],
-  ["daging_sapi", "sapi"],
-  ["ikan", "ikan"],
-  ["minyak", "minyak"],
-  ["gula", "gula"],
-];
-
+/** Kode komoditas master (sama dengan `reference.ts`) → ikon; kode yang tak dikenal memakai ikon sayur. */
 export function ikonKomoditas(kode: string): IkonKomoditas {
-  const k = kode.toLowerCase();
-  return (
-    IKON_PREFIKS.find(([prefiks]) => k.startsWith(prefiks))?.[1] ?? "sayur"
-  );
+  return komoditasByKode[kode]?.ikon ?? "sayur";
 }
 
 export function toFasilitas(w: FasilitasWire): FasilitasColdStorage {

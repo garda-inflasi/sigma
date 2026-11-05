@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -143,22 +144,24 @@ func TestStokSeeds_ShortestShelfLifeFirst(t *testing.T) {
 	assert.Equal(t, wantTop, lots[:5])
 }
 
-func TestKomoditasPelengkap_AreHorticulture(t *testing.T) {
-	kode := map[string]bool{}
-	for _, k := range komoditasPelengkap {
-		kode[k.Kode] = true
-		assert.Positive(t, k.ShelfLifeHari)
-		assert.Positive(t, k.HargaAcuan)
-	}
-	assert.True(t, kode["tomat"])
-	assert.True(t, kode["kentang"])
-
-	// Setiap komoditas yang dipakai lot harus ada di master seed (000006) atau pelengkap.
-	master := map[string]bool{
-		"cabai_merah_keriting": true, "cabai_rawit_merah": true, "bawang_merah": true,
-		"ikan_tongkol": true, "telur_ayam": true,
+// Setiap komoditas yang dipakai lot harus ada di seed master.reference.
+func TestStokSeeds_UseMasterCommodities(t *testing.T) {
+	master := map[string]bool{}
+	for _, k := range masterseeder.Komoditas() {
+		master[k.Kode] = true
 	}
 	for _, s := range stokSeeds {
-		assert.True(t, master[s.Komoditas] || kode[s.Komoditas], "komoditas %s tidak tersedia", s.Komoditas)
+		assert.True(t, master[s.Komoditas], "komoditas %s tidak ada di master.reference", s.Komoditas)
+	}
+}
+
+// Setiap wilayah fasilitas harus ada di seed master.reference (dirujuk menurut nama).
+func TestFasilitasSeeds_UseMasterRegions(t *testing.T) {
+	master := map[string]bool{}
+	for _, k := range masterseeder.Kabupaten() {
+		master[k.Nama] = true
+	}
+	for _, f := range fasilitasSeeds {
+		assert.True(t, master[f.Wilayah], "wilayah %q tidak ada di master.reference", f.Wilayah)
 	}
 }

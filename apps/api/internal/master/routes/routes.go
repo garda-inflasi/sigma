@@ -2,6 +2,7 @@
 package routes
 
 import (
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/master/delivery/http"
 	"github.com/garda-inflasi/api/internal/master/repository/postgres"
 	"github.com/garda-inflasi/api/internal/master/usecase"
@@ -20,7 +21,7 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo)
+	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
 	master := engine.Group("/master")

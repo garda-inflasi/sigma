@@ -64,7 +64,10 @@ export const useAudit = (filter: AuditFilter) =>
   });
 export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
 export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn: api.tugas.saya });
-export const useMasterKomoditas = () => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas });
+/** Master data; `enabled` memuat hanya entitas yang sedang dibuka. */
+export const useMasterKomoditas = (enabled = true) => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas, enabled });
+export const useMasterWilayah = (enabled = true) => useQuery({ queryKey: qk.master.wilayah(), queryFn: api.master.wilayah, enabled });
+export const useMasterPasar = (enabled = true) => useQuery({ queryKey: qk.master.pasar(), queryFn: api.master.pasar, enabled });
 
 /**
  * Mutasi aksi massal dengan pembaruan optimistis.

@@ -997,6 +997,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/master/komoditas:
+    get:
+      summary: Mendaftar komoditas master
+      operationId: listKomoditas
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Pencarian pada kode atau nama (tanpa peka huruf besar-kecil)
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (maksimum 500). Tanpa limit, seluruh baris dikembalikan.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Daftar komoditas
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil pencarian (bukan hanya halaman ini)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterKomoditasListResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/master/wilayah:
     get:
       summary: Mendaftar wilayah (kabupaten/kota)
@@ -1010,9 +1055,31 @@ paths:
           in: query
           schema:
             type: string
+        - name: q
+          in: query
+          description: Pencarian pada kode atau nama (tanpa peka huruf besar-kecil)
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (maksimum 500). Tanpa limit, seluruh baris dikembalikan.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
       responses:
         "200":
-          description: Daftar wilayah
+          description: Daftar wilayah (kode BPS)
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil pencarian (bukan hanya halaman ini)
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -1031,9 +1098,31 @@ paths:
           in: query
           schema:
             type: string
+        - name: q
+          in: query
+          description: Pencarian pada kode atau nama (tanpa peka huruf besar-kecil)
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (maksimum 500). Tanpa limit, seluruh baris dikembalikan.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
       responses:
         "200":
           description: Daftar pasar
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil pencarian (bukan hanya halaman ini)
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -1802,6 +1891,49 @@ components:
             next_cursor:
               type: string
               description: Kosong pada halaman terakhir
+
+    MasterKomoditasRow:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: CBM-KRT
+        nama:
+          type: string
+          example: Cabai merah keriting
+        kategori:
+          type: string
+          example: Hortikultura
+        satuan:
+          type: string
+          example: kg
+        harga_acuan:
+          type: integer
+          description: Harga konsumen acuan (Rp)
+          example: 52000
+        pilot:
+          type: boolean
+        shelf_life_hari:
+          type: integer
+        versi:
+          type: integer
+        status:
+          type: string
+          enum: [AKTIF, MENUNGGU_PERSETUJUAN, DIARSIPKAN]
+
+    MasterKomoditasListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterKomoditasRow"
 
     ColdStorageResponse:
       type: object

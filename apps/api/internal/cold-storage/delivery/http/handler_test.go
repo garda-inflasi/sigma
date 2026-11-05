@@ -121,7 +121,7 @@ func TestGetAll_ResponseShape(t *testing.T) {
 		stok: domain.StokPage{
 			Items: []domain.StokView{{
 				ID: "STK-1", ColdStorageID: "CS-02", ColdStorageNama: "Cold Storage Perikanan Lhokseumawe",
-				KomoditasKode: "ikan_tongkol", KomoditasNama: "Ikan Tongkol", VolumeTon: 64.5,
+				KomoditasKode: "IKN-TGK", KomoditasNama: "Ikan tongkol", VolumeTon: 64.5,
 				MasukPada: now.Add(-101 * 24 * time.Hour), KedaluwarsaPada: now.Add(19 * 24 * time.Hour),
 				RisikoFoodLoss: 0.72, Pemilik: "CV Mina Lhokseumawe",
 			}},
@@ -160,8 +160,8 @@ func TestGetAll_ResponseShape(t *testing.T) {
 
 	require.Len(t, data.Stok, 1)
 	s0 := data.Stok[0]
-	assert.Equal(t, "ikan_tongkol", s0["komoditas_kode"])
-	assert.Equal(t, "Ikan Tongkol", s0["komoditas_nama"])
+	assert.Equal(t, "IKN-TGK", s0["komoditas_kode"])
+	assert.Equal(t, "Ikan tongkol", s0["komoditas_nama"])
 	assert.Equal(t, "Cold Storage Perikanan Lhokseumawe", s0["cold_storage_nama"])
 	assert.Equal(t, 19.0, s0["sisa_masa_simpan_hari"])
 	assert.Equal(t, 0.72, s0["risiko_food_loss"])

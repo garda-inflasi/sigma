@@ -4,6 +4,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/garda-inflasi/api/internal/master/domain"
 	"gorm.io/gorm"
@@ -17,48 +18,70 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) ListKomoditas(ctx context.Context) ([]domain.Komoditas, error) {
+func (r *Repository) ListKomoditas(ctx context.Context, q domain.ListQuery) ([]domain.Komoditas, int64, error) {
 	var items []domain.Komoditas
-	if err := r.db.WithContext(ctx).Order("kode ASC").Find(&items).Error; err != nil {
-		return nil, err
-	}
-	return items, nil
+	total, err := r.list(r.db.WithContext(ctx).Model(&domain.Komoditas{}), q, "kode", []string{"kode", "nama"}, &items)
+	return items, total, err
 }
 
-func (r *Repository) ListWilayah(ctx context.Context, provinsiKode string) ([]domain.Kabupaten, error) {
-	var items []domain.Kabupaten
-	q := r.db.WithContext(ctx).Order("kode ASC")
+func (r *Repository) ListWilayah(ctx context.Context, provinsiKode string, q domain.ListQuery) ([]domain.Kabupaten, int64, error) {
+	query := r.db.WithContext(ctx).Model(&domain.Kabupaten{})
 	if provinsiKode != "" {
-		q = q.Where("provinsi_kode = ?", provinsiKode)
+		query = query.Where("provinsi_kode = ?", provinsiKode)
 	}
-	if err := q.Find(&items).Error; err != nil {
-		return nil, err
-	}
-	return items, nil
+	var items []domain.Kabupaten
+	total, err := r.list(query, q, "kode", []string{"kode", "nama", "ibukota"}, &items)
+	return items, total, err
 }
 
-func (r *Repository) ListPasar(ctx context.Context, kabupatenKode string) ([]domain.Pasar, error) {
-	var items []domain.Pasar
-	q := r.db.WithContext(ctx).Order("id ASC")
+func (r *Repository) ListPasar(ctx context.Context, kabupatenKode string, q domain.ListQuery) ([]domain.Pasar, int64, error) {
+	query := r.db.WithContext(ctx).Model(&domain.Pasar{})
 	if kabupatenKode != "" {
-		q = q.Where("kabupaten_kode = ?", kabupatenKode)
+		query = query.Where("kabupaten_kode = ?", kabupatenKode)
 	}
-	if err := q.Find(&items).Error; err != nil {
-		return nil, err
+	var items []domain.Pasar
+	total, err := r.list(query, q, "id", []string{"id", "nama"}, &items)
+	return items, total, err
+}
+
+// list menerapkan pencarian dan paginasi pada query dasar, lalu mengisi dest.
+// total adalah jumlah seluruh hasil pencarian, bukan hanya halaman ini.
+func (r *Repository) list(query *gorm.DB, q domain.ListQuery, orderBy string, searchColumns []string, dest any) (int64, error) {
+	if search := strings.TrimSpace(q.Search); search != "" {
+		pattern := "%" + escapeLike(strings.ToLower(search)) + "%"
+		conditions := make([]string, len(searchColumns))
+		args := make([]any, len(searchColumns))
+		for i, column := range searchColumns {
+			conditions[i] = "LOWER(" + column + ") LIKE ?"
+			args[i] = pattern
+		}
+		query = query.Where(strings.Join(conditions, " OR "), args...)
 	}
-	return items, nil
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return 0, fmt.Errorf("hitung master: %w", err)
+	}
+
+	query = query.Order(orderBy + " ASC")
+	if q.Limit > 0 {
+		query = query.Limit(q.Limit).Offset((max(q.Page, 1) - 1) * q.Limit)
+	}
+	if err := query.Find(dest).Error; err != nil {
+		return 0, fmt.Errorf("daftar master: %w", err)
+	}
+	return total, nil
 }
 
 func (r *Repository) BulkKomoditas(ctx context.Context, kode []string, action domain.BulkAction) (int64, error) {
 	var status string
 	switch action {
 	case domain.BulkArsipkan:
-		status = "ARSIP"
+		status = domain.StatusDiarsipkan
 	case domain.BulkSetujui:
-		status = "AKTIF"
+		status = domain.StatusAktif
 	case domain.BulkAjukanPerubahan:
-		// Ajukan perubahan is a workflow action; report affected rows only.
-		return int64(len(kode)), nil
+		status = domain.StatusMenungguPersetujuan
 	default:
 		return 0, fmt.Errorf("unknown bulk action: %s", action)
 	}
@@ -70,4 +93,9 @@ func (r *Repository) BulkKomoditas(ctx context.Context, kode []string, action do
 		return 0, fmt.Errorf("bulk komoditas %s: %w", action, tx.Error)
 	}
 	return tx.RowsAffected, nil
+}
+
+// escapeLike menetralkan karakter wildcard LIKE agar pencarian bersifat literal.
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }

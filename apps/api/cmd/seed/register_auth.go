@@ -12,9 +12,8 @@ import (
 
 func init() {
 	seedkit.Register(seedkit.Seeder{
-		Name:  "auth.admin",
-		Tier:  seedkit.TierAdmin,
-		After: []string{"master.reference"},
+		Name: "auth.admin",
+		Tier: seedkit.TierAdmin,
 		Run: func(ctx context.Context, db *gorm.DB, _ time.Time) (seedkit.Result, error) {
 			sum, err := authseeder.SeedAdmin(ctx, db, authseeder.AdminConfig{
 				Email:    os.Getenv("SEED_ADMIN_EMAIL"),
@@ -26,9 +25,10 @@ func init() {
 	})
 
 	seedkit.Register(seedkit.Seeder{
-		Name:  "auth.demo",
-		Tier:  seedkit.TierDemo,
-		After: []string{"master.reference", "auth.admin"},
+		Name:      "auth.demo",
+		Tier:      seedkit.TierDemo,
+		DependsOn: []string{"master.reference"},
+		After:     []string{"auth.admin"},
 		Run: func(ctx context.Context, db *gorm.DB, _ time.Time) (seedkit.Result, error) {
 			sum, err := authseeder.SeedDemo(ctx, db)
 			return seedkit.Result{"akun": sum.Akun}, err

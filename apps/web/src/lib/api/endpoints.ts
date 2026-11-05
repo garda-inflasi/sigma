@@ -2,10 +2,14 @@ import { apiFetch, mockDelay, MODE_MOCK } from "./client";
 import { toAuditPage, toAuditQuery, queryMockAudit, type AuditFilter, type AuditPage, type AuditPageResponse } from "./audit";
 import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
+import {
+  toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
+  type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
+} from "./master";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
-  ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow,
+  ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -78,5 +82,20 @@ export const api = {
       MODE_MOCK ? mockDelay({ id: "PB-2026-10" }, 2200, 3200) : apiFetch<{ id: string }>("/v1/policy-brief/generate", { method: "POST", body: JSON.stringify({ periode }) }),
   },
   tugas: { saya: () => get<TugasLapangan[]>("/v1/lapangan/tugas/saya", m.mockTugas) },
-  master: { komoditas: () => get<MasterKomoditasRow[]>("/v1/master/komoditas", m.mockMasterKomoditas) },
+  master: {
+    komoditas: (): Promise<MasterKomoditasRow[]> =>
+      MODE_MOCK ? mockDelay(m.mockMasterKomoditas) : apiFetch<MasterKomoditasResponse[]>("/v1/master/komoditas").then((rows) => rows.map(toMasterKomoditasRow)),
+    wilayah: (): Promise<MasterWilayahRow[]> =>
+      MODE_MOCK ? mockDelay(m.mockMasterWilayah) : apiFetch<MasterWilayahResponse[]>("/v1/master/wilayah").then((rows) => rows.map(toMasterWilayahRow)),
+    /** Pasar beserta nama kabupaten/kota pemiliknya (memuat wilayah juga). */
+    pasar: async (): Promise<MasterPasarRow[]> => {
+      if (MODE_MOCK) return mockDelay(m.mockMasterPasar);
+      const [pasar, wilayah] = await Promise.all([
+        apiFetch<MasterPasarResponse[]>("/v1/master/pasar"),
+        apiFetch<MasterWilayahResponse[]>("/v1/master/wilayah"),
+      ]);
+      const nama = new Map(wilayah.map((w) => [w.kode, toMasterWilayahRow(w).nama]));
+      return pasar.map((p) => toMasterPasarRow(p, nama));
+    },
+  },
 };

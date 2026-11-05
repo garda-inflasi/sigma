@@ -6,7 +6,7 @@
 ## Yang sudah ada
 
 - **UI:** [prediksi-page.tsx](../../apps/web/src/components/prediksi/prediksi-page.tsx) di `/prediksi` (panel XAI, simulasi skenario, proyeksi semua komoditas, registri model) dan [xai-panel](../../apps/web/src/components/eksekutif/xai-panel.tsx).
-- **API Go (`prediksi`):** `GET /v1/prediksi`, `/:kode`, `/:kode/export` (izin `prediksi.lihat`); usecase hanya membaca baris `ProyeksiXai`.
+- **API Go (`prediksi`):** `GET /v1/prediksi`, `/:kode`, `/:kode/export` (izin `prediksi.lihat`); usecase hanya membaca baris `ProyeksiXai`. *(Riwayat; kini membaca `prediksi_harga`, lihat 11-A.)*
 - **API Go (`analytics`, MongoDB, tidak dipakai web):** `/v1/predictions/*`, `/v1/models/registry` (izin `prediksi.baca`, yatim).
 - **Halaman `/prediksi` dan `/policy-brief` memanggil `mockXai` langsung**, jadi tetap memakai data palsu walau backend aktif.
 - **Skema:** entity `ProyeksiXai` memetakan tabel **`proyeksi_xai` yang tidak ada**. Migrasi punya `prediksi_harga` (`nilai`, `bawah`, `atas`, `horizon_hari`, `model_versi`, `faktor` JSONB) yang pas untuk XAI + interval kepercayaan. `model_registry` (Postgres, + `algorithm`, `metrics`, `deployed_at`, `feature_importance` dari 000005) hanya dirujuk entity `analytics`; seeder MongoDB juga membuat koleksi `model_registry` (duplikat). Semua kosong.
@@ -25,7 +25,7 @@
 2. **SEED** (`demo`)
    - [x] `prediksi.demo` (`DependsOn master.reference`, `After harga.demo`): per komoditas satu model `PRODUKSI` (v2.3.1) dan satu `KANDIDAT` (v2.4.0-rc1), semua `sumber = DEMO`; proyeksi horizon 7/14/30 hari untuk semua komoditas di Kota Banda Aceh dan komoditas pilot di 22 kabupaten lain (240 baris), `faktor` ala SHAP yang jumlahnya sama dengan perubahan proyeksi. Id baris tetap (tanpa tanggal): menjalankan ulang di hari lain menggeser `tanggal_target`, tidak menambah baris. Produksi tidak di-seed.
 3. **API**
-   - [x] `GET /v1/prediksi?kabupaten=&horizon=` (ringkasan semua komoditas), `/:kode` (seri riwayat + proyeksi, faktor, narasi, rekomendasi, model), `/:kode/export`, dan `GET /v1/prediksi/registri`. Hanya model `PRODUKSI` yang dipakai. Riwayat aktual dibaca dari `entri_harga` (konsumen, tervalidasi/terpublikasi) bila ada. Narasi dan rekomendasi dari templat aturan, bukan LLM.
+   - [x] `GET /v1/prediksi?kabupaten=&horizon=` (ringkasan semua komoditas), `/:kode` (seri riwayat + proyeksi, faktor, narasi, rekomendasi, model), `/:kode/export` (CSV titik koma ber-BOM, satu baris per titik seri; `proyeksi_<kode>.csv`), dan `GET /v1/prediksi/registri`. Hanya model `PRODUKSI` yang dipakai. Riwayat aktual dibaca dari `entri_harga` (konsumen, tervalidasi/terpublikasi) bila ada. Narasi dan rekomendasi dari templat aturan, bukan LLM.
    - [x] Izin yatim `prediksi.baca` hilang bersama modul `analytics`; semua route memakai `prediksi.lihat`.
 4. **FE**
    - [x] `prediksi-page.tsx` dan `xai-panel.tsx` memakai `useProyeksiRingkasan`, `useModelPrediksi`, `useXai` (API nyata, mapper `lib/api/prediksi.ts`); tidak ada `mockXai` di komponen (hanya di lapisan mode mock). Data seed berlabel "Data demo".
@@ -48,8 +48,8 @@
    - [x] **XAI:** `faktor` = penguraian ramalan (penyesuaian level, tren, musiman) dalam poin persen, jumlahnya sama dengan perubahan proyeksi; `feature_importance` = rata-rata |kontribusi| ternormalisasi. Belum SHAP/gradient boosting.
    - [x] `POST /v1/prediksi/segarkan` (ramal ulang dengan parameter model produksi hasil pelatihan), `POST /v1/prediksi/evaluasi` (galat nyata proyeksi jatuh tempo), `GET /v1/prediksi/ml` (status layanan). Izin `model.kelola` + audit.
    - [ ] Ensemble (regresi, gradient boosting), fitur cuaca/hari raya/stok/pasokan, estimasi volume panen dan risiko inflasi, jadwal retraining otomatis.
-3. **FE**: [x] registri menampilkan MAPE backtest, baseline naif, MAPE realisasi (jumlah), umur model (penanda "Usang" > 30 hari), label Demo; tombol "Latih model" (izin `model.kelola`, nonaktif bila layanan ML mati). [ ] Ekspor metrik.
-4. **TES**: [x] unit Python (fungsi murni peramalan, kontrak layanan, server loopback); kontrak Go ↔ ML dengan `httptest`; integrasi (latih, segarkan idempoten, evaluasi, 503, 403). Model kandidat tidak dapat dipromosikan bila MAPE-nya lebih buruk dari baseline (11-C).
+3. **FE**: [x] registri menampilkan MAPE backtest, baseline naif, MAPE realisasi (jumlah), umur model (penanda "Usang" > 30 hari), label Demo; tombol "Latih model" (izin `model.kelola`, nonaktif bila layanan ML mati); "Segarkan proyeksi" (komoditas terpilih, nonaktif dengan alasan bila layanan ML mati, model produksi masih demo, atau tak ada model produksi; ringkasan jumlah proyeksi ditulis ulang; pesan server untuk 503/409/422) dan "Evaluasi akurasi" (jumlah proyeksi jatuh tempo yang baru dievaluasi; nol dijelaskan sebagai keadaan wajar), keduanya hanya untuk `model.kelola` dan memuat ulang proyeksi, XAI, dan registri; "Unduh CSV" proyeksi komoditas terpilih di panel XAI (`/prediksi` dan `/eksekutif`, izin `prediksi.lihat`). [ ] Ekspor metrik registri.
+4. **TES**: [x] unit Python (fungsi murni peramalan, kontrak layanan, server loopback); kontrak Go ↔ ML dengan `httptest`; integrasi (latih, segarkan idempoten, evaluasi, 503, 403); ekspor CSV (header, satu baris per titik seri, 404/400); e2e `prediksi-kpi.spec.ts` (unduh CSV, segarkan dua kali, evaluasi, tombol tersembunyi tanpa `model.kelola`, 403 API). Model kandidat tidak dapat dipromosikan bila MAPE-nya lebih buruk dari baseline (11-C).
 
 ---
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "motion/react";
 import {
   Building2,
@@ -9,6 +10,7 @@ import {
   Loader2,
   Truck,
 } from "lucide-react";
+import { KpiRiwayatSheet } from "@/components/kpi/kpi-riwayat-sheet";
 import { PageHeader } from "@/components/garda/page-header";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
@@ -62,7 +64,7 @@ function alasanMenunggu(k: KpiIndikator): string {
     : "Butuh model atau data yang belum tersedia; dihitung di tahap berikutnya.";
 }
 
-function KpiBaris({ k }: { k: KpiIndikator }) {
+function KpiBaris({ k, onBuka }: { k: KpiIndikator; onBuka: (kode: string) => void }) {
   const status = STATUS[k.status];
   const pct = capaianPersen(k);
   return (
@@ -71,7 +73,14 @@ function KpiBaris({ k }: { k: KpiIndikator }) {
       title={k.deskripsi || undefined}
     >
       <div className="min-w-0">
-        <p className="truncate text-sm">{k.nama}</p>
+        <button
+          type="button"
+          onClick={() => onBuka(k.kode)}
+          aria-label={`Riwayat ${k.nama}`}
+          className="block max-w-full truncate text-left text-sm font-medium hover:text-data-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          {k.nama}
+        </button>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {k.target === null ? (
             "Target belum ditetapkan"
@@ -141,6 +150,7 @@ function KpiBaris({ k }: { k: KpiIndikator }) {
 export function KpiPage() {
   const { data, isLoading, isError } = useKpi();
   const ekspor = useEksporKpi();
+  const [dibuka, setDibuka] = useState<string>();
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -201,7 +211,7 @@ export function KpiPage() {
                 </h2>
                 <ul className="mt-5 space-y-5">
                   {items.map((k) => (
-                    <KpiBaris key={k.kode} k={k} />
+                    <KpiBaris key={k.kode} k={k} onBuka={setDibuka} />
                   ))}
                 </ul>
               </motion.section>
@@ -209,6 +219,7 @@ export function KpiPage() {
           })}
         </motion.div>
       )}
+      <KpiRiwayatSheet kode={dibuka} onClose={() => setDibuka(undefined)} />
     </div>
   );
 }

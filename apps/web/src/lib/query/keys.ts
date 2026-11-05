@@ -60,7 +60,7 @@ export const qk = {
     eksekusi: (id: string) => ["sumber-data", "eksekusi", id] as const,
     sampel: (id: string) => ["sumber-data", "sampel", id] as const,
   },
-  kpi: { list: () => ["kpi", "list"] as const },
+  kpi: { list: () => ["kpi", "list"] as const, riwayat: (kode: string) => ["kpi", "riwayat", kode] as const },
   pengguna: {
     all: () => ["pengguna"] as const,
     list: (search?: string) => ["pengguna", "list", search ?? ""] as const,

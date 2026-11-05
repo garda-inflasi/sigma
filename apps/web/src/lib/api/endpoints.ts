@@ -21,7 +21,7 @@ import {
 } from "./harga";
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
-import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
+import { kpiMock, kpiRiwayatMock, toKpiIndikator, toKpiRiwayat, type KpiIndikator, type KpiResponse as KpiIndikatorResponse, type KpiRiwayat, type KpiRiwayatResponse } from "./kpi";
 import {
   toEwsAlert, toEwsAturan, toPreferensiBody, toPreferensiView, toUbahAturanBody,
   type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
@@ -41,8 +41,8 @@ import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type Policy
 import { mockBriefDetail } from "./brief-mock";
 import {
   toBarisModel, toBarisProyeksi, toHasilSimulasi, toProyeksiXai,
-  type AksiModel, type AksiModelResult, type BarisModel, type BarisProyeksi, type HasilSimulasi, type ModelResponse,
-  type ProyeksiResponse, type RingkasanResponse, type SimulasiInput, type SimulasiResponse, type StatusMl,
+  type AksiModel, type AksiModelResult, type BarisModel, type BarisProyeksi, type EvaluasiResponse, type HasilSimulasi, type ModelResponse,
+  type ProyeksiResponse, type RingkasanResponse, type SegarkanResponse, type SimulasiInput, type SimulasiResponse, type StatusMl,
 } from "./prediksi";
 import { mockBarisModel, mockBarisProyeksi, mockSimulasi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
@@ -121,6 +121,16 @@ export const api = {
       MODE_MOCK
         ? Promise.reject(new Error("Pelatihan model memerlukan backend dan layanan ML."))
         : apiFetch<ModelResponse>("/v1/prediksi/latih", { method: "POST", body: JSON.stringify({ komoditas_kode: komoditasKode }) }).then(toBarisModel),
+    /** Meramal ulang proyeksi model produksi hasil pelatihan (tanpa melatih ulang); 503 bila layanan ML mati, 409 bila model produksi masih demo. */
+    segarkan: (komoditasKode: string): Promise<SegarkanResponse> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Menyegarkan proyeksi memerlukan backend dan layanan ML."))
+        : apiFetch<SegarkanResponse>("/v1/prediksi/segarkan", { method: "POST", body: JSON.stringify({ komoditas_kode: komoditasKode }) }),
+    /** Menghitung galat nyata proyeksi yang sudah jatuh tempo (dasar MAPE realisasi). */
+    evaluasi: (): Promise<EvaluasiResponse> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Evaluasi akurasi memerlukan backend."))
+        : apiFetch<EvaluasiResponse>("/v1/prediksi/evaluasi", { method: "POST" }),
     /** Promosi (kandidat/arsip ke produksi) atau arsip kandidat; izin `model.kelola`, dicatat di audit. */
     aksiModel: (aksi: AksiModel, ids: string[]): Promise<AksiModelResult> =>
       MODE_MOCK
@@ -307,6 +317,9 @@ export const api = {
   kpi: {
     list: (): Promise<KpiIndikator[]> =>
       MODE_MOCK ? mockDelay(kpiMock) : apiFetch<KpiIndikatorResponse[]>("/v1/kpi").then((rows) => rows.map(toKpiIndikator)),
+    /** Nilai berlaku tiap periode (paling banyak 36) satu indikator. */
+    riwayat: (kode: string): Promise<KpiRiwayat> =>
+      MODE_MOCK ? mockDelay(() => kpiRiwayatMock(kode)) : apiFetch<KpiRiwayatResponse>(`/v1/kpi/${encodeURIComponent(kode)}/riwayat`).then(toKpiRiwayat),
   },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
   rbac: { katalog: (): Promise<KatalogAkses> => (MODE_MOCK ? mockDelay(m.mockKatalogAkses) : penggunaApi.katalog()) },

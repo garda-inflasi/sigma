@@ -1,8 +1,11 @@
 package http
 
 import (
+	"bytes"
+	"encoding/csv"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/garda-inflasi/api/internal/prediksi/dto"
@@ -71,15 +74,47 @@ func (h *Handler) GetByKode(c *gin.Context) {
 	response.Success(c, dto.ToProyeksi(*detail))
 }
 
-// GET /v1/prediksi/:kode/export
+// csvHeader adalah kolom ekspor proyeksi; urutannya sama dengan baris yang ditulis Export.
+var csvHeader = []string{
+	"komoditas_kode", "komoditas_nama", "kabupaten_kode", "horizon_hari", "tanggal",
+	"aktual", "proyeksi", "bawah", "atas", "model_versi", "sumber",
+}
+
+// GET /v1/prediksi/:kode/export?kabupaten=&horizon=
+// Seri grafik satu komoditas (riwayat aktual, titik sambung, jalur proyeksi) sebagai CSV
+// (titik koma, BOM UTF-8, seperti ekspor lain). Sel kosong berarti titik itu tidak punya nilai tersebut.
 func (h *Handler) Export(c *gin.Context) {
 	detail, ok := h.detail(c)
 	if !ok {
 		return
 	}
+	p := dto.ToProyeksi(*detail)
 
-	c.Header("Content-Disposition", "attachment; filename=proyeksi_"+detail.Proyeksi.KomoditasKode+".json")
-	c.JSON(http.StatusOK, dto.ToProyeksi(*detail))
+	angka := func(v *int) string {
+		if v == nil {
+			return ""
+		}
+		return strconv.Itoa(*v)
+	}
+	var buf bytes.Buffer
+	buf.WriteString("\ufeff")
+	w := csv.NewWriter(&buf)
+	w.Comma = ';'
+	_ = w.Write(csvHeader)
+	for _, t := range p.Seri {
+		_ = w.Write([]string{
+			p.KomoditasKode, p.KomoditasNama, p.KabupatenKode, strconv.Itoa(p.HorizonHari), t.Tanggal,
+			angka(t.Aktual), angka(t.Proyeksi), angka(t.Bawah), angka(t.Atas), p.Model.Versi, p.Sumber,
+		})
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		response.InternalError(c, "Gagal menyusun berkas proyeksi")
+		return
+	}
+
+	c.Header("Content-Disposition", `attachment; filename="proyeksi_`+p.KomoditasKode+`.csv"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
 }
 
 // detail memuat proyeksi lengkap untuk :kode; false bila sudah dijawab dengan galat.

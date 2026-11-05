@@ -1,6 +1,6 @@
 /**
  * Indikator kinerja (KPI): pemetaan dari representasi API Go (snake_case) ke model UI.
- * Endpoint: GET /v1/kpi.
+ * Endpoint: GET /v1/kpi dan GET /v1/kpi/{kode}/riwayat.
  */
 
 export type KpiKelompok =
@@ -92,6 +92,65 @@ export function toKpiIndikator(k: KpiResponse): KpiIndikator {
     status: (STATUS as readonly string[]).includes(k.status)
       ? (k.status as KpiStatus)
       : "MENUNGGU_DATA",
+  };
+}
+
+/** Satu baris riwayat: nilai berlaku sebuah periode dan capaiannya terhadap target saat ini. */
+export interface KpiRiwayatBaris {
+  /** Periode (ISO lokal siang hari). */
+  periode: string;
+  nilai: number;
+  /** Versi nilai; di atas 1 berarti sudah direvisi. */
+  versi: number;
+  dihitungPada: string;
+  status: KpiStatus;
+}
+
+export interface KpiRiwayat {
+  kpi: KpiIndikator;
+  /** Urut naik menurut periode (terlama dulu). */
+  baris: KpiRiwayatBaris[];
+  /** Ambang waspada target saat ini; null bila tidak ada. */
+  ambangWaspada: number | null;
+}
+
+export interface KpiRiwayatResponse {
+  kpi: KpiResponse;
+  riwayat: NilaiResponse[];
+}
+
+/**
+ * Menilai satu nilai terhadap target, aturan yang sama dengan `domain.StatusCapaian` di API:
+ * NAIK tercapai bila nilai >= target, TURUN bila nilai <= target; ambang waspada adalah batas longgar.
+ */
+export function statusTerhadapTarget(
+  naikBaik: boolean,
+  nilai: number,
+  target: number | null,
+  ambangWaspada: number | null,
+): KpiStatus {
+  if (target === null) return "TANPA_TARGET";
+  const tercapai = naikBaik ? nilai >= target : nilai <= target;
+  if (tercapai) return "TERCAPAI";
+  const waspada =
+    ambangWaspada !== null &&
+    (naikBaik ? nilai >= ambangWaspada : nilai <= ambangWaspada);
+  return waspada ? "WASPADA" : "TIDAK_TERCAPAI";
+}
+
+export function toKpiRiwayat(r: KpiRiwayatResponse): KpiRiwayat {
+  const kpi = toKpiIndikator(r.kpi);
+  const ambangWaspada = r.kpi.target?.ambang_waspada ?? null;
+  return {
+    kpi,
+    ambangWaspada,
+    baris: r.riwayat.map((n) => ({
+      periode: `${n.periode.slice(0, 10)}T12:00:00`,
+      nilai: n.nilai,
+      versi: n.versi,
+      dihitungPada: n.dihitung_pada,
+      status: statusTerhadapTarget(kpi.naikBaik, n.nilai, kpi.target, ambangWaspada),
+    })),
   };
 }
 
@@ -221,4 +280,22 @@ export function kpiMock(): KpiIndikator[] {
       [41, 48, 55, 60, 64, 68],
     ),
   ];
+}
+
+/** Riwayat contoh mode mock: tren indikator mock dijadikan periode bulanan berakhir 2026-10. */
+export function kpiRiwayatMock(kode: string): KpiRiwayat {
+  const kpi = kpiMock().find((k) => k.kode === kode);
+  if (!kpi) throw new Error("Indikator tidak ditemukan.");
+  const n = kpi.tren.length;
+  return {
+    kpi,
+    ambangWaspada: null,
+    baris: kpi.tren.map((nilai, i) => ({
+      periode: `2026-${String(10 - (n - 1 - i)).padStart(2, "0")}-01T12:00:00`,
+      nilai,
+      versi: 1,
+      dihitungPada: "2026-11-01T01:00:00Z",
+      status: statusTerhadapTarget(kpi.naikBaik, nilai, kpi.target, null),
+    })),
+  };
 }

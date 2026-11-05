@@ -62,7 +62,7 @@ func Katalog() []domain.SumberData {
 		rows[i] = domain.SumberData{
 			ID: k.ID, Nama: k.Nama, Penyedia: k.Penyedia, Jenis: k.Jenis, Cakupan: k.Cakupan,
 			JadwalCron: k.JadwalCron, Status: domain.StatusBelumAktif, RobotsTxtPatuh: k.RobotsTxtPatuh,
-			Atribusi: k.Atribusi, URLDasar: k.URLDasar,
+			Atribusi: k.Atribusi, URLDasar: k.URLDasar, Konfigurasi: k.Konfigurasi,
 		}
 	}
 	return rows

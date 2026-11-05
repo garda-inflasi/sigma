@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatJadwal, toSumberData, type SumberDataResponse } from "./sumber";
+import { formatJadwal, toEksekusi, toSampel, toSumberData, type EksekusiResponse, type SumberDataResponse } from "./sumber";
 
 describe("formatJadwal", () => {
   it("menerjemahkan pola cron katalog ke teks Indonesia", () => {
@@ -32,6 +32,7 @@ const dasar: SumberDataResponse = {
   robots_txt_patuh: true,
   atribusi: "Sumber: BI",
   url_dasar: null,
+  bisa_dijalankan: true,
 };
 
 describe("toSumberData", () => {
@@ -47,6 +48,7 @@ describe("toSumberData", () => {
       status: "SEHAT",
       keberhasilan7h: 98.6,
       latensiMs: 910,
+      bisaDijalankan: true,
     });
   });
 
@@ -67,5 +69,57 @@ describe("toSumberData", () => {
     const row = toSumberData({ ...dasar, status: "ANEH", jenis: "LAIN" });
     assert.equal(row.status, "BELUM_AKTIF");
     assert.equal(row.jenis, "API");
+  });
+});
+
+describe("toEksekusi", () => {
+  const dasarEksekusi: EksekusiResponse = {
+    id: 7,
+    pemicu: "MANUAL",
+    status: "SEBAGIAN",
+    mulai: "2026-10-15T03:00:00Z",
+    selesai: "2026-10-15T03:00:09Z",
+    durasi_ms: 9000,
+    latensi_ms: 850,
+    dokumen: 2,
+    baris_diambil: 14,
+    baris_ditolak: 7,
+    galat: "wilayah=102: timeout",
+    ringkasan: {
+      tak_terpetakan: { "KOMODITAS:ikan segar baru": 3, "KOMODITAS:apel": 3, "KOMODITAS:zat x": 5 },
+      tidak_valid: { "harga kosong atau bukan angka": 3, "harga di luar batas wajar": 1 },
+    },
+  };
+
+  it("memetakan kolom dan mengurutkan rincian penolakan menurut jumlah baris lalu abjad", () => {
+    const e = toEksekusi(dasarEksekusi);
+    assert.equal(e.status, "SEBAGIAN");
+    assert.equal(e.durasiMs, 9000);
+    assert.equal(e.barisDitolak, 7);
+    assert.deepEqual(e.takTerpetakan, [
+      { alias: "KOMODITAS:zat x", baris: 5 },
+      { alias: "KOMODITAS:apel", baris: 3 },
+      { alias: "KOMODITAS:ikan segar baru", baris: 3 },
+    ]);
+    assert.deepEqual(e.tidakValid[0], { alasan: "harga kosong atau bukan angka", baris: 3 });
+  });
+
+  it("menerima run berjalan tanpa ringkasan", () => {
+    const e = toEksekusi({ ...dasarEksekusi, status: "BERJALAN", selesai: null, durasi_ms: null, latensi_ms: null, galat: null, ringkasan: {} });
+    assert.equal(e.selesai, null);
+    assert.deepEqual(e.takTerpetakan, []);
+    assert.deepEqual(e.tidakValid, []);
+  });
+});
+
+describe("toSampel", () => {
+  it("memetakan cuplikan payload mentah", () => {
+    assert.deepEqual(toSampel({ id: 3, kunci_permintaan: "wilayah=101", diambil_pada: "2026-10-15T03:00:00Z", ukuran: 5231, cuplikan: '{"data":[' }), {
+      id: 3,
+      kunci: "wilayah=101",
+      diambilPada: "2026-10-15T03:00:00Z",
+      ukuran: 5231,
+      cuplikan: '{"data":[',
+    });
   });
 });

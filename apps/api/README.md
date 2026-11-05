@@ -10,6 +10,7 @@ Konfigurasi lewat env (lihat `env.example` di akar repo). Alur lokal ada di [REA
 | `cmd/api`                              | server HTTP                                                  |
 | `cmd/migrate up\|down\|version`        | migrasi goose dari `MIGRATIONS_DIR` (bawaan `db/migrations`) |
 | `cmd/seed reference\|admin\|demo\|all` | seeder; `demo` ditolak bila `APP_ENV=production`             |
+| `cmd/ingest <sumber>`                  | jalankan ingestion satu sumber sekali (mis. `SRC-BI`); juga `daftar`, `pemetaan`, `konfigurasi` |
 
 ## Menambah modul
 
@@ -106,3 +107,20 @@ KPI, peta panas, dan agregat harga harian adalah materialized view (`agregat_har
 menyegarkannya dengan `REFRESH ... CONCURRENTLY`: tiap 5 menit dari `cmd/api` dan segera setelah
 harga divalidasi atau dipublikasi. Seeder `dashboard.demo` menyegarkannya setelah data demo terisi.
 Menambah view baru berarti menambahkannya ke `refresher.Views` (urut menurut ketergantungan).
+
+### 6. Ingestion sumber data eksternal (`internal/ingestion`)
+
+Konektor (`internal/ingestion/connector/<sumber>`) hanya merancang permintaan dan mem-parse respons;
+`engine` mengambilnya lewat `Fetcher` (pembatasan laju per host, robots.txt, retry backoff, circuit
+breaker), menyimpan payload mentah (bronze, `data_mentah`), menormalkan ke silver (`harga_eksternal`,
+`cuaca_harian`, `inflasi_bulanan`/`andil_inflasi` untuk BPS), dan mencatat tiap run di `eksekusi_sumber`.
+Gold adalah materialized view `gold_harga_harian` (ikut `refresher.Views`).
+
+- Tes konektor memakai fixture di `connector/<sumber>/testdata`; `ingestiontest.Fetcher` menyuntikkan
+  respons ke engine sehingga tidak ada tes yang memanggil internet.
+- Pemetaan alias sumber ke kode master ada di `pemetaan_sumber` (seeder `ingestion.reference`, insert-only;
+  ubah lewat `cmd/ingest pemetaan`). Baris yang tidak terpetakan dilaporkan di `eksekusi_sumber.ringkasan`.
+- Parameter permintaan per sumber ada di `sumber_data.konfigurasi` (`cmd/ingest konfigurasi`); kunci API
+  dibaca dari lingkungan (`BPS_API_KEY`), tidak disimpan di basis data.
+- Penjadwal di `cmd/api` mati kecuali `INGEST_SCHEDULER=on`. Tombol "Jalankan sekarang" di `/sumber-data`
+  (izin `sumber.kelola`) memanggil `POST /v1/sumber-data/:id/jalankan`.

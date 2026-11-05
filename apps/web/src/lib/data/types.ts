@@ -156,6 +156,38 @@ export interface SumberData {
   /** Persen 0-100; null bila belum ada eksekusi untuk dihitung. */
   keberhasilan7h: number | null;
   latensiMs: number;
+  /** Benar bila sumber punya konektor ingestion (tombol "Jalankan sekarang"). */
+  bisaDijalankan: boolean;
+}
+
+export type StatusEksekusi = "BERJALAN" | "SUKSES" | "SEBAGIAN" | "GAGAL";
+
+/** Satu run ingestion sebuah sumber (riwayat eksekusi). */
+export interface EksekusiSumber {
+  id: number;
+  pemicu: "JADWAL" | "MANUAL" | "CLI" | "DEMO";
+  status: StatusEksekusi;
+  mulai: string;
+  selesai: string | null;
+  durasiMs: number | null;
+  latensiMs: number | null;
+  dokumen: number;
+  barisDiambil: number;
+  barisDitolak: number;
+  galat: string | null;
+  /** Alias sumber yang belum dipetakan ke master, dengan jumlah baris. */
+  takTerpetakan: { alias: string; baris: number }[];
+  /** Alasan baris ditolak karena nilai tidak valid, dengan jumlah baris. */
+  tidakValid: { alasan: string; baris: number }[];
+}
+
+/** Cuplikan payload mentah (bronze) yang terakhir diambil. */
+export interface SampelSumber {
+  id: number;
+  kunci: string;
+  diambilPada: string;
+  ukuran: number;
+  cuplikan: string;
 }
 
 export interface PenggunaRow {

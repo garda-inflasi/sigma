@@ -12,7 +12,7 @@ import {
   Radar,
   ScanSearch,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table";
 import { DiagramAlur } from "@/components/flow/flow";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
@@ -24,6 +24,7 @@ import { formatAngka, formatPersen, formatRelatif } from "@/lib/format";
 import { ease, fadeUp, stagger } from "@/lib/motion/presets";
 import { useSumberBulk, useSumberData } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
+import { SumberDetail } from "./sumber-detail";
 
 // Ilustrasi: pipeline medallion belum berjalan (ingestion menyusul di 05-B/05-C),
 // jadi angka di bawah belum berasal dari data nyata.
@@ -44,7 +45,9 @@ const STATUS = {
 export function SumberPage() {
   const { data, isLoading } = useSumberData();
   const bulk = useSumberBulk();
+  const [detailId, setDetailId] = useState<string | null>(null);
   const rows = useMemo(() => data ?? [], [data]);
+  const detail = rows.find((r) => r.id === detailId) ?? null;
   const aktif = rows.filter(
     (r) => r.status !== "BELUM_AKTIF" && r.status !== "DIJEDA",
   ).length;
@@ -141,7 +144,7 @@ export function SumberPage() {
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
         title="Sumber data & API"
-        description="Katalog integrasi API resmi dan scraper panel harga, lengkap dengan jadwal, kepatuhan robots.txt, dan atribusi. Pengambilan data nyata belum berjalan; sumber berstatus Belum aktif sampai pernah dijalankan."
+        description="Katalog integrasi API resmi dan scraper panel harga, lengkap dengan jadwal, kepatuhan robots.txt, dan atribusi. Sumber berstatus Belum aktif sampai pernah dijalankan; klik baris untuk riwayat eksekusi dan menjalankan sumber yang punya konektor."
       />
       <section className="space-y-4">
         <PanelTitle
@@ -248,6 +251,7 @@ export function SumberPage() {
             ],
           },
         ]}
+        onRowClick={(s) => setDetailId(s.id)}
         rowTone={(s) =>
           s.status === "GAGAL"
             ? "defisit"
@@ -307,6 +311,7 @@ export function SumberPage() {
           },
         ]}
       />
+      <SumberDetail sumber={detail} onClose={() => setDetailId(null)} />
     </div>
   );
 }

@@ -14,6 +14,11 @@ import (
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	"github.com/garda-inflasi/api/internal/ingestion/connector/pihps"
+	"github.com/garda-inflasi/api/internal/ingestion/engine"
+	"github.com/garda-inflasi/api/internal/ingestion/ingestiontest"
+	ingestrepo "github.com/garda-inflasi/api/internal/ingestion/repository/postgres"
+	ingestionseeder "github.com/garda-inflasi/api/internal/ingestion/seeder"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	sumberRoutes "github.com/garda-inflasi/api/internal/sumber-data/routes"
@@ -43,9 +48,10 @@ func TestMain(m *testing.M) {
 }
 
 type suite struct {
-	db     *gorm.DB
-	router *gin.Engine
-	tokens map[string]string
+	db      *gorm.DB
+	router  *gin.Engine
+	tokens  map[string]string
+	fetcher *ingestiontest.Fetcher
 }
 
 var (
@@ -63,12 +69,24 @@ func sharedSuite(t *testing.T) *suite {
 		_, err = authseeder.SeedDemo(t.Context(), db)
 		require.NoError(t, err)
 
+		// Ingestion memakai fixture PIHPS, bukan internet: SRC-BI punya konfigurasi dan satu wilayah (regency 101).
+		_, err = sumberseeder.SeedReference(t.Context(), db)
+		require.NoError(t, err)
+		_, err = ingestionseeder.SeedReference(t.Context(), db)
+		require.NoError(t, err)
+		require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE id = 'SRC-BI'`).Error)
+		require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES ('SRC-BI', 'WILAYAH', '101', '1171')`).Error)
+		grid, err := os.ReadFile("../../ingestion/connector/pihps/testdata/grid_kota.json")
+		require.NoError(t, err)
+		fetcher := &ingestiontest.Fetcher{Respons: map[string][]byte{"wilayah=101": grid}}
+
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
+		runner := engine.New(ingestrepo.New(db), fetcher, log, pihps.New())
 		router := gin.New()
 		v1 := router.Group("/v1")
 		authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
-		sumberRoutes.Register(v1, &sumberRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
-		shared = &suite{db: db, router: router, tokens: map[string]string{}}
+		sumberRoutes.Register(v1, &sumberRoutes.Dependencies{DB: db, Token: tokens, Logger: log, Runner: runner})
+		shared = &suite{db: db, router: router, tokens: map[string]string{}, fetcher: fetcher}
 	})
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
 	return shared

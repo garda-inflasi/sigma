@@ -7,13 +7,18 @@ type sumberSeed struct {
 	RobotsTxtPatuh                                 bool
 	Atribusi                                       string
 	URLDasar                                       *string
+	// Konfigurasi awal (JSON); kosong = bawaan basis data ({}). Hanya dipakai saat
+	// sumber pertama kali dibuat: SeedReference tidak menimpa konfigurasi hasil operasi.
+	Konfigurasi string
 }
 
 // katalog meniru mockSumber di web (id sama). Jadwal dalam cron WIB.
 var katalog = []sumberSeed{
 	{ID: "SRC-BPS", Nama: "BPS WebAPI — IHK & inflasi", Penyedia: "BPS", Jenis: domain.JenisAPI, Cakupan: "Provinsi & 3 kota IHK",
 		JadwalCron: "0 6 * * *", RobotsTxtPatuh: true, Atribusi: "Sumber: Badan Pusat Statistik (BPS), webapi.bps.go.id",
-		URLDasar: new("https://webapi.bps.go.id/v1/api")},
+		URLDasar: new("https://webapi.bps.go.id/v1/api"),
+		// 1100 = domain BPS Provinsi Aceh. Variabel IHK/inflasi wajib diisi operator (lihat konektor BPS).
+		Konfigurasi: `{"domain":"1100"}`},
 	{ID: "SRC-BI", Nama: "PIHPS Nasional — harga pangan", Penyedia: "Bank Indonesia", Jenis: domain.JenisAPI, Cakupan: "Pasar tradisional & modern",
 		JadwalCron: "0 10 * * *", RobotsTxtPatuh: true, Atribusi: "Sumber: Pusat Informasi Harga Pangan Strategis Nasional (PIHPS), Bank Indonesia",
 		URLDasar: new("https://www.bi.go.id/hargapangan")},

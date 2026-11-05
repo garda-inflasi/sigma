@@ -29,11 +29,11 @@ import {
 import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { USERS } from "@/lib/data/reference";
-import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
+import { toEksekusi, toSampel, toSumberData, type EksekusiResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
-  PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SumberData, TugasLapangan,
+  ColdStorageView, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
+  PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string };
@@ -136,9 +136,20 @@ export const api = {
   sumber: {
     list: (): Promise<SumberData[]> =>
       MODE_MOCK ? mockDelay(m.mockSumber) : apiFetch<SumberDataResponse[]>("/v1/sumber-data").then((rows) => rows.map(toSumberData)),
-    /** Jeda atau lanjutkan sumber; mengubah status katalog (penjadwal nyata menyusul di 05-B). */
+    /** Jeda atau lanjutkan sumber; sumber dijeda tidak dijadwalkan dan tidak bisa dijalankan manual. */
     bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
       MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
+    /** Riwayat eksekusi ingestion, terbaru lebih dulu. */
+    eksekusi: (id: string): Promise<EksekusiSumber[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<EksekusiResponse[]>(`/v1/sumber-data/${encodeURIComponent(id)}/eksekusi`).then((rows) => rows.map(toEksekusi)),
+    /** Cuplikan payload mentah (bronze) terakhir. */
+    sampel: (id: string): Promise<SampelSumber[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<SampelResponse[]>(`/v1/sumber-data/${encodeURIComponent(id)}/sampel?limit=3`).then((rows) => rows.map(toSampel)),
+    /** Memulai ingestion sekarang (izin sumber.kelola); hasil dibaca dari riwayat eksekusi. */
+    jalankan: (id: string): Promise<EksekusiSumber> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Menjalankan ingestion membutuhkan backend aktif."))
+        : apiFetch<EksekusiResponse>(`/v1/sumber-data/${encodeURIComponent(id)}/jalankan`, { method: "POST" }).then(toEksekusi),
   },
   kpi: {
     list: (): Promise<KpiIndikator[]> =>

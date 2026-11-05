@@ -32,6 +32,15 @@ func Created(c *gin.Context, data interface{}) {
 	})
 }
 
+// Accepted sends a 202 Accepted response: the work continues in the background.
+func Accepted(c *gin.Context, data interface{}) {
+	c.JSON(http.StatusAccepted, Envelope{
+		Code:    "202",
+		Message: "Accepted",
+		Data:    data,
+	})
+}
+
 // NoContent sends a 204 No Content response
 func NoContent(c *gin.Context) {
 	c.JSON(http.StatusNoContent, Envelope{

@@ -11,6 +11,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
+	"github.com/garda-inflasi/api/internal/ingestion"
+	"github.com/garda-inflasi/api/internal/ingestion/scheduler"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -99,6 +101,17 @@ func main() {
 	defer stopRefresh()
 	go refresher.Shared(db, log).Run(refreshCtx, dashboardRefreshInterval)
 
+	// Penjadwal ingestion hanya berjalan bila INGEST_SCHEDULER=on; bawaannya mati agar
+	// lokal dan demo tidak memanggil layanan eksternal.
+	ingestCtx, stopIngest := context.WithCancel(context.Background())
+	defer stopIngest()
+	var penjadwal *scheduler.Penjadwal
+	if ingestion.SchedulerAktif() {
+		penjadwal = ingestion.NewScheduler(db, log)
+		go penjadwal.Jalankan(ingestCtx, scheduler.Interval)
+		log.Info("ingestion scheduler aktif")
+	}
+
 	srv := &http.Server{
 		Addr: addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -146,5 +159,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	stopIngest()
+	if penjadwal != nil {
+		penjadwal.Tunggu()
+	}
 	log.Info("server exited")
 }

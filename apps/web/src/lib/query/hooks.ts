@@ -63,6 +63,33 @@ export const useColdStorage = (params: ColdStorageParams) =>
     refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
   });
 export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+/** Riwayat eksekusi; dimuat ulang tiap 2 detik selama masih ada run BERJALAN. */
+export const useSumberEksekusi = (id: string | null) =>
+  useQuery({
+    queryKey: qk.sumber.eksekusi(id ?? ""),
+    queryFn: () => api.sumber.eksekusi(id!),
+    enabled: !!id,
+    refetchInterval: (query) => (query.state.data?.some((e) => e.status === "BERJALAN") ? 2_000 : false),
+  });
+export const useSumberSampel = (id: string | null) =>
+  useQuery({ queryKey: qk.sumber.sampel(id ?? ""), queryFn: () => api.sumber.sampel(id!), enabled: !!id });
+
+/** Jalankan ingestion sebuah sumber sekarang, lalu segarkan riwayat dan katalog. */
+export function useSumberJalankan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.sumber.jalankan(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: qk.sumber.eksekusi(id) });
+      qc.invalidateQueries({ queryKey: qk.sumber.sampel(id) });
+      qc.invalidateQueries({ queryKey: qk.sumber.list() });
+      toast.success("Ingestion dimulai", { description: "Hasilnya muncul di riwayat eksekusi. Tercatat di audit trail." });
+    },
+    onError: (err) => {
+      toast.error("Tidak bisa menjalankan sumber", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 
 /** Jeda atau lanjutkan sumber lalu segarkan katalog dari server. */
 export function useSumberBulk() {

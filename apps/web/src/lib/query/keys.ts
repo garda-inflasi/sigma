@@ -31,7 +31,11 @@ export const qk = {
     all: () => ["cold-storage"] as const,
     list: (params: ColdStorageParams) => ["cold-storage", "list", params] as const,
   },
-  sumber: { list: () => ["sumber-data"] as const },
+  sumber: {
+    list: () => ["sumber-data"] as const,
+    eksekusi: (id: string) => ["sumber-data", "eksekusi", id] as const,
+    sampel: (id: string) => ["sumber-data", "sampel", id] as const,
+  },
   kpi: { list: () => ["kpi", "list"] as const },
   pengguna: {
     all: () => ["pengguna"] as const,

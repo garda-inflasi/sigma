@@ -52,7 +52,7 @@ Fondasi (F0), seluruh slice `-A` Fase P, dan F1 sudah dikerjakan dan lolos `go t
 
 1. **Fase F (fitur nyata) belum dikerjakan:** layanan ML/prediksi nyata, penyusunan brief dengan LLM, ingestion/scraping sumber data, PostGIS, workflow persetujuan, MFA UI, halaman reset password, SSO, sinkronisasi offline lapangan (`POST /v1/lapangan/harga`). Data pada halaman prediksi, eksekutif, peta, dan sebagian sumber data adalah **data demo** yang berlabel demo.
 2. **Penegakan izin per halaman di edge belum ada:** `middleware.ts` hanya memeriksa keberadaan cookie. Izin ditegakkan di API Go (403) dan sidebar menyembunyikan menu; membuka URL halaman tanpa izin menampilkan halaman dengan pesan galat, bukan `/akses-ditolak`.
-3. **Aksi yang masih simulasi di klien:** ajukan/setujui/arsip master data (04-B), "Tugaskan ke saya" dan eskalasi kanban (14-B), unduh data acuan lapangan (07-B), promosi/arsip model prediksi (11-C).
+3. **Aksi yang masih simulasi di klien:** ajukan/setujui/arsip master data (04-B), unduh data acuan lapangan (07-B), promosi/arsip model prediksi (11-C).
 4. **Belum diuji:** beban data besar (`EXPLAIN` pada ratusan ribu baris), e2e Playwright otomatis, dan penjadwal di luar proses API (refresh materialized view dan `cmd/kpi` belum dipasang ke cron/deploy).
 5. **Asumsi yang perlu dikonfirmasi pemilik program:** target `target_kpi` awal, target inflasi 2025–2027 (1,5–3,5%), skor ruang fiskal heuristik, dan kode/koordinat wilayah-pasar perkiraan.
 6. **Dua salinan OpenAPI lama** (`apps/api/docs`, `apps/api/pkg/swagger`) masih berisi spesifikasi analytics; yang diperbarui hanya `packages/contracts/openapi.yaml`.

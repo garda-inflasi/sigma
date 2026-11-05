@@ -12,6 +12,8 @@ interface KanbanState {
   /** Memuat atau mengganti seluruh papan dengan data server (juga saat polling); pilihan kartu yang masih ada dipertahankan. */
   sync: (cards: KartuIntervensi[]) => void;
   move: (id: string, toTahap: string, toIndex: number) => void;
+  /** Mencatat versi baru kartu setelah server menyimpan pemindahan. */
+  setVersi: (id: string, versi: number) => void;
   bulkMove: (ids: string[], toTahap: string) => void;
   toggleSelect: (id: string) => void;
   selectMany: (ids: string[]) => void;
@@ -46,6 +48,7 @@ export const useKanban = create<KanbanState>()((set, get) => ({
       order[toTahap] = dest;
       return { order, cards: { ...s.cards, [id]: { ...s.cards[id], tahap: toTahap } } };
     }),
+  setVersi: (id, versi) => set((s) => (s.cards[id] ? { cards: { ...s.cards, [id]: { ...s.cards[id], versi } } } : s)),
   bulkMove: (ids, toTahap) => ids.forEach((id) => get().move(id, toTahap, Number.MAX_SAFE_INTEGER)),
   toggleSelect: (id) => set((s) => ({ selected: s.selected.includes(id) ? s.selected.filter((x) => x !== id) : [...s.selected, id] })),
   selectMany: (ids) => set({ selected: ids }),

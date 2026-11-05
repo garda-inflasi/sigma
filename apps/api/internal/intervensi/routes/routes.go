@@ -29,6 +29,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		group.GET("", middleware.RequirePermission("intervensi.lihat"), handler.List)
 		group.GET("/tahap", middleware.RequirePermission("intervensi.lihat"), handler.ListTahap)
 		group.POST("", middleware.RequirePermission("intervensi.kelola"), handler.Create)
+		group.POST("/bulk", middleware.RequirePermission("intervensi.kelola"), handler.Bulk)
+		group.GET("/:id/riwayat", middleware.RequirePermission("intervensi.lihat"), handler.ListRiwayat)
 		// Peran penyetuju memindahkan kartu ke tahap persetujuan tanpa izin kelola;
 		// izin yang tepat menurut tahap tujuan diperiksa di usecase.
 		group.PATCH("/:id/tahap",

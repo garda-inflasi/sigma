@@ -263,6 +263,7 @@ export function mockKanban(): KartuIntervensi[] {
       penanggungJawab: [...new Map(pj.map((u) => [u.id, { nama: u.nama, inisial: inisial(u.nama) }])).values()],
       tenggat: new Date(ANCHOR_DATE.getTime() + (Math.floor(rng() * 9) - 2) * 86_400_000).toISOString(),
       progres: { selesai: Math.floor(rng() * (total + 1)), total },
+      versi: 1, dieskalasi: false,
     };
   });
 }

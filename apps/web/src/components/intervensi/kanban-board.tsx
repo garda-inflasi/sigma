@@ -6,6 +6,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { ChevronsRight, Download, LayoutGrid, Rows3, ShieldAlert, UserPlus } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +16,7 @@ import { PageHeader } from "@/components/garda/page-header";
 import { Segmented } from "@/components/garda/segmented";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { ApiError } from "@/lib/api/client";
 import { api } from "@/lib/api/endpoints";
 import { useSession } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
@@ -24,7 +26,8 @@ import { SIKLUS_TAHAP, SIKLUS_URUTAN } from "@/lib/data/siklus";
 import type { KartuIntervensi } from "@/lib/data/types";
 import { siklusMeta, type Siklus } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
-import { useIntervensi } from "@/lib/query/hooks";
+import { useAksiKartu, useIntervensi } from "@/lib/query/hooks";
+import { qk } from "@/lib/query/keys";
 import { can, type Permission } from "@/lib/rbac/permissions";
 import { useKanban } from "@/lib/stores/kanban-store";
 import { KanbanCardView } from "./kanban-card";
@@ -48,6 +51,8 @@ export function KanbanBoard() {
   const [siklus, setSiklus] = useState<Siklus>((params.get("siklus") as Siklus) ?? "tekanan");
   const [view, setView] = useState<"papan" | "tabel">("papan");
   const { data, isLoading } = useIntervensi();
+  const qc = useQueryClient();
+  const aksiKartu = useAksiKartu();
   const k = useKanban();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overTahap, setOverTahap] = useState<string | null>(null);
@@ -122,12 +127,25 @@ export function KanbanBoard() {
     if (akhir && akhir !== asal.current) {
       const judul = tahap.find((t) => t.id === akhir)?.judul ?? akhir;
       try {
-        await api.intervensi.pindah(id, akhir, k.order[akhir].indexOf(id));
-        toast.success(`Dipindahkan ke “${judul}”`, { description: `${k.cards[id].judul}. Penanggung jawab tahap berikutnya telah diberi tahu.` });
-      } catch {
+        const { versi } = await api.intervensi.pindah(id, akhir, k.order[akhir].indexOf(id), k.cards[id].versi);
+        k.setVersi(id, versi);
+        toast.success(`Dipindahkan ke “${judul}”`, { description: `${k.cards[id].judul}. Tercatat di riwayat kartu.` });
+      } catch (err) {
         snap.current && k.restore(snap.current);
-        toast.error("Gagal menyimpan perpindahan. Posisi kartu dikembalikan.");
+        gagalPindah(err);
       }
+    }
+  }
+
+  /** Menjelaskan penyebab pemindahan ditolak server; konflik versi memuat ulang papan. */
+  function gagalPindah(err: unknown) {
+    if (err instanceof ApiError && err.status === 409) {
+      toast.error("Kartu sudah diubah pengguna lain", { description: "Papan dimuat ulang. Ulangi pemindahan bila masih perlu." });
+      qc.invalidateQueries({ queryKey: qk.intervensi.list() });
+    } else if (err instanceof ApiError && err.status === 403) {
+      toast.error("Tidak dapat dipindahkan", { description: err.message });
+    } else {
+      toast.error("Gagal menyimpan perpindahan. Posisi kartu dikembalikan.", { description: err instanceof Error ? err.message : undefined });
     }
   }
 
@@ -150,13 +168,33 @@ export function KanbanBoard() {
           toast.error(`${ditolak.length} kartu tidak dapat dimajukan`, { description: IZIN_LABEL[izinMasuk(ditolak[0].next?.id ?? "")] ?? "Tahap berikutnya di luar kewenangan peran Anda." });
           return;
         }
+        const sebelum = k.snapshot();
         rencana.forEach((p) => k.move(p.r.id, p.next!.id, Number.MAX_SAFE_INTEGER));
-        await Promise.all(rencana.map((p) => api.intervensi.pindah(p.r.id, p.next!.id, 0)));
-        toast.success(`${rencana.length} kartu dimajukan satu tahap`);
+        sibuk.current = true;
+        try {
+          for (const p of rencana) {
+            const { versi } = await api.intervensi.pindah(p.r.id, p.next!.id, Number.MAX_SAFE_INTEGER, p.r.versi);
+            k.setVersi(p.r.id, versi);
+          }
+          toast.success(`${rencana.length} kartu dimajukan satu tahap`);
+        } catch (err) {
+          k.restore(sebelum);
+          gagalPindah(err);
+          qc.invalidateQueries({ queryKey: qk.intervensi.list() });
+        } finally {
+          sibuk.current = false;
+        }
       },
     },
-    { id: "tugaskan", label: "Tugaskan ke saya", icon: UserPlus, perm: "intervensi.kelola", run: (rows) => { toast.success(`${rows.length} kartu ditugaskan kepada Anda`); } },
-    { id: "eskalasi", label: "Eskalasi ke Dewan Pengarah", icon: ShieldAlert, perm: "intervensi.kelola", run: (rows) => { toast.success(`${rows.length} kartu dieskalasi`, { description: "Masuk ke agenda telaah Dewan Pengarah." }); } },
+    {
+      id: "tugaskan", label: "Tugaskan ke saya", icon: UserPlus, perm: "intervensi.kelola",
+      run: (rows) => aksiKartu.mutateAsync({ aksi: "tugaskan", ids: rows.map((r) => r.id), label: "Ditugaskan kepada Anda" }),
+    },
+    {
+      id: "eskalasi", label: "Eskalasi ke Dewan Pengarah", icon: ShieldAlert, perm: "intervensi.kelola",
+      confirm: { title: "Eskalasi kartu terpilih?", description: (n) => `${n} kartu ditandai dieskalasi ke Dewan Pengarah dan prioritasnya dinaikkan ke tinggi. Tercatat atas nama Anda.`, actionLabel: "Eskalasi" },
+      run: (rows) => aksiKartu.mutateAsync({ aksi: "eskalasi", ids: rows.map((r) => r.id), label: "Dieskalasi ke Dewan Pengarah" }),
+    },
     {
       id: "ekspor", label: "Ekspor CSV", icon: Download,
       run: (rows) => exportCsv(rows, [

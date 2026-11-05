@@ -79,19 +79,53 @@ func (h *Handler) UpdateTahap(c *gin.Context) {
 	}
 
 	hasPermission := func(permission string) bool { return middleware.HasPermission(c, permission) }
-	err := h.uc.Move(audit.RequestContext(c), c.Param("id"), req.Tahap, req.Urutan, c.GetString("user_id"), hasPermission)
+	versi, err := h.uc.Move(audit.RequestContext(c), c.Param("id"), req.Tahap, req.Urutan, req.Versi, c.GetString("user_id"), hasPermission)
 
 	var forbidden *usecase.ForbiddenError
 	switch {
 	case err == nil:
-		response.Success(c, nil)
+		response.Success(c, dto.MoveResponse{Versi: versi})
 	case errors.Is(err, usecase.ErrNotFound):
 		response.NotFound(c, "Kartu intervensi tidak ditemukan")
 	case errors.Is(err, usecase.ErrInvalidTahap):
 		response.BadRequest(c, "Tahap tidak valid untuk siklus kartu ini")
+	case errors.Is(err, usecase.ErrVersiUsang):
+		response.Conflict(c, "Kartu telah diubah pengguna lain. Papan dimuat ulang; ulangi pemindahan bila masih perlu.")
 	case errors.As(err, &forbidden):
-		response.Forbidden(c, "Tidak memiliki izin "+forbidden.Izin+" untuk memindahkan kartu ke tahap ini")
+		response.Forbidden(c, "Tidak dapat memindahkan kartu: "+forbidden.Error())
 	default:
 		response.InternalError(c, "Gagal memperbarui tahap")
+	}
+}
+
+// Bulk handles POST /v1/intervensi/bulk. Gagal pada satu kartu (tidak ada, sudah selesai,
+// sudah ditugaskan/dieskalasi) tidak menggagalkan kartu lain; rinciannya ada di `hasil`.
+func (h *Handler) Bulk(c *gin.Context) {
+	var req dto.BulkIntervensiRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	res, err := h.uc.BulkAksi(audit.RequestContext(c), req.Action, req.IDs, c.GetString("user_id"))
+	switch {
+	case err == nil:
+		response.Success(c, dto.ToBulkResponse(res))
+	case errors.Is(err, usecase.ErrInvalidAction):
+		response.BadRequest(c, "Aksi tidak valid")
+	default:
+		response.InternalError(c, "Gagal memproses aksi massal")
+	}
+}
+
+// ListRiwayat handles GET /v1/intervensi/:id/riwayat
+func (h *Handler) ListRiwayat(c *gin.Context) {
+	items, err := h.uc.ListRiwayat(c.Request.Context(), c.Param("id"))
+	switch {
+	case err == nil:
+		response.Success(c, dto.ToRiwayatResponses(items))
+	case errors.Is(err, usecase.ErrNotFound):
+		response.NotFound(c, "Kartu intervensi tidak ditemukan")
+	default:
+		response.InternalError(c, "Gagal mengambil riwayat kartu")
 	}
 }

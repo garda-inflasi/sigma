@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
-import { inisial, toKartu, type KartuResponse } from "./intervensi";
+import { inisial, ringkasHasilKartu, toKartu, type KartuResponse } from "./intervensi";
 
 const kartu: KartuResponse = {
   id: "INT-301",
@@ -19,6 +19,8 @@ const kartu: KartuResponse = {
   penanggung_jawab: [
     { id: "manajer_program", nama: "Rina Safitri, S.T., M.T." },
   ],
+  versi: 4,
+  dieskalasi_pada: null,
 };
 
 describe("toKartu", () => {
@@ -35,7 +37,13 @@ describe("toKartu", () => {
       tenggat: "2026-10-17T09:00:00Z",
       rekomendasiAi: true,
       progres: { selesai: 1, total: 5 },
+      versi: 4,
+      dieskalasi: false,
     });
+  });
+
+  it("menandai kartu yang dieskalasi", () => {
+    assert.equal(toKartu({ ...kartu, dieskalasi_pada: "2026-11-05T08:00:00Z" }).dieskalasi, true);
   });
 
   it("siklus tak dikenal jatuh ke normal", () => {
@@ -94,5 +102,22 @@ describe("siklus.ts sama dengan seed intervensi.reference", () => {
       [...new Set(seed.map((s) => s.siklus))].sort(),
       Object.keys(SIKLUS_TAHAP).sort(),
     );
+  });
+});
+
+describe("ringkasHasilKartu", () => {
+  it("semua berhasil", () => {
+    assert.deepEqual(ringkasHasilKartu("Ditugaskan", { berhasil: 2, gagal: 0, hasil: [{ id: "a", berhasil: true }, { id: "b", berhasil: true }] }), {
+      judul: "Ditugaskan: 2 kartu",
+      deskripsi: "Tercatat di audit trail.",
+    });
+  });
+  it("sebagian dilewati dengan alasan unik", () => {
+    const r = ringkasHasilKartu("Dieskalasi", {
+      berhasil: 1,
+      gagal: 2,
+      hasil: [{ id: "a", berhasil: true }, { id: "b", berhasil: false, alasan: "Kartu sudah selesai" }, { id: "c", berhasil: false, alasan: "Kartu sudah selesai" }],
+    });
+    assert.equal(r.deskripsi, "2 kartu dilewati (Kartu sudah selesai).");
   });
 });

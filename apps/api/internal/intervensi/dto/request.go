@@ -3,9 +3,18 @@ package dto
 import "time"
 
 // UpdateTahapRequest memindahkan kartu ke tahap (kode_tahap) dan posisi (indeks dari 0) baru.
+// Versi adalah versi kartu yang dibaca klien (optimistic locking): bila kartu sudah berubah, 409.
 type UpdateTahapRequest struct {
 	Tahap  string `json:"tahap" binding:"required,max=100"`
 	Urutan int    `json:"urutan" binding:"min=0"`
+	Versi  int    `json:"versi" binding:"required,min=1"`
+}
+
+// BulkIntervensiRequest menerapkan satu aksi pada beberapa kartu: "tugaskan" menambahkan
+// pemanggil sebagai penanggung jawab; "eskalasi" mengeskalasi ke Dewan Pengarah.
+type BulkIntervensiRequest struct {
+	Action string   `json:"action" binding:"required,oneof=tugaskan eskalasi"`
+	IDs    []string `json:"ids" binding:"required,min=1,max=100,dive,required"`
 }
 
 // CreateIntervensiRequest membuat kartu baru di tahap pertama siklusnya.

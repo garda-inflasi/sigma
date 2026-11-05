@@ -1,6 +1,6 @@
 # 14 — Intervensi (kanban 3 siklus) & workflow engine
 
-**Prioritas:** P0 (Fase 3, PRD Layer 4) · **Status:** UI ✅ · Backend 🟡 (daftar, buat, pindah tahap; belum riwayat/konkurensi) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
+**Prioritas:** P0 (Fase 3, PRD Layer 4) · **Status:** UI ✅ · Backend 🟡 (daftar, buat, pindah tahap, riwayat, konkurensi, tugaskan/eskalasi; belum workflow engine) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -34,23 +34,24 @@
 
 ---
 
-## 14-B — Izin per tahap, riwayat, konkurensi *(Fase F, gelombang F-2)*
+## 14-B — Izin per tahap, riwayat, konkurensi *(Fase F, gelombang F-2)* — ✅ (komentar/lampiran belum)
 
 **Tujuan:** aturan persetujuan berjenjang ditegakkan di backend dan setiap perpindahan tercatat.
 **Bergantung pada:** 14-A, 03-A.
 
-1. **MIG**
-   - [ ] `intervensi_riwayat` (`kartu_id`, `dari`, `ke`, `oleh`, `waktu`, `alasan`).
-   - [ ] `intervensi`: `versi` INT untuk optimistic locking pada drag-and-drop bersamaan.
-   - [ ] Urutan kartu: indeks pecahan (`urutan` NUMERIC / LexoRank) atau `UNIQUE (siklus, tahap, urutan) DEFERRABLE INITIALLY DEFERRED`.
+1. **MIG** (`000073_14b_intervensi_riwayat_versi.sql`)
+   - [x] `intervensi_riwayat` (`intervensi_id`, `aksi` BUAT/PINDAH_TAHAP/TUGASKAN/ESKALASI, `dari`, `ke`, `oleh` NULL = sistem, `waktu`, `alasan`).
+   - [x] `intervensi`: `versi` INT untuk optimistic locking, `dieskalasi_pada`/`dieskalasi_oleh_id`.
+   - [x] Urutan kartu: tetap nomor bulat yang dinomori ulang dalam transaksi dengan `FOR UPDATE` (cukup untuk konkurensi; indeks pecahan tidak diperlukan).
    - [ ] `intervensi_komentar`, `intervensi_lampiran`.
-2. **SEED** (`demo`): riwayat dan komentar untuk kartu demo.
+2. **SEED** (`demo`): riwayat tiap kartu demo (dibuat di tahap pertama, lalu dipindah sampai tahap sekarang); dibangun ulang tiap seed. Komentar: belum.
 3. **API**
-   - [x] **Tegakkan** (sudah di 14-A, dari `tahap_intervensi_def.izin_dibutuhkan`): tahap "Petakan suplai" dan "Selesai" butuh `intervensi.setujui`; "Dukungan instrumen belanja" hanya `intervensi.setujui_fiskal`. Sekarang route hanya meminta `intervensi.kelola`, jadi aturan hanya hidup di UI.
-   - [ ] Validasi transisi tahap; respons galat jelas; tolak bila `versi` usang; tulis audit.
-   - [ ] Aksi `bulk` dengan hasil per kartu; row scope sesuai peran.
-4. **FE**: dialog buat/ubah kartu (penanggung jawab, tenggat, prioritas); pesan jelas bila drop ditolak (izin atau aturan) alih-alih hanya animasi kembali.
-5. **TES**: izin per tahap (peran × tahap); konkurensi pergeseran; `kanban-store` dan komponen drag-and-drop.
+   - [x] Izin per tahap dari `tahap_intervensi_def.izin_dibutuhkan` (14-A) ditambah aturan berjenjang: pemindahan maju tidak boleh melompati tahap persetujuan yang izinnya tidak dimiliki; galat 403 menyebut tahap dan izinnya.
+   - [x] `PATCH /:id/tahap` wajib `versi`; versi usang 409; respons membawa versi baru; audit sukses dan penolakan.
+   - [x] `POST /v1/intervensi/bulk` (`intervensi.kelola`, field `action`): `tugaskan` (jadikan pemanggil penanggung jawab) dan `eskalasi` (tandai ke Dewan Pengarah, prioritas TINGGI), hasil per kartu, audit. Row scope per peran/wilayah: belum.
+   - [x] `GET /:id/riwayat` (`intervensi.lihat`).
+4. **FE**: "Tugaskan ke saya" dan "Eskalasi ke Dewan Pengarah" memanggil API (tidak lagi toast simulasi), papan memakai dan memperbarui `versi`, 409 memuat ulang papan dengan pesan jelas, pesan izin dari server saat drop ditolak, lencana Eskalasi pada kartu. Dialog buat/ubah kartu: belum.
+5. **TES**: unit usecase (versi, lompat tahap, bulk, riwayat), integrasi Postgres (versi usang 409, dua pemindahan bersamaan tepat satu menang, riwayat hanya saat tahap berganti, hasil bulk per kartu, 401/403/400), seeder, `kanban-store`.
 
 ---
 

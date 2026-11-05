@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion } from "motion/react";
-import { CalendarClock, MapPin, Sparkles } from "lucide-react";
+import { CalendarClock, MapPin, ShieldAlert, Sparkles } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { komoditasByKode } from "@/lib/data/reference";
@@ -50,6 +50,11 @@ export function KanbanCardView({ card, selected, onToggle, overlay, dimmed }: { 
           </span>
         )}
         <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", p.cls)}>{p.label}</span>
+        {card.dieskalasi && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-defisit-soft px-2 py-0.5 text-[11px] font-medium text-defisit-ink dark:bg-defisit/15 dark:text-rose-300" title="Dieskalasi ke Dewan Pengarah">
+            <ShieldAlert className="size-3" /> Eskalasi
+          </span>
+        )}
         {card.rekomendasiAi && (
           <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-data-50 px-2 py-0.5 text-[11px] font-medium text-data-700 dark:bg-data-500/15 dark:text-data-300">
             <Sparkles className="size-3" /> AI

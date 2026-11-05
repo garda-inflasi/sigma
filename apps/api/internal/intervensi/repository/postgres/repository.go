@@ -110,6 +110,9 @@ func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap 
 		if err := tx.Create(&created).Error; err != nil {
 			return err
 		}
+		if err := catatRiwayat(tx, created.ID, domain.AksiBuat, nil, &tahap, in.DibuatOlehID, ""); err != nil {
+			return err
+		}
 		var pj []domain.IntervensiPJ
 		for _, id := range uniqueStrings(in.PenanggungJawabIDs) {
 			pj = append(pj, domain.IntervensiPJ{IntervensiID: created.ID, PenggunaID: id})
@@ -129,15 +132,23 @@ func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap 
 	return &created, nil
 }
 
-func (r *Repository) Move(ctx context.Context, id, tahap string, index int, selesai bool) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var siklus string
-		res := tx.Raw("SELECT siklus FROM intervensi WHERE id = ? FOR UPDATE", id).Scan(&siklus)
+func (r *Repository) Move(ctx context.Context, id, tahap string, index int, selesai bool, versi int, oleh string) (int, error) {
+	var versiBaru int
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var kini struct {
+			Siklus string
+			Tahap  string
+			Versi  int
+		}
+		res := tx.Raw("SELECT siklus, tahap, versi FROM intervensi WHERE id = ? FOR UPDATE", id).Scan(&kini)
 		if res.Error != nil {
 			return fmt.Errorf("kunci intervensi: %w", res.Error)
 		}
 		if res.RowsAffected == 0 {
 			return domain.ErrNotFound
+		}
+		if kini.Versi != versi {
+			return domain.ErrVersiUsang
 		}
 
 		var column []string
@@ -145,18 +156,19 @@ func (r *Repository) Move(ctx context.Context, id, tahap string, index int, sele
 			SELECT id FROM intervensi
 			 WHERE siklus = ? AND tahap = ? AND id <> ?
 			 ORDER BY urutan, dibuat_pada, id
-			   FOR UPDATE`, siklus, tahap, id).Scan(&column).Error
+			   FOR UPDATE`, kini.Siklus, tahap, id).Scan(&column).Error
 		if err != nil {
 			return fmt.Errorf("kolom tujuan: %w", err)
 		}
 		index = max(0, min(index, len(column)))
 		column = slices.Insert(column, index, id)
 
-		err = tx.Exec(`
+		err = tx.Raw(`
 			UPDATE intervensi
-			   SET tahap = ?, urutan = ?,
+			   SET tahap = ?, urutan = ?, versi = versi + 1,
 			       selesai_pada = CASE WHEN ?::boolean THEN COALESCE(selesai_pada, NOW()) ELSE NULL END
-			 WHERE id = ?`, tahap, index, selesai, id).Error
+			 WHERE id = ?
+			RETURNING versi`, tahap, index, selesai, id).Scan(&versiBaru).Error
 		if err != nil {
 			return fmt.Errorf("pindahkan kartu: %w", err)
 		}
@@ -168,8 +180,110 @@ func (r *Repository) Move(ctx context.Context, id, tahap string, index int, sele
 				return fmt.Errorf("nomori ulang kolom: %w", err)
 			}
 		}
+		if kini.Tahap != tahap {
+			return catatRiwayat(tx, id, domain.AksiPindahTahap, &kini.Tahap, &tahap, oleh, "")
+		}
 		return nil
 	})
+	if err != nil {
+		return 0, err
+	}
+	return versiBaru, nil
+}
+
+// catatRiwayat menambah satu peristiwa pada riwayat kartu dalam transaksi tx;
+// oleh kosong berarti sistem (disimpan NULL).
+func catatRiwayat(tx *gorm.DB, id, aksi string, dari, ke *string, oleh, alasan string) error {
+	var pelaku *string
+	if oleh != "" {
+		pelaku = &oleh
+	}
+	err := tx.Exec(`
+		INSERT INTO intervensi_riwayat (intervensi_id, aksi, dari, ke, oleh, alasan)
+		VALUES (?, ?, ?, ?, ?, ?)`, id, aksi, dari, ke, pelaku, alasan).Error
+	if err != nil {
+		return fmt.Errorf("riwayat intervensi: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) BulkAksi(ctx context.Context, aksi domain.BulkAksi, ids []string, oleh string) ([]domain.HasilKartu, error) {
+	hasil := make([]domain.HasilKartu, len(ids))
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, id := range ids {
+			alasan, err := terapkanAksi(tx, aksi, id, oleh)
+			if err != nil {
+				return err
+			}
+			hasil[i] = domain.HasilKartu{ID: id, Berhasil: alasan == "", Alasan: alasan}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("aksi massal %s: %w", aksi, err)
+	}
+	return hasil, nil
+}
+
+// terapkanAksi menerapkan aksi pada satu kartu. Alasan tidak kosong bila kartu tak dapat
+// diproses (bukan galat sistem); kartu seperti itu dibiarkan utuh.
+func terapkanAksi(tx *gorm.DB, aksi domain.BulkAksi, id, oleh string) (alasan string, err error) {
+	var kartu struct {
+		Selesai    bool
+		Dieskalasi bool
+	}
+	res := tx.Raw(`SELECT selesai_pada IS NOT NULL AS selesai, dieskalasi_pada IS NOT NULL AS dieskalasi
+		FROM intervensi WHERE id = ? FOR UPDATE`, id).Scan(&kartu)
+	if res.Error != nil {
+		return "", fmt.Errorf("kunci intervensi: %w", res.Error)
+	}
+	switch {
+	case res.RowsAffected == 0:
+		return "Kartu tidak ditemukan", nil
+	case kartu.Selesai:
+		return "Kartu sudah selesai", nil
+	}
+
+	switch aksi {
+	case domain.BulkTugaskan:
+		ins := tx.Exec("INSERT INTO intervensi_pj (intervensi_id, pengguna_id) VALUES (?, ?) ON CONFLICT DO NOTHING", id, oleh)
+		if ins.Error != nil {
+			return "", fmt.Errorf("tugaskan: %w", ins.Error)
+		}
+		if ins.RowsAffected == 0 {
+			return "Anda sudah menjadi penanggung jawab", nil
+		}
+		if err := tx.Exec("UPDATE intervensi SET versi = versi + 1 WHERE id = ?", id).Error; err != nil {
+			return "", fmt.Errorf("naikkan versi: %w", err)
+		}
+		return "", catatRiwayat(tx, id, domain.AksiTugaskan, nil, nil, oleh, "")
+	case domain.BulkEskalasi:
+		if kartu.Dieskalasi {
+			return "Kartu sudah dieskalasi", nil
+		}
+		err := tx.Exec(`UPDATE intervensi
+			   SET dieskalasi_pada = NOW(), dieskalasi_oleh_id = ?, prioritas = 'TINGGI', versi = versi + 1
+			 WHERE id = ?`, oleh, id).Error
+		if err != nil {
+			return "", fmt.Errorf("eskalasi: %w", err)
+		}
+		return "", catatRiwayat(tx, id, domain.AksiEskalasi, nil, nil, oleh, "Dieskalasi ke Dewan Pengarah")
+	}
+	return "", fmt.Errorf("aksi %q tidak dikenal", aksi)
+}
+
+func (r *Repository) ListRiwayat(ctx context.Context, id string) ([]domain.Riwayat, error) {
+	var items []domain.Riwayat
+	err := r.db.WithContext(ctx).Table("intervensi_riwayat AS r").
+		Select("r.*, u.nama AS oleh_nama").
+		Joins("LEFT JOIN pengguna u ON u.id = r.oleh").
+		Where("r.intervensi_id = ?", id).
+		Order("r.waktu, r.id").
+		Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("riwayat intervensi: %w", err)
+	}
+	return items, nil
 }
 
 // uniqueStrings membuang nilai ganda dengan tetap menjaga urutan.

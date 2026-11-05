@@ -19,6 +19,33 @@ export interface KartuResponse {
   rekomendasi_ai: boolean;
   progres: { selesai: number; total: number };
   penanggung_jawab: { id: string; nama: string }[];
+  versi: number;
+  dieskalasi_pada: string | null;
+}
+
+/** Hasil aksi massal pada satu kartu (POST /v1/intervensi/bulk). */
+export interface HasilKartu {
+  id: string;
+  berhasil: boolean;
+  alasan?: string;
+}
+
+export interface BulkKartuResult {
+  berhasil: number;
+  gagal: number;
+  hasil: HasilKartu[];
+}
+
+export type AksiKartu = "tugaskan" | "eskalasi";
+
+/** Ringkasan satu kalimat hasil aksi massal untuk toast; alasan kegagalan pertama disertakan. */
+export function ringkasHasilKartu(label: string, r: BulkKartuResult): { judul: string; deskripsi?: string } {
+  const gagal = r.hasil.filter((h) => !h.berhasil);
+  const alasan = [...new Set(gagal.map((h) => h.alasan).filter(Boolean))].join("; ");
+  return {
+    judul: `${label}: ${r.berhasil} kartu`,
+    deskripsi: r.gagal ? `${r.gagal} kartu dilewati${alasan ? ` (${alasan})` : ""}.` : "Tercatat di audit trail.",
+  };
 }
 
 const SIKLUS: readonly Siklus[] = ["normal", "tekanan", "surplus"];
@@ -51,5 +78,7 @@ export function toKartu(r: KartuResponse): KartuIntervensi {
     tenggat: r.tenggat,
     rekomendasiAi: r.rekomendasi_ai,
     progres: { selesai: r.progres.selesai, total: r.progres.total },
+    versi: r.versi,
+    dieskalasi: r.dieskalasi_pada !== null,
   };
 }

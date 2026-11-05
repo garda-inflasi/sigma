@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import type { UbahAturanInput } from "@/lib/api/ews";
+import { ringkasHasilKartu, type AksiKartu } from "@/lib/api/intervensi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
@@ -91,6 +92,23 @@ export function useEvaluasiEws() {
 /** Kartu kanban. Dengan backend aktif disegarkan berkala agar perpindahan oleh pengguna lain muncul. */
 export const useIntervensi = () =>
   useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity, refetchInterval: MODE_MOCK ? false : LIVE });
+/**
+ * Menugaskan kartu ke diri sendiri atau mengeskalasinya (aksi massal); toast merangkum hasil per kartu
+ * dan papan dimuat ulang karena versi kartu berubah.
+ */
+export function useAksiKartu() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ aksi, ids }: { aksi: AksiKartu; ids: string[]; label: string }) => api.intervensi.aksi(aksi, ids),
+    onSuccess: (res, { label }) => {
+      const { judul, deskripsi } = ringkasHasilKartu(label, res);
+      (res.berhasil ? toast.success : toast.warning)(judul, { description: deskripsi });
+    },
+    onError: (err) => toast.error("Aksi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.intervensi.list() }),
+  });
+}
+
 /**
  * Satu layar cold storage. `keepPreviousData` menahan tampilan lama saat
  * pindah halaman/urutan/filter agar tabel tidak berkedip; kartu fasilitas

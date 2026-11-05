@@ -16,9 +16,19 @@ const (
 // IzinBawaan dibutuhkan untuk memindahkan kartu ke tahap yang tak menentukan izin lain.
 const IzinBawaan = "intervensi.kelola"
 
+// Aksi pada riwayat kartu (CHECK intervensi_riwayat.aksi).
+const (
+	AksiBuat        = "BUAT"
+	AksiPindahTahap = "PINDAH_TAHAP"
+	AksiTugaskan    = "TUGASKAN"
+	AksiEskalasi    = "ESKALASI"
+)
+
 var (
 	// ErrNotFound: kartu tidak ada.
 	ErrNotFound = errors.New("kartu intervensi tidak ditemukan")
+	// ErrVersiUsang: kartu sudah diubah pengguna lain sejak dibaca klien.
+	ErrVersiUsang = errors.New("kartu telah diubah pengguna lain")
 	// ErrInvalidReference: komoditas, kabupaten, alert, atau penanggung jawab tidak ada.
 	ErrInvalidReference = errors.New("rujukan tidak ditemukan")
 )
@@ -42,9 +52,50 @@ type Intervensi struct {
 	DibuatOlehID     string     `gorm:"column:dibuat_oleh_id"`
 	DibuatPada       time.Time  `gorm:"column:dibuat_pada;default:now()"`
 	SelesaiPada      *time.Time `gorm:"column:selesai_pada"`
+	// Versi naik tiap perubahan kartu; dipakai untuk optimistic locking.
+	Versi            int        `gorm:"column:versi;default:1"`
+	DieskalasiPada   *time.Time `gorm:"column:dieskalasi_pada"`
+	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id"`
 }
 
 func (Intervensi) TableName() string { return "intervensi" }
+
+// IntervensiRiwayat memetakan tabel intervensi_riwayat: satu peristiwa pada kartu.
+// Oleh kosong berarti sistem.
+type IntervensiRiwayat struct {
+	ID           int64     `gorm:"column:id;primaryKey;->"`
+	IntervensiID string    `gorm:"column:intervensi_id"`
+	Aksi         string    `gorm:"column:aksi"`
+	Dari         *string   `gorm:"column:dari"`
+	Ke           *string   `gorm:"column:ke"`
+	Oleh         *string   `gorm:"column:oleh"`
+	Waktu        time.Time `gorm:"column:waktu;default:now()"`
+	Alasan       string    `gorm:"column:alasan"`
+}
+
+func (IntervensiRiwayat) TableName() string { return "intervensi_riwayat" }
+
+// Riwayat adalah satu peristiwa kartu beserta nama pelakunya.
+type Riwayat struct {
+	IntervensiRiwayat
+	OlehNama *string `gorm:"column:oleh_nama;->"`
+}
+
+// BulkAksi adalah aksi massal pada kartu.
+type BulkAksi string
+
+const (
+	BulkTugaskan BulkAksi = "tugaskan"
+	BulkEskalasi BulkAksi = "eskalasi"
+)
+
+// HasilKartu adalah hasil satu aksi massal pada satu kartu.
+type HasilKartu struct {
+	ID       string
+	Berhasil bool
+	// Alasan menjelaskan kegagalan; kosong bila berhasil.
+	Alasan string
+}
 
 // IntervensiPJ memetakan tabel intervensi_pj (penanggung jawab, relasi M:N).
 type IntervensiPJ struct {

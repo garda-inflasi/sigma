@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("intervensi", &intervensidomain.Intervensi{}, &intervensidomain.IntervensiPJ{}, &intervensidomain.TahapDef{})
+	registerModels("intervensi", &intervensidomain.Intervensi{}, &intervensidomain.IntervensiPJ{}, &intervensidomain.TahapDef{}, &intervensidomain.IntervensiRiwayat{})
 }

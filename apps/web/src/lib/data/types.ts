@@ -81,6 +81,10 @@ export interface KartuIntervensi {
   tenggat: string;
   rekomendasiAi: boolean;
   progres: { selesai: number; total: number };
+  /** Versi kartu di server (optimistic locking); dikirim saat memindahkan kartu. */
+  versi: number;
+  /** Kartu sudah dieskalasi ke Dewan Pengarah. */
+  dieskalasi: boolean;
 }
 
 export interface StokColdStorage {

@@ -20,7 +20,7 @@ type ReferenceSummary struct {
 
 // DemoSummary melaporkan baris yang ditulis oleh SeedDemo.
 type DemoSummary struct {
-	Kartu, PenanggungJawab int
+	Kartu, PenanggungJawab, Riwayat int
 }
 
 const day = 24 * time.Hour
@@ -44,6 +44,7 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 // Prasyarat: SeedReference, master.reference, auth.demo, dan ews.demo sudah dijalankan.
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	kartu, pj := BuildKartu(now)
+	riwayat := BuildRiwayat(kartu, pj)
 	ids := make([]string, len(kartu))
 	for i, k := range kartu {
 		ids[i] = k.ID
@@ -55,7 +56,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 			DoUpdates: clause.AssignmentColumns([]string{
 				"siklus", "tahap", "urutan", "judul", "deskripsi", "komoditas_kode", "kabupaten_kode", "prioritas",
 				"tenggat", "rekomendasi_ai", "checklist_selesai", "checklist_total", "ews_alert_id", "dibuat_oleh_id",
-				"dibuat_pada", "selesai_pada",
+				"dibuat_pada", "selesai_pada", "versi", "dieskalasi_pada", "dieskalasi_oleh_id",
 			}),
 		}).Create(&kartu).Error
 		if err != nil {
@@ -67,12 +68,19 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 		if err := tx.Create(&pj).Error; err != nil {
 			return fmt.Errorf("seed penanggung jawab: %w", err)
 		}
+		// Riwayat kartu demo dibangun ulang (id baris dari sequence, jadi tidak di-upsert).
+		if err := tx.Where("intervensi_id IN ?", ids).Delete(&domain.IntervensiRiwayat{}).Error; err != nil {
+			return fmt.Errorf("reset riwayat kartu: %w", err)
+		}
+		if err := tx.Create(&riwayat).Error; err != nil {
+			return fmt.Errorf("seed riwayat kartu: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
 		return DemoSummary{}, err
 	}
-	return DemoSummary{Kartu: len(kartu), PenanggungJawab: len(pj)}, nil
+	return DemoSummary{Kartu: len(kartu), PenanggungJawab: len(pj), Riwayat: len(riwayat)}, nil
 }
 
 // BuildTahap menyusun baris tahap_intervensi_def; urutan dihitung per siklus.
@@ -144,4 +152,39 @@ func BuildKartu(now time.Time) ([]domain.Intervensi, []domain.IntervensiPJ) {
 		}
 	}
 	return kartu, pj
+}
+
+// selangTahap adalah jeda antar pemindahan tahap pada riwayat demo.
+const selangTahap = 6 * time.Hour
+
+// BuildRiwayat menyusun riwayat kartu demo: dibuat di tahap pertama siklusnya, lalu
+// dipindahkan satu per satu sampai tahap sekarang oleh penanggung jawab pertamanya.
+func BuildRiwayat(kartu []domain.Intervensi, pj []domain.IntervensiPJ) []domain.IntervensiRiwayat {
+	urutan := map[string][]string{} // siklus -> kode tahap berurutan
+	for _, t := range tahapSeeds {
+		urutan[t.siklus] = append(urutan[t.siklus], t.kode)
+	}
+	pertama := map[string]string{} // kartu -> penanggung jawab pertama
+	for _, p := range pj {
+		if _, ok := pertama[p.IntervensiID]; !ok {
+			pertama[p.IntervensiID] = p.PenggunaID
+		}
+	}
+
+	var out []domain.IntervensiRiwayat
+	for _, k := range kartu {
+		tahapList := urutan[k.Siklus]
+		awal := tahapList[0]
+		pembuat := k.DibuatOlehID
+		out = append(out, domain.IntervensiRiwayat{IntervensiID: k.ID, Aksi: domain.AksiBuat, Ke: &awal, Oleh: &pembuat, Waktu: k.DibuatPada})
+		pelaku := pertama[k.ID]
+		for i := 1; i < len(tahapList) && tahapList[i-1] != k.Tahap; i++ {
+			dari, ke := tahapList[i-1], tahapList[i]
+			out = append(out, domain.IntervensiRiwayat{
+				IntervensiID: k.ID, Aksi: domain.AksiPindahTahap, Dari: &dari, Ke: &ke, Oleh: &pelaku,
+				Waktu: k.DibuatPada.Add(time.Duration(i) * selangTahap),
+			})
+		}
+	}
+	return out
 }

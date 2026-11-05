@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/internal/intervensi/usecase"
 )
 
 // PenanggungJawabResponse adalah pengguna yang ditugasi pada kartu.
@@ -36,6 +37,8 @@ type KartuResponse struct {
 	PenanggungJawab []PenanggungJawabResponse `json:"penanggung_jawab"`
 	DibuatPada      time.Time                 `json:"dibuat_pada"`
 	SelesaiPada     *time.Time                `json:"selesai_pada"`
+	Versi           int                       `json:"versi"`
+	DieskalasiPada  *time.Time                `json:"dieskalasi_pada"`
 }
 
 // TahapResponse adalah definisi satu tahap pada satu siklus.
@@ -66,6 +69,7 @@ func ToKartuResponse(k domain.Kartu) KartuResponse {
 		Tenggat: k.Tenggat, RekomendasiAI: k.RekomendasiAI,
 		Progres:    ProgresResponse{Selesai: k.ChecklistSelesai, Total: k.ChecklistTotal},
 		EwsAlertID: k.EwsAlertID, PenanggungJawab: pj, DibuatPada: k.DibuatPada, SelesaiPada: k.SelesaiPada,
+		Versi: k.Versi, DieskalasiPada: k.DieskalasiPada,
 	}
 }
 
@@ -84,6 +88,54 @@ func ToTahapResponses(defs []domain.TahapDef) []TahapResponse {
 			Siklus: d.Siklus, KodeTahap: d.KodeTahap, Urutan: d.Urutan, Label: d.Label, Petunjuk: d.Petunjuk,
 			IzinDibutuhkan: d.IzinDibutuhkan, SLAHari: d.SLAHari,
 		}
+	}
+	return out
+}
+
+// MoveResponse mengembalikan versi baru kartu yang dipindahkan; klien memakainya untuk
+// pemindahan berikutnya tanpa memuat ulang papan.
+type MoveResponse struct {
+	Versi int `json:"versi"`
+}
+
+// HasilKartuResponse adalah hasil aksi massal pada satu kartu.
+type HasilKartuResponse struct {
+	ID       string `json:"id"`
+	Berhasil bool   `json:"berhasil"`
+	Alasan   string `json:"alasan,omitempty"`
+}
+
+// BulkIntervensiResponse melaporkan hasil aksi massal per kartu.
+type BulkIntervensiResponse struct {
+	Berhasil int                  `json:"berhasil"`
+	Gagal    int                  `json:"gagal"`
+	Hasil    []HasilKartuResponse `json:"hasil"`
+}
+
+// RiwayatResponse adalah satu peristiwa kartu; OlehID kosong berarti sistem.
+type RiwayatResponse struct {
+	ID       int64     `json:"id"`
+	Aksi     string    `json:"aksi"`
+	Dari     *string   `json:"dari"`
+	Ke       *string   `json:"ke"`
+	OlehID   *string   `json:"oleh_id"`
+	OlehNama *string   `json:"oleh_nama"`
+	Waktu    time.Time `json:"waktu"`
+	Alasan   string    `json:"alasan"`
+}
+
+func ToBulkResponse(r usecase.BulkResult) BulkIntervensiResponse {
+	out := BulkIntervensiResponse{Berhasil: r.Berhasil, Gagal: r.Gagal, Hasil: make([]HasilKartuResponse, len(r.Hasil))}
+	for i, h := range r.Hasil {
+		out.Hasil[i] = HasilKartuResponse{ID: h.ID, Berhasil: h.Berhasil, Alasan: h.Alasan}
+	}
+	return out
+}
+
+func ToRiwayatResponses(items []domain.Riwayat) []RiwayatResponse {
+	out := make([]RiwayatResponse, len(items))
+	for i, r := range items {
+		out[i] = RiwayatResponse{ID: r.ID, Aksi: r.Aksi, Dari: r.Dari, Ke: r.Ke, OlehID: r.Oleh, OlehNama: r.OlehNama, Waktu: r.Waktu, Alasan: r.Alasan}
 	}
 	return out
 }

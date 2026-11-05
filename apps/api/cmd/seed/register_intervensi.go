@@ -25,7 +25,7 @@ func init() {
 		DependsOn: []string{"intervensi.reference", "master.reference", "auth.demo", "ews.demo"},
 		Run: func(ctx context.Context, db *gorm.DB, now time.Time) (seedkit.Result, error) {
 			sum, err := intervensiseeder.SeedDemo(ctx, db, now)
-			return seedkit.Result{"kartu": sum.Kartu, "penanggung_jawab": sum.PenanggungJawab}, err
+			return seedkit.Result{"kartu": sum.Kartu, "penanggung_jawab": sum.PenanggungJawab, "riwayat": sum.Riwayat}, err
 		},
 	})
 }

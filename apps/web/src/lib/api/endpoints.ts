@@ -21,7 +21,7 @@ import {
   toEwsAlert, toEwsAturan, toPreferensiBody, toPreferensiView, toUbahAturanBody,
   type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
 } from "./ews";
-import { toKartu, type KartuResponse } from "./intervensi";
+import { toKartu, type AksiKartu, type BulkKartuResult, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
@@ -138,8 +138,16 @@ export const api = {
   intervensi: {
     list: (): Promise<KartuIntervensi[]> =>
       MODE_MOCK ? mockDelay(m.mockKanban) : apiFetch<KartuResponse[]>("/v1/intervensi").then((rows) => rows.map(toKartu)),
-    pindah: (id: string, tahap: string, urutan: number) =>
-      MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan }) }),
+    /** Memindahkan kartu; mengembalikan versi baru. 409 (ApiError) bila kartu sudah diubah pengguna lain. */
+    pindah: (id: string, tahap: string, urutan: number, versi: number): Promise<{ versi: number }> =>
+      MODE_MOCK
+        ? mockDelay({ versi: versi + 1 }, 200, 400)
+        : apiFetch<{ versi: number }>(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan, versi }) }),
+    /** Menugaskan kartu ke pengguna yang masuk, atau mengeskalasinya ke Dewan Pengarah; hasil per kartu. */
+    aksi: (aksi: AksiKartu, ids: string[]): Promise<BulkKartuResult> =>
+      MODE_MOCK
+        ? mockDelay({ berhasil: ids.length, gagal: 0, hasil: ids.map((id) => ({ id, berhasil: true })) }, 300, 600)
+        : apiFetch<BulkKartuResult>("/v1/intervensi/bulk", { method: "POST", body: JSON.stringify({ action: aksi, ids }) }),
   },
   coldStorage: {
     list: listColdStorage,

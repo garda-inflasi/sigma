@@ -8,6 +8,7 @@
  * Fixture `galat` aktif otomatis di setiap tes: respons API >= 400, exception JS, dan
  * console.error menggagalkan tes kecuali diizinkan lewat `galat.izinkan(pola)`.
  */
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   test as base,
@@ -106,6 +107,27 @@ export async function apiSebagai(
       Origin: BASE_URL,
     },
   });
+}
+
+/**
+ * Menjalankan SQL di Postgres stack Docker (container `E2E_PG_CONTAINER`, bawaan garda-postgres)
+ * dan mengembalikan keluaran baris tanpa format. Hanya untuk membersihkan data yang dibuat tes
+ * dan tidak punya endpoint hapus; jangan dipakai untuk menyiapkan keadaan yang bisa dibuat lewat API.
+ */
+export function jalankanSql(sql: string): string {
+  const container = process.env.E2E_PG_CONTAINER ?? "garda-postgres";
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      container,
+      "sh",
+      "-c",
+      'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -tA',
+    ],
+    { input: sql, encoding: "utf8" },
+  ).trim();
 }
 
 /** Membuka halaman dan memastikan tidak dialihkan ke /masuk atau /akses-ditolak. */

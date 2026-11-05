@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { authApi } from "@/lib/bff/api-client";
+import { ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, cookieSecure } from "@/lib/bff/cookie-policy";
 import { generateCSRFToken } from "@/lib/bff/csrf";
 
 export async function loginAction(formData: FormData) {
@@ -21,18 +22,18 @@ export async function loginAction(formData: FormData) {
     const cookieStore = await cookies();
 
     // Access token: 15 menit
-    cookieStore.set("garda_access", result.access_token, {
+    cookieStore.set(ACCESS_COOKIE, result.access_token, {
       httpOnly: true,
-      secure: false,
+      secure: cookieSecure(),
       sameSite: "lax",
       path: "/",
       maxAge: 15 * 60,
     });
 
     // Refresh token: 7 hari
-    cookieStore.set("garda_refresh", result.refresh_token, {
+    cookieStore.set(REFRESH_COOKIE, result.refresh_token, {
       httpOnly: true,
-      secure: false,
+      secure: cookieSecure(),
       sameSite: "strict",
       path: "/api/auth",
       maxAge: 7 * 24 * 60 * 60,
@@ -40,9 +41,9 @@ export async function loginAction(formData: FormData) {
 
     // CSRF token: 24 jam
     const csrfToken = await generateCSRFToken();
-    cookieStore.set("garda_csrf", csrfToken, {
+    cookieStore.set(CSRF_COOKIE, csrfToken, {
       httpOnly: false,
-      secure: false,
+      secure: cookieSecure(),
       sameSite: "lax",
       path: "/",
       maxAge: 24 * 60 * 60,

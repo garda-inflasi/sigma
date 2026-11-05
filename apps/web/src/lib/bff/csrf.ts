@@ -1,15 +1,14 @@
 /**
  * CSRF protection utilities for the BFF layer.
  * Uses double-submit cookie pattern:
- * - Server sets a CSRF token cookie (`__Host-csrf`)
+ * - Server sets a CSRF token cookie (`garda_csrf`)
  * - Client reads the cookie and sends it as `X-CSRF-Token` header
  * - BFF validates that the header matches the cookie
  */
 
 import { NextResponse } from "next/server";
+import { CSRF_COOKIE, cookieSecure } from "./cookie-policy";
 
-const isDev = true; // Always use simple cookie names (Caddy terminates TLS)
-const CSRF_COOKIE = isDev ? "garda_csrf" : "__Host-csrf";
 const CSRF_HEADER = "x-csrf-token";
 
 /**
@@ -31,7 +30,7 @@ export async function generateCSRFToken(): Promise<string> {
 export function setCSRFCookie(response: NextResponse, token: string): void {
   response.cookies.set(CSRF_COOKIE, token, {
     httpOnly: false, // Must be readable by JS for the double-submit pattern
-    secure: !isDev,
+    secure: cookieSecure(),
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24, // 24 hours

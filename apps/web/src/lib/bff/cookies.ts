@@ -1,7 +1,7 @@
 /**
  * Cookie utilities for the BFF layer.
- * Sets HttpOnly, Secure, SameSite cookies for tokens.
- * In development (HTTP), Secure flag and __Host-/__Secure- prefixes are omitted.
+ * Sets HttpOnly, SameSite cookies for tokens; the Secure flag follows
+ * `cookieSecure()` (on in production, `COOKIE_SECURE` overrides).
  *
  * IMPORTANT: These functions accept a NextResponse and set cookies on it.
  * Do NOT use cookies() from next/headers in Route Handlers — cookies set
@@ -9,12 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
-
-const isDev = true; // Always use simple cookie names (Caddy terminates TLS)
-
-// In dev (HTTP), use simple cookie names without Secure prefix requirements
-const ACCESS_COOKIE = isDev ? "garda_access" : "__Host-access";
-const REFRESH_COOKIE = isDev ? "garda_refresh" : "__Secure-refresh";
+import { ACCESS_COOKIE, REFRESH_COOKIE, cookieSecure } from "./cookie-policy";
 
 interface CookieOptions {
   maxAge?: number;
@@ -32,7 +27,7 @@ export function setAccessTokenCookie(
 ): void {
   response.cookies.set(ACCESS_COOKIE, token, {
     httpOnly: true,
-    secure: !isDev,
+    secure: cookieSecure(),
     sameSite: "lax",
     path: "/",
     maxAge,
@@ -49,7 +44,7 @@ export function setRefreshTokenCookie(
 ): void {
   response.cookies.set(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: !isDev,
+    secure: cookieSecure(),
     sameSite: "strict",
     path: "/api/auth",
     maxAge,
@@ -62,14 +57,14 @@ export function setRefreshTokenCookie(
 export function clearTokenCookies(response: NextResponse): void {
   response.cookies.set(ACCESS_COOKIE, "", {
     httpOnly: true,
-    secure: !isDev,
+    secure: cookieSecure(),
     sameSite: "lax",
     path: "/",
     maxAge: 0,
   });
   response.cookies.set(REFRESH_COOKIE, "", {
     httpOnly: true,
-    secure: !isDev,
+    secure: cookieSecure(),
     sameSite: "strict",
     path: "/api/auth",
     maxAge: 0,

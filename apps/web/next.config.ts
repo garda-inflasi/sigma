@@ -18,11 +18,22 @@ const securityHeaders = [
   // emits it only for HTTPS requests.
 ];
 
+/**
+ * Pola "langsung": browser memanggil `/api/v1/*` dan di produksi Caddy
+ * meneruskannya ke Go. Saat `next dev` tidak ada Caddy, jadi Next yang
+ * meneruskannya agar `make dev/web` + `make dev/api` berjalan sendiri.
+ */
+const goApiBase = process.env.GO_API_BASE_URL ?? "http://localhost:8080/v1";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+  },
+  async rewrites() {
+    if (process.env.NODE_ENV !== "development") return [];
+    return [{ source: "/api/v1/:path*", destination: `${goApiBase}/:path*` }];
   },
   async headers() {
     return [

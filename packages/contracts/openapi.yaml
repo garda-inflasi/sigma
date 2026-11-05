@@ -852,8 +852,55 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /v1/intervensi:
+    get:
+      summary: Mendaftar kartu intervensi (papan kanban)
+      description: Memerlukan izin `intervensi.lihat`. Terurut per siklus, tahap, lalu urutan.
+      operationId: listIntervensi
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: siklus
+          in: query
+          schema:
+            type: string
+            enum: [NORMAL, TEKANAN, SURPLUS]
+        - name: tahap
+          in: query
+          description: Kode tahap, mis. t-ews
+          schema:
+            type: string
+        - name: prioritas
+          in: query
+          schema:
+            type: string
+            enum: [TINGGI, SEDANG, RENDAH]
+      responses:
+        "200":
+          description: Daftar kartu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiListResponse"
+        "400":
+          description: Nilai filter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `intervensi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     post:
-      summary: Membuat intervensi baru
+      summary: Membuat kartu intervensi
+      description: |
+        Memerlukan izin `intervensi.kelola`. Kartu masuk ke tahap pertama siklusnya di urutan
+        paling bawah. Aksi dicatat di audit trail.
       operationId: createIntervensi
       tags:
         - Intervensi
@@ -867,41 +914,94 @@ paths:
               $ref: "#/components/schemas/CreateIntervensiRequest"
       responses:
         "201":
-          description: Intervensi dibuat
+          description: Kartu dibuat
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/CreateIntervensiResponse"
         "400":
-          description: Validasi gagal
+          description: Validasi gagal, atau komoditas/kabupaten/alert/penanggung jawab tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `intervensi.kelola`
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /v1/intervensi/bulk:
-    post:
-      summary: Menjalankan aksi massal pada intervensi
-      operationId: bulkIntervensi
+  /v1/intervensi/tahap:
+    get:
+      summary: Mendaftar definisi tahap per siklus
+      description: Memerlukan izin `intervensi.lihat`. Satu sumber untuk tahap, urutan, izin masuk, dan SLA.
+      operationId: listIntervensiTahap
       tags:
         - Intervensi
       security:
         - BearerAuth: []
+      responses:
+        "200":
+          description: Definisi tahap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiTahapListResponse"
+        "403":
+          description: Tanpa izin `intervensi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi/{id}/tahap:
+    patch:
+      summary: Memindahkan kartu ke tahap dan posisi lain
+      description: |
+        Memerlukan salah satu dari `intervensi.kelola`, `intervensi.setujui`, `intervensi.setujui_fiskal`;
+        izin yang tepat ditentukan oleh `izin_dibutuhkan` pada tahap tujuan. Kolom tujuan dinomori
+        ulang; `urutan` di luar rentang dijepit. Memindahkan ke tahap penutup mengisi `selesai_pada`.
+        Pemindahan (juga yang ditolak) dicatat di audit trail.
+      operationId: moveIntervensi
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: INT-301
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BulkActionRequest"
+              $ref: "#/components/schemas/MoveIntervensiRequest"
       responses:
         "200":
-          description: Aksi massal berhasil diproses
+          description: Kartu dipindahkan
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BulkResultResponse"
+                $ref: "#/components/schemas/SuccessResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Tahap tidak terdefinisi untuk siklus kartu, atau masukan tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Izin tahap tujuan tidak dimiliki
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kartu tidak ditemukan
           content:
             application/json:
               schema:
@@ -1914,19 +2014,182 @@ components:
       type: object
       required:
         - judul
-        - tipe
+        - siklus
+        - prioritas
+        - komoditas_kode
+        - kabupaten_kode
+        - tenggat
       properties:
         judul:
           type: string
           example: Operasi Pasar Beras
-        tipe:
-          type: string
-          example: OPERASI_PASAR
         deskripsi:
           type: string
-        wilayah_kode:
+        siklus:
+          type: string
+          enum: [NORMAL, TEKANAN, SURPLUS]
+        prioritas:
+          type: string
+          enum: [TINGGI, SEDANG, RENDAH]
+        komoditas_kode:
+          type: string
+          example: BRS-MED
+        kabupaten_kode:
           type: string
           example: "1171"
+        tenggat:
+          type: string
+          format: date-time
+        ews_alert_id:
+          type: string
+          nullable: true
+          example: EWS-1000
+        penanggung_jawab_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          example: [manajer_data]
+
+    CreateIntervensiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: INT-1000
+            tahap:
+              type: string
+              example: t-ews
+
+    MoveIntervensiRequest:
+      type: object
+      required:
+        - tahap
+      properties:
+        tahap:
+          type: string
+          description: Kode tahap tujuan (milik siklus kartu)
+          example: t-verifikasi
+        urutan:
+          type: integer
+          minimum: 0
+          description: Posisi (indeks dari 0) di kolom tujuan
+          example: 0
+
+    IntervensiKartu:
+      type: object
+      properties:
+        id:
+          type: string
+          example: INT-301
+        siklus:
+          type: string
+          enum: [NORMAL, TEKANAN, SURPLUS]
+        tahap:
+          type: string
+          example: t-ews
+        urutan:
+          type: integer
+        judul:
+          type: string
+        deskripsi:
+          type: string
+        komoditas_kode:
+          type: string
+        kabupaten_kode:
+          type: string
+        prioritas:
+          type: string
+          enum: [TINGGI, SEDANG, RENDAH]
+        tenggat:
+          type: string
+          format: date-time
+        rekomendasi_ai:
+          type: boolean
+        progres:
+          type: object
+          properties:
+            selesai:
+              type: integer
+            total:
+              type: integer
+        ews_alert_id:
+          type: string
+          nullable: true
+        penanggung_jawab:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              nama:
+                type: string
+        dibuat_pada:
+          type: string
+          format: date-time
+        selesai_pada:
+          type: string
+          format: date-time
+          nullable: true
+
+    IntervensiListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntervensiKartu"
+
+    IntervensiTahap:
+      type: object
+      properties:
+        siklus:
+          type: string
+          enum: [NORMAL, TEKANAN, SURPLUS]
+        kode_tahap:
+          type: string
+          example: t-petakan
+        urutan:
+          type: integer
+        label:
+          type: string
+        petunjuk:
+          type: string
+        izin_dibutuhkan:
+          type: string
+          example: intervensi.setujui
+        sla_hari:
+          type: integer
+          nullable: true
+
+    IntervensiTahapListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntervensiTahap"
 
     # ── EWS ────────────────────────────────────────────────────────────
     EwsAlert:

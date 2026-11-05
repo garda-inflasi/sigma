@@ -32,7 +32,9 @@ export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(ko
 export const useEntriHarga = (enabled = true) => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list, enabled });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
-export const useIntervensi = () => useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity });
+/** Kartu kanban. Dengan backend aktif disegarkan berkala agar perpindahan oleh pengguna lain muncul. */
+export const useIntervensi = () =>
+  useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity, refetchInterval: MODE_MOCK ? false : LIVE });
 /**
  * Satu layar cold storage. `keepPreviousData` menahan tampilan lama saat
  * pindah halaman/urutan/filter agar tabel tidak berkedip; kartu fasilitas

@@ -37,7 +37,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   ⬜    |    ⬜     |      ⬜      | ⬜  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
 | 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   ⬜    |    🟡     |      ⬜      | ⬜  | [12-peta-spasial.md](12-peta-spasial.md)                   |
 | 13  | Cold storage & food loss                  | `/cold-storage`            | ✅  |   ✅    |    ✅     |      ✅      | 🟡  | [13-cold-storage.md](13-cold-storage.md)                   |
-| 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [14-intervensi.md](14-intervensi.md)                       |
+| 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [14-intervensi.md](14-intervensi.md)                       |
 | 15  | Policy brief                              | `/policy-brief`            | ✅  |   ⬜    |    🟡     |      ⬜      | ⬜  | [15-policy-brief.md](15-policy-brief.md)                   |
 | 16  | Indikator kinerja (KPI)                   | `/kpi`                     | ✅  |   ⬜    |    ⬜     |      ⬜      | ⬜  | [16-kpi.md](16-kpi.md)                                     |
 | 17  | Alur sistem & data                        | `/alur-sistem`             | ✅  |   n/a   |    n/a    |     n/a      | n/a | [17-alur-sistem.md](17-alur-sistem.md)                     |

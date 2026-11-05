@@ -1,0 +1,130 @@
+[
+  {
+    "siklus": "normal",
+    "kode": "n-pantau",
+    "urutan": 1,
+    "label": "Pantau rutin data produsen",
+    "petunjuk": "Agregasi harian dari agen lapangan",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "normal",
+    "kode": "n-verifikasi",
+    "urutan": 2,
+    "label": "Verifikasi silang BPS",
+    "petunjuk": "Cocokkan dengan rilis statistik resmi",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "normal",
+    "kode": "n-jadwal",
+    "urutan": 3,
+    "label": "Optimasi jadwal pengiriman",
+    "petunjuk": "Susun rute \u0026 slot armada",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "normal",
+    "kode": "n-agregasi",
+    "urutan": 4,
+    "label": "Agregasi volume reguler",
+    "petunjuk": "Konsolidasi pasokan produsen",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "normal",
+    "kode": "n-selesai",
+    "urutan": 5,
+    "label": "Selesai",
+    "petunjuk": "Ditutup dan terdokumentasi",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "tekanan",
+    "kode": "t-ews",
+    "urutan": 1,
+    "label": "EWS terpicu",
+    "petunjuk": "Alarm otomatis dari model",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "tekanan",
+    "kode": "t-verifikasi",
+    "urutan": 2,
+    "label": "Verifikasi cepat BI/BPS",
+    "petunjuk": "Konfirmasi sinyal dengan data resmi",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "tekanan",
+    "kode": "t-petakan",
+    "urutan": 3,
+    "label": "Petakan suplai sentra surplus",
+    "petunjuk": "Butuh persetujuan Dewan Pengarah",
+    "izin_dibutuhkan": "intervensi.setujui"
+  },
+  {
+    "siklus": "tekanan",
+    "kode": "t-logistik",
+    "urutan": 4,
+    "label": "Usulan intervensi logistik kilat",
+    "petunjuk": "Rute \u0026 volume pengiriman darurat",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "tekanan",
+    "kode": "t-fiskal",
+    "urutan": 5,
+    "label": "Dukungan instrumen belanja",
+    "petunjuk": "Persetujuan Kanwil DJPb",
+    "izin_dibutuhkan": "intervensi.setujui_fiskal"
+  },
+  {
+    "siklus": "tekanan",
+    "kode": "t-selesai",
+    "urutan": 6,
+    "label": "Selesai",
+    "petunjuk": "Harga kembali ke koridor",
+    "izin_dibutuhkan": "intervensi.setujui"
+  },
+  {
+    "siklus": "surplus",
+    "kode": "s-deteksi",
+    "urutan": 1,
+    "label": "Deteksi over-supply",
+    "petunjuk": "Harga produsen jatuh di bawah koridor",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "surplus",
+    "kode": "s-coldstorage",
+    "urutan": 2,
+    "label": "Arahkan ke cold storage",
+    "petunjuk": "Alokasi kapasitas \u0026 shelf-life",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "surplus",
+    "kode": "s-olahan",
+    "urutan": 3,
+    "label": "Rekomendasi pengolahan turunan",
+    "petunjuk": "Uji mutu oleh Unit Mutu \u0026 Pascapanen",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "surplus",
+    "kode": "s-ekspansi",
+    "urutan": 4,
+    "label": "Ekspansi ke pembeli antardaerah",
+    "petunjuk": "Pencocokan pembeli \u0026 logistik",
+    "izin_dibutuhkan": "intervensi.kelola"
+  },
+  {
+    "siklus": "surplus",
+    "kode": "s-selesai",
+    "urutan": 5,
+    "label": "Selesai",
+    "petunjuk": "Surplus terserap",
+    "izin_dibutuhkan": "intervensi.setujui"
+  }
+]

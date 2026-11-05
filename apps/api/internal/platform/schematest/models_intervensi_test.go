@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("intervensi", &intervensidomain.KartuIntervensi{})
+	registerModels("intervensi", &intervensidomain.Intervensi{}, &intervensidomain.IntervensiPJ{}, &intervensidomain.TahapDef{})
 }

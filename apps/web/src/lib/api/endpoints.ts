@@ -7,6 +7,7 @@ import {
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
 import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
+import { toKartu, type KartuResponse } from "./intervensi";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -52,7 +53,8 @@ export const api = {
       MODE_MOCK ? mockDelay(m.mockEwsAturan) : apiFetch<EwsAturanResponse[]>("/v1/ews/aturan").then((rows) => rows.map(toEwsAturan)),
   },
   intervensi: {
-    list: () => get<KartuIntervensi[]>("/v1/intervensi", m.mockKanban),
+    list: (): Promise<KartuIntervensi[]> =>
+      MODE_MOCK ? mockDelay(m.mockKanban) : apiFetch<KartuResponse[]>("/v1/intervensi").then((rows) => rows.map(toKartu)),
     pindah: (id: string, tahap: string, urutan: number) =>
       MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan }) }),
   },

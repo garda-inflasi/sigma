@@ -51,6 +51,15 @@ func (r *Repository) HapusLoginAttemptLama(ctx context.Context, sebelum time.Tim
 		sebelum, batas)
 }
 
+func (r *Repository) HapusKunciLoginUsang(ctx context.Context, sebelum, sekarang time.Time, batas int) (int64, error) {
+	return r.hapusBatch(ctx, batas,
+		`DELETE FROM kunci_login WHERE email_hash IN (
+			SELECT email_hash FROM kunci_login
+			WHERE diperbarui_pada < ? AND (terkunci_sampai IS NULL OR terkunci_sampai < ?)
+			ORDER BY diperbarui_pada LIMIT ? FOR UPDATE SKIP LOCKED)`,
+		sebelum, sekarang, batas)
+}
+
 // hapusBatch menjalankan satu DELETE berbatas waktu dalam transaksi pendek dan mengembalikan jumlah baris terhapus.
 func (r *Repository) hapusBatch(ctx context.Context, batas int, query string, args ...any) (int64, error) {
 	if batas < 1 {

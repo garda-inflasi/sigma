@@ -26,6 +26,8 @@ type repoPembersihanPalsu struct {
 	galat     map[string]error
 	// sebelumPanggil dipanggil di awal tiap metode (mis. membatalkan ctx).
 	sebelumPanggil func(metode string)
+	// sekarangKunci adalah argumen sekarang terakhir pada HapusKunciLoginUsang.
+	sekarangKunci time.Time
 }
 
 func (r *repoPembersihanPalsu) jawab(metode string, sebelum time.Time, batas int) (int64, error) {
@@ -50,6 +52,11 @@ func (r *repoPembersihanPalsu) HapusBlacklistKedaluwarsa(_ context.Context, sebe
 
 func (r *repoPembersihanPalsu) HapusRefreshTokenKedaluwarsa(_ context.Context, sebelum time.Time, batas int) (int64, error) {
 	return r.jawab("refresh_tokens", sebelum, batas)
+}
+
+func (r *repoPembersihanPalsu) HapusKunciLoginUsang(_ context.Context, sebelum, sekarang time.Time, batas int) (int64, error) {
+	r.sekarangKunci = sekarang
+	return r.jawab("kunci_login", sebelum, batas)
 }
 
 func (r *repoPembersihanPalsu) HapusResetTokenMati(_ context.Context, sebelum time.Time, batas int) (int64, error) {
@@ -116,7 +123,24 @@ func TestPembersihan_UrutanLangkahTetap(t *testing.T) {
 	for _, l := range hasil.Langkah {
 		nama = append(nama, l.Nama)
 	}
-	assert.Equal(t, []string{"jwt_blacklist", "refresh_tokens", "password_reset_tokens", "login_attempts"}, nama)
+	assert.Equal(t, []string{"jwt_blacklist", "refresh_tokens", "password_reset_tokens", "kunci_login", "login_attempts"}, nama)
+}
+
+func TestPembersihan_KunciLoginHanyaYangUsangDanTidakTerkunci(t *testing.T) {
+	repo := &repoPembersihanPalsu{}
+	cfg := DefaultKonfigPembersihan()
+	cfg.UmurKunciLogin = time.Minute
+	p := NewPembersihan(repo, cfg, nil)
+
+	_, err := p.JalankanPada(context.Background(), sekarangUji)
+
+	require.NoError(t, err)
+	k := repo.untuk("kunci_login")
+	require.Len(t, k, 1)
+	assert.True(t, k[0].sebelum.Equal(sekarangUji.Add(-UmurKunciLoginMin)),
+		"umur di bawah dua kali durasi kunci dinaikkan ke lantai: batas %s", k[0].sebelum)
+	assert.True(t, repo.sekarangKunci.Equal(sekarangUji), "kunci yang masih berlaku pada waktu acuan dipertahankan")
+	assert.Equal(t, 30*time.Minute, UmurKunciLoginMin)
 }
 
 func TestPembersihan_DiulangSampaiBatchTidakPenuh(t *testing.T) {
@@ -222,7 +246,7 @@ func TestPembersihan_RetensiLoginNolMenonaktifkanLangkah(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, repo.untuk("login_attempts"), "retensi 0 = login_attempts tidak pernah dihapus")
-	assert.Len(t, hasil.Langkah, 3)
+	assert.Len(t, hasil.Langkah, 4)
 }
 
 func TestPembersihan_RetensiResetNolMenghapusLangsung(t *testing.T) {
@@ -249,6 +273,7 @@ func TestKonfigPembersihan_NormalisasiMengisiBawaan(t *testing.T) {
 	assert.Equal(t, MaksBatchBawaan, got.MaksBatch)
 	assert.Zero(t, got.RetensiLoginAttempt, "nol tetap berarti tidak dihapus")
 	assert.Zero(t, got.RetensiResetToken)
+	assert.Equal(t, UmurKunciLoginMin, got.UmurKunciLogin)
 
 	d := DefaultKonfigPembersihan()
 	assert.Equal(t, d, d.Normalisasi(), "konfigurasi bawaan sudah normal")
@@ -305,7 +330,7 @@ func TestPembersihan_KonteksSelesaiMenghentikanTanpaMemanggilRepo(t *testing.T) 
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Empty(t, repo.panggilan)
-	assert.Len(t, hasil.Langkah, 4)
+	assert.Len(t, hasil.Langkah, 5)
 }
 
 func TestPembersihan_KonteksDibatalkanDiTengahBerhentiSebelumBatchBerikut(t *testing.T) {
@@ -349,9 +374,9 @@ func TestPembersihan_LangkahTambahanDijalankanSesudahBawaan(t *testing.T) {
 	hasil, err := p.JalankanPada(context.Background(), sekarangUji)
 
 	require.NoError(t, err)
-	require.Len(t, hasil.Langkah, 5)
-	assert.Equal(t, "sesi_dicabut", hasil.Langkah[4].Nama)
-	assert.EqualValues(t, 2, hasil.Langkah[4].Dihapus)
+	require.Len(t, hasil.Langkah, 6)
+	assert.Equal(t, "sesi_dicabut", hasil.Langkah[5].Nama)
+	assert.EqualValues(t, 2, hasil.Langkah[5].Dihapus)
 	assert.Equal(t, []int{UkuranBatchBawaan}, dipanggil)
 	assert.True(t, waktu.Equal(sekarangUji), "semua langkah memakai waktu acuan yang sama")
 }

@@ -23,4 +23,7 @@ type PembersihanRepository interface {
 	HapusResetTokenMati(ctx context.Context, sebelum time.Time, batas int) (int64, error)
 	// HapusLoginAttemptLama menghapus login_attempts dengan attempted_at < sebelum.
 	HapusLoginAttemptLama(ctx context.Context, sebelum time.Time, batas int) (int64, error)
+	// HapusKunciLoginUsang menghapus kunci_login yang terakhir diperbarui sebelum `sebelum` dan tidak sedang
+	// terkunci pada `sekarang`.
+	HapusKunciLoginUsang(ctx context.Context, sebelum, sekarang time.Time, batas int) (int64, error)
 }

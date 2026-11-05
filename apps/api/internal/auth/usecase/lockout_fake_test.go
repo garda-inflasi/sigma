@@ -113,16 +113,3 @@ func (f *kunciFake) KunciAktif(_ context.Context, emailHash []string, now time.T
 	}
 	return aktif, nil
 }
-
-func (f *kunciFake) HapusKunciUsang(_ context.Context, sebelum time.Time) (int64, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var n int64
-	for h, b := range f.simpanan() {
-		if b.DiperbaruiPada.Before(sebelum) {
-			delete(f.simpanan(), h)
-			n++
-		}
-	}
-	return n, nil
-}

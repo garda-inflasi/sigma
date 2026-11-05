@@ -642,22 +642,6 @@ func TestKunciPengguna(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestBersihkanKunciKedaluwarsa(t *testing.T) {
-	sekarang := jamBeku(t, awalUji)
-	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
-	repo.kunciSampai("lama@example.com", awalUji)
-	*sekarang = sekarang.Add(time.Hour)
-	repo.kunciTerkunci("baru@example.com")
-
-	n, err := uc.BersihkanKunciKedaluwarsa(context.Background())
-
-	require.NoError(t, err)
-	assert.EqualValues(t, 1, n)
-	assert.Nil(t, repo.keadaan("lama@example.com"))
-	assert.NotNil(t, repo.keadaan("baru@example.com"))
-}
-
 func TestAkunTerkunciError(t *testing.T) {
 	err := error(&AkunTerkunciError{Sampai: awalUji})
 	assert.ErrorIs(t, err, ErrAccountLocked)

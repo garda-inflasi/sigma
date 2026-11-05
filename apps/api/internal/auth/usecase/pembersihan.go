@@ -59,7 +59,14 @@ type KonfigPembersihan struct {
 	UkuranBatch int
 	// MaksBatch adalah batch maksimum per langkah per putaran (<= 0 memakai MaksBatchBawaan).
 	MaksBatch int
+	// UmurKunciLogin adalah umur minimum (sejak diperbarui) baris kunci_login sebelum dihapus. Nilai di
+	// bawah UmurKunciLoginMin dinaikkan ke sana.
+	UmurKunciLogin time.Duration
 }
+
+// UmurKunciLoginMin adalah dua kali durasi kunci: sesudahnya jendela hitungan dan kuncinya pasti sudah
+// berakhir, jadi barisnya tidak lagi memengaruhi login.
+var UmurKunciLoginMin = 2 * DefaultConfig().LockoutDuration
 
 // DefaultKonfigPembersihan mengembalikan konfigurasi bawaan.
 func DefaultKonfigPembersihan() KonfigPembersihan {
@@ -68,6 +75,7 @@ func DefaultKonfigPembersihan() KonfigPembersihan {
 		RetensiResetToken:   RetensiResetTokenBawaan,
 		UkuranBatch:         UkuranBatchBawaan,
 		MaksBatch:           MaksBatchBawaan,
+		UmurKunciLogin:      UmurKunciLoginMin,
 	}
 }
 
@@ -78,6 +86,9 @@ func (c KonfigPembersihan) Normalisasi() KonfigPembersihan {
 	}
 	if c.MaksBatch <= 0 {
 		c.MaksBatch = MaksBatchBawaan
+	}
+	if c.UmurKunciLogin < UmurKunciLoginMin {
+		c.UmurKunciLogin = UmurKunciLoginMin
 	}
 	if c.RetensiResetToken < 0 {
 		c.RetensiResetToken = 0
@@ -156,6 +167,13 @@ func langkahBawaan(repo domain.PembersihanRepository, cfg KonfigPembersihan) []L
 			},
 		},
 	}
+	langkah = append(langkah, Langkah{
+		Nama: "kunci_login",
+		// Kunci yang masih berlaku tidak pernah dihapus, berapa pun umurnya.
+		HapusBatch: func(ctx context.Context, now time.Time, batas int) (int64, error) {
+			return repo.HapusKunciLoginUsang(ctx, now.Add(-cfg.UmurKunciLogin), now, batas)
+		},
+	})
 	if cfg.RetensiLoginAttempt > 0 {
 		langkah = append(langkah, Langkah{
 			Nama: "login_attempts",

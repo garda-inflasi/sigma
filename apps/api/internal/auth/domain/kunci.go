@@ -82,6 +82,4 @@ type KunciRepository interface {
 	// KunciAktif mengembalikan akhir kunci untuk emailHash yang sedang terkunci pada waktu now; yang
 	// tidak terkunci tidak ada di peta.
 	KunciAktif(ctx context.Context, emailHash []string, now time.Time) (map[string]time.Time, error)
-	// HapusKunciUsang memangkas baris yang terakhir diperbarui sebelum batas; mengembalikan jumlahnya.
-	HapusKunciUsang(ctx context.Context, sebelum time.Time) (int64, error)
 }

@@ -496,18 +496,23 @@ func TestIntegration_Lockout_KesalahanTerlindungiSamaDiSemuaJalur(t *testing.T) 
 	})
 }
 
-func TestIntegration_Lockout_PangkasKunciUsang(t *testing.T) {
+func TestIntegration_Lockout_PembersihanHanyaKunciUsang(t *testing.T) {
 	s := setupSuite(t)
 	s.gagalkan(t, emailBiasa, 2)
 	s.gagalkan(t, "hantu.lama@gardainflasi.id", 1)
-	require.NoError(t, s.db.Exec("UPDATE kunci_login SET diperbarui_pada = now() - interval '2 hours' WHERE email_hash = ?",
-		usecase.HashEmailKunci("hantu.lama@gardainflasi.id")).Error)
+	s.gagalkan(t, "masih.terkunci@gardainflasi.id", 1)
+	require.NoError(t, s.db.Exec("UPDATE kunci_login SET diperbarui_pada = now() - interval '2 hours' WHERE email_hash IN (?, ?)",
+		usecase.HashEmailKunci("hantu.lama@gardainflasi.id"), usecase.HashEmailKunci("masih.terkunci@gardainflasi.id")).Error)
+	require.NoError(t, s.db.Exec("UPDATE kunci_login SET terkunci_sampai = now() + interval '5 minutes' WHERE email_hash = ?",
+		usecase.HashEmailKunci("masih.terkunci@gardainflasi.id")).Error)
 
 	repo := newRepo(s)
-	n, err := repo.HapusKunciUsang(t.Context(), time.Now().Add(-time.Hour))
+	n, err := repo.HapusKunciLoginUsang(t.Context(), time.Now().Add(-time.Hour), time.Now(), 1000)
 
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, n)
+	// Basis data dipakai bersama tes lain; yang dipastikan adalah nasib tiga baris milik tes ini.
+	assert.GreaterOrEqual(t, n, int64(1))
 	assert.Nil(t, s.kunciDi(t, "hantu.lama@gardainflasi.id"))
 	assert.NotNil(t, s.kunciDi(t, emailBiasa), "baris yang baru diperbarui tetap")
+	assert.NotNil(t, s.kunciDi(t, "masih.terkunci@gardainflasi.id"), "kunci yang masih berlaku tidak dihapus walau usang")
 }

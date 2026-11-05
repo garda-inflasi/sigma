@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand/v2"
 	"strings"
 	"time"
 
@@ -33,8 +32,6 @@ var jam = time.Now
 // Alasan kegagalan yang dicatat di login_attempts dan audit.
 const (
 	alasanAkunTerkunci = "account_locked"
-	// peluangPangkas: seperseratus percobaan yang lolos sekalian memangkas baris kunci_login yang usang.
-	peluangPangkas = 100
 )
 
 // hashPalsu adalah hash bcrypt (cost sama dengan crypto.HashPassword) dari kata sandi yang tidak dimiliki
@@ -108,9 +105,6 @@ func (uc *UseCase) mulaiPercobaan(ctx context.Context, email string) (string, er
 	if keadaan.Terkunci(now) {
 		uc.log.Warn("login: akun terkunci karena percobaan gagal berulang", map[string]interface{}{"gagal": keadaan.Gagal, "sampai": keadaan.TerkunciSampai})
 	}
-	if rand.IntN(peluangPangkas) == 0 {
-		uc.pangkasKunci(ctx)
-	}
 	return hash, nil
 }
 
@@ -145,20 +139,6 @@ func (uc *UseCase) auditTerkunci(ctx context.Context, email string) {
 // sandi pengguna sungguhan.
 func perlambatPalsu(password string) {
 	_ = crypto.VerifyPassword(password, hashPalsu)
-}
-
-func (uc *UseCase) pangkasKunci(ctx context.Context) {
-	if _, err := uc.BersihkanKunciKedaluwarsa(ctx); err != nil {
-		uc.log.Warn("login: gagal memangkas kunci usang", map[string]interface{}{"error": err.Error()})
-	}
-}
-
-// BersihkanKunciKedaluwarsa menghapus baris kunci_login yang sudah tidak berarti (lebih dari dua kali durasi
-// kunci sejak diperbarui terakhir: kunci dan jendelanya sudah berakhir). Dipanggil sesekali oleh login dan
-// dapat dipanggil job pembersihan. Mengembalikan jumlah baris yang dihapus.
-func (uc *UseCase) BersihkanKunciKedaluwarsa(ctx context.Context) (int64, error) {
-	_, durasi := uc.batasKunci()
-	return uc.repo.HapusKunciUsang(ctx, jam().Add(-2*durasi))
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────

@@ -117,12 +117,3 @@ func (r *Repository) KunciAktif(ctx context.Context, emailHash []string, now tim
 	}
 	return aktif, nil
 }
-
-// HapusKunciUsang memangkas baris yang terakhir diperbarui sebelum batas.
-func (r *Repository) HapusKunciUsang(ctx context.Context, sebelum time.Time) (int64, error) {
-	res := r.db.WithContext(ctx).Where("diperbarui_pada < ?", sebelum).Delete(&domain.KunciLogin{})
-	if res.Error != nil {
-		return 0, fmt.Errorf("pangkas kunci login: %w", res.Error)
-	}
-	return res.RowsAffected, nil
-}

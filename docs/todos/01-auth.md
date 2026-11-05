@@ -92,14 +92,51 @@
 
 ---
 
+## 01-F — Lockout akun satu mekanisme dan pesan galat login konsisten _(backlog lanjutan)_
+
+**Tujuan:** satu cara menghitung percobaan gagal yang tidak membocorkan email terdaftar, admin bisa membuka kunci, dan setiap kegagalan login (Go → BFF → form) memakai kode mesin dan pesan Indonesia yang sama. Migration `000105_01f_lockout_akun.sql` (tabel `kunci_login`).
+
+1. **Desain lockout** ([lockout.go](../../apps/api/internal/auth/usecase/lockout.go), [kunci.go](../../apps/api/internal/auth/domain/kunci.go), [repo_lockout.go](../../apps/api/internal/auth/repository/postgres/repo_lockout.go))
+   - **Dihitung per email ternormalisasi** (`lower(trim)`), bukan per `user_id`: kuncinya SHA-256 email di `kunci_login (email_hash PK, gagal, jendela_mulai, terkunci_sampai, diperbarui_pada)`. Email tak terdaftar hanya tersimpan sebagai hash. `login_attempts` tetap catatan peristiwa (IP, alasan); `CountRecentFailedAttempts` dan `accountLocked` dihapus supaya mekanismenya satu.
+   - **Aturan:** `MaxFailedAttempts` (5) kegagalan dalam jendela `LockoutDuration` (15 menit, dihitung sejak kegagalan pertama) memasang `terkunci_sampai = waktu kegagalan ke-5 + 15 menit`. Selama terkunci, semua percobaan (juga dengan kata sandi benar) ditolak **tanpa diperiksa dan tanpa mengubah apa pun**, jadi percobaan baru tidak pernah memperpanjang kunci. Sesudah kunci berakhir atau jendela habis, hitungan mulai dari nol. Nilai konfigurasi 0/negatif jatuh ke bawaan (lockout tidak bisa mati tanpa sengaja).
+   - **Atomik:** setiap percobaan "dipesan" sebelum rahasianya diperiksa (`SELECT … FOR UPDATE` pada baris email), jadi ledakan permintaan serentak tidak bisa melewati batas (teruji: 24 tebakan serentak, tepat 5 diperiksa). Kata sandi benar yang masih menunggu OTP, akun nonaktif dengan kata sandi benar, dan galat infrastruktur mengembalikan percobaannya (bukan tebakan salah).
+   - **Reset hanya oleh:** login lengkap (`completeLogin`: kata sandi benar, dan OTP lolos bila ada) dan buka-kunci admin. Kata sandi benar yang menunggu OTP tidak menghapus hitungan (kalau iya, kata sandi bocor memberi tebakan OTP tanpa batas). Atur ulang kata sandi lewat email dan reset oleh admin **tidak** membuka kunci (admin punya aksi buka-kunci).
+   - **Satu kunci untuk:** login (kata sandi), validasi OTP login, kode pertama setup MFA, dan kata sandi lama pada ganti kata sandi. Konfirmasi kata sandi di nonaktifkan-MFA/kode-cadangan butuh sesi sah dan memang tidak pernah dihitung; tidak diubah.
+   - **Anti-enumerasi:** kunci diperiksa sebelum akun dicari; email tak terdaftar, akun tanpa kata sandi (SSO), dan akun terdaftar mendapat urutan jawaban identik (401 ×5, lalu 423 dengan akhir kunci yang sama), dan email tak terdaftar tetap membandingkan bcrypt dengan hash tak bertuan (`hashPalsu`) supaya waktu jawab sama. `ACCOUNT_INACTIVE` (403) sebelumnya dijawab **sebelum** kata sandi diperiksa (membocorkan akun nonaktif); kini hanya setelah kata sandi benar, kata sandi salah tetap 401 dan dihitung. Galat basis data saat mencari akun atau memesan percobaan ditolak (500) dan tidak dihitung.
+   - **Kompromi yang disadari:** pihak ketiga yang tahu sebuah email bisa mengunci akun itu 15 menit per 5 tebakan (standar lockout per akun, sama dengan PRD §6.1 #5); penawarnya kunci otomatis berakhir, buka-kunci admin, dan batas laju per IP (BFF 5/menit, API 600/menit). Hash email tanpa garam (bukan rahasia: email ada polos di `pengguna`).
+   - **Pembersihan:** `UseCase.BersihkanKunciKedaluwarsa` memangkas baris yang tak diperbarui lebih dari 2× durasi; dipanggil acak (1%) saat login dan bisa dipasang ke job pembersihan.
+2. **Admin:** `POST /v1/users/:id/buka-kunci` (`pengguna.kelola`, audit `UNLOCK_USER` dengan `terkunci_sebelumnya`; idempoten, 404 bila pengguna tak ada). Daftar dan detail pengguna memuat `terkunci_sampai` selama terkunci. `/pengguna` menampilkan lencana "Terkunci · sisa waktu" (berdetak) dan aksi "Buka kunci" di menu baris. OpenAPI disinkronkan.
+3. **Kontrak galat (Go → BFF → UI).** Kode di kolom `code` amplop, diteruskan BFF tanpa diubah; satu tabel pesan di [pesan-login.ts](../../apps/web/src/lib/auth/pesan-login.ts).
+
+   | Kode | HTTP | Pesan (web) | Data |
+   |---|---|---|---|
+   | `INVALID_CREDENTIALS` | 401 | Email atau password salah. | (sama untuk email tak terdaftar) |
+   | `ACCOUNT_LOCKED` | **423** | Akun terkunci karena terlalu banyak percobaan gagal. Coba lagi dalam _N_. | `terkunci_sampai`, `sisa_detik`, header `Retry-After` |
+   | `ACCOUNT_INACTIVE` | 403 | Akun Anda tidak aktif. Hubungi administrator. | hanya setelah kata sandi benar |
+   | `RATE_LIMITED` (lahir di BFF) | 429 | Terlalu banyak percobaan dari perangkat ini. Coba lagi dalam _N_. | `sisa_detik`, `Retry-After` |
+   | `MFA_CODE_INVALID` | 401 (400 di setup) | Kode verifikasi tidak valid. … | |
+   | `MFA_CHALLENGE_EXPIRED` | 401 | Sesi verifikasi berakhir. Masuk ulang dengan kata sandi Anda. | form menawarkan kembali ke /masuk |
+   | `PASSWORD_CHANGE_REQUIRED` | 403 | Anda harus mengganti kata sandi sebelum melanjutkan. | (sudah ada) |
+
+   423 dipilih untuk kunci akun supaya tidak tertukar dengan 429 batas laju BFF per IP (dua hal berbeda yang dulu sama-sama 429). Kiriman form login dialihkan ke `/masuk?error=…&kode=…&sampai=<epoch detik>`: pesan selalu dari tabel (kode dikenal mengalahkan teks `error`), `sampai` absolut sehingga muat ulang tidak mengulang hitungan. Form masuk, OTP, lupa/atur ulang/ganti kata sandi menampilkan hitung mundur (`role="timer"`, dirender setelah hidrasi) dan menahan tombol kirim selama menunggu.
+4. **"Password kedaluwarsa" — keputusan.** Tidak ada kebijakan umur kata sandi yang aktif: PRD §6.1 #11 hanya menyebut `PASSWORD_EXPIRY_DAYS` dengan bawaan 0 (nonaktif), dan tidak ada kolom/aturan di kode. Tidak dibuat kebijakan baru. Kata sandi yang wajib diganti, apa pun sebabnya, lewat alur wajib-ganti yang ada (`wajib_ganti_password` → 403 `PASSWORD_CHANGE_REQUIRED` → `/ganti-password`) dan pesannya ada di tabel di atas. Bila `PASSWORD_EXPIRY_DAYS` kelak diaktifkan, tempatnya di `completeLogin`: nyalakan `wajib_ganti_password` bila `password_diubah_pada` lebih tua dari batas, tanpa kode galat baru.
+5. **TES**
+   - [x] Go unit: aturan domain (`kunci_test.go`: ambang, akhir kunci, tidak diperpanjang, jendela, kembalikan), usecase (`lockout_test.go`: ambang + akhir kunci, kedaluwarsa, reset setelah berhasil, percobaan ke-5 benar berhasil, email terdaftar vs tak terdaftar identik, nonaktif, SSO, normalisasi email, fail-closed, MFA berbagi kunci, setup MFA, ganti kata sandi, audit, buka-kunci).
+   - [x] Go integrasi (dockertest, `integration/lockout_test.go`): status/kode/`Retry-After`, kunci tidak bergeser, serentak, urutan jawaban identik untuk email tak terdaftar, hanya hash tersimpan, nonaktif, MFA, ganti kata sandi, buka-kunci (izin, 404, audit, daftar/detail), pangkas.
+   - [x] Web (node:test): `pesan-login.test.ts`, `galat-auth.test.ts`, `rate-limit.test.ts`, `login-route.test.ts` (429 body/header, alihan form), `pengguna.test.ts`.
+   - [x] E2E [lockout.spec.ts](../../apps/web/e2e/lockout.spec.ts): kunci lewat API langsung, pesan + hitung mundur di form, kata sandi benar tetap ditolak, buka-kunci dari /pengguna, masuk berhasil, email tak terdaftar identik, pesan 429 di form. Pemakaian anggaran BFF: 2 kiriman form + sampai 5 permintaan langsung (dicatat lewat `anggaranBff.catat`) + 1 kiriman form ditolak 429.
+   - Catatan: stack demo harus dibangun ulang (`make docker/demo/up`) agar API Go dan BFF memakai kode baru dan migration 000105.
+
+---
+
 ## Backlog lanjutan (belum dijadwalkan)
 
 - [ ] **SSO Google:** tombolnya sudah dihapus dari login (rute `/v1/auth/sso/*` tidak pernah ada, tombol berujung 404). Bila SSO masuk scope (PRD §5.1 menyebut SSO): OIDC + pemetaan akun ke peran; migration `sso_provider`, `sso_subject` dengan UNIQUE gabungan (`password_hash` sudah nullable); lalu pasang kembali tombolnya bersama e2e-nya.
-- [ ] Mekanisme lockout satu saja: hitung dari `login_attempts` (sudah ber-index) atau kolom `terkunci_sampai`; buka-kunci oleh admin.
+- [x] Mekanisme lockout satu saja: hitung dari `login_attempts` (sudah ber-index) atau kolom `terkunci_sampai`; buka-kunci oleh admin. _(selesai: lihat 01-F; dihitung per email di tabel `kunci_login`)_
 - [ ] Daftar dan pencabutan sesi aktif (`refresh_tokens`: `last_used_at`, `user_agent`; index `(user_id, revoked_at)`).
 - [ ] Rotasi refresh token dengan deteksi pemakaian ulang (verifikasi sudah ada).
 - [ ] Job pembersihan baris kedaluwarsa `jwt_blacklist`, `refresh_tokens`, `password_reset_tokens`.
-- [ ] Pesan error login konsisten (akun terkunci, password kedaluwarsa, 429).
+- [x] Pesan error login konsisten (akun terkunci, password kedaluwarsa, 429). _(selesai: lihat 01-F)_
 - [ ] Logout membersihkan store offline lapangan (IndexedDB). Cache TanStack Query sudah bersih karena logout memuat ulang halaman penuh (lihat 01-D).
 - [ ] Coverage usecase auth dari 63% ke ≥ 80% (MFA, reset, lockout).
 - [ ] Tes `lib/bff/*` (cookies, csrf, rate-limit, safe-redirect), tes middleware. (E2E halaman auth sudah ada: 01-D.)

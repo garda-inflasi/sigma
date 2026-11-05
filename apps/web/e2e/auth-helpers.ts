@@ -206,6 +206,18 @@ export const anggaranBff = {
       await new Promise((r) => setTimeout(r, tunggu));
     }
   },
+
+  /**
+   * Mencatat `n` pemakaian jendela laju tanpa menunggu. Untuk tes yang sengaja menghabiskan jendela dengan
+   * permintaan langsung ke route BFF (bukan lewat `pakai`): setiap permintaan yang DITERIMA server (bukan
+   * 429) dicatat di sini supaya tes sesudahnya menunggu dengan benar lewat `pakai`.
+   */
+  catat(n = 1): void {
+    const sekarang = Date.now();
+    const aktif = muatCatatan().filter((t) => sekarang - t < JENDELA_MS + MARGIN_MS);
+    for (let i = 0; i < n; i++) aktif.push(sekarang);
+    writeFileSync(BERKAS_ANGGARAN, JSON.stringify(aktif));
+  },
 };
 
 // ── Pengguna uji sementara ─────────────────────────────────────────────────

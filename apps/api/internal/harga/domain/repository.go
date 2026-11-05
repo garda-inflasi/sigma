@@ -99,7 +99,9 @@ type Repository interface {
 	// mengembalikan entri yang sudah tersimpan. Entri petugas lain yang bentrok
 	// menolak penyimpanan kecuali Pengiriman.Pertahankan.
 	Simpan(ctx context.Context, kirim Pengiriman) (HasilSimpan, error)
-	// Transisi menerapkan aksi pada id yang statusnya memenuhi syarat (dan
-	// memenuhi pemisahan tugas) lalu mengembalikan id yang benar-benar berubah.
-	Transisi(ctx context.Context, ids []string, aksi BulkAction, aktorID string, waktu time.Time) ([]string, error)
+	// Transisi menerapkan aksi dalam satu transaksi pada id yang memenuhi Evaluasi dan
+	// mencatat riwayat statusnya. Hasilnya satu per id, urut seperti ids.
+	Transisi(ctx context.Context, ids []string, aksi BulkAction, aktorID, alasan string, waktu time.Time) ([]HasilTransisi, error)
+	// Riwayat mengembalikan perpindahan status entri, yang terlama lebih dulu.
+	Riwayat(ctx context.Context, entriID string) ([]RiwayatView, error)
 }

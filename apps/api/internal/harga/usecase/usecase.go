@@ -227,15 +227,30 @@ func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID st
 	return HasilKirim{Entri: entri}, nil
 }
 
-// HasilBulk melaporkan jumlah entri yang berubah dan yang dilewati.
+// Batas panjang alasan tertulis.
+const (
+	MinAlasan = 3
+	MaxAlasan = 1000
+)
+
+// RincianBulk menjelaskan satu entri yang dilewati pada aksi massal.
+type RincianBulk struct {
+	ID    string
+	Sebab string
+}
+
+// HasilBulk melaporkan jumlah entri yang berubah dan yang dilewati beserta sebabnya.
 type HasilBulk struct {
 	Berhasil int
 	Gagal    int
+	// Rincian memuat tiap entri yang dilewati, urut seperti permintaan.
+	Rincian []RincianBulk
 }
 
-// BulkAction menjalankan aksi massal. Entri yang statusnya tidak memenuhi syarat
-// aksi, atau yang dicatat oleh pelaku sendiri (pemisahan tugas), dilewati dan dihitung gagal.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID string) (HasilBulk, error) {
+// BulkAction menjalankan aksi massal sesuai state machine domain.Evaluasi. Entri yang tidak ditemukan,
+// statusnya tidak memenuhi syarat aksi, atau yang melanggar pemisahan tugas dilewati dan dilaporkan di
+// Rincian. Alasan wajib untuk tolak dan tampil bagi penginput. Pemeriksaan izin aktor ada di delivery.
+func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID, alasan string) (HasilBulk, error) {
 	action := domain.BulkAction(aksi)
 	if !action.Valid() {
 		return HasilBulk{}, ErrInvalidAction
@@ -244,24 +259,66 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID s
 	if len(unik) == 0 || len(unik) > MaxBulkIDs {
 		return HasilBulk{}, fmt.Errorf("%w: jumlah id harus 1 sampai %d", ErrValidasi, MaxBulkIDs)
 	}
+	alasan = strings.TrimSpace(alasan)
+	if len(alasan) > MaxAlasan || (action.AlasanWajib() && len(alasan) < MinAlasan) {
+		return HasilBulk{}, fmt.Errorf("%w: alasan %s", ErrValidasi, syaratAlasan(action))
+	}
 
-	changed, err := uc.repo.Transisi(ctx, unik, action, aktorID, uc.now())
+	hasil, err := uc.repo.Transisi(ctx, unik, action, aktorID, alasan, uc.now())
 	if err != nil {
 		uc.log.Error("bulk action failed", map[string]interface{}{"action": aksi, "count": len(unik), "error": err.Error()})
 		return HasilBulk{}, fmt.Errorf("bulk action: %w", err)
 	}
 
-	hasil := HasilBulk{Berhasil: len(changed), Gagal: len(unik) - len(changed)}
-	if len(changed) == 0 {
-		return hasil, nil
+	var out HasilBulk
+	var berubah []string
+	for _, h := range hasil {
+		if h.Diterapkan() {
+			berubah = append(berubah, h.ID)
+			continue
+		}
+		out.Rincian = append(out.Rincian, RincianBulk{ID: h.ID, Sebab: h.Sebab})
 	}
+	out.Berhasil, out.Gagal = len(berubah), len(out.Rincian)
+	if out.Berhasil == 0 {
+		return out, nil
+	}
+
 	uc.refresh.Trigger()
+	metadata := map[string]any{"ids": berubah, "gagal": out.Gagal}
+	if alasan != "" {
+		metadata["alasan"] = alasan
+	}
 	uc.catat(ctx, audit.Entry{
 		AktorID: aktorID, Aksi: "HARGA_" + strings.ToUpper(aksi), Entitas: "entri_harga",
-		EntitasID: fmt.Sprintf("%d entri", hasil.Berhasil), Hasil: audit.HasilBerhasil,
-		Metadata: map[string]any{"ids": changed, "gagal": hasil.Gagal},
+		EntitasID: fmt.Sprintf("%d entri", out.Berhasil), Hasil: audit.HasilBerhasil, Metadata: metadata,
 	})
-	return hasil, nil
+	return out, nil
+}
+
+func syaratAlasan(action domain.BulkAction) string {
+	if action.AlasanWajib() {
+		return fmt.Sprintf("wajib diisi (%d sampai %d karakter)", MinAlasan, MaxAlasan)
+	}
+	return fmt.Sprintf("maksimal %d karakter", MaxAlasan)
+}
+
+// Riwayat mengembalikan perpindahan status entri. Pemanggil tanpa hak melihat semua entri
+// (semua false) hanya boleh membuka entri yang ia catat sendiri.
+func (uc *UseCase) Riwayat(ctx context.Context, id, pemanggilID string, semua bool) ([]domain.RiwayatView, error) {
+	entri, err := uc.GetHargaByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !semua && (entri.PetugasID == nil || *entri.PetugasID != pemanggilID) {
+		return nil, ErrNotFound
+	}
+	items, err := uc.repo.Riwayat(ctx, id)
+	if err != nil {
+		uc.log.Error("riwayat harga failed", map[string]interface{}{"id": id, "error": err.Error()})
+		return nil, fmt.Errorf("riwayat harga: %w", err)
+	}
+	return items, nil
 }
 
 // catat menulis audit; kegagalan mencatat tidak membatalkan aksi yang sudah tersimpan.

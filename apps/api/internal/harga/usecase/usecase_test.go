@@ -56,10 +56,16 @@ func (m *mockRepository) Simpan(ctx context.Context, kirim domain.Pengiriman) (d
 	return hasil, args.Error(1)
 }
 
-func (m *mockRepository) Transisi(ctx context.Context, ids []string, aksi domain.BulkAction, aktor string, waktu time.Time) ([]string, error) {
-	args := m.Called(ctx, ids, aksi, aktor, waktu)
-	changed, _ := args.Get(0).([]string)
-	return changed, args.Error(1)
+func (m *mockRepository) Transisi(ctx context.Context, ids []string, aksi domain.BulkAction, aktor, alasan string, waktu time.Time) ([]domain.HasilTransisi, error) {
+	args := m.Called(ctx, ids, aksi, aktor, alasan, waktu)
+	hasil, _ := args.Get(0).([]domain.HasilTransisi)
+	return hasil, args.Error(1)
+}
+
+func (m *mockRepository) Riwayat(ctx context.Context, entriID string) ([]domain.RiwayatView, error) {
+	args := m.Called(ctx, entriID)
+	items, _ := args.Get(0).([]domain.RiwayatView)
+	return items, args.Error(1)
 }
 
 var fixedNow = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
@@ -300,16 +306,21 @@ func TestCreateHarga_RepoErrorSkipsAudit(t *testing.T) {
 	assert.Empty(t, recorder.Entries())
 }
 
-func TestBulkAction_ReportsChangedAndSkipped(t *testing.T) {
+func lolos(id string) domain.HasilTransisi { return domain.HasilTransisi{ID: id} }
+
+func lewat(id, sebab string) domain.HasilTransisi { return domain.HasilTransisi{ID: id, Sebab: sebab} }
+
+func TestBulkAction_ReportsChangedAndSkippedWithReasons(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	// id ganda dan kosong disaring: tiga id unik, dua berubah.
-	repo.On("Transisi", mock.Anything, []string{"a", "b", "c"}, domain.BulkValidasi, "koordinator", fixedNow).Return([]string{"a", "c"}, nil)
+	repo.On("Transisi", mock.Anything, []string{"a", "b", "c"}, domain.BulkValidasi, "koordinator", "", fixedNow).
+		Return([]domain.HasilTransisi{lolos("a"), lewat("b", domain.SebabStatus), lolos("c")}, nil)
 
-	hasil, err := uc.BulkAction(t.Context(), []string{"a", "b", "a", "", "c"}, "validasi", "koordinator")
+	hasil, err := uc.BulkAction(t.Context(), []string{"a", "b", "a", "", "c"}, "validasi", "koordinator", "")
 
 	require.NoError(t, err)
-	assert.Equal(t, HasilBulk{Berhasil: 2, Gagal: 1}, hasil)
+	assert.Equal(t, HasilBulk{Berhasil: 2, Gagal: 1, Rincian: []RincianBulk{{ID: "b", Sebab: domain.SebabStatus}}}, hasil)
 
 	entry, ok := recorder.Last()
 	require.True(t, ok)
@@ -318,36 +329,63 @@ func TestBulkAction_ReportsChangedAndSkipped(t *testing.T) {
 	assert.Equal(t, map[string]any{"ids": []string{"a", "c"}, "gagal": 1}, entry.Metadata)
 }
 
+func TestBulkAction_TolakRequiresReasonAndAuditsIt(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+
+	for _, alasan := range []string{"", "  ", "ab"} {
+		_, err := uc.BulkAction(t.Context(), []string{"a"}, "tolak", "u", alasan)
+		require.ErrorIs(t, err, ErrValidasi, "alasan %q", alasan)
+	}
+	repo.AssertNotCalled(t, "Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	repo.On("Transisi", mock.Anything, []string{"a"}, domain.BulkTolak, "u", "harga tidak wajar", fixedNow).Return([]domain.HasilTransisi{lolos("a")}, nil)
+	_, err := uc.BulkAction(t.Context(), []string{"a"}, "tolak", "u", "  harga tidak wajar ")
+	require.NoError(t, err)
+	entry, _ := recorder.Last()
+	assert.Equal(t, "harga tidak wajar", entry.Metadata["alasan"])
+}
+
+func TestBulkAction_ReasonIsOptionalForOtherActions(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	repo.On("Transisi", mock.Anything, []string{"a"}, domain.BulkKembalikan, "u", "", fixedNow).Return([]domain.HasilTransisi{lolos("a")}, nil)
+
+	_, err := uc.BulkAction(t.Context(), []string{"a"}, "kembalikan", "u", "")
+
+	require.NoError(t, err)
+}
+
 func TestBulkAction_InvalidAction(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
 
-	_, err := uc.BulkAction(t.Context(), []string{"a"}, "hapus", "u")
+	_, err := uc.BulkAction(t.Context(), []string{"a"}, "hapus", "u", "")
 
 	assert.ErrorIs(t, err, ErrInvalidAction)
-	repo.AssertNotCalled(t, "Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	repo.AssertNotCalled(t, "Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestBulkAction_RejectsEmptyAndOversizedIDs(t *testing.T) {
 	uc, _ := newTestUseCase(new(mockRepository))
 
-	_, err := uc.BulkAction(t.Context(), []string{"", ""}, "validasi", "u")
+	_, err := uc.BulkAction(t.Context(), []string{"", ""}, "validasi", "u", "")
 	assert.ErrorIs(t, err, ErrValidasi)
 
 	banyak := make([]string, MaxBulkIDs+1)
 	for i := range banyak {
 		banyak[i] = string(rune('A'+i%26)) + time.Duration(i).String()
 	}
-	_, err = uc.BulkAction(t.Context(), banyak, "validasi", "u")
+	_, err = uc.BulkAction(t.Context(), banyak, "validasi", "u", "")
 	assert.ErrorIs(t, err, ErrValidasi)
 }
 
 func TestBulkAction_RepoErrorSkipsAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
-	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("db mati"))
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("db mati"))
 
-	_, err := uc.BulkAction(t.Context(), []string{"a"}, "tolak", "u")
+	_, err := uc.BulkAction(t.Context(), []string{"a"}, "validasi", "u", "")
 
 	require.Error(t, err)
 	assert.Empty(t, recorder.Entries())
@@ -357,37 +395,54 @@ func TestBulkAction_AuditFailureDoesNotUndoAction(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	recorder.Err = errors.New("audit mati")
-	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"a"}, nil)
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]domain.HasilTransisi{lolos("a")}, nil)
 
-	hasil, err := uc.BulkAction(t.Context(), []string{"a"}, "publikasi", "u")
+	hasil, err := uc.BulkAction(t.Context(), []string{"a"}, "publikasi", "u", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Berhasil)
 }
 
-func TestBulkAction_NothingChangedIsNotAudited(t *testing.T) {
+func TestBulkAction_NothingChangedIsNotAuditedOrRefreshed(t *testing.T) {
 	repo := new(mockRepository)
-	uc, recorder := newTestUseCase(repo)
-	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+	uc, recorder, refresh := newTestUseCaseWithRefresher(repo)
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]domain.HasilTransisi{lewat("a", domain.SebabTidakDitemukan)}, nil)
 
-	hasil, err := uc.BulkAction(t.Context(), []string{"a"}, "validasi", "u")
+	hasil, err := uc.BulkAction(t.Context(), []string{"a"}, "validasi", "u", "")
 
 	require.NoError(t, err)
-	assert.Equal(t, HasilBulk{Gagal: 1}, hasil)
+	assert.Equal(t, HasilBulk{Gagal: 1, Rincian: []RincianBulk{{ID: "a", Sebab: domain.SebabTidakDitemukan}}}, hasil)
 	assert.Empty(t, recorder.Entries())
+	assert.Zero(t, refresh.triggers, "tanpa perubahan tidak perlu menyegarkan agregat")
 }
 
-func TestBulkAction_RefreshesDashboardOnlyWhenRowsChanged(t *testing.T) {
+func TestBulkAction_RefreshesDashboardWhenRowsChanged(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _, refresh := newTestUseCaseWithRefresher(repo)
-	repo.On("Transisi", mock.Anything, []string{"a"}, domain.BulkValidasi, "u", fixedNow).Return([]string{}, nil).Once()
-	repo.On("Transisi", mock.Anything, []string{"b"}, domain.BulkValidasi, "u", fixedNow).Return([]string{"b"}, nil).Once()
+	repo.On("Transisi", mock.Anything, []string{"b"}, domain.BulkValidasi, "u", "", fixedNow).Return([]domain.HasilTransisi{lolos("b")}, nil)
 
-	_, err := uc.BulkAction(t.Context(), []string{"a"}, "validasi", "u")
-	require.NoError(t, err)
-	assert.Zero(t, refresh.triggers, "tanpa perubahan tidak perlu menyegarkan agregat")
+	_, err := uc.BulkAction(t.Context(), []string{"b"}, "validasi", "u", "")
 
-	_, err = uc.BulkAction(t.Context(), []string{"b"}, "validasi", "u")
 	require.NoError(t, err)
 	assert.Equal(t, 1, refresh.triggers)
+}
+
+func TestRiwayat_OnlyOwnEntryWithoutViewPermission(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	pemilik := "mahasiswa_1"
+	repo.On("GetByID", mock.Anything, "e1").Return(&domain.EntriView{ID: "e1", PetugasID: &pemilik}, nil)
+	repo.On("Riwayat", mock.Anything, "e1").Return([]domain.RiwayatView{{Ke: domain.StatusDiajukan}}, nil)
+
+	items, err := uc.Riwayat(t.Context(), "e1", "mahasiswa_1", false)
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+
+	_, err = uc.Riwayat(t.Context(), "e1", "mahasiswa_2", false)
+	assert.ErrorIs(t, err, ErrNotFound, "entri petugas lain tampil sebagai tidak ada")
+
+	items, err = uc.Riwayat(t.Context(), "e1", "koordinator", true)
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
 }

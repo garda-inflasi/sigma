@@ -13,5 +13,7 @@ func init() {
 		smokeCase{Name: "harga: ringkasan", Method: http.MethodGet, Path: "/v1/harga/ringkasan", Email: berhak, ForbiddenEmail: takBerhak},
 		// Riwayat entri milik petugas lapangan sendiri; peran lihat-saja tidak punya harga.input.
 		smokeCase{Name: "harga: riwayat petugas", Method: http.MethodGet, Path: "/v1/harga/saya", Email: takBerhak, MinItems: map[string]int{"": 50}, ForbiddenEmail: "strategis.bi@gardainflasi.id"},
+		// Entri HRG-D10-... ada di setiap seed (sepuluh hari lalu); riwayatnya dimulai dari pencatatan.
+		smokeCase{Name: "harga: riwayat status entri", Method: http.MethodGet, Path: "/v1/harga/HRG-D10-00-00-K/riwayat", Email: berhak, MinItems: map[string]int{"": 1}, ForbiddenEmail: "superadmin@gardainflasi.id"},
 	)
 }

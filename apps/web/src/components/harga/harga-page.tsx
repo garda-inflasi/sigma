@@ -14,7 +14,8 @@ import { toneClass } from "@/lib/design/tokens";
 import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { fadeUp, stagger } from "@/lib/motion/presets";
 import type { HargaParams } from "@/lib/api/harga";
-import { useEntriHarga, useRingkasanHarga } from "@/lib/query/hooks";
+import { MODE_MOCK } from "@/lib/api/client";
+import { useEntriHarga, useRingkasanHarga, useRiwayatStatus } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { FACET_STATUS_ENTRI, useHargaBulkActions, useHargaColumns } from "./harga-table";
@@ -47,6 +48,28 @@ function AlurEntri({ e }: { e: EntriHarga }) {
         );
       })}
     </motion.ol>
+  );
+}
+
+/** Timeline perpindahan status dari server: siapa, kapan, dan alasannya. */
+function RiwayatEntri({ id }: { id: string }) {
+  const { data, isLoading } = useRiwayatStatus(id);
+  if (isLoading) return <p className="text-sm text-muted-foreground">Memuat riwayat</p>;
+  if (!data?.length) return <p className="text-sm text-muted-foreground">Belum ada riwayat status.</p>;
+  return (
+    <ol className="relative space-y-4 pl-7">
+      <span className="absolute top-2 bottom-2 left-[9px] w-0.5 bg-border" />
+      {data.map((h, i) => (
+        <li key={`${h.ke}-${h.waktu}-${i}`} className="relative">
+          <span className={cn("absolute top-0.5 -left-7 grid size-5 place-items-center rounded-full text-white", h.ke === "DITOLAK" ? toneClass.defisit.bg : toneClass.data.bg)}>
+            {h.ke === "DITOLAK" ? <X className="size-3" /> : <Check className="size-3" />}
+          </span>
+          <p className="text-sm font-medium">{STATUS_ENTRI[h.ke].label}</p>
+          <p className="text-xs text-muted-foreground">{h.olehNama ?? "Sistem"}, {formatTanggal(h.waktu, "d MMM HH.mm")}</p>
+          {h.alasan && <p className="mt-1 text-xs">{h.alasan}</p>}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -110,9 +133,12 @@ export function HargaPage() {
                   <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5"><Camera className="size-4 text-muted-foreground" /><p className="mt-1">{detail.adaFoto ? "Foto terlampir" : "Tanpa foto"}</p></div>
                   <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5">{detail.dalamGeofence ? <MapPin className="size-4 text-normal" /> : <MapPinOff className="size-4 text-waspada" />}<p className="mt-1">{detail.dalamGeofence ? "Dalam geofence" : "Di luar geofence"}</p></div>
                 </div>
+                {detail.alasanPenolakan && (
+                  <p className="rounded-xl bg-defisit-soft p-3 text-sm text-defisit-ink"><span className="font-medium">Alasan penolakan:</span> {detail.alasanPenolakan}</p>
+                )}
                 <div>
                   <p className="mb-3 text-sm font-medium">Alur entri</p>
-                  <AlurEntri e={detail} />
+                  {MODE_MOCK ? <AlurEntri e={detail} /> : <RiwayatEntri id={detail.id} />}
                 </div>
               </div>
             </>

@@ -11,8 +11,8 @@ import {
   type AktivitasLapangan, type AktivitasLapanganResponse, type Heatmap, type HeatmapResponse, type KpiResponse,
 } from "./dashboard";
 import {
-  filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery,
-  type EntriHargaResponse, type HargaParams, type RingkasanHarga,
+  filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery, toRiwayatStatus,
+  type EntriHargaResponse, type HargaParams, type RincianBulk, type RiwayatStatus, type RiwayatStatusResponse, type RingkasanHarga,
 } from "./harga";
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
@@ -36,7 +36,7 @@ import type {
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
-export type BulkResult = { berhasil: number; gagal: number; pesan?: string };
+export type BulkResult = { berhasil: number; gagal: number; pesan?: string; rincian?: RincianBulk[] };
 
 /** Jumlah petugas lapangan mock per kabupaten, untuk target aktivitas harian. */
 const petugasPerKabupatenMock = () => {
@@ -48,9 +48,9 @@ const petugasPerKabupatenMock = () => {
 const get = <T,>(path: string, mock: () => T) => (MODE_MOCK ? mockDelay(mock) : apiFetch<T>(path));
 
 /** Aksi massal generik: POST /v1/{sumber}/bulk { action, ids } */
-export function bulk(sumber: string, aksi: string, ids: string[]): Promise<BulkResult> {
+export function bulk(sumber: string, aksi: string, ids: string[], alasan?: string): Promise<BulkResult> {
   if (MODE_MOCK) return mockDelay({ berhasil: ids.length, gagal: 0 }, 500, 1100);
-  return apiFetch<BulkResult>(`/v1/${sumber}/bulk`, { method: "POST", body: JSON.stringify({ action: aksi, ids }), idempotencyKey: crypto.randomUUID() });
+  return apiFetch<BulkResult>(`/v1/${sumber}/bulk`, { method: "POST", body: JSON.stringify({ action: aksi, ids, alasan }), idempotencyKey: crypto.randomUUID() });
 }
 
 /** Satu halaman cold storage: BFF bila backend aktif, data mock bila tidak. */
@@ -100,6 +100,9 @@ export const api = {
     /** Entri milik pengguna yang masuk (riwayat petugas lapangan). */
     saya: (): Promise<EntriHarga[]> =>
       MODE_MOCK ? mockDelay(m.mockEntri) : apiFetch<EntriHargaResponse[]>("/v1/harga/saya?limit=100").then((rows) => rows.map(toEntriHarga)),
+    /** Perpindahan status satu entri; mode mock tidak punya riwayat tersimpan. */
+    riwayat: (id: string): Promise<RiwayatStatus[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<RiwayatStatusResponse[]>(`/v1/harga/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toRiwayatStatus)),
     ringkasan: (hari = 7): Promise<RingkasanHarga> =>
       MODE_MOCK ? mockDelay(() => ringkasanDariEntri(m.mockEntri())) : apiFetch<RingkasanHarga>(`/v1/harga/ringkasan?hari=${hari}`),
   },

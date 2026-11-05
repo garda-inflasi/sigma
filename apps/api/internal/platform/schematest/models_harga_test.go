@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("harga", &hargadomain.EntriHarga{}, &hargadomain.TugasEntri{})
+	registerModels("harga", &hargadomain.EntriHarga{}, &hargadomain.TugasEntri{}, &hargadomain.RiwayatStatusEntri{})
 }

@@ -445,14 +445,14 @@ func TestBulk_TolakDanKembalikan(t *testing.T) {
 	s := sharedSuite(t)
 	ditolak, dikembalikan := s.buat(t, emailMahasiswa), s.buat(t, emailMahasiswa)
 
-	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "tolak", "ids": []string{ditolak}})))
+	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "tolak", "ids": []string{ditolak}, "alasan": "harga tidak wajar"})))
 	assert.Equal(t, "DITOLAK", s.status(t, ditolak))
 
 	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "kembalikan", "ids": []string{dikembalikan}})))
 	assert.Equal(t, "DRAF", s.status(t, dikembalikan))
 
 	// Entri yang sudah ditolak tidak bisa ditolak lagi atau dikembalikan.
-	again := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "tolak", "ids": []string{ditolak}}))
+	again := data[hasilBulk](t, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "tolak", "ids": []string{ditolak}, "alasan": "ulang"}))
 	assert.Equal(t, hasilBulk{Gagal: 1}, again)
 }
 

@@ -32,6 +32,7 @@ export interface EntriHargaResponse {
   skor_anomali: number;
   ada_foto: boolean;
   dalam_geofence: boolean;
+  alasan_penolakan?: string | null;
 }
 
 export interface RingkasanHarga {
@@ -81,6 +82,7 @@ export function toEntriHarga(r: EntriHargaResponse): EntriHarga {
     skorAnomali: r.skor_anomali,
     adaFoto: r.ada_foto,
     dalamGeofence: r.dalam_geofence,
+    ...(r.alasan_penolakan ? { alasanPenolakan: r.alasan_penolakan } : {}),
   };
 }
 
@@ -123,4 +125,47 @@ export function ringkasanDariEntri(rows: EntriHarga[]): RingkasanHarga {
     ditolak: n("DITOLAK"),
     anomali: rows.filter((e) => Math.abs(e.deviasiPct) > 25).length,
   };
+}
+
+/** Sebab sebuah entri dilewati pada aksi massal (kontrak POST /v1/harga/bulk). */
+export type SebabLewat = "tidak_ditemukan" | "status_tidak_sesuai" | "pemisahan_tugas" | "bukan_pemilik";
+
+export interface RincianBulk {
+  id: string;
+  sebab: SebabLewat;
+}
+
+const KETERANGAN_SEBAB: Record<SebabLewat, string> = {
+  tidak_ditemukan: "tidak ditemukan",
+  status_tidak_sesuai: "status tidak sesuai",
+  pemisahan_tugas: "dicatat oleh Anda sendiri",
+  bukan_pemilik: "bukan entri Anda",
+};
+
+/** Ringkasan sebab entri dilewati, mis. "2 status tidak sesuai, 1 dicatat oleh Anda sendiri". */
+export function ringkasSebab(rincian: RincianBulk[] | undefined): string {
+  const hitung = new Map<SebabLewat, number>();
+  for (const r of rincian ?? []) hitung.set(r.sebab, (hitung.get(r.sebab) ?? 0) + 1);
+  return [...hitung].map(([sebab, n]) => `${n} ${KETERANGAN_SEBAB[sebab] ?? sebab}`).join(", ");
+}
+
+export interface RiwayatStatusResponse {
+  dari: StatusEntri | null;
+  ke: StatusEntri;
+  oleh: string | null;
+  oleh_nama: string | null;
+  waktu: string;
+  alasan: string | null;
+}
+
+export interface RiwayatStatus {
+  dari?: StatusEntri;
+  ke: StatusEntri;
+  olehNama?: string;
+  waktu: string;
+  alasan?: string;
+}
+
+export function toRiwayatStatus(r: RiwayatStatusResponse): RiwayatStatus {
+  return { dari: r.dari ?? undefined, ke: r.ke, olehNama: r.oleh_nama ?? undefined, waktu: r.waktu, alasan: r.alasan ?? undefined };
 }

@@ -17,7 +17,7 @@ func init() {
 		After:     []string{"auth.demo"},
 		Run: func(ctx context.Context, db *gorm.DB, now time.Time) (seedkit.Result, error) {
 			sum, err := hargaseeder.SeedDemo(ctx, db, now)
-			return seedkit.Result{"entri": sum.Entri}, err
+			return seedkit.Result{"entri": sum.Entri, "riwayat": sum.Riwayat}, err
 		},
 	})
 }

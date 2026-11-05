@@ -28,6 +28,8 @@ type EntriHargaResponse struct {
 	SkorAnomali   float64   `json:"skor_anomali"`
 	AdaFoto       bool      `json:"ada_foto"`
 	DalamGeofence bool      `json:"dalam_geofence"`
+	// AlasanPenolakan terisi untuk entri DITOLAK dan terlihat oleh petugas pencatat.
+	AlasanPenolakan *string `json:"alasan_penolakan"`
 }
 
 // HargaDetailResponse menambahkan lokasi, bukti, dan jejak validasi pada baris daftar.
@@ -42,6 +44,8 @@ type HargaDetailResponse struct {
 	DivalidasiPada  *time.Time `json:"divalidasi_pada,omitempty"`
 	DipublikasiOleh *string    `json:"dipublikasi_oleh,omitempty"`
 	DipublikasiPada *time.Time `json:"dipublikasi_pada,omitempty"`
+	DitolakOleh     *string    `json:"ditolak_oleh,omitempty"`
+	DitolakPada     *time.Time `json:"ditolak_pada,omitempty"`
 	DibuatPada      time.Time  `json:"dibuat_pada"`
 	DiupdatePada    time.Time  `json:"diupdate_pada"`
 }
@@ -54,6 +58,7 @@ func ToEntriHargaResponse(e domain.EntriView) EntriHargaResponse {
 		Tipe: e.Tipe, Harga: e.Harga, Satuan: e.Satuan, Kualitas: e.Kualitas,
 		PetugasID: e.PetugasID, PetugasNama: e.PetugasNama, DicatatPada: e.DicatatPada, Status: e.Status,
 		DeviasiPct: e.DeviasiPct, SkorAnomali: e.SkorAnomali, AdaFoto: e.AdaFoto, DalamGeofence: e.DalamGeofence,
+		AlasanPenolakan: e.AlasanPenolakan,
 	}
 }
 
@@ -73,6 +78,7 @@ func ToHargaDetailResponse(e domain.EntriView) HargaDetailResponse {
 		Sumber:             e.Sumber, Lat: e.Lat, Lng: e.Lng, FotoURL: e.FotoURL, Catatan: e.Catatan,
 		DivalidasiOleh: e.DivalidasiOleh, DivalidasiPada: e.DivalidasiPada,
 		DipublikasiOleh: e.DipublikasiOleh, DipublikasiPada: e.DipublikasiPada,
+		DitolakOleh: e.DitolakOleh, DitolakPada: e.DitolakPada,
 		DibuatPada: e.DibuatPada, DiupdatePada: e.DiupdatePada,
 	}
 }
@@ -113,8 +119,36 @@ type VersiServerResponse struct {
 	Petugas     string    `json:"petugas"`
 }
 
-// BulkHargaResponse melaporkan entri yang berubah dan yang dilewati.
+// BulkHargaResponse melaporkan entri yang berubah dan yang dilewati beserta sebabnya.
 type BulkHargaResponse struct {
 	Berhasil int `json:"berhasil"`
 	Gagal    int `json:"gagal"`
+	// Rincian memuat tiap entri yang dilewati; selalu larik (bukan null).
+	Rincian []RincianBulkResponse `json:"rincian"`
+}
+
+// RincianBulkResponse menjelaskan satu entri yang dilewati. Sebab: tidak_ditemukan,
+// status_tidak_sesuai, pemisahan_tugas, atau bukan_pemilik.
+type RincianBulkResponse struct {
+	ID    string `json:"id"`
+	Sebab string `json:"sebab"`
+}
+
+// RiwayatStatusResponse adalah satu perpindahan status entri.
+type RiwayatStatusResponse struct {
+	Dari     *string   `json:"dari"`
+	Ke       string    `json:"ke"`
+	Oleh     *string   `json:"oleh"`
+	OlehNama *string   `json:"oleh_nama"`
+	Waktu    time.Time `json:"waktu"`
+	Alasan   *string   `json:"alasan"`
+}
+
+// ToRiwayatStatusResponses memetakan riwayat; hasilnya selalu larik (bukan null).
+func ToRiwayatStatusResponses(items []domain.RiwayatView) []RiwayatStatusResponse {
+	out := make([]RiwayatStatusResponse, len(items))
+	for i, h := range items {
+		out[i] = RiwayatStatusResponse{Dari: h.Dari, Ke: h.Ke, Oleh: h.Oleh, OlehNama: h.OlehNama, Waktu: h.Waktu, Alasan: h.Alasan}
+	}
+	return out
 }

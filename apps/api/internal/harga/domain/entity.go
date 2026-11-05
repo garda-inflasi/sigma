@@ -52,6 +52,10 @@ type EntriHarga struct {
 	DivalidasiPada  *time.Time `gorm:"column:divalidasi_pada"`
 	DipublikasiOleh *string    `gorm:"column:dipublikasi_oleh"`
 	DipublikasiPada *time.Time `gorm:"column:dipublikasi_pada"`
+	// AlasanPenolakan wajib terisi bila Status DITOLAK (dijaga CHECK di basis data).
+	AlasanPenolakan *string    `gorm:"column:alasan_penolakan"`
+	DitolakOleh     *string    `gorm:"column:ditolak_oleh"`
+	DitolakPada     *time.Time `gorm:"column:ditolak_pada"`
 	DibuatPada      time.Time  `gorm:"column:dibuat_pada;default:now()"`
 	DiupdatePada    time.Time  `gorm:"column:diupdate_pada;default:now()"`
 }
@@ -102,6 +106,9 @@ type EntriView struct {
 	DivalidasiPada  *time.Time `gorm:"column:divalidasi_pada"`
 	DipublikasiOleh *string    `gorm:"column:dipublikasi_oleh"`
 	DipublikasiPada *time.Time `gorm:"column:dipublikasi_pada"`
+	AlasanPenolakan *string    `gorm:"column:alasan_penolakan"`
+	DitolakOleh     *string    `gorm:"column:ditolak_oleh"`
+	DitolakPada     *time.Time `gorm:"column:ditolak_pada"`
 	DibuatPada      time.Time  `gorm:"column:dibuat_pada"`
 	DiupdatePada    time.Time  `gorm:"column:diupdate_pada"`
 }
@@ -110,6 +117,7 @@ type EntriView struct {
 type BulkAction string
 
 const (
+	BulkAjukan     BulkAction = "ajukan"
 	BulkValidasi   BulkAction = "validasi"
 	BulkPublikasi  BulkAction = "publikasi"
 	BulkTolak      BulkAction = "tolak"
@@ -119,7 +127,7 @@ const (
 // Valid memeriksa nama aksi.
 func (a BulkAction) Valid() bool {
 	switch a {
-	case BulkValidasi, BulkPublikasi, BulkTolak, BulkKembalikan:
+	case BulkAjukan, BulkValidasi, BulkPublikasi, BulkTolak, BulkKembalikan:
 		return true
 	}
 	return false

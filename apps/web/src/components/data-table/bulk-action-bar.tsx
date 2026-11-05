@@ -7,6 +7,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SpringButton } from "@/components/garda/spring-button";
 import { useOptionalSession } from "@/lib/auth/session-context";
@@ -20,10 +21,11 @@ export interface BulkAction<T> {
   icon?: LucideIcon;
   perm?: Permission;
   tone?: "default" | "danger" | "data";
-  confirm?: { title: string; description: (n: number) => string; actionLabel: string };
+  /** `alasan` menambah isian teks wajib di dialog (minimal `min` karakter) yang diteruskan ke `run`. */
+  confirm?: { title: string; description: (n: number) => string; actionLabel: string; alasan?: { label: string; min: number } };
   /** Aksi aktif hanya bila seluruh baris terpilih memenuhi syarat */
   enabled?: (rows: T[]) => boolean;
-  run: (rows: T[]) => Promise<unknown> | unknown;
+  run: (rows: T[], alasan?: string) => Promise<unknown> | unknown;
 }
 
 interface Props<T> {
@@ -45,6 +47,7 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
   const role = useOptionalSession()?.role;
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<BulkAction<T> | null>(null);
+  const [alasan, setAlasan] = useState("");
   const allowed = actions.filter((a) => !a.perm || can(role, a.perm));
   const visible = allowed.slice(0, maxVisible);
   const overflow = allowed.slice(maxVisible);
@@ -52,14 +55,19 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
   async function execute(a: BulkAction<T>) {
     setBusy(a.id);
     try {
-      await a.run(rows);
+      await a.run(rows, a.confirm?.alasan ? alasan.trim() : undefined);
       onClear();
     } finally {
       setBusy(null);
       setPending(null);
     }
   }
-  const trigger = (a: BulkAction<T>) => (a.confirm ? setPending(a) : execute(a));
+  const trigger = (a: BulkAction<T>) => {
+    if (!a.confirm) return execute(a);
+    setAlasan("");
+    setPending(a);
+  };
+  const alasanKurang = !!pending?.confirm?.alasan && alasan.trim().length < pending.confirm.alasan.min;
   const isEnabled = (a: BulkAction<T>) => !a.enabled || a.enabled(rows);
 
   return (
@@ -131,9 +139,16 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
             <AlertDialogTitle>{pending?.confirm?.title}</AlertDialogTitle>
             <AlertDialogDescription>{pending?.confirm?.description(rows.length)}</AlertDialogDescription>
           </AlertDialogHeader>
+          {pending?.confirm?.alasan && (
+            <label className="block space-y-1.5 text-sm">
+              <span className="text-muted-foreground">{pending.confirm.alasan.label}</span>
+              <Textarea value={alasan} onChange={(e) => setAlasan(e.target.value)} rows={3} maxLength={1000} className="rounded-xl" />
+            </label>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
             <AlertDialogAction
+              disabled={alasanKurang}
               className={cn("rounded-xl", pending?.tone === "danger" && "bg-defisit hover:bg-kritis")}
               onClick={(e: React.MouseEvent) => {
                 e.preventDefault();

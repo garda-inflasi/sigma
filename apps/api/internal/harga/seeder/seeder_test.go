@@ -209,14 +209,45 @@ func TestSeedDemo_IsIdempotent(t *testing.T) {
 		return n
 	}
 	assert.EqualValues(t, first.Entri, count())
+	riwayat := func() (n int64) {
+		require.NoError(t, db.Raw("SELECT count(*) FROM riwayat_status_entri").Scan(&n).Error)
+		return n
+	}
+	assert.EqualValues(t, first.Riwayat, riwayat())
 
 	// Dijalankan ulang pada waktu berbeda: baris sama, tanggal bergeser.
 	second, err := SeedDemo(t.Context(), db, seedNow.Add(26*time.Hour))
 	require.NoError(t, err)
 	assert.Equal(t, first.Entri, second.Entri)
 	assert.EqualValues(t, first.Entri, count())
+	assert.Equal(t, first.Riwayat, second.Riwayat)
+	assert.EqualValues(t, second.Riwayat, riwayat(), "riwayat ditulis ulang, bukan ditambah")
 
 	var tanpaPetugas int64
 	require.NoError(t, db.Raw("SELECT count(*) FROM entri_harga WHERE petugas_id IS NULL").Scan(&tanpaPetugas).Error)
 	assert.Zero(t, tanpaPetugas)
+}
+
+func TestBuildRiwayat_FollowsEachEntryTrail(t *testing.T) {
+	entri := Build(inputBesar(), seedNow)
+	riwayat := BuildRiwayat(entri)
+
+	perEntri := map[string][]string{}
+	for _, r := range riwayat {
+		perEntri[r.EntriID] = append(perEntri[r.EntriID], r.Ke)
+	}
+	jalur := map[string][]string{
+		domain.StatusDraf:        {domain.StatusDraf},
+		domain.StatusDiajukan:    {domain.StatusDiajukan},
+		domain.StatusDivalidasi:  {domain.StatusDiajukan, domain.StatusDivalidasi},
+		domain.StatusDipublikasi: {domain.StatusDiajukan, domain.StatusDivalidasi, domain.StatusDipublikasi},
+		domain.StatusDitolak:     {domain.StatusDiajukan, domain.StatusDitolak},
+	}
+	for _, e := range entri {
+		assert.Equal(t, jalur[e.Status], perEntri[e.ID], "entri %s berstatus %s", e.ID, e.Status)
+		if e.Status == domain.StatusDitolak {
+			require.NotNil(t, e.AlasanPenolakan, e.ID)
+			require.NotNil(t, e.DitolakOleh, e.ID)
+		}
+	}
 }

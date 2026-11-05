@@ -28,7 +28,8 @@ const viewColumns = `
 	e.status, e.deviasi_pct, e.skor_anomali, e.lat, e.lng, e.dalam_geofence,
 	(e.foto_url IS NOT NULL) AS ada_foto, e.foto_url, e.catatan, e.dicatat_pada,
 	e.petugas_id, u.nama AS petugas_nama, e.divalidasi_oleh, e.divalidasi_pada,
-	e.dipublikasi_oleh, e.dipublikasi_pada, e.dibuat_pada, e.diupdate_pada`
+	e.dipublikasi_oleh, e.dipublikasi_pada, e.alasan_penolakan, e.ditolak_oleh, e.ditolak_pada,
+	e.dibuat_pada, e.diupdate_pada`
 
 // entriView menyusun query entri beserta nama komoditas, pasar, wilayah, dan petugas.
 func (r *Repository) entriView(ctx context.Context) *gorm.DB {
@@ -213,6 +214,9 @@ func (r *Repository) Simpan(ctx context.Context, kirim domain.Pengiriman) (domai
 		}
 
 		hasil.Entri = entri
+		if err := catatRiwayatAwal(tx, entri); err != nil {
+			return err
+		}
 		return tautkanTugas(tx, entri)
 	})
 	if err != nil {
@@ -266,6 +270,15 @@ func cariBentrok(tx *gorm.DB, entri *domain.EntriHarga) (*domain.Bentrok, error)
 	return &found[0], nil
 }
 
+// catatRiwayatAwal mencatat kelahiran entri sebagai perpindahan status pertama.
+func catatRiwayatAwal(tx *gorm.DB, entri *domain.EntriHarga) error {
+	riwayat := domain.RiwayatStatusEntri{EntriID: entri.ID, Ke: entri.Status, Oleh: entri.PetugasID, Waktu: entri.DibuatPada}
+	if err := tx.Create(&riwayat).Error; err != nil {
+		return fmt.Errorf("catat riwayat awal: %w", err)
+	}
+	return nil
+}
+
 // tautkanTugas menautkan entri ke tugas belum selesai milik petugas yang meminta
 // pasar, tipe, dan komoditas ini, lalu menambah progres tugas satu komoditas
 // (sekali per komoditas, paling banyak sebesar target).
@@ -305,42 +318,90 @@ func tautkanTugas(tx *gorm.DB, entri *domain.EntriHarga) error {
 	return nil
 }
 
-// transisi memuat pernyataan UPDATE per aksi. Syarat status dan pemisahan tugas
-// (aktor bukan petugas pencatat) ada di klausa WHERE, sehingga baris yang tidak
-// memenuhi syarat dilewati dan tidak muncul di RETURNING.
-var transisi = map[domain.BulkAction]string{
-	domain.BulkValidasi: `
-		UPDATE entri_harga
-		   SET status = 'DIVALIDASI', divalidasi_oleh = @aktor, divalidasi_pada = @waktu, diupdate_pada = @waktu
-		 WHERE id IN @ids AND status = 'DIAJUKAN' AND petugas_id IS DISTINCT FROM @aktor
-		RETURNING id`,
-	domain.BulkPublikasi: `
-		UPDATE entri_harga
-		   SET status = 'DIPUBLIKASI', dipublikasi_oleh = @aktor, dipublikasi_pada = @waktu, diupdate_pada = @waktu
-		 WHERE id IN @ids AND status = 'DIVALIDASI' AND petugas_id IS DISTINCT FROM @aktor
-		RETURNING id`,
-	domain.BulkTolak: `
-		UPDATE entri_harga
-		   SET status = 'DITOLAK', diupdate_pada = @waktu
-		 WHERE id IN @ids AND status = 'DIAJUKAN'
-		RETURNING id`,
-	domain.BulkKembalikan: `
-		UPDATE entri_harga
-		   SET status = 'DRAF', divalidasi_oleh = NULL, divalidasi_pada = NULL, diupdate_pada = @waktu
-		 WHERE id IN @ids AND status IN ('DIAJUKAN', 'DIVALIDASI')
-		RETURNING id`,
+// perubahanTransisi adalah klausa SET tiap aksi (selain status dan diupdate_pada).
+var perubahanTransisi = map[domain.BulkAction]string{
+	domain.BulkAjukan:     "",
+	domain.BulkValidasi:   ", divalidasi_oleh = @aktor, divalidasi_pada = @waktu",
+	domain.BulkPublikasi:  ", dipublikasi_oleh = @aktor, dipublikasi_pada = @waktu",
+	domain.BulkTolak:      ", alasan_penolakan = @alasan, ditolak_oleh = @aktor, ditolak_pada = @waktu",
+	domain.BulkKembalikan: ", divalidasi_oleh = NULL, divalidasi_pada = NULL",
 }
 
-// Transisi menerapkan aksi massal dan mengembalikan id yang berubah.
-func (r *Repository) Transisi(ctx context.Context, ids []string, aksi domain.BulkAction, aktorID string, waktu time.Time) ([]string, error) {
-	query, ok := transisi[aksi]
+// Transisi mengunci entri yang diminta, menilai tiap id dengan domain.Evaluasi, menerapkan
+// aksi pada yang lolos, dan mencatat riwayat statusnya; semuanya dalam satu transaksi.
+func (r *Repository) Transisi(ctx context.Context, ids []string, aksi domain.BulkAction, aktorID, alasan string, waktu time.Time) ([]domain.HasilTransisi, error) {
+	set, ok := perubahanTransisi[aksi]
 	if !ok {
 		return nil, errors.New("aksi massal tidak dikenal: " + string(aksi))
 	}
-	var changed []string
-	err := r.db.WithContext(ctx).Raw(query, map[string]any{"ids": ids, "aktor": aktorID, "waktu": waktu}).Scan(&changed).Error
+
+	hasil := make([]domain.HasilTransisi, len(ids))
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var rows []struct {
+			ID        string  `gorm:"column:id"`
+			Status    string  `gorm:"column:status"`
+			PetugasID *string `gorm:"column:petugas_id"`
+		}
+		if err := tx.Raw("SELECT id, status::text AS status, petugas_id FROM entri_harga WHERE id IN ? ORDER BY id FOR UPDATE", ids).Scan(&rows).Error; err != nil {
+			return fmt.Errorf("kunci entri: %w", err)
+		}
+		ada := make(map[string]int, len(rows))
+		for i, row := range rows {
+			ada[row.ID] = i
+		}
+
+		var lolos []string
+		var riwayat []domain.RiwayatStatusEntri
+		for i, id := range ids {
+			hasil[i] = domain.HasilTransisi{ID: id, Sebab: domain.SebabTidakDitemukan}
+			idx, found := ada[id]
+			if !found {
+				continue
+			}
+			row := rows[idx]
+			if hasil[i].Sebab = domain.Evaluasi(aksi, row.Status, row.PetugasID, aktorID); hasil[i].Sebab != "" {
+				continue
+			}
+			dari, oleh := row.Status, aktorID
+			entry := domain.RiwayatStatusEntri{EntriID: id, Dari: &dari, Ke: aksi.StatusTujuan(), Oleh: &oleh, Waktu: waktu}
+			if alasan != "" {
+				entry.Alasan = &alasan
+			}
+			riwayat = append(riwayat, entry)
+			lolos = append(lolos, id)
+		}
+		if len(lolos) == 0 {
+			return nil
+		}
+
+		err := tx.Exec("UPDATE entri_harga SET status = @ke, diupdate_pada = @waktu"+set+" WHERE id IN @ids", map[string]any{
+			"ke": aksi.StatusTujuan(), "waktu": waktu, "aktor": aktorID, "alasan": alasan, "ids": lolos,
+		}).Error
+		if err != nil {
+			return fmt.Errorf("aksi massal %s: %w", aksi, err)
+		}
+		if err := tx.Create(&riwayat).Error; err != nil {
+			return fmt.Errorf("catat riwayat status: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("aksi massal %s: %w", aksi, err)
+		return nil, err
 	}
-	return changed, nil
+	return hasil, nil
+}
+
+// Riwayat mengembalikan perpindahan status entri, yang terlama lebih dulu.
+func (r *Repository) Riwayat(ctx context.Context, entriID string) ([]domain.RiwayatView, error) {
+	var items []domain.RiwayatView
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT h.dari::text AS dari, h.ke::text AS ke, h.oleh, u.nama AS oleh_nama, h.waktu, h.alasan
+		  FROM riwayat_status_entri h
+		  LEFT JOIN pengguna u ON u.id = h.oleh
+		 WHERE h.entri_id = ?
+		 ORDER BY h.waktu, h.id`, entriID).Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("riwayat status entri: %w", err)
+	}
+	return items, nil
 }

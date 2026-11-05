@@ -168,7 +168,7 @@ func TestKirimHarga_ConflictWithOtherPetugas(t *testing.T) {
 		pasarLain := entriBody("CBR-RWT", 52000, waktu.Add(-48*time.Hour))
 		ditolak := s.kirim(t, emailMahasiswa1, "konflik-7", pasarLain)
 		require.Equal(t, http.StatusCreated, ditolak.Code)
-		require.NoError(t, s.db.Exec("UPDATE entri_harga SET status = 'DITOLAK' WHERE id = ?", data[hasilKirim](t, ditolak).ID).Error)
+		require.NoError(t, s.db.Exec("UPDATE entri_harga SET status = 'DITOLAK', alasan_penolakan = 'uji' WHERE id = ?", data[hasilKirim](t, ditolak).ID).Error)
 
 		assert.Equal(t, http.StatusCreated, s.kirim(t, emailMahasiswa2, "konflik-8", entriBody("CBR-RWT", 58000, waktu.Add(-48*time.Hour+time.Minute))).Code)
 	})

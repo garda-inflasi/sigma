@@ -25,6 +25,8 @@ export interface EntriHarga {
   skorAnomali: number; // 0..1
   adaFoto: boolean;
   dalamGeofence: boolean;
+  /** Terisi untuk entri DITOLAK; terlihat oleh petugas pencatat. */
+  alasanPenolakan?: string;
 }
 
 export type JenisEws = "LONJAKAN_HARGA" | "KELANGKAAN_STOK" | "ANOMALI_CUACA" | "OVER_SUPPLY" | "ANOMALI_DATA";

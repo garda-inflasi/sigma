@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { Download, RefreshCw, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Download, RefreshCw, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -19,7 +20,10 @@ import { komoditasByKode, pasarById } from "@/lib/data/reference";
 import type { Tone } from "@/lib/design/tokens";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { feedItemFlat, spring } from "@/lib/motion/presets";
+import { bulk } from "@/lib/api/endpoints";
+import { ringkasSebab } from "@/lib/api/harga";
 import { useRiwayatHargaSaya } from "@/lib/query/hooks";
+import { qk } from "@/lib/query/keys";
 import { useFieldQueue, type EntriLokal, type StatusLokal } from "@/lib/stores/field-queue-store";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +36,9 @@ interface Baris {
   satuan: string;
   waktu: string;
   status: { label: string; tone: Tone; spin?: boolean };
+  alasan?: string;
+  /** Status di server untuk baris yang sudah terkirim. */
+  serverStatus?: string;
   grup: "aksi" | "menunggu" | "selesai";
   lokal?: EntriLokal;
 }
@@ -52,6 +59,7 @@ export function RiwayatList() {
   const hydrated = useFieldQueue((s) => s.hydrated);
   const { hapus, antrekan, perbarui } = useFieldQueue.getState();
   const { data: server, isLoading } = useRiwayatHargaSaya();
+  const qc = useQueryClient();
   const [filter, setFilter] = useState<"semua" | "aksi" | "menunggu" | "selesai">("semua");
   const [pilih, setPilih] = useState(false);
   const [sel, setSel] = useState<string[]>([]);
@@ -68,7 +76,7 @@ export function RiwayatList() {
     const st: Record<string, Baris["status"]> = { DIAJUKAN: { label: "Menunggu validasi", tone: "waspada" }, DIVALIDASI: { label: "Divalidasi", tone: "data" }, DIPUBLIKASI: { label: "Dipublikasi", tone: "normal" }, DITOLAK: { label: "Ditolak, survei ulang", tone: "defisit" }, DRAF: { label: "Dikembalikan", tone: "netral" } };
     const dariServer = (server ?? []).filter((e) => e.petugasId === user.id).map<Baris>((e) => ({
       id: e.id, komoditasKode: e.komoditasKode, pasarNama: e.pasarNama, tipe: e.tipe, harga: e.harga, satuan: e.satuan, waktu: e.dicatatPada,
-      status: st[e.status], grup: e.status === "DITOLAK" ? "aksi" : e.status === "DIAJUKAN" ? "menunggu" : "selesai",
+      status: st[e.status], alasan: e.alasanPenolakan, serverStatus: e.status, grup: e.status === "DITOLAK" ? "aksi" : e.status === "DIAJUKAN" ? "menunggu" : "selesai",
     }));
     return [...lokal, ...dariServer].sort((a, b) => +new Date(b.waktu) - +new Date(a.waktu));
   }, [items, server, user.id]);
@@ -91,6 +99,15 @@ export function RiwayatList() {
       id: "kirim", label: "Kirim ulang", icon: RefreshCw, tone: "data",
       enabled: (r) => r.every((x) => x.lokal && ["DRAF", "GAGAL", "ANTRE"].includes(x.lokal.status)),
       run: (r) => { antrekan(r.map((x) => x.id)); window.dispatchEvent(new CustomEvent("garda:sinkron")); toast.success(`${r.length} entri dimasukkan ke antrean kirim`); },
+    },
+    {
+      id: "ajukan", label: "Ajukan ulang", icon: Send, tone: "data",
+      enabled: (r) => r.every((x) => x.serverStatus === "DRAF"),
+      run: async (r) => {
+        const res = await bulk("harga", "ajukan", r.map((x) => x.id));
+        await qc.invalidateQueries({ queryKey: qk.harga.all() });
+        toast.success(`${res.berhasil} entri diajukan ulang`, { description: res.gagal ? `${res.gagal} dilewati: ${ringkasSebab(res.rincian)}.` : undefined });
+      },
     },
     {
       id: "hapus", label: "Hapus", icon: Trash2, tone: "danger",
@@ -159,6 +176,7 @@ export function RiwayatList() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{komoditasByKode[r.komoditasKode]?.nama}</p>
                         <p className="truncate text-xs text-muted-foreground">{r.pasarNama}, {formatTanggal(r.waktu, "HH.mm")}</p>
+                        {r.alasan && <p className="text-xs text-defisit-ink">Alasan: {r.alasan}</p>}
                       </div>
                       <div className="text-right">
                         <p className="num text-sm font-semibold">{formatRupiah(r.harga)}</p>

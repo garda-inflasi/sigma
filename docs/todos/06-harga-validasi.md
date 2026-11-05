@@ -39,15 +39,16 @@
 **Bergantung pada:** 06-A, 03-A.
 
 1. **MIG**
-   - [ ] `alasan_penolakan`, `ditolak_oleh`, `ditolak_pada`.
-   - [ ] `riwayat_status_entri` (`entri_id` FK, `dari`, `ke`, `oleh`, `waktu`, `alasan`).
-   - [ ] **Pemisahan tugas di DB:** `CHECK (divalidasi_oleh IS DISTINCT FROM petugas_id)`.
+   - [x] `alasan_penolakan`, `ditolak_oleh`, `ditolak_pada`.
+   - [x] `riwayat_status_entri` (`entri_id` FK, `dari`, `ke`, `oleh`, `waktu`, `alasan`).
+   - [x] **Pemisahan tugas di DB:** `CHECK (divalidasi_oleh IS DISTINCT FROM petugas_id)`.
 2. **SEED** (`demo`): riwayat status untuk entri demo yang sudah divalidasi/dipublikasi/ditolak.
 3. **API**
-   - [ ] Transisi status yang sah per izin; aksi `bulk` menolak transisi ilegal dan mengembalikan `{ berhasil, gagal, rincian[] }` (id + sebab).
-   - [ ] Pisahkan izin **publikasi** (`harga.publikasi`) dari validasi (`harga.validasi`); ekspor (`harga.ekspor`).
-   - [ ] Alasan penolakan wajib dan terlihat oleh penginput. Row scope sesuai peran ([02-B](02-pengguna-rbac.md)). Tulis audit ([03-A](03-audit.md)).
-4. **FE**: timeline detail dari `riwayat_status_entri`; dialog alasan penolakan; penanganan konflik 409 dari sinkronisasi lapangan di antrean validasi.
+   - [x] Transisi status yang sah per izin (termasuk aksi `ajukan` DRAF → DIAJUKAN oleh pencatat); aksi `bulk` menolak transisi ilegal dan mengembalikan `{ berhasil, gagal, rincian[] }` (id + sebab).
+   - [x] Pisahkan izin **publikasi** (`harga.publikasi`) dari validasi (`harga.validasi`); ekspor (`harga.ekspor`).
+   - [x] Alasan penolakan wajib dan terlihat oleh penginput. Tulis audit ([03-A](03-audit.md)).
+   - [ ] Row scope sesuai peran ([02-B](02-pengguna-rbac.md)); menunggu 02-B.
+4. **FE**: timeline detail dari `riwayat_status_entri`; dialog alasan penolakan; penanganan konflik 409 di antrean validasi menyusul bersama bendera `bentrok` di 06-C.
 5. **TES**: semua kombinasi transisi sah/tidak sah; bulk dengan peran berbeda; validator tidak bisa memvalidasi entrinya sendiri.
 
 ---

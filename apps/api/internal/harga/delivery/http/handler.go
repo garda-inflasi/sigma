@@ -202,7 +202,8 @@ func (h *Handler) GetHargaByID(c *gin.Context) {
 
 // POST /v1/harga/bulk
 //
-// Izin diperiksa per aksi: publikasi memerlukan harga.publikasi, aksi lain harga.validasi.
+// Izin diperiksa per aksi (domain.BulkAction.Izin): publikasi memerlukan harga.publikasi,
+// ajukan harga.input, aksi lain harga.validasi.
 func (h *Handler) BulkHarga(c *gin.Context) {
 	var req dto.BulkHargaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -210,16 +211,12 @@ func (h *Handler) BulkHarga(c *gin.Context) {
 		return
 	}
 
-	izin := "harga.validasi"
-	if domain.BulkAction(req.Aksi) == domain.BulkPublikasi {
-		izin = "harga.publikasi"
-	}
-	if !middleware.HasPermission(c, izin) {
+	if izin := domain.BulkAction(req.Aksi).Izin(); !middleware.HasPermission(c, izin) {
 		response.Forbidden(c, "Anda tidak memiliki izin "+izin)
 		return
 	}
 
-	hasil, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Aksi, c.GetString("user_id"))
+	hasil, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Aksi, c.GetString("user_id"), req.Alasan)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidAction):
@@ -232,5 +229,25 @@ func (h *Handler) BulkHarga(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.BulkHargaResponse{Berhasil: hasil.Berhasil, Gagal: hasil.Gagal})
+	rincian := make([]dto.RincianBulkResponse, len(hasil.Rincian))
+	for i, r := range hasil.Rincian {
+		rincian[i] = dto.RincianBulkResponse{ID: r.ID, Sebab: r.Sebab}
+	}
+	response.Success(c, dto.BulkHargaResponse{Berhasil: hasil.Berhasil, Gagal: hasil.Gagal, Rincian: rincian})
+}
+
+// GET /v1/harga/:id/riwayat
+//
+// harga.lihat membuka semua entri; petugas dengan harga.input hanya entrinya sendiri.
+func (h *Handler) Riwayat(c *gin.Context) {
+	items, err := h.uc.Riwayat(c.Request.Context(), c.Param("id"), c.GetString("user_id"), middleware.HasPermission(c, "harga.lihat"))
+	if err != nil {
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Entri harga tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil riwayat status")
+		return
+	}
+	response.Success(c, dto.ToRiwayatStatusResponses(items))
 }

@@ -1,10 +1,13 @@
 package http
 
 import (
-	"github.com/gin-gonic/gin"
+	"errors"
+
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/policy-brief/dto"
 	"github.com/garda-inflasi/api/internal/policy-brief/usecase"
 	"github.com/garda-inflasi/api/pkg/response"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
@@ -23,20 +26,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	res := make([]dto.PolicyBriefResponse, len(items))
-	for i, item := range items {
-		res[i] = dto.PolicyBriefResponse{
-			ID:           item.ID,
-			Judul:        item.Judul,
-			Periode:      item.Periode,
-			Ringkasan:    item.Ringkasan,
-			Status:       item.Status,
-			DibuatPada:   item.DibuatPada.Format("2006-01-02T15:04:05Z07:00"),
-			DiupdatePada: item.DiupdatePada.Format("2006-01-02T15:04:05Z07:00"),
-		}
-	}
-
-	response.Success(c, res)
+	response.Success(c, dto.ToBriefResponses(items))
 }
 
 // POST /v1/policy-brief/generate
@@ -47,11 +37,15 @@ func (h *Handler) Generate(c *gin.Context) {
 		return
 	}
 
-	pb, err := h.uc.Generate(c.Request.Context(), req.Periode)
-	if err != nil {
+	pb, err := h.uc.Generate(audit.RequestContext(c), c.GetString("user_id"), req.Periode)
+	switch {
+	case errors.Is(err, usecase.ErrPeriodeTidakValid):
+		response.BadRequest(c, "Periode harus berformat YYYY-MM, mis. 2026-10")
+	case errors.Is(err, usecase.ErrPeriodeSudahAda):
+		response.Conflict(c, "Brief untuk periode ini sudah ada")
+	case err != nil:
 		response.InternalError(c, "Gagal membuat policy brief")
-		return
+	default:
+		response.Created(c, dto.ToBriefResponse(*pb))
 	}
-
-	response.Created(c, dto.GenerateResponse{ID: pb.ID})
 }

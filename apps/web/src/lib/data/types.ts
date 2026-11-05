@@ -190,6 +190,8 @@ export interface PolicyBrief {
   diperbarui: string;
   jumlahRekomendasi: number;
   halaman: number;
+  /** Ada pada brief dari API; mode mock tidak mengisinya. */
+  ringkasan?: string;
 }
 
 export interface TugasLapangan {

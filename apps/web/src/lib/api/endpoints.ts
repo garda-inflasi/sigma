@@ -6,6 +6,7 @@ import {
   toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
+import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -77,9 +78,13 @@ export const api = {
         : apiFetch<AuditPageResponse>(`/v1/audit${toAuditQuery(filter, cursor)}`).then(toAuditPage),
   },
   brief: {
-    list: () => get<PolicyBrief[]>("/v1/policy-brief", m.mockBriefs),
-    susun: (periode: string) =>
-      MODE_MOCK ? mockDelay({ id: "PB-2026-10" }, 2200, 3200) : apiFetch<{ id: string }>("/v1/policy-brief/generate", { method: "POST", body: JSON.stringify({ periode }) }),
+    list: (): Promise<PolicyBrief[]> =>
+      MODE_MOCK ? mockDelay(m.mockBriefs) : apiFetch<PolicyBriefResponse[]>("/v1/policy-brief").then((rows) => rows.map(toPolicyBrief)),
+    /** Menyimpan draf brief untuk periode YYYY-MM; kembaliannya brief yang tersimpan. */
+    susun: (periode: string): Promise<PolicyBrief> =>
+      MODE_MOCK
+        ? mockDelay(() => m.mockBriefs()[0], 1200, 1800)
+        : apiFetch<PolicyBriefResponse>("/v1/policy-brief/generate", { method: "POST", body: JSON.stringify({ periode }) }).then(toPolicyBrief),
   },
   tugas: { saya: () => get<TugasLapangan[]>("/v1/lapangan/tugas/saya", m.mockTugas) },
   master: {

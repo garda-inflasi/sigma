@@ -63,6 +63,14 @@ export const useAudit = (filter: AuditFilter) =>
     placeholderData: keepPreviousData,
   });
 export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
+/** Menyusun draf brief; galat ditampilkan oleh pemanggil (dialog generator). */
+export function useSusunBrief() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (periode: string) => api.brief.susun(periode),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.brief.list() }),
+  });
+}
 export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn: api.tugas.saya });
 /** Master data; `enabled` memuat hanya entitas yang sedang dibuka. */
 export const useMasterKomoditas = (enabled = true) => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas, enabled });

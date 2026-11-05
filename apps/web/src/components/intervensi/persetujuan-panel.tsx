@@ -12,17 +12,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { bisaMemutus, type Persetujuan } from "@/lib/api/intervensi";
+import { bisaMemutus, ringkasRantai, type Persetujuan } from "@/lib/api/intervensi";
 import { useSession } from "@/lib/auth/session-context";
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
+import { siklusMeta } from "@/lib/design/tokens";
 import { formatRelatif } from "@/lib/format";
-import { usePersetujuan, usePutusPersetujuan } from "@/lib/query/hooks";
+import { useAlurPersetujuan, usePersetujuan, usePutusPersetujuan, useTahapIntervensi } from "@/lib/query/hooks";
 import { can, type Permission } from "@/lib/rbac/permissions";
 import { cn } from "@/lib/utils";
 
-const SEMUA_TAHAP = Object.values(SIKLUS_TAHAP).flat();
-const judulTahap = (id?: string) =>
-  SEMUA_TAHAP.find((t) => t.id === id)?.judul ?? id ?? "";
+/** Label tahap dari definisi server (cadangan klien selama dimuat); kode tahap bila tak dikenal. */
+function useJudulTahap() {
+  const { data } = useTahapIntervensi();
+  const semua = Object.values(data ?? SIKLUS_TAHAP).flat();
+  return (id?: string) => semua.find((t) => t.id === id)?.judul ?? id ?? "";
+}
 
 /** Dialog catatan penolakan; penolakan wajib disertai alasan (ditegakkan juga di server). */
 function DialogTolak({
@@ -119,6 +123,7 @@ export function PersetujuanPanel() {
   const { id: userId, role } = useSession();
   const { data, isLoading } = usePersetujuan(can(role, "intervensi.lihat"));
   const putus = usePutusPersetujuan();
+  const judulTahap = useJudulTahap();
   const [ditolak, setDitolak] = useState<Persetujuan | null>(null);
 
   if (isLoading || !data || data.length === 0) return null;
@@ -180,6 +185,55 @@ export function PersetujuanPanel() {
         })}
       </ul>
       <DialogTolak permintaan={ditolak} onClose={() => setDitolak(null)} />
+    </section>
+  );
+}
+
+/**
+ * Referensi alur persetujuan dari GET /v1/intervensi/alur: tahap mana yang butuh persetujuan, siapa
+ * (izin apa) yang memutus tiap langkah, dan urutannya. Membantu pengaju memperkirakan jalur sebelum meminta.
+ */
+export function AlurPersetujuanPanel() {
+  const { role } = useSession();
+  const { data, isLoading, isError } = useAlurPersetujuan(can(role, "intervensi.lihat"));
+  const judulTahap = useJudulTahap();
+  if (isLoading) return null;
+  if (isError)
+    return (
+      <p role="alert" className="text-xs text-muted-foreground">
+        Alur persetujuan belum dapat dimuat.
+      </p>
+    );
+  const aktif = (data ?? []).filter((a) => a.aktif);
+  if (aktif.length === 0) return null;
+  return (
+    <section className="glass rounded-xl p-5 sm:p-6" aria-label="Alur persetujuan">
+      <PanelTitle
+        title="Alur persetujuan"
+        description="Tahap yang bergembok dilalui lewat rantai persetujuan berikut. Langkah diputuskan berurutan oleh pemegang izin yang tertera."
+      />
+      <ul className="mt-4 grid gap-3 md:grid-cols-2">
+        {aktif.map((a) => (
+          <li key={a.kode} className="rounded-lg bg-secondary/50 px-3.5 py-3 text-sm">
+            <p className="font-medium">{a.nama}</p>
+            <p className="text-xs text-muted-foreground">
+              {a.jenis === "ESKALASI"
+                ? "Berlaku untuk semua siklus"
+                : `${a.siklus ? siklusMeta[a.siklus].label : ""} · menuju “${judulTahap(a.tahapTujuan)}”`}
+            </p>
+            <ol className="mt-2 space-y-1 text-xs">
+              {a.langkah.map((l) => (
+                <li key={l.urutan} className="flex items-baseline gap-2">
+                  <span className="num grid size-4 shrink-0 place-items-center rounded-full bg-navy-800 text-[10px] text-white dark:bg-white/20">{l.urutan}</span>
+                  <span>{l.label}</span>
+                  <code className="text-[11px] text-muted-foreground">{l.izin}</code>
+                </li>
+              ))}
+            </ol>
+            <span className="sr-only">{ringkasRantai(a)}</span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

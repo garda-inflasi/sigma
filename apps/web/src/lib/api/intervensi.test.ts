@@ -3,13 +3,35 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
-import { bisaMemutus, ringkasHasilKartu, toKartu, toPersetujuan, type KartuResponse, type PersetujuanResponse } from "./intervensi";
+import {
+  alurUntukTahap,
+  bisaMemutus,
+  deskripsiRiwayat,
+  persetujuanDiDepan,
+  ringkasHasilKartu,
+  ringkasRantai,
+  toAlur,
+  toBuatBody,
+  toKartu,
+  toPersetujuan,
+  toRiwayat,
+  toTahapPerSiklus,
+  validasiBuat,
+  type AlurResponse,
+  type BuatIntervensiInput,
+  type KartuResponse,
+  type PersetujuanResponse,
+  type RiwayatResponse,
+  type TahapResponse,
+} from "./intervensi";
+import { alurMock, riwayatMock, tahapMock } from "./intervensi-mock";
 
 const kartu: KartuResponse = {
   id: "INT-301",
   siklus: "TEKANAN",
   tahap: "t-ews",
   judul: "Lonjakan cabai merah Banda Aceh",
+  deskripsi: "Harga naik 12% sepekan",
   komoditas_kode: "CBM-KRT",
   kabupaten_kode: "1171",
   prioritas: "TINGGI",
@@ -19,6 +41,9 @@ const kartu: KartuResponse = {
   penanggung_jawab: [
     { id: "manajer_program", nama: "Rina Safitri, S.T., M.T." },
   ],
+  ews_alert_id: "EWS-1000",
+  dibuat_pada: "2026-10-10T08:00:00Z",
+  selesai_pada: null,
   versi: 4,
   dieskalasi_pada: null,
 };
@@ -39,18 +64,24 @@ describe("toKartu", () => {
       progres: { selesai: 1, total: 5 },
       versi: 4,
       dieskalasi: false,
+      deskripsi: "Harga naik 12% sepekan",
+      ewsAlertId: "EWS-1000",
+      dibuatPada: "2026-10-10T08:00:00Z",
+      selesaiPada: undefined,
     });
   });
 
   it("menandai kartu yang dieskalasi", () => {
-    assert.equal(toKartu({ ...kartu, dieskalasi_pada: "2026-11-05T08:00:00Z" }).dieskalasi, true);
+    assert.equal(
+      toKartu({ ...kartu, dieskalasi_pada: "2026-11-05T08:00:00Z" }).dieskalasi,
+      true,
+    );
   });
 
   it("siklus tak dikenal jatuh ke normal", () => {
     assert.equal(toKartu({ ...kartu, siklus: "ACAK" }).siklus, "normal");
   });
 });
-
 
 /** Cermin seed intervensi.reference di API Go (internal/intervensi/seeder/seeder_test.go). */
 const seed = JSON.parse(
@@ -67,19 +98,35 @@ const seed = JSON.parse(
   izin_dibutuhkan: string;
 }[];
 
-describe("siklus.ts sama dengan seed intervensi.reference", () => {
+/** Bentuk respons GET /v1/intervensi/tahap yang dibangun dari fixture kontrak. */
+const responsDariSeed: TahapResponse[] = seed.map((x) => ({
+  siklus: x.siklus.toUpperCase(),
+  kode_tahap: x.kode,
+  urutan: x.urutan,
+  label: x.label,
+  petunjuk: x.petunjuk,
+  izin_dibutuhkan: x.izin_dibutuhkan,
+  sla_hari: null,
+}));
+
+const ringkasTahap = (
+  tahap: { id: string; judul: string; petunjuk: string; izinMasuk?: string }[],
+) =>
+  tahap.map((t) => ({
+    kode: t.id,
+    label: t.judul,
+    petunjuk: t.petunjuk,
+    izin: t.izinMasuk ?? "intervensi.kelola",
+  }));
+
+describe("cadangan klien siklus.ts sama dengan seed intervensi.reference", () => {
   for (const [siklus, tahap] of Object.entries(SIKLUS_TAHAP)) {
     it(`tahap siklus ${siklus}: kode, urutan, label, petunjuk, dan izin masuk sama`, () => {
       const dariSeed = seed
         .filter((s) => s.siklus === siklus)
         .sort((a, b) => a.urutan - b.urutan);
       assert.deepEqual(
-        tahap.map((t) => ({
-          kode: t.id,
-          label: t.judul,
-          petunjuk: t.petunjuk,
-          izin: t.izinMasuk ?? "intervensi.kelola",
-        })),
+        ringkasTahap(tahap),
         dariSeed.map((s) => ({
           kode: s.kode,
           label: s.label,
@@ -98,18 +145,325 @@ describe("siklus.ts sama dengan seed intervensi.reference", () => {
   });
 });
 
+describe("toTahapPerSiklus (GET /v1/intervensi/tahap)", () => {
+  it("memetakan respons yang dibangun dari kontrak menjadi kolom yang sama dengan cadangan klien", () => {
+    const hasil = toTahapPerSiklus(responsDariSeed);
+    for (const siklus of ["normal", "tekanan", "surplus"] as const) {
+      assert.deepEqual(
+        ringkasTahap(hasil[siklus]),
+        ringkasTahap(SIKLUS_TAHAP[siklus]),
+      );
+    }
+  });
+
+  it("mengurutkan menurut urutan, bukan urutan kedatangan, dan mengabaikan siklus tak dikenal", () => {
+    const acak = [...responsDariSeed].reverse();
+    acak.push({
+      siklus: "ACAK",
+      kode_tahap: "x-1",
+      urutan: 1,
+      label: "X",
+      petunjuk: "",
+      izin_dibutuhkan: "intervensi.kelola",
+      sla_hari: null,
+    });
+    const hasil = toTahapPerSiklus(acak);
+    assert.deepEqual(
+      hasil.tekanan.map((t) => t.id),
+      SIKLUS_TAHAP.tekanan.map((t) => t.id),
+    );
+    assert.equal(
+      Object.values(hasil)
+        .flat()
+        .some((t) => t.id === "x-1"),
+      false,
+    );
+  });
+
+  it("izin selain kelola menjadi izinMasuk, SLA ikut terbawa, dan data mock memakai jalur yang sama", () => {
+    const hasil = toTahapPerSiklus([
+      {
+        siklus: "TEKANAN",
+        kode_tahap: "t-fiskal",
+        urutan: 5,
+        label: "Dukungan",
+        petunjuk: "p",
+        izin_dibutuhkan: "intervensi.setujui_fiskal",
+        sla_hari: 5,
+      },
+      {
+        siklus: "TEKANAN",
+        kode_tahap: "t-ews",
+        urutan: 1,
+        label: "EWS",
+        petunjuk: "p",
+        izin_dibutuhkan: "intervensi.kelola",
+        sla_hari: 1,
+      },
+    ]);
+    assert.deepEqual(
+      hasil.tekanan.map((t) => [t.id, t.izinMasuk, t.slaHari]),
+      [
+        ["t-ews", undefined, 1],
+        ["t-fiskal", "intervensi.setujui_fiskal", 5],
+      ],
+    );
+    assert.deepEqual(
+      ringkasTahap(toTahapPerSiklus(tahapMock()).surplus),
+      ringkasTahap(SIKLUS_TAHAP.surplus),
+    );
+  });
+});
+
+const alurFiskal: AlurResponse = {
+  kode: "pindah-tekanan-fiskal",
+  nama: "Dukungan instrumen belanja",
+  jenis: "PINDAH_TAHAP",
+  siklus: "TEKANAN",
+  tahap_tujuan: "t-fiskal",
+  aktif: true,
+  langkah: [
+    {
+      urutan: 2,
+      label: "Persetujuan Kanwil DJPb",
+      izin_dibutuhkan: "intervensi.setujui_fiskal",
+    },
+    {
+      urutan: 1,
+      label: "Persetujuan Dewan Pengarah",
+      izin_dibutuhkan: "intervensi.setujui",
+    },
+  ],
+};
+
+describe("alur persetujuan (GET /v1/intervensi/alur)", () => {
+  it("toAlur mengurutkan langkah dan mengosongkan siklus alur eskalasi", () => {
+    const a = toAlur(alurFiskal);
+    assert.equal(a.siklus, "tekanan");
+    assert.deepEqual(
+      a.langkah.map((l) => l.izin),
+      ["intervensi.setujui", "intervensi.setujui_fiskal"],
+    );
+    assert.equal(
+      ringkasRantai(a),
+      "Persetujuan Dewan Pengarah → Persetujuan Kanwil DJPb",
+    );
+    const eskalasi = toAlur({ ...alurMock[4] });
+    assert.equal(eskalasi.siklus, undefined);
+    assert.equal(eskalasi.tahapTujuan, undefined);
+  });
+
+  it("alurUntukTahap hanya mengembalikan alur pemindahan yang aktif", () => {
+    const alur = alurMock.map(toAlur);
+    assert.equal(
+      alurUntukTahap(alur, "t-fiskal")?.kode,
+      "pindah-tekanan-fiskal",
+    );
+    assert.equal(alurUntukTahap(alur, "t-ews"), undefined);
+    assert.equal(
+      alurUntukTahap(
+        alur.map((a) => ({ ...a, aktif: false })),
+        "t-fiskal",
+      ),
+      undefined,
+    );
+  });
+
+  it("persetujuanDiDepan mendaftar tahap persetujuan setelah tahap kini, berurutan", () => {
+    const alur = alurMock.map(toAlur);
+    const dariAwal = persetujuanDiDepan(
+      alur,
+      SIKLUS_TAHAP.tekanan,
+      "t-ews",
+    ).map((x) => x.tahap.id);
+    assert.deepEqual(dariAwal, ["t-petakan", "t-fiskal", "t-selesai"]);
+    assert.deepEqual(
+      persetujuanDiDepan(alur, SIKLUS_TAHAP.tekanan, "t-logistik").map(
+        (x) => x.tahap.id,
+      ),
+      ["t-fiskal", "t-selesai"],
+    );
+    assert.deepEqual(
+      persetujuanDiDepan(alur, SIKLUS_TAHAP.tekanan, "t-selesai"),
+      [],
+    );
+    assert.deepEqual(
+      persetujuanDiDepan(alur, SIKLUS_TAHAP.normal, "n-pantau"),
+      [],
+    );
+  });
+});
+
+const labelTahap = (kode?: string) =>
+  ({ "t-ews": "EWS terpicu", "t-verifikasi": "Verifikasi cepat BI/BPS" })[
+    kode ?? ""
+  ] ??
+  kode ??
+  "";
+const riwayat = (r: Partial<RiwayatResponse>) =>
+  toRiwayat({
+    id: 1,
+    aksi: "BUAT",
+    dari: null,
+    ke: null,
+    oleh_id: null,
+    oleh_nama: null,
+    waktu: "2026-11-05T01:00:00Z",
+    alasan: "",
+    ...r,
+  });
+
+describe("riwayat kartu (GET /v1/intervensi/{id}/riwayat)", () => {
+  it("toRiwayat mengosongkan nilai null; pelaku kosong berarti sistem", () => {
+    const r = riwayat({ oleh_nama: "Rina" });
+    assert.equal(r.olehNama, "Rina");
+    assert.equal(r.dari, undefined);
+    assert.equal(riwayat({}).olehNama, undefined);
+  });
+
+  it("deskripsi tiap aksi menyebut label tahap", () => {
+    assert.equal(
+      deskripsiRiwayat(riwayat({ aksi: "BUAT", ke: "t-ews" }), labelTahap),
+      "Kartu dibuat di tahap “EWS terpicu”",
+    );
+    assert.equal(
+      deskripsiRiwayat(
+        riwayat({ aksi: "PINDAH_TAHAP", dari: "t-ews", ke: "t-verifikasi" }),
+        labelTahap,
+      ),
+      "Dipindahkan dari “EWS terpicu” ke “Verifikasi cepat BI/BPS”",
+    );
+    assert.equal(
+      deskripsiRiwayat(
+        riwayat({ aksi: "TUGASKAN", oleh_nama: "Rina" }),
+        labelTahap,
+      ),
+      "Rina menjadi penanggung jawab",
+    );
+    assert.equal(
+      deskripsiRiwayat(riwayat({ aksi: "ESKALASI" }), labelTahap),
+      "Dieskalasi ke Dewan Pengarah",
+    );
+    assert.equal(
+      deskripsiRiwayat(
+        riwayat({ aksi: "AJUKAN", ke: "t-verifikasi" }),
+        labelTahap,
+      ),
+      "Persetujuan diajukan untuk pindah ke “Verifikasi cepat BI/BPS”",
+    );
+    assert.equal(
+      deskripsiRiwayat(riwayat({ aksi: "AJUKAN" }), labelTahap),
+      "Telaah eskalasi diajukan",
+    );
+    assert.equal(
+      deskripsiRiwayat(riwayat({ aksi: "SETUJU", ke: "t-ews" }), labelTahap),
+      "Persetujuan pindah ke “EWS terpicu” disetujui",
+    );
+    assert.equal(
+      deskripsiRiwayat(riwayat({ aksi: "TOLAK" }), labelTahap),
+      "Telaah eskalasi ditolak",
+    );
+  });
+
+  it("riwayat mock dimulai dengan BUAT di tahap pertama dan berakhir di tahap kartu", () => {
+    const kartuMock = { ...toKartu(kartu), tahap: "t-logistik" };
+    const rows = riwayatMock(kartuMock);
+    assert.deepEqual(
+      rows.map((r) => r.aksi),
+      ["BUAT", "PINDAH_TAHAP", "PINDAH_TAHAP", "PINDAH_TAHAP"],
+    );
+    assert.equal(rows[0].ke, "t-ews");
+    assert.equal(rows.at(-1)?.ke, "t-logistik");
+  });
+});
+
+const masukan: BuatIntervensiInput = {
+  judul: "  Operasi pasar beras Banda Aceh ",
+  deskripsi: " Gelontorkan 20 ton ",
+  siklus: "tekanan",
+  prioritas: "TINGGI",
+  komoditasKode: "BRS-MED",
+  kabupatenKode: "1171",
+  tenggat: "2026-12-01",
+  penanggungJawabIds: ["manajer_kebijakan"],
+};
+
+describe("membuat intervensi (POST /v1/intervensi)", () => {
+  it("validasiBuat menerima masukan lengkap", () => {
+    assert.deepEqual(validasiBuat(masukan), {});
+  });
+
+  it("validasiBuat menolak judul kosong atau terlalu panjang, rujukan kosong, dan tenggat tak valid", () => {
+    assert.equal(
+      validasiBuat({ ...masukan, judul: "   " }).judul,
+      "Judul wajib diisi",
+    );
+    assert.equal(
+      validasiBuat({ ...masukan, judul: "x".repeat(256) }).judul,
+      "Judul maksimal 255 karakter",
+    );
+    assert.equal(
+      validasiBuat({ ...masukan, judul: "x".repeat(255) }).judul,
+      undefined,
+    );
+    assert.equal(
+      validasiBuat({ ...masukan, komoditasKode: "" }).komoditasKode,
+      "Pilih komoditas",
+    );
+    assert.equal(
+      validasiBuat({ ...masukan, kabupatenKode: "" }).kabupatenKode,
+      "Pilih wilayah",
+    );
+    assert.equal(
+      validasiBuat({ ...masukan, tenggat: "" }).tenggat,
+      "Tenggat wajib diisi",
+    );
+    assert.equal(
+      validasiBuat({ ...masukan, tenggat: "2026-13-45" }).tenggat,
+      "Tenggat wajib diisi",
+    );
+  });
+
+  it("toBuatBody memotong spasi, memakai enum basis data, dan menaruh tenggat di akhir hari WIB", () => {
+    assert.deepEqual(toBuatBody(masukan), {
+      judul: "Operasi pasar beras Banda Aceh",
+      deskripsi: "Gelontorkan 20 ton",
+      siklus: "TEKANAN",
+      prioritas: "TINGGI",
+      komoditas_kode: "BRS-MED",
+      kabupaten_kode: "1171",
+      tenggat: "2026-12-01T16:59:00.000Z",
+      penanggung_jawab_ids: ["manajer_kebijakan"],
+    });
+  });
+});
+
 describe("ringkasHasilKartu", () => {
   it("semua berhasil", () => {
-    assert.deepEqual(ringkasHasilKartu("Ditugaskan", { berhasil: 2, gagal: 0, hasil: [{ id: "a", berhasil: true }, { id: "b", berhasil: true }] }), {
-      judul: "Ditugaskan: 2 kartu",
-      deskripsi: "Tercatat di audit trail.",
-    });
+    assert.deepEqual(
+      ringkasHasilKartu("Ditugaskan", {
+        berhasil: 2,
+        gagal: 0,
+        hasil: [
+          { id: "a", berhasil: true },
+          { id: "b", berhasil: true },
+        ],
+      }),
+      {
+        judul: "Ditugaskan: 2 kartu",
+        deskripsi: "Tercatat di audit trail.",
+      },
+    );
   });
   it("sebagian dilewati dengan alasan unik", () => {
     const r = ringkasHasilKartu("Dieskalasi", {
       berhasil: 1,
       gagal: 2,
-      hasil: [{ id: "a", berhasil: true }, { id: "b", berhasil: false, alasan: "Kartu sudah selesai" }, { id: "c", berhasil: false, alasan: "Kartu sudah selesai" }],
+      hasil: [
+        { id: "a", berhasil: true },
+        { id: "b", berhasil: false, alasan: "Kartu sudah selesai" },
+        { id: "c", berhasil: false, alasan: "Kartu sudah selesai" },
+      ],
     });
     assert.equal(r.deskripsi, "2 kartu dilewati (Kartu sudah selesai).");
   });
@@ -130,8 +484,24 @@ const permintaan: PersetujuanResponse = {
   diajukan_pada: "2026-11-05T05:00:00Z",
   catatan: "",
   langkah: [
-    { urutan: 1, label: "Persetujuan Dewan Pengarah", izin_dibutuhkan: "intervensi.setujui", keputusan: "SETUJU", oleh_id: "strategis_bi", oleh_nama: "Dr. Muhammad Rizal", catatan: "" },
-    { urutan: 2, label: "Persetujuan Kanwil DJPb", izin_dibutuhkan: "intervensi.setujui_fiskal", keputusan: null, oleh_id: null, oleh_nama: null, catatan: "" },
+    {
+      urutan: 1,
+      label: "Persetujuan Dewan Pengarah",
+      izin_dibutuhkan: "intervensi.setujui",
+      keputusan: "SETUJU",
+      oleh_id: "strategis_bi",
+      oleh_nama: "Dr. Muhammad Rizal",
+      catatan: "",
+    },
+    {
+      urutan: 2,
+      label: "Persetujuan Kanwil DJPb",
+      izin_dibutuhkan: "intervensi.setujui_fiskal",
+      keputusan: null,
+      oleh_id: null,
+      oleh_nama: null,
+      catatan: "",
+    },
   ],
 };
 
@@ -143,7 +513,15 @@ describe("toPersetujuan", () => {
     assert.equal(p.langkah[0].keputusan, "SETUJU");
     assert.equal(p.langkah[0].olehNama, "Dr. Muhammad Rizal");
     assert.equal(p.langkah[1].keputusan, undefined);
-    assert.equal(toPersetujuan({ ...permintaan, tahap_tujuan: null, diajukan_oleh_id: null, diajukan_oleh_nama: null }).diajukanOlehId, undefined);
+    assert.equal(
+      toPersetujuan({
+        ...permintaan,
+        tahap_tujuan: null,
+        diajukan_oleh_id: null,
+        diajukan_oleh_nama: null,
+      }).diajukanOlehId,
+      undefined,
+    );
   });
 });
 
@@ -160,9 +538,15 @@ describe("bisaMemutus", () => {
     assert.equal(bisaMemutus(p, "strategis_bi", true), false);
   });
   it("permintaan yang sudah diputuskan tidak dapat diputus", () => {
-    assert.equal(bisaMemutus({ ...p, status: "DISETUJUI" }, "strategis_djpb", true), false);
+    assert.equal(
+      bisaMemutus({ ...p, status: "DISETUJUI" }, "strategis_djpb", true),
+      false,
+    );
   });
   it("permintaan buatan sistem dapat diputus siapa pun yang berizin", () => {
-    assert.equal(bisaMemutus({ ...p, diajukanOlehId: undefined }, "strategis_djpb", true), true);
+    assert.equal(
+      bisaMemutus({ ...p, diajukanOlehId: undefined }, "strategis_djpb", true),
+      true,
+    );
   });
 });

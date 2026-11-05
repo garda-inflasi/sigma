@@ -2,15 +2,17 @@
 
 import { create } from "zustand";
 import type { KartuIntervensi } from "@/lib/data/types";
-import { SIKLUS_TAHAP } from "@/lib/data/siklus";
 
 interface KanbanState {
   ready: boolean;
   cards: Record<string, KartuIntervensi>;
   order: Record<string, string[]>; // tahapId -> id kartu terurut
   selected: string[];
-  /** Memuat atau mengganti seluruh papan dengan data server (juga saat polling); pilihan kartu yang masih ada dipertahankan. */
-  sync: (cards: KartuIntervensi[]) => void;
+  /**
+   * Memuat atau mengganti seluruh papan dengan data server (juga saat polling); pilihan kartu yang masih ada
+   * dipertahankan. `tahapIds` (dari GET /v1/intervensi/tahap) menjamin kolom kosong tetap ada sebagai sasaran drop.
+   */
+  sync: (cards: KartuIntervensi[], tahapIds?: string[]) => void;
   move: (id: string, toTahap: string, toIndex: number) => void;
   /** Mencatat versi baru kartu setelah server menyimpan pemindahan. */
   setVersi: (id: string, versi: number) => void;
@@ -22,9 +24,9 @@ interface KanbanState {
   restore: (s: Pick<KanbanState, "cards" | "order">) => void;
 }
 
-function susun(list: KartuIntervensi[]) {
+function susun(list: KartuIntervensi[], tahapIds: string[]) {
   const order: Record<string, string[]> = {};
-  Object.values(SIKLUS_TAHAP).flat().forEach((t) => (order[t.id] = []));
+  tahapIds.forEach((id) => (order[id] = []));
   list.forEach((c) => order[c.tahap]?.push(c.id));
   return { cards: Object.fromEntries(list.map((c) => [c.id, c])), order };
 }
@@ -34,8 +36,9 @@ export const useKanban = create<KanbanState>()((set, get) => ({
   cards: {},
   order: {},
   selected: [],
-  sync: (list) => {
-    const baru = susun(list);
+  sync: (list, tahapIds) => {
+    // Tanpa daftar tahap, kolom diturunkan dari kartu yang ada.
+    const baru = susun(list, tahapIds ?? [...new Set(list.map((c) => c.tahap))]);
     set((s) => ({ ready: true, ...baru, selected: s.selected.filter((id) => id in baru.cards) }));
   },
   move: (id, toTahap, toIndex) =>

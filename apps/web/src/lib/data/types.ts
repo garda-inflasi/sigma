@@ -89,6 +89,11 @@ export interface KartuIntervensi {
   versi: number;
   /** Kartu sudah dieskalasi ke Dewan Pengarah. */
   dieskalasi: boolean;
+  /** Rincian untuk lembar detail; tidak ada pada data mock. */
+  deskripsi?: string;
+  ewsAlertId?: string;
+  dibuatPada?: string;
+  selesaiPada?: string;
 }
 
 export interface StokColdStorage {

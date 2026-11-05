@@ -8,6 +8,8 @@ import {
 } from "./master";
 import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
 import { toKartu, type KartuResponse } from "./intervensi";
+import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
+import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -36,13 +38,20 @@ export const api = {
   operasional: {
     kpi: () => get<KpiOperasional[]>("/v1/dashboard/operasional/kpi", m.mockKpi),
     heatmap: () => get<Heatmap>("/v1/dashboard/operasional/heatmap", m.mockHeatmap),
-    marker: () => get<ReturnType<typeof m.mockMapMarkers>>("/v1/spasial/wilayah", m.mockMapMarkers),
+    marker: (): Promise<MarkerWilayah[]> =>
+      MODE_MOCK ? mockDelay(m.mockMapMarkers) : apiFetch<MarkerResponse[]>("/v1/spasial/wilayah").then((rows) => rows.map(toMarker)),
     tren: (kode: string, kab: string) =>
       get<ReturnType<typeof m.mockTrenHarga>>(`/v1/harga/tren?komoditas=${kode}&wilayah=${kab}`, () => m.mockTrenHarga(kode, kab)),
   },
   eksekutif: {
     ringkasan: () => get<RingkasanEksekutif>("/v1/dashboard/eksekutif", m.mockEksekutif),
     xai: (kode: string) => get<ProyeksiXai>(`/v1/prediksi/${kode}`, () => m.mockXai(kode)),
+  },
+  spasial: {
+    rute: (): Promise<Rute[]> =>
+      MODE_MOCK ? mockDelay(m.mockRute) : apiFetch<RuteResponse[]>("/v1/spasial/rute").then((rows) => rows.map(toRute)),
+    kandidatColdStorage: (): Promise<KandidatColdStorage[]> =>
+      MODE_MOCK ? mockDelay(m.mockKandidatColdStorage) : apiFetch<KandidatResponse[]>("/v1/spasial/kandidat-cold-storage").then((rows) => rows.map(toKandidat)),
   },
   harga: { list: () => get<EntriHarga[]>("/v1/harga?limit=500", () => m.mockEntri()) },
   ews: {

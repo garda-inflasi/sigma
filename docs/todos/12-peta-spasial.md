@@ -1,14 +1,14 @@
 # 12 — Peta surplus–defisit & spasial
 
-**Prioritas:** P1 (PRD §2.3) · **Status:** UI ✅ · Backend ⬜ · Terhubung 🟡 · Skema & seed ⬜ · Tes ⬜
+**Prioritas:** P1 (PRD §2.3) · **Status:** UI ✅ · Backend 🟡 (baca-saja; belum geometri/optimasi) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
 
 - **UI:** [peta-page.tsx](../../apps/web/src/components/spasial/peta-page.tsx) di `/peta`; [region-map](../../apps/web/src/components/map/region-map.tsx) dan versi Mapbox, [marker-pin](../../apps/web/src/components/map/marker-pin.tsx). Surplus–defisit, rute distribusi, kandidat cold storage.
-- **API Go (`spasial`):** satu endpoint `GET /v1/spasial/wilayah` (`spasial.lihat`).
-- **Web:** `useMarkerWilayah` memakai API. Rute, kandidat cold storage, dan nama wilayah dari `lib/data/generators.ts` dan `reference.ts` (statis).
-- **Skema:** entity `Wilayah` memetakan tabel **`wilayah` yang tidak ada**; data lokasi ada di `kabupaten` (`lat`, `lng`) dan `pasar`. Tidak ada geometri. Image Postgres di compose adalah `postgres:16-alpine` (tanpa PostGIS).
+- **API Go (`spasial`, izin `spasial.lihat`, baca-saja):** `GET /v1/spasial/wilayah` (marker + status dari neraca terbaru), `/neraca` (filter `komoditas`, `periode`), `/rute`, `/kandidat-cold-storage`.
+- **Skema:** view `wilayah` di atas `kabupaten`, tabel `neraca_wilayah`, `rute_distribusi`, `kandidat_cold_storage` (migrasi 000032); entity cocok. Seeder `spasial.demo` (184 neraca, 5 rute, 3 kandidat; semua berlabel `sumber = 'DEMO'`, titik panas selaras dengan alert `ews.demo`). Tidak ada lapis `reference`: neraca pangan tidak boleh di-seed di produksi. Image Postgres tetap `postgres:16-alpine` (tanpa PostGIS).
+- **Web:** `peta-page.tsx` membaca marker, rute, dan kandidat dari API (`lib/api/spasial.ts`); mode mock memakai `mockRute`/`mockKandidatColdStorage`. Mapbox opsional lewat `NEXT_PUBLIC_MAPBOX_TOKEN` (tanpanya peta memakai skema SVG Aceh; lihat `apps/web/README.md`).
 
 ---
 
@@ -18,14 +18,14 @@
 **Bergantung pada:** 06-A, 13-A.
 
 1. **MIG**
-   - [ ] `CREATE VIEW wilayah AS SELECT kode, nama, lat, lng, 'kabupaten' AS level FROM kabupaten` (atau ubah entity ke `kabupaten`).
-   - [ ] `neraca_wilayah` (`komoditas_kode`, `wilayah_kode`, `periode`, `surplus_defisit_ton`), `rute_distribusi` (`asal`, `tujuan`, `komoditas_kode`, `volume_ton`, `biaya`, `jarak_km`, `status`), `kandidat_cold_storage` (`lokasi`, `skor`, `komponen_skor` JSONB, `alasan`, `dibuat_pada`).
+   - [x] `CREATE VIEW wilayah AS SELECT kode, nama, lat, lng, 'kabupaten' AS level FROM kabupaten` (atau ubah entity ke `kabupaten`).
+   - [x] `neraca_wilayah` (`komoditas_kode`, `wilayah_kode`, `periode`, `surplus_defisit_ton`), `rute_distribusi` (`asal`, `tujuan`, `komoditas_kode`, `volume_ton`, `biaya`, `jarak_km`, `status`), `kandidat_cold_storage` (`lokasi`, `skor`, `komponen_skor` JSONB, `alasan`, `dibuat_pada`).
 2. **SEED** (`demo`)
-   - [ ] Neraca (diturunkan dari data harga/stok demo), rute dan kandidat yang meniru generator di `lib/data/generators.ts`. Koordinat fasilitas cold storage sudah dari seeder cold-storage.
+   - [x] Neraca (diturunkan dari data harga/stok demo), rute dan kandidat yang meniru generator di `lib/data/generators.ts`. Koordinat fasilitas cold storage sudah dari seeder cold-storage.
 3. **API**
-   - [ ] `GET /v1/spasial/wilayah` dari view; tambah `GET /v1/spasial/neraca`, `/rute`, `/kandidat-cold-storage` (izin `spasial.lihat`).
+   - [x] `GET /v1/spasial/wilayah` dari view; tambah `GET /v1/spasial/neraca`, `/rute`, `/kandidat-cold-storage` (izin `spasial.lihat`).
 4. **FE**
-   - [ ] `peta-page.tsx` mengganti generator statis dengan hook API; token Mapbox opsional dengan fallback SVG (dokumentasikan env).
+   - [x] `peta-page.tsx` mengganti generator statis dengan hook API; token Mapbox opsional dengan fallback SVG (dokumentasikan env).
 5. **TES**: usecase/handler spasial (0 tes); hapus `spasial` dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 

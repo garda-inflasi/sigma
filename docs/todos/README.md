@@ -35,7 +35,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
 | 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [10-ews.md](10-ews.md)                                     |
 | 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   ⬜    |    ⬜     |      ⬜      | ⬜  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
-| 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   ⬜    |    🟡     |      ⬜      | ⬜  | [12-peta-spasial.md](12-peta-spasial.md)                   |
+| 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [12-peta-spasial.md](12-peta-spasial.md)                   |
 | 13  | Cold storage & food loss                  | `/cold-storage`            | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [13-cold-storage.md](13-cold-storage.md)                   |
 | 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [14-intervensi.md](14-intervensi.md)                       |
 | 15  | Policy brief                              | `/policy-brief`            | ✅  |   ⬜    |    🟡     |      ⬜      | ⬜  | [15-policy-brief.md](15-policy-brief.md)                   |

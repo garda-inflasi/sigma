@@ -1494,6 +1494,119 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/spasial/wilayah:
+    get:
+      summary: Mendaftar wilayah sebagai marker peta
+      description: |
+        Memerlukan izin `spasial.lihat`. Setiap kabupaten/kota dengan komoditas yang deviasi harganya
+        terbesar (mutlak) pada periode neraca terbaru. Status: defisit (delta > 10), waspada (> 5),
+        surplus (< -6), selain itu normal.
+      operationId: listSpasialWilayah
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar marker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialMarkerListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/neraca:
+    get:
+      summary: Neraca surplus/defisit per komoditas dan wilayah
+      description: Memerlukan izin `spasial.lihat`. Tanpa `periode` dipakai periode terbaru. Data demo berlabel `sumber` DEMO.
+      operationId: listSpasialNeraca
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: komoditas
+          in: query
+          description: Kode komoditas
+          schema:
+            type: string
+        - name: periode
+          in: query
+          description: Tanggal awal periode (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daftar neraca
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialNeracaListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Format periode salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/rute:
+    get:
+      summary: Usulan rute distribusi dari sentra surplus ke wilayah tertekan
+      description: Memerlukan izin `spasial.lihat`. Terurut dari biaya terbesar.
+      operationId: listSpasialRute
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar rute
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialRuteListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/kandidat-cold-storage:
+    get:
+      summary: Kandidat lokasi cold storage
+      description: Memerlukan izin `spasial.lihat`. Terurut dari skor tertinggi.
+      operationId: listSpasialKandidat
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar kandidat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialKandidatListResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -2354,6 +2467,179 @@ components:
               type: integer
             gagal:
               type: integer
+
+    # ── Spasial ────────────────────────────────────────────────────────
+    SpasialMarker:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: "1171"
+        nama:
+          type: string
+          example: KOTA BANDA ACEH
+        level:
+          type: string
+          enum: [kabupaten, kota]
+        lat:
+          type: number
+        lng:
+          type: number
+        delta:
+          type: number
+          description: Deviasi harga (persen) komoditas teratas; 0 bila wilayah belum punya neraca
+        komoditas:
+          type: string
+          description: Nama komoditas teratas, "—" bila belum ada neraca
+        status:
+          type: string
+          enum: [defisit, waspada, normal, surplus]
+        punya_pasar:
+          type: boolean
+
+    SpasialMarkerListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialMarker"
+
+    SpasialNeraca:
+      type: object
+      properties:
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        kabupaten_kode:
+          type: string
+        wilayah:
+          type: string
+        periode:
+          type: string
+          format: date
+        surplus_defisit_ton:
+          type: number
+          description: Positif = surplus, negatif = defisit
+        delta_harga_pct:
+          type: number
+        sumber:
+          type: string
+          example: DEMO
+
+    SpasialNeracaListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialNeraca"
+
+    SpasialRute:
+      type: object
+      properties:
+        id:
+          type: string
+          example: RT-1106-1171
+        asal_kode:
+          type: string
+        asal:
+          type: string
+        tujuan_kode:
+          type: string
+        tujuan:
+          type: string
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        volume_ton:
+          type: number
+        jarak_km:
+          type: integer
+        jam_tempuh:
+          type: number
+        biaya:
+          type: integer
+          format: int64
+          description: Rupiah
+        status:
+          type: string
+          example: USULAN
+        sumber:
+          type: string
+        dibuat_pada:
+          type: string
+          format: date-time
+
+    SpasialRuteListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialRute"
+
+    SpasialKandidat:
+      type: object
+      properties:
+        id:
+          type: string
+          example: KC-1173
+        kabupaten_kode:
+          type: string
+        wilayah:
+          type: string
+        lokasi:
+          type: string
+        skor:
+          type: integer
+          minimum: 0
+          maximum: 100
+        komponen_skor:
+          type: object
+          additionalProperties:
+            type: number
+        alasan:
+          type: string
+        status:
+          type: string
+          enum: [RENCANA, USULAN_BARU]
+        sumber:
+          type: string
+
+    SpasialKandidatListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpasialKandidat"
 
     # ── Cold Storage ───────────────────────────────────────────────────
     AuditRow:

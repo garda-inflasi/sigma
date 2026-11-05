@@ -4,6 +4,7 @@
  */
 import type { Severity } from "@/lib/design/tokens";
 import type { EwsAturan } from "@/lib/api/ews";
+import type { KandidatColdStorage, Rute } from "@/lib/api/spasial";
 import type { KatalogAkses } from "@/lib/api/pengguna";
 import { PERMISSIONS, ROLE_PERMISSIONS } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
@@ -13,6 +14,7 @@ import {
 } from "@/lib/data/generators";
 import { COLD_STORAGE, USERS, kabupatenByKode, komoditasByKode, pasarById } from "@/lib/data/reference";
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
+import { jarakMeter } from "@/lib/offline/acuan";
 import type {
   AuditRow, EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StatusEntri, StokColdStorage, SumberData,
@@ -73,6 +75,27 @@ export function mockMapMarkers() {
       punyaPasar: Boolean(top),
     };
   });
+}
+
+/** Rute distribusi mode mock: dari sentra surplus ke lima wilayah paling tertekan (sama dengan seed spasial.demo). */
+export function mockRute(): Rute[] {
+  const sentra = [{ kode: "1106", kom: "Cabai merah keriting" }, { kode: "1117", kom: "Cabai merah keriting" }, { kode: "1109", kom: "Bawang merah" }];
+  const tarifTonKm = 4200;
+  const defisit = mockMapMarkers().filter((m) => m.punyaPasar && m.delta > 5).sort((a, b) => b.delta - a.delta).slice(0, 5);
+  return defisit.map((d, i) => {
+    const s = sentra[i % sentra.length];
+    const km = (jarakMeter(kabupatenByKode[s.kode], d) / 1000) * 1.35;
+    const vol = Math.round(8 + d.delta * 1.6);
+    return { id: `RT-${s.kode}-${d.kode}`, asal: namaWilayah(s.kode), tujuan: d.nama, komoditas: s.kom, volumeTon: vol, jarakKm: Math.round(km), jamTempuh: +(km / 45).toFixed(1), biaya: Math.round(km * vol * tarifTonKm) };
+  });
+}
+
+export function mockKandidatColdStorage(): KandidatColdStorage[] {
+  return [
+    { id: "KC-1173", lokasi: "Kota Langsa", skor: 82, alasan: "Simpul timur menuju Sumatera Utara.", rencana: true },
+    { id: "KC-1110", lokasi: "Kab. Bireuen", skor: 77, alasan: "Persimpangan jalur Takengon-pesisir.", rencana: false },
+    { id: "KC-1109", lokasi: "Kab. Pidie", skor: 71, alasan: "Sentra bawang merah.", rencana: false },
+  ];
 }
 
 /* ── Entri harga (antrean validasi) ───────────────────────── */

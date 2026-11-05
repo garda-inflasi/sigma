@@ -10,6 +10,8 @@ Konfigurasi lewat env (lihat `env.example` di akar repo). Alur lokal ada di [REA
 | `cmd/api`                              | server HTTP                                                  |
 | `cmd/migrate up\|down\|version`        | migrasi goose dari `MIGRATIONS_DIR` (bawaan `db/migrations`) |
 | `cmd/seed reference\|admin\|demo\|all` | seeder; `demo` ditolak bila `APP_ENV=production`             |
+| `cmd/worker [list\|run <job>]`        | job berkala di luar API (refresh dashboard, KPI); lihat §6   |
+| `cmd/kpi [-bulan N]`                   | hitung KPI sekali jalan (CLI); `cmd/worker` menjadwalkannya  |
 
 ## Menambah modul
 
@@ -106,3 +108,41 @@ KPI, peta panas, dan agregat harga harian adalah materialized view (`agregat_har
 menyegarkannya dengan `REFRESH ... CONCURRENTLY`: tiap 5 menit dari `cmd/api` dan segera setelah
 harga divalidasi atau dipublikasi. Seeder `dashboard.demo` menyegarkannya setelah data demo terisi.
 Menambah view baru berarti menambahkannya ke `refresher.Views` (urut menurut ketergantungan).
+Penyegaran berkala dijalankan `cmd/worker` (§6); penyegaran setelah harga berubah tetap di `cmd/api`.
+
+### 6. Penjadwal job (`cmd/worker`)
+
+Job berkala berjalan di proses terpisah (`cmd/worker`, service compose `worker`), bukan di `cmd/api`,
+supaya API bisa diskalakan tanpa menggandakan job dan job berat tidak mengganggu request.
+
+- **Satu pemilik:** compose menyetel `API_BACKGROUND_JOBS=false` pada `api`, sehingga penyegaran
+  berkala hanya dari worker. Tanpa worker (mis. `make dev/api`) API tetap menyegarkan sendiri.
+- **Aman ganda:** `internal/platform/jobs` membungkus tiap putaran dengan advisory lock Postgres
+  (`pg_try_advisory_xact_lock`) per nama job. Dua instance worker (atau worker + API) tidak pernah
+  menjalankan job yang sama bersamaan; yang kalah melewati putaran itu. Lock lepas otomatis bila proses mati.
+- **Interval dari env:** `JOB_<NAMA>_INTERVAL` (durasi Go: `30s`, `5m`, `1h`; `off` menonaktifkan).
+  Bawaan: `JOB_DASHBOARD_REFRESH_INTERVAL=5m`, `JOB_KPI_HITUNG_INTERVAL=1h`, `JOB_KPI_HITUNG_BULAN=2`.
+  `WORKER_HEALTH_ADDR` (bawaan `:8081`, `off` mematikan) menyajikan `/healthz` berisi status tiap job.
+- **CLI:** `worker list` mencetak job dan interval efektif; `worker run <job>` menjalankan satu putaran (tetap berlock).
+
+**Mendaftarkan job baru** (mis. ingestion, rule engine EWS): buat `cmd/worker/register_<modul>.go`
+(satu berkas per modul, tidak menyentuh berkas lain) dengan pola:
+
+```go
+func init() {
+	registerBuilder(func(d deps) ([]jobs.Job, error) {
+		interval, err := jobs.IntervalFromEnv(d.getenv, "ews_evaluasi", 10*time.Minute) // JOB_EWS_EVALUASI_INTERVAL
+		if err != nil {
+			return nil, err
+		}
+		return []jobs.Job{{
+			Name: "ews_evaluasi", Interval: interval, Timeout: 2 * time.Minute, RunOnStart: false,
+			Run: func(ctx context.Context) error { /* idempoten: aman diulang */ return nil },
+		}}, nil
+	})
+}
+```
+
+`Run` wajib idempoten dan menghormati `ctx` (dibatasi `Timeout`, bawaan 5 menit). Nama job
+`[a-z][a-z0-9_]*` unik. Jangan menjalankan job yang sama dari `cmd/api`; bila perlu pemicu reaktif
+(seperti `refresher.Trigger`), itu boleh di API sebagai tambahan, bukan penjadwalan berkala.

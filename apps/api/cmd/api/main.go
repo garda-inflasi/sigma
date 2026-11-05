@@ -94,10 +94,16 @@ func main() {
 	// Register all other modules
 	modules.RegisterAll(v1, db, log, tokenMgr)
 
-	// Agregat dashboard disegarkan berkala, selain setelah harga divalidasi atau dipublikasi.
-	refreshCtx, stopRefresh := context.WithCancel(context.Background())
-	defer stopRefresh()
-	go refresher.Shared(db, log).Run(refreshCtx, dashboardRefreshInterval)
+	// Agregat dashboard disegarkan berkala, selain setelah harga divalidasi atau dipublikasi
+	// (yang terakhir tetap di sini). Penyegaran BERKALA dimiliki cmd/worker bila ada:
+	// set API_BACKGROUND_JOBS=false di compose agar API tidak menjalankannya juga.
+	if os.Getenv("API_BACKGROUND_JOBS") != "false" {
+		refreshCtx, stopRefresh := context.WithCancel(context.Background())
+		defer stopRefresh()
+		go refresher.Shared(db, log).Run(refreshCtx, dashboardRefreshInterval)
+	} else {
+		log.Info("job berkala dinonaktifkan di API (dimiliki cmd/worker)")
+	}
 
 	srv := &http.Server{
 		Addr: addr,

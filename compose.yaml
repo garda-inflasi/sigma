@@ -84,8 +84,40 @@ services:
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
       JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
+      # Penyegaran berkala dashboard dimiliki service worker (satu pemilik).
+      API_BACKGROUND_JOBS: "false"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - garda_inflasi_net
+
+  # Job berkala di luar API: refresh materialized view dashboard dan perhitungan KPI.
+  # Interval lewat JOB_<NAMA>_INTERVAL (off = nonaktif). Aman >1 instance (advisory lock).
+  worker:
+    <<: *api-image
+    container_name: garda-worker
+    command: ["./worker"]
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: "${DB_USER:-garda}"
+      DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
+      DB_NAME: "${DB_NAME:-garda_inflasi}"
+      DB_SSLMODE: disable
+      WORKER_HEALTH_ADDR: ":8081"
+      JOB_DASHBOARD_REFRESH_INTERVAL: "${JOB_DASHBOARD_REFRESH_INTERVAL:-5m}"
+      JOB_KPI_HITUNG_INTERVAL: "${JOB_KPI_HITUNG_INTERVAL:-1h}"
+      JOB_KPI_HITUNG_BULAN: "${JOB_KPI_HITUNG_BULAN:-2}"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
       migrate:
         condition: service_completed_successfully

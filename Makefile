@@ -158,7 +158,7 @@ docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu ap
 	$(DEMO_ENV) docker compose build
 	$(DEMO_ENV) docker compose run --rm migrate
 	$(DEMO_ENV) docker compose run --rm seed
-	$(DEMO_ENV) docker compose up -d api web caddy
+	$(DEMO_ENV) docker compose up -d api worker web caddy
 	@echo ""
 	@echo "✓ Demo berjalan: http://localhost:$(DEMO_CADDY_HTTP_PORT)  (login: superadmin@gardainflasi.id / Garda2024!)"
 

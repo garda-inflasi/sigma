@@ -27,6 +27,13 @@ services:
       APP_ADDR: ":8080"
     restart: unless-stopped
 
+  worker:
+    image: garda-api:${IMAGE_TAG:-latest}
+    build: !reset null
+    environment:
+      GIN_MODE: release
+    restart: unless-stopped
+
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
   # menghentikan deploy.
   migrate:

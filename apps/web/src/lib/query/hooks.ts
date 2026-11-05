@@ -10,6 +10,7 @@ import { ringkasHasilKartu, type AksiKartu, type KeputusanPersetujuan } from "@/
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
+import { MASTER_BULK_LABEL, ringkasDitolak, type MasterBulkAksi } from "@/lib/api/master";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { TransaksiPayload } from "@/lib/api/cold-storage";
@@ -325,6 +326,20 @@ export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn:
 export const useMasterKomoditas = (enabled = true) => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas, enabled });
 export const useMasterWilayah = (enabled = true) => useQuery({ queryKey: qk.master.wilayah(), queryFn: api.master.wilayah, enabled });
 export const useMasterPasar = (enabled = true) => useQuery({ queryKey: qk.master.pasar(), queryFn: api.master.pasar, enabled });
+/** Ajukan/setujui/arsipkan komoditas; daftar dimuat ulang dari server, kode yang ditolak dilaporkan satu per satu. */
+export function useBulkMasterKomoditas() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ aksi, kode }: { aksi: MasterBulkAksi; kode: string[] }) => api.master.bulkKomoditas(aksi, kode),
+    onSuccess: (hasil, { aksi }) => {
+      const kata = MASTER_BULK_LABEL[aksi];
+      if (hasil.berhasil > 0) toast.success(`${hasil.berhasil.toLocaleString("id-ID")} komoditas ${kata}`, { description: hasil.gagal ? undefined : "Tercatat di audit trail." });
+      if (hasil.gagal > 0) toast.error(`${hasil.gagal.toLocaleString("id-ID")} komoditas ditolak`, { description: ringkasDitolak(hasil.ditolak) });
+    },
+    onError: (err) => toast.error("Aksi master data gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.komoditas() }),
+  });
+}
 
 /**
  * Mutasi aksi massal dengan pembaruan optimistis.

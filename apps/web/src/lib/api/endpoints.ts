@@ -7,8 +7,8 @@ import { exportCsv } from "@/lib/csv";
 import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult, type TransaksiHasil, type TransaksiPayload } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import {
-  toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
-  type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
+  toMasterBulkHasil, toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
+  type MasterBulkAksi, type MasterBulkHasil, type MasterBulkResponse, type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
 import {
   aktivitasMock, toAktivitasLapangan, toHeatmap, toKpiOperasional,
@@ -344,5 +344,10 @@ export const api = {
       const nama = new Map(wilayah.map((w) => [w.kode, toMasterWilayahRow(w).nama]));
       return pasar.map((p) => toMasterPasarRow(p, nama));
     },
+    /** Ajukan/setujui/arsipkan komoditas; izin per aksi diperiksa server, hasil dilaporkan per kode. */
+    bulkKomoditas: (aksi: MasterBulkAksi, kode: string[]): Promise<MasterBulkHasil> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Perubahan master data memerlukan backend."))
+        : apiFetch<MasterBulkResponse>("/v1/master/komoditas/bulk", { method: "POST", body: JSON.stringify({ action: aksi, kode }) }).then(toMasterBulkHasil),
   },
 };

@@ -4,25 +4,23 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { motion } from "motion/react";
 import { Archive, CheckCircle2, Download, FilePen } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PageHeader } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { exportCsv } from "@/lib/csv";
+import type { MasterBulkAksi } from "@/lib/api/master";
 import { ENTITAS, type Entitas } from "@/lib/data/master";
 import type { MasterKomoditasRow, MasterPasarRow, MasterWilayahRow } from "@/lib/data/types";
-import { useMasterKomoditas, useMasterPasar, useMasterWilayah } from "@/lib/query/hooks";
+import { useBulkMasterKomoditas, useMasterKomoditas, useMasterPasar, useMasterWilayah } from "@/lib/query/hooks";
 import { formatRupiah } from "@/lib/format";
 import { spring } from "@/lib/motion/presets";
 import { cn } from "@/lib/utils";
 
 type Status = "AKTIF" | "MENUNGGU_PERSETUJUAN" | "DIARSIPKAN";
 interface Baris { id: string; kode: string; nama: string; info: string; info2: string; versi: number; status: Status }
-/** Perubahan status/versi yang diajukan di sesi ini, di atas data dari API (belum disimpan ke server). */
-type Perubahan = Record<string, Pick<Baris, "versi" | "status">>;
 
 const barisKomoditas = (rows: MasterKomoditasRow[]): Baris[] =>
   rows.map((k) => ({ id: k.id, kode: k.kode, nama: k.nama, info: `${k.kategori}, per ${k.satuan}${k.pilot ? ", pilot" : ""}`, info2: formatRupiah(k.hargaAcuan), versi: k.versi, status: k.status }));
@@ -38,11 +36,11 @@ export function MasterPage({ entitas }: { entitas: Entitas }) {
   const komoditas = useMasterKomoditas(entitas === "komoditas");
   const wilayah = useMasterWilayah(entitas === "wilayah");
   const pasar = useMasterPasar(entitas === "pasar");
-  const [perubahan, setPerubahan] = useState<Perubahan>({});
-  const rows = useMemo<Baris[] | undefined>(() => {
-    const dasar = { komoditas: komoditas.data && barisKomoditas(komoditas.data), wilayah: wilayah.data && barisWilayah(wilayah.data), pasar: pasar.data && barisPasar(pasar.data) }[entitas];
-    return dasar?.map((r) => ({ ...r, ...perubahan[r.id] }));
-  }, [entitas, komoditas.data, wilayah.data, pasar.data, perubahan]);
+  const bulkKomoditas = useBulkMasterKomoditas();
+  const rows = useMemo<Baris[] | undefined>(
+    () => ({ komoditas: komoditas.data && barisKomoditas(komoditas.data), wilayah: wilayah.data && barisWilayah(wilayah.data), pasar: pasar.data && barisPasar(pasar.data) })[entitas],
+    [entitas, komoditas.data, wilayah.data, pasar.data],
+  );
   const isLoading = { komoditas, wilayah, pasar }[entitas].isLoading;
   const kolom = useMemo<ColumnDef<Baris>[]>(() => [
     { accessorKey: "kode", header: "Kode", cell: ({ getValue }) => <span className="num text-xs">{getValue<string>()}</span> },
@@ -52,14 +50,15 @@ export function MasterPage({ entitas }: { entitas: Entitas }) {
     { accessorKey: "versi", header: "Versi", cell: ({ getValue }) => <span className="num">v{getValue<number>()}</span> },
     { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ getValue }) => { const s = STATUS[getValue<Status>()]; return <StatusBadge tone={s.tone}>{s.label}</StatusBadge>; } },
   ], [entitas]);
-  const ubah = (ids: string[], fn: (r: Baris) => Baris) => {
-    const set = new Set(ids);
-    setPerubahan((prev) => ({ ...prev, ...Object.fromEntries((rows ?? []).filter((r) => set.has(r.id)).map((r) => { const { status, versi } = fn(r); return [r.id, { status, versi }]; })) }));
-  };
+  // Hanya komoditas yang punya siklus status/versi di server; wilayah dan pasar tidak, jadi hanya bisa diekspor.
+  const kirim = (aksi: MasterBulkAksi) => (r: Baris[]) => bulkKomoditas.mutateAsync({ aksi, kode: r.map((x) => x.kode) }).catch(() => undefined);
+  const aksiStatus: BulkAction<Baris>[] = entitas !== "komoditas" ? [] : [
+    { id: "ajukan", label: "Ajukan perubahan", icon: FilePen, perm: "master.ajukan", enabled: (r) => r.every((x) => x.status === "AKTIF"), run: kirim("ajukan_perubahan") },
+    { id: "setujui", label: "Setujui", icon: CheckCircle2, perm: "master.setujui", tone: "data", enabled: (r) => r.every((x) => x.status === "MENUNGGU_PERSETUJUAN"), run: kirim("setujui") },
+    { id: "arsip", label: "Arsipkan", icon: Archive, perm: "master.ajukan", tone: "danger", enabled: (r) => r.every((x) => x.status !== "DIARSIPKAN"), confirm: { title: "Arsipkan data terpilih?", description: (n) => `${n} data tidak lagi muncul di form lapangan dan tidak dapat dipulihkan dari layar ini. Riwayat entri lama tetap tersimpan.`, actionLabel: "Arsipkan" }, run: kirim("arsipkan") },
+  ];
   const actions: BulkAction<Baris>[] = [
-    { id: "ajukan", label: "Ajukan perubahan", icon: FilePen, perm: "master.ajukan", enabled: (r) => r.every((x) => x.status === "AKTIF"), run: (r) => { ubah(r.map((x) => x.id), (x) => ({ ...x, status: "MENUNGGU_PERSETUJUAN" })); toast.success(`${r.length} perubahan diajukan`, { description: "Menunggu persetujuan Pimpinan FMIPA atau BPS." }); } },
-    { id: "setujui", label: "Setujui", icon: CheckCircle2, perm: "master.setujui", tone: "data", enabled: (r) => r.every((x) => x.status === "MENUNGGU_PERSETUJUAN"), run: (r) => { ubah(r.map((x) => x.id), (x) => ({ ...x, status: "AKTIF", versi: x.versi + 1 })); toast.success(`${r.length} perubahan disetujui`, { description: "Versi baru berlaku untuk entri berikutnya." }); } },
-    { id: "arsip", label: "Arsipkan", icon: Archive, perm: "master.ajukan", tone: "danger", confirm: { title: "Arsipkan data terpilih?", description: (n) => `${n} data tidak lagi muncul di form lapangan. Riwayat entri lama tetap tersimpan.`, actionLabel: "Arsipkan" }, run: (r) => { ubah(r.map((x) => x.id), (x) => ({ ...x, status: "DIARSIPKAN" })); toast.success(`${r.length} data diarsipkan`); } },
+    ...aksiStatus,
     { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "Kode", value: (x) => x.kode }, { header: "Nama", value: (x) => x.nama }, { header: "Keterangan", value: (x) => x.info }, { header: "Versi", value: (x) => x.versi }, { header: "Status", value: (x) => x.status }], `master-${entitas}`) },
   ];
   return (

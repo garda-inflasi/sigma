@@ -112,13 +112,23 @@ func (s *Sender) SendHTML(to, subject, htmlBody string) error {
 	return s.send(oneLine.Replace(to), oneLine.Replace(subject), htmlBody)
 }
 
+// auth memilih autentikasi SMTP. Username kosong berarti relay tanpa autentikasi (Mailpit di
+// dev/demo, relay internal): smtp.PlainAuth menolak server non-localhost yang tidak memakai TLS,
+// jadi autentikasi dilewati sama sekali dan smtp.SendMail dipanggil dengan auth nil.
+func (s *Sender) auth() smtp.Auth {
+	if s.cfg.Username == "" {
+		return nil
+	}
+	return smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
+}
+
 func (s *Sender) send(to, subject, htmlBody string) error {
 	if s.cfg.Host == "" {
 		// SMTP not configured — log instead of sending
 		return nil
 	}
 
-	auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
+	auth := s.auth()
 
 	from := fmt.Sprintf("%s <%s>", s.cfg.FromName, s.cfg.From)
 	if s.cfg.FromName == "" {

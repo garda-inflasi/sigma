@@ -154,10 +154,13 @@ DEMO_CADDY_HTTP_PORT ?= 8090
 DEMO_CADDY_HTTPS_PORT ?= 8453
 DEMO_POSTGRES_VOLUME ?= garda_demo_postgres_data
 DEMO_REDIS_VOLUME ?= garda_demo_redis_data
+DEMO_MAILPIT_PORT ?= 8025
 DEMO_ENV = POSTGRES_VOLUME=$(DEMO_POSTGRES_VOLUME) REDIS_VOLUME=$(DEMO_REDIS_VOLUME) POSTGRES_PORT=$(DEMO_POSTGRES_PORT) REDIS_PORT=$(DEMO_REDIS_PORT) \
 	CADDY_HTTP_PORT=$(DEMO_CADDY_HTTP_PORT) CADDY_HTTPS_PORT=$(DEMO_CADDY_HTTPS_PORT) \
 	APP_ALLOWED_ORIGINS=http://localhost:$(DEMO_CADDY_HTTP_PORT),https://localhost:$(DEMO_CADDY_HTTPS_PORT) \
 	APP_PUBLIC_URL=http://localhost:$(DEMO_CADDY_HTTP_PORT) \
+	COMPOSE_PROFILES=mailpit MAILPIT_PORT=$(DEMO_MAILPIT_PORT) \
+	SMTP_HOST=mailpit SMTP_PORT=1025 SMTP_USERNAME= SMTP_PASSWORD= SMTP_FROM=noreply@gardainflasi.id \
 	COOKIE_SECURE=false
 
 docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu aplikasi
@@ -165,9 +168,10 @@ docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu ap
 	$(DEMO_ENV) docker compose build
 	$(DEMO_ENV) docker compose run --rm migrate
 	$(DEMO_ENV) docker compose run --rm seed
-	$(DEMO_ENV) docker compose up -d api worker ml web caddy
+	$(DEMO_ENV) docker compose up -d api worker ml web caddy mailpit
 	@echo ""
 	@echo "✓ Demo berjalan: http://localhost:$(DEMO_CADDY_HTTP_PORT)  (login: superadmin@gardainflasi.id / Garda2024!)"
+	@echo "  Kotak masuk email (Mailpit): http://localhost:$(DEMO_MAILPIT_PORT)"
 
 docker/demo/down: ## Matikan demo (data tetap di volume)
 	$(DEMO_ENV) docker compose down

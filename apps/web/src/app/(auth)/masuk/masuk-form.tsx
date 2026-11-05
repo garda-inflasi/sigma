@@ -11,46 +11,20 @@ import { Label } from "@/components/ui/label";
 import { API_BASE, MODE_MOCK } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
-/** Logo "G" Google empat warna — SVG inline agar tidak bergantung aset eksternal. */
-function GoogleGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 48 48" className={className} aria-hidden>
-      <path
-        fill="#4285F4"
-        d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"
-      />
-      <path
-        fill="#34A853"
-        d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M11.69 28.18c-.44-1.32-.69-2.73-.69-4.18s.25-2.86.69-4.18v-5.7H4.34A21.97 21.97 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z"
-      />
-      <path
-        fill="#EA4335"
-        d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7C13.42 14.62 18.27 10.75 24 10.75z"
-      />
-    </svg>
-  );
-}
-
 // Akun demo (mode mock, tanpa backend) — satu-satunya kredensial yang diterima.
 const DEMO_EMAIL = "khaidirhasan@gmail.com";
 const DEMO_SANDI = "acehkukaya";
 
 /**
- * Form masuk institusi: email + kata sandi (lapis utama), dengan alternatif SSO Google.
+ * Form masuk institusi: email + kata sandi.
  * Di mode backend (NEXT_PUBLIC_API_BASE_URL aktif): POST ke layanan auth Go yang
  * menerbitkan cookie httpOnly `garda_session`; di mode mock UI berjalan tanpa backend.
  */
 export function MasukForm({
   redirect,
-  googleSso,
   galatAwal,
 }: {
   redirect: string;
-  googleSso: string;
   /** Pesan gagal dari BFF setelah kiriman form (?error=). */
   galatAwal?: string;
 }) {
@@ -215,27 +189,6 @@ export function MasukForm({
       >
         Masuk <ArrowRight className="size-4" />
       </button>
-
-      {/* Pemisah */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        atau
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      {/* SSO Google */}
-      <a
-        href={googleSso}
-        className={cn(
-          "flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-input bg-white/80 text-[15px] font-medium text-navy-800 shadow-ambient-sm transition-all",
-          "hover:bg-white hover:shadow-ambient focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-          "dark:bg-white/[0.06] dark:text-white dark:hover:bg-white/[0.1]",
-          loading && "pointer-events-none opacity-70",
-        )}
-      >
-        <GoogleGlyph className="size-5" />
-        Masuk dengan Google
-      </a>
 
       {MODE_MOCK && (
         <p className="rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-center text-xs leading-relaxed text-muted-foreground">

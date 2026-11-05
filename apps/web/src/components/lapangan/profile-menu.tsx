@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { inisialNama } from "@/lib/nama";
+import { keluarDariSesi } from "@/lib/auth/logout-client";
 import { useSession } from "@/lib/auth/session-context";
 import { DEV_ROLE_COOKIE } from "@/lib/auth/resolve";
 import { LAPIS_META, ROLES, ROLE_IDS, type Lapis, type Role } from "@/lib/rbac/roles";
@@ -86,10 +87,8 @@ export default function ProfileMenu({ user }: { user: ReturnType<typeof useSessi
           {resolvedTheme === "dark" ? "Mode terang" : "Mode gelap"}
         </DropdownMenuItem>
 
-        <DropdownMenuItem asChild className="rounded-md">
-          <Link href="/masuk">
-            <LogOut className="size-4" /> Keluar
-          </Link>
+        <DropdownMenuItem onSelect={() => void keluarDariSesi()} className="rounded-md">
+          <LogOut className="size-4" /> Keluar
         </DropdownMenuItem>
 
         {process.env.NODE_ENV !== "production" && (

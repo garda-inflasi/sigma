@@ -26,6 +26,8 @@ import { requiredPermission } from "./routes";
  * Rute yang tidak memerlukan sesi (halaman publik, alur masuk, aset). Langkah OTP login
  * (`/api/auth/mfa/validate`) publik karena sesi baru terbit setelah kode diterima; ia
  * memakai cookie tantangan berumur pendek dari `/api/auth/login`.
+ * Masuk dengan Google (`/api/auth/sso/google` dan `/callback`) publik karena dipakai sebelum ada sesi;
+ * keamanannya ada pada state/PKCE di API dan cookie alur berumur 10 menit (lib/bff/sso.ts).
  */
 export const PUBLIC_ROUTES = [
   "/masuk",
@@ -33,6 +35,7 @@ export const PUBLIC_ROUTES = [
   "/reset-password",
   "/api/auth/login",
   "/api/auth/mfa/validate",
+  "/api/auth/sso",
   "/api/auth/refresh",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",

@@ -4,8 +4,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { API_BASE, MODE_MOCK } from "@/lib/api/client";
+import { jalankanAliranEws } from "@/lib/api/ews-sambung";
 import { layakDiumumkan, mergeAlert, parseAlertEvent } from "@/lib/api/ews-stream";
 import { randomEws } from "@/lib/api/mock";
+import { pulihkanSesi } from "@/lib/auth/sesi-client";
 import { useSession } from "@/lib/auth/session-context";
 import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta } from "@/lib/design/tokens";
@@ -65,26 +67,20 @@ export function useEwsStream() {
       };
     }
 
-    setStatus("menghubungkan");
-    // Cookie sesi ikut terkirim (same-origin). EventSource menyambung ulang sendiri dengan
-    // Last-Event-ID, jadi server melanjutkan tanpa celah atau duplikat.
-    const es = new EventSource(`${API_BASE}/v1/ews/stream`, { withCredentials: true });
-    let pernahTerputus = false;
-    es.onopen = () => {
-      setStatus("terhubung");
-      // Perubahan status (diakui pengguna lain, dst.) tidak lewat aliran: segarkan daftar setelah tersambung ulang.
-      if (pernahTerputus) qc.invalidateQueries({ queryKey: qk.ews.list() });
-      pernahTerputus = false;
-    };
-    es.onerror = () => {
-      pernahTerputus = true;
-      setStatus("terputus");
-    };
-    es.addEventListener("alert", (e) => {
-      const alert = parseAlertEvent((e as MessageEvent<string>).data);
-      if (alert) handle(alert);
+    // Cookie sesi ikut terkirim (same-origin). EventSource menyambung ulang sendiri dengan Last-Event-ID
+    // untuk putus jaringan; bila server menolak (401 karena access token habis) koneksi mati permanen, jadi
+    // penyambung memulihkan sesi (refresh) lalu membuat EventSource baru dan menyegarkan daftar alert.
+    return jalankanAliranEws({
+      buat: () => new EventSource(`${API_BASE}/v1/ews/stream`, { withCredentials: true }),
+      pulih: (sejak) => pulihkanSesi(sejak),
+      saatStatus: setStatus,
+      saatAlert: (data) => {
+        const alert = parseAlertEvent(data);
+        if (alert) handle(alert);
+      },
+      // Perubahan status (diakui pengguna lain, dst.) dan event yang terlewat tidak lewat aliran: segarkan daftar.
+      saatTersambungUlang: () => qc.invalidateQueries({ queryKey: qk.ews.list() }),
     });
-    return () => es.close();
   }, [role, qc, router, catat, setStatus]);
 }
 

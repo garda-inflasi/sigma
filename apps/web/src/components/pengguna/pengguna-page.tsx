@@ -21,6 +21,7 @@ import type { PenggunaDetail } from "@/lib/api/pengguna";
 import {
   useAssignRolePengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
 } from "@/lib/query/hooks";
+import { usePaksaKeluarPengguna } from "@/lib/query/sesi-hooks";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
 
@@ -225,6 +226,7 @@ export function PenggunaPage() {
   const bulkMut = usePenggunaBulk();
   const hapus = useDeletePengguna();
   const assignRole = useAssignRolePengguna();
+  const paksaKeluar = usePaksaKeluarPengguna();
 
   const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset"; user: PenggunaRow | null } | null>(null);
 
@@ -247,6 +249,7 @@ export function PenggunaPage() {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onSelect={() => setDialog({ mode: "ubah", user: u })}><Pencil /> Ubah data</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setDialog({ mode: "reset", user: u })}><KeyRound /> Reset kata sandi</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => paksaKeluar.mutate({ id: u.id, nama: u.nama })}><LogOut /> Paksa keluar</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => assignRole.mutate({ id: u.id, peran: u.role === "ADMIN_SISTEM" ? "OPS_MAHASISWA" : "ADMIN_SISTEM" })}>
               <ShieldCheck /> {u.role === "ADMIN_SISTEM" ? "Cabut admin sistem" : "Jadikan admin sistem"}
@@ -257,7 +260,7 @@ export function PenggunaPage() {
         </DropdownMenu>
       ),
     },
-  ], [assignRole, hapus]);
+  ], [assignRole, hapus, paksaKeluar]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">

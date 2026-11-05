@@ -2,6 +2,8 @@
  * Klien HTTP ke backend Go (REST, JSON, ISO 8601). Sesi via cookie httpOnly
  * yang diterbitkan layanan auth (SSO + MFA). Tanpa NEXT_PUBLIC_API_BASE_URL → mode mock.
  */
+import { fetchSesi } from "@/lib/auth/sesi-client";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 export const MODE_MOCK = !API_BASE;
 
@@ -13,7 +15,8 @@ export class ApiError extends Error {
 
 export async function apiFetch<T>(path: string, init: RequestInit & { idempotencyKey?: string } = {}): Promise<T> {
   const { idempotencyKey, headers, ...rest } = init;
-  const res = await fetch(`${API_BASE}${path}`, {
+  // 401 karena access token habis/dicabut → refresh senyap lalu ulangi sekali (lihat sesi-client).
+  const res = await fetchSesi(`${API_BASE}${path}`, {
     credentials: "include",
     ...rest,
     headers: {
@@ -50,7 +53,8 @@ export async function bffFetch<T>(path: string, init: RequestInit = {}): Promise
   const method = (init.method ?? "GET").toUpperCase();
   const mutating = method !== "GET" && method !== "HEAD";
 
-  const res = await fetch(path, {
+  // Init berupa fungsi: token CSRF dibaca ulang saat permintaan diulang setelah refresh.
+  const res = await fetchSesi(path, () => ({
     credentials: "same-origin",
     ...init,
     headers: {
@@ -59,7 +63,7 @@ export async function bffFetch<T>(path: string, init: RequestInit = {}): Promise
       ...(mutating ? { "x-csrf-token": readCsrfToken() } : {}),
       ...init.headers,
     },
-  });
+  }));
 
   if (!res.ok) {
     let payload: unknown;

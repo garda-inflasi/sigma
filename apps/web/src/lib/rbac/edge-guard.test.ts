@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { ROLE_PERMISSIONS } from "./permissions";
 import { ROLE_IDS, ROLES, type Role } from "./roles";
 import { ROUTE_ACCESS, canAccessRoute } from "./routes";
-import { decideEdge, isPublicRoute } from "./edge-guard";
+import { decideEdge, isPublicRoute, tujuanSemula } from "./edge-guard";
 import { decodeJwtPayload, readEdgeClaims } from "@/lib/auth/edge-claims";
 
 const NOW = 1_800_000_000;
@@ -138,10 +138,10 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
 });
 
 describe("sesi", () => {
-  it("tanpa token: halaman dialihkan ke /masuk dengan tujuan semula", () => {
+  it("tanpa access token: halaman dialihkan ke pemulihan sesi dengan tujuan semula", () => {
     assert.deepEqual(decide("/kpi"), {
       kind: "redirect",
-      path: "/masuk",
+      path: "/api/auth/refresh",
       query: { lanjut: "/kpi" },
       clearAccessCookie: false,
     });
@@ -154,17 +154,17 @@ describe("sesi", () => {
     assert.equal(d.kind === "json" && d.body.message, "Unauthorized");
   });
 
-  it("hanya refresh token: halaman ke /masuk, API 401 Token expired", () => {
+  it("hanya refresh token: halaman ke pemulihan sesi, API 401 Token expired", () => {
     assert.equal(decide("/kpi", undefined, "r").kind, "redirect");
     const d = decide("/api/pengguna", undefined, "r");
     assert.equal(d.kind === "json" && d.body.message, "Token expired");
   });
 
-  it("token kedaluwarsa diperlakukan seperti tidak ada dan cookie dihapus", () => {
+  it("token kedaluwarsa diperlakukan seperti tidak ada: cookie dihapus lalu sesi dipulihkan", () => {
     const expired = tokenFor("MANAJER_PROGRAM", { exp: NOW - 1 });
     assert.deepEqual(decide("/kpi", expired, "r"), {
       kind: "redirect",
-      path: "/masuk",
+      path: "/api/auth/refresh",
       query: { lanjut: "/kpi" },
       clearAccessCookie: true,
     });
@@ -173,14 +173,79 @@ describe("sesi", () => {
     assert.equal(api.kind === "json" && api.clearAccessCookie, true);
   });
 
-  it("token rusak: halaman ke /masuk dan cookie dihapus (tanpa loop, /masuk publik)", () => {
+  it("token rusak: cookie dihapus dan sesi dipulihkan; /masuk tetap publik (tanpa loop)", () => {
     assert.deepEqual(decide("/kpi", "sampah"), {
       kind: "redirect",
-      path: "/masuk",
+      path: "/api/auth/refresh",
       query: { lanjut: "/kpi" },
       clearAccessCookie: true,
     });
     assert.deepEqual(decide("/masuk", "sampah"), { kind: "next" });
+  });
+
+  it("pemulihan baru saja terjadi tetapi access token tetap tak terpakai: ke /masuk, penanda dihapus (pengaman loop)", () => {
+    assert.deepEqual(
+      decideEdge({ pathname: "/kpi", pulihBaru: true, nowSeconds: NOW }),
+      {
+        kind: "redirect",
+        path: "/masuk",
+        query: { lanjut: "/kpi" },
+        clearAccessCookie: false,
+        clearResumeCookie: true,
+      },
+    );
+  });
+
+  it("penanda pemulihan tidak mengganggu sesi yang sah", () => {
+    assert.deepEqual(
+      decideEdge({
+        pathname: "/kpi",
+        accessToken: tokenFor("MANAJER_PROGRAM"),
+        pulihBaru: true,
+        nowSeconds: NOW,
+      }),
+      { kind: "next" },
+    );
+  });
+
+  it("query string ikut dibawa ke tujuan semula, tanpa parameter internal _rsc", () => {
+    assert.deepEqual(
+      decideEdge({
+        pathname: "/ews",
+        search: "?id=EWS-12&_rsc=abc",
+        nowSeconds: NOW,
+      }),
+      {
+        kind: "redirect",
+        path: "/api/auth/refresh",
+        query: { lanjut: "/ews?id=EWS-12" },
+        clearAccessCookie: false,
+      },
+    );
+  });
+
+  it("API tidak dialihkan: 401 agar klien memulihkan sesi sendiri lalu mengulang", () => {
+    const d = decideEdge({
+      pathname: "/api/pengguna",
+      search: "?page=2",
+      pulihBaru: true,
+      nowSeconds: NOW,
+    });
+    assert.equal(d.kind === "json" && d.status, 401);
+  });
+
+  it("/api/auth/logout publik (terjangkau saat access token habis); logout-all tetap butuh sesi", () => {
+    assert.deepEqual(decide("/api/auth/logout"), { kind: "next" });
+    assert.equal(isPublicRoute("/api/auth/logout-all"), false);
+    assert.equal(decide("/api/auth/logout-all").kind, "json");
+    assert.equal(isPublicRoute("/api/auth/sessions"), false);
+  });
+
+  it("/keamanan terbuka bagi semua peran yang sudah masuk (tanpa izin khusus)", () => {
+    for (const role of ROLE_IDS) {
+      assert.deepEqual(decide("/keamanan", tokenFor(role)), { kind: "next" });
+    }
+    assert.equal(canAccessRoute(undefined, "/keamanan"), true);
   });
 
   it("token tanpa exp tidak dianggap kedaluwarsa (API yang memutuskan)", () => {
@@ -343,5 +408,19 @@ describe("beranda peran", () => {
         `${role} -> ${ROLES[role].beranda}`,
       );
     }
+  });
+});
+
+describe("tujuanSemula", () => {
+  it("tanpa query mengembalikan path apa adanya", () => {
+    assert.equal(tujuanSemula("/kpi"), "/kpi");
+    assert.equal(tujuanSemula("/kpi", ""), "/kpi");
+    assert.equal(tujuanSemula("/kpi", "?"), "/kpi");
+  });
+
+  it("mempertahankan query bermakna dan membuang _rsc", () => {
+    assert.equal(tujuanSemula("/ews", "?id=1&status=BARU"), "/ews?id=1&status=BARU");
+    assert.equal(tujuanSemula("/ews", "?_rsc=x"), "/ews");
+    assert.equal(tujuanSemula("/ews", "?a=1&_rsc=x"), "/ews?a=1");
   });
 });

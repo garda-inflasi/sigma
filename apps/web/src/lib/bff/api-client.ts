@@ -33,6 +33,27 @@ export class BffApiError extends Error {
 }
 
 /**
+ * IP dan user agent peramban asli untuk diteruskan ke Go. Tanpa ini Go hanya melihat container web:
+ * daftar sesi aktif dan audit akan menampilkan alamat internal dan "Node.js" untuk semua orang.
+ * Go hanya memercayai X-Forwarded-For dari proxy yang dikenalnya (TRUSTED_PROXIES, bawaan jaringan privat).
+ * Di luar lingkup request (tes) tidak ada yang diteruskan.
+ */
+export async function headerKlien(): Promise<Record<string, string>> {
+  try {
+    const { headers } = await import("next/headers");
+    const masuk = await headers();
+    const keluar: Record<string, string> = {};
+    const userAgent = masuk.get("user-agent");
+    if (userAgent) keluar["User-Agent"] = userAgent;
+    const diteruskan = masuk.get("x-forwarded-for");
+    if (diteruskan) keluar["X-Forwarded-For"] = diteruskan;
+    return keluar;
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Internal fetch to the Go backend.
  * This is server-to-server, no cookies or CSRF needed.
  */
@@ -47,6 +68,7 @@ async function apiFetch<T>(
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...(await headerKlien()),
       ...options.headers,
     },
   });
@@ -122,7 +144,28 @@ export interface RefreshTokenRequest {
 
 export interface RefreshTokenResponse {
   access_token: string;
-  refresh_token: string;
+  /**
+   * Refresh token pengganti. Tidak ada pada pemutaran ulang dalam jendela toleransi (dua tab menyegarkan
+   * bersamaan): pertahankan cookie refresh yang sudah ada.
+   */
+  refresh_token?: string;
+}
+
+/** Satu sesi aktif (GET /v1/auth/sessions). */
+export interface SesiWire {
+  id: string;
+  perangkat: string;
+  user_agent?: string;
+  ip?: string;
+  dibuat_pada: string;
+  terakhir_dipakai_pada: string;
+  kedaluwarsa_pada: string;
+  saat_ini: boolean;
+}
+
+/** Jumlah sesi yang dicabut oleh aksi massal. */
+export interface SesiDicabutWire {
+  dicabut: number;
 }
 
 export interface UserResponse {
@@ -235,12 +278,42 @@ export const authApi = {
       body: JSON.stringify(data),
     }),
 
-  logout: (accessToken: string) =>
+  /**
+   * Mengakhiri hanya sesi pemanggil. `refreshToken` (cookie refresh) dikirim sebagai cadangan agar server
+   * dapat menentukan sesinya bila access token tidak membawa `sid`.
+   */
+  logout: (accessToken: string, refreshToken?: string) =>
     apiFetch<void>("/auth/logout", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+      body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
+    }),
+
+  /** Keluar dari semua perangkat, termasuk sesi pemanggil. */
+  logoutAll: (accessToken: string) =>
+    apiFetch<SesiDicabutWire>("/auth/logout-all", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  sessions: (accessToken: string) =>
+    apiFetch<SesiWire[]>("/auth/sessions", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  revokeSession: (accessToken: string, id: string) =>
+    apiFetch<{ id: string }>(`/auth/sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  revokeOtherSessions: (accessToken: string) =>
+    apiFetch<SesiDicabutWire>("/auth/sessions/revoke-others", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
     }),
 
   me: (accessToken: string) =>
@@ -354,6 +427,16 @@ export const userApi = {
       method: "DELETE",
       headers: bearer(accessToken),
     }),
+
+  /** Paksa keluar: mengakhiri semua sesi seorang pengguna (izin pengguna.kelola). */
+  forceLogout: (accessToken: string, id: string) =>
+    apiFetch<{ id: string; dicabut: number }>(
+      `/users/${encodeURIComponent(id)}/revoke-sessions`,
+      {
+        method: "POST",
+        headers: bearer(accessToken),
+      }
+    ),
 
   resetPassword: (accessToken: string, id: string, newPassword: string) =>
     apiFetch<{ id: string }>(

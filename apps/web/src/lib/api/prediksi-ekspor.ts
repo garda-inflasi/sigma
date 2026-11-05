@@ -4,6 +4,7 @@
  */
 
 import { API_BASE, ApiError, MODE_MOCK } from "./client";
+import { fetchSesi } from "@/lib/auth/sesi-client";
 
 /** Nama berkas unduhan; sama dengan yang dikirim server. */
 export function namaBerkasProyeksi(komoditasKode: string): string {
@@ -14,7 +15,7 @@ export function namaBerkasProyeksi(komoditasKode: string): string {
 export async function unduhProyeksiCsv(komoditasKode: string): Promise<void> {
   if (MODE_MOCK)
     throw new Error("Unduhan proyeksi tersedia setelah backend aktif.");
-  const res = await fetch(
+  const res = await fetchSesi(
     `${API_BASE}/v1/prediksi/${encodeURIComponent(komoditasKode)}/export`,
     {
       credentials: "include",

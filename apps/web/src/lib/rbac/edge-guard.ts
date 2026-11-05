@@ -34,6 +34,9 @@ export const PUBLIC_ROUTES = [
   "/api/auth/login",
   "/api/auth/mfa/validate",
   "/api/auth/refresh",
+  // Keluar harus bisa dipanggil walau access token sudah kedaluwarsa (route-nya memulihkan sesi dulu
+  // supaya sesi di server benar-benar dicabut); tanpa ini edge menjawab 401 dan refresh token tertinggal.
+  "/api/auth/logout",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
   "/healthz",
@@ -46,6 +49,8 @@ export const PUBLIC_ROUTES = [
 
 export const ACCESS_DENIED_PATH = "/akses-ditolak";
 export const LOGIN_PATH = "/masuk";
+/** Pemulihan sesi saat navigasi halaman: menukar refresh token lalu kembali ke `lanjut` (GET di route BFF). */
+export const RESUME_PATH = "/api/auth/refresh";
 
 export function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(
@@ -60,6 +65,8 @@ export type EdgeDecision =
       path: string;
       query?: Record<string, string>;
       clearAccessCookie?: boolean;
+      /** Hapus penanda pemulihan (`garda_pulih`) bersama pengalihan ini. */
+      clearResumeCookie?: boolean;
     }
   | {
       kind: "json";
@@ -70,27 +77,50 @@ export type EdgeDecision =
 
 export interface EdgeInput {
   pathname: string;
+  /** Query string asli (dengan "?" di depan) agar tujuan semula tidak kehilangan parameternya. */
+  search?: string;
   accessToken?: string;
   refreshToken?: string;
+  /** Penanda `garda_pulih` ada: sesi baru saja dipulihkan, jangan memulihkan lagi (pengaman loop). */
+  pulihBaru?: boolean;
   /** Detik epoch saat ini (dapat disuntik untuk tes). */
   nowSeconds: number;
 }
 
 const isApi = (pathname: string) => pathname.startsWith("/api/");
 
-function toLogin(pathname: string, clearAccessCookie = false): EdgeDecision {
+/**
+ * Tujuan semula untuk parameter `lanjut`: path beserta query-nya, tanpa parameter internal Next (`_rsc`)
+ * yang tidak bermakna bagi halaman.
+ */
+export function tujuanSemula(pathname: string, search?: string): string {
+  if (!search || search === "?") return pathname;
+  const params = new URLSearchParams(search);
+  params.delete("_rsc");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function toLogin(
+  tujuan: string,
+  clearAccessCookie = false,
+  clearResumeCookie = false,
+): EdgeDecision {
   return {
     kind: "redirect",
     path: LOGIN_PATH,
-    query: { lanjut: pathname },
+    query: { lanjut: tujuan },
     clearAccessCookie,
+    ...(clearResumeCookie ? { clearResumeCookie } : {}),
   };
 }
 
 export function decideEdge({
   pathname,
+  search,
   accessToken,
   refreshToken,
+  pulihBaru,
   nowSeconds,
 }: EdgeInput): EdgeDecision {
   if (isPublicRoute(pathname)) return { kind: "next" };
@@ -112,7 +142,18 @@ export function decideEdge({
         clearAccessCookie,
       };
     }
-    return toLogin(pathname, clearAccessCookie);
+    const tujuan = tujuanSemula(pathname, search);
+    // Halaman: access token (15 menit) habis tetapi refresh token (7 hari) mungkin masih sah. Refresh
+    // token hanya dikirim browser ke /api/auth, jadi edge tidak bisa melihatnya; kirim navigasi lewat
+    // GET /api/auth/refresh yang menukarnya lalu kembali ke tujuan semula (atau ke /masuk bila tidak ada
+    // refresh token atau sudah dicabut). Penanda pulihBaru memutus loop bila cookie baru tetap tak terpakai.
+    if (pulihBaru) return toLogin(tujuan, clearAccessCookie, true);
+    return {
+      kind: "redirect",
+      path: RESUME_PATH,
+      query: { lanjut: tujuan },
+      clearAccessCookie,
+    };
   }
 
   // Akun yang wajib mengganti kata sandi hanya boleh membuka halaman ganti kata sandi.

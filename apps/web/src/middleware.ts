@@ -12,7 +12,11 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/bff/cookie-policy";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  RESUME_COOKIE,
+} from "@/lib/bff/cookie-policy";
 import { decideEdge, type EdgeDecision } from "@/lib/rbac/edge-guard";
 
 function respond(request: NextRequest, decision: EdgeDecision): NextResponse {
@@ -35,6 +39,9 @@ function respond(request: NextRequest, decision: EdgeDecision): NextResponse {
   if ("clearAccessCookie" in decision && decision.clearAccessCookie) {
     response.cookies.delete(ACCESS_COOKIE);
   }
+  if ("clearResumeCookie" in decision && decision.clearResumeCookie) {
+    response.cookies.delete(RESUME_COOKIE);
+  }
   return response;
 }
 
@@ -53,8 +60,10 @@ function withSecurityHeaders(response: NextResponse): NextResponse {
 export function middleware(request: NextRequest) {
   const decision = decideEdge({
     pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
     accessToken: request.cookies.get(ACCESS_COOKIE)?.value,
     refreshToken: request.cookies.get(REFRESH_COOKIE)?.value,
+    pulihBaru: request.cookies.has(RESUME_COOKIE),
     nowSeconds: Math.floor(Date.now() / 1000),
   });
   return withSecurityHeaders(respond(request, decision));

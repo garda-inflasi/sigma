@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, KeyRound, LogOut, Menu, Moon, Search, ShieldCheck, Sun } from "lucide-react";
+import { Bell, KeyRound, LogOut, Menu, MonitorSmartphone, Moon, Search, ShieldCheck, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -119,6 +119,9 @@ export function Topbar() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild className="rounded-md">
                   <Link href="/mfa"><ShieldCheck className="size-4" /> Verifikasi dua langkah</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="rounded-md">
+                  <Link href="/keamanan"><MonitorSmartphone className="size-4" /> Keamanan akun</Link>
                 </DropdownMenuItem>
               </>
             )}

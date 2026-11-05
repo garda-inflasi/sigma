@@ -68,6 +68,7 @@ export const qk = {
     detail: (id: string) => ["pengguna", "detail", id] as const,
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
+  sesi: { aktif: () => ["sesi", "aktif"] as const },
   audit: {
     list: (filter: AuditFilter) => ["audit", "list", filter] as const,
     detail: (id: string) => ["audit", "detail", id] as const,

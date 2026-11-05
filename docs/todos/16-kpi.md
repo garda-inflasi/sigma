@@ -23,11 +23,11 @@
    - [x] `reference`: `kpi_definisi` dan `kpi_target` untuk empat kelompok dengan target PRD §12 (MAPE harga ≤ 5,4%, F1 EWS ≥ 0,88, AUC-ROC ≥ 0,94, RMSE shelf-life ≤ 1 hari). **Baseline perlu keputusan bisnis**, jangan diisi sembarang.
    - [x] `demo`: nilai historis 12 bulan **dihitung oleh job** dari data demo, bukan angka tulis tangan.
 3. **API**
-   - [x] Modul `kpi` baru (`bash scripts/gen-module.sh kpi`): `GET /v1/kpi` dengan filter periode/wilayah dan riwayat per KPI.
+   - [x] Modul `kpi` baru (`bash scripts/gen-module.sh kpi`): `GET /v1/kpi` dengan filter periode/wilayah dan `GET /v1/kpi/:kode/riwayat` (nilai berlaku tiap periode, paling banyak 36; 404 untuk kode tak dikenal; KPI menunggu data berriwayat kosong).
    - [x] Job penghitung untuk KPI yang datanya sudah ada: kelengkapan produsen terverifikasi dan ketepatan data (dari harga), utilisasi cold storage, rasio rekomendasi AI yang dieksekusi (dari intervensi). KPI berbasis model (MAPE, F1, AUC, RMSE) ditandai "menunggu data" sampai 16-B. Dijalankan lewat `cmd/kpi` (cron) dan seeder `kpi.demo`.
    - [ ] Satukan kartu "KPI operasional" dashboard dengan `kpi_definisi` (subset), jangan dua tabel berbeda. *(ditunda: kartu dashboard operasional dikerjakan di 08-A)*
 4. **FE**
-   - [x] Tambah `api.kpi` di [endpoints.ts](../../apps/web/src/lib/api/endpoints.ts), key query, dan hook; ganti data statis di `kpi-page.tsx`; status capaian vs target dan tren beberapa periode.
+   - [x] Tambah `api.kpi` di [endpoints.ts](../../apps/web/src/lib/api/endpoints.ts), key query, dan hook; ganti data statis di `kpi-page.tsx`; status capaian vs target dan tren beberapa periode. Klik nama indikator membuka lembar riwayat (grafik dan tabel periode, realisasi, target, status; keadaan memuat, kosong, dan galat dengan "Coba lagi"). Status tiap periode dinilai terhadap target saat ini dengan aturan yang sama dengan `StatusCapaian` di API (target historis belum disimpan per periode).
 5. **TES**: perhitungan tiap KPI pada data kecil yang hasilnya bisa dihitung tangan; izin dan kontrak respons.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 

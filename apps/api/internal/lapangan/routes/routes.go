@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/lapangan/delivery/http"
 	"github.com/garda-inflasi/api/internal/lapangan/repository/postgres"
 	"github.com/garda-inflasi/api/internal/lapangan/usecase"
@@ -19,7 +20,7 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo)
+	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
 	lapangan := engine.Group("/lapangan")
@@ -29,7 +30,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		{
 			tugas.GET("/saya", handler.ListSaya)
 			tugas.GET("/:id", handler.Get)
-			tugas.POST("/bulk", middleware.RequirePermission("tugas.kelola"), handler.Bulk)
+			// Petugas menutup tugasnya sendiri; tugas.kelola membuka tugas petugas lain.
+			tugas.POST("/bulk", handler.Bulk)
 		}
 	}
 }

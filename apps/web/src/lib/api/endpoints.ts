@@ -10,6 +10,7 @@ import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery,
   type EntriHargaResponse, type HargaParams, type RingkasanHarga,
 } from "./harga";
+import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -93,7 +94,10 @@ export const api = {
     susun: (periode: string) =>
       MODE_MOCK ? mockDelay({ id: "PB-2026-10" }, 2200, 3200) : apiFetch<{ id: string }>("/v1/policy-brief/generate", { method: "POST", body: JSON.stringify({ periode }) }),
   },
-  tugas: { saya: () => get<TugasLapangan[]>("/v1/lapangan/tugas/saya", m.mockTugas) },
+  tugas: {
+    saya: (): Promise<TugasLapangan[]> =>
+      MODE_MOCK ? mockDelay(m.mockTugas) : apiFetch<TugasLapanganResponse[]>("/v1/lapangan/tugas/saya").then((rows) => rows.map(toTugasLapangan)),
+  },
   master: {
     komoditas: (): Promise<MasterKomoditasRow[]> =>
       MODE_MOCK ? mockDelay(m.mockMasterKomoditas) : apiFetch<MasterKomoditasResponse[]>("/v1/master/komoditas").then((rows) => rows.map(toMasterKomoditasRow)),

@@ -1,10 +1,12 @@
 package http
 
 import (
-	"strconv"
+	"errors"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/lapangan/dto"
 	"github.com/garda-inflasi/api/internal/lapangan/usecase"
+	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -17,14 +19,14 @@ func New(uc *usecase.UseCase) *Handler {
 	return &Handler{uc: uc}
 }
 
+// pemanggil membaca identitas dari token; tugas.kelola membuka tugas petugas lain.
+func pemanggil(c *gin.Context) usecase.Pemanggil {
+	return usecase.Pemanggil{ID: c.GetString("user_id"), Semua: middleware.HasPermission(c, "tugas.kelola")}
+}
+
 // GET /v1/lapangan/tugas/saya
 func (h *Handler) ListSaya(c *gin.Context) {
-	pic := c.GetString("user_id")
-	if pic == "" {
-		pic = c.Query("pic")
-	}
-
-	items, err := h.uc.ListSaya(c.Request.Context(), pic)
+	items, err := h.uc.ListSaya(c.Request.Context(), c.GetString("user_id"))
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data tugas lapangan")
 		return
@@ -32,57 +34,23 @@ func (h *Handler) ListSaya(c *gin.Context) {
 
 	res := make([]dto.TugasLapanganResponse, len(items))
 	for i, item := range items {
-		var tenggat *string
-		if item.Tenggat != nil {
-			t := item.Tenggat.Format("2006-01-02T15:04:05Z07:00")
-			tenggat = &t
-		}
-		res[i] = dto.TugasLapanganResponse{
-			ID:         item.ID,
-			Judul:      item.Judul,
-			Lokasi:     item.Lokasi,
-			Tipe:       item.Tipe,
-			Status:     item.Status,
-			PIC:        item.PIC,
-			Tenggat:    tenggat,
-			DibuatPada: item.DibuatPada.Format("2006-01-02T15:04:05Z07:00"),
-		}
+		res[i] = dto.ToTugasLapanganResponse(item)
 	}
-
 	response.Success(c, res)
 }
 
 // GET /v1/lapangan/tugas/:id
 func (h *Handler) Get(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	item, err := h.uc.GetByID(c.Request.Context(), c.Param("id"), pemanggil(c))
 	if err != nil {
-		response.BadRequest(c, "ID tidak valid")
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Tugas tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil data tugas lapangan")
 		return
 	}
-
-	item, err := h.uc.GetByID(c.Request.Context(), id)
-	if err != nil {
-		response.NotFound(c, "Tugas tidak ditemukan")
-		return
-	}
-
-	var tenggat *string
-	if item.Tenggat != nil {
-		t := item.Tenggat.Format("2006-01-02T15:04:05Z07:00")
-		tenggat = &t
-	}
-
-	response.Success(c, dto.TugasLapanganResponse{
-		ID:         item.ID,
-		Judul:      item.Judul,
-		Lokasi:     item.Lokasi,
-		Tipe:       item.Tipe,
-		Status:     item.Status,
-		PIC:        item.PIC,
-		Tenggat:    tenggat,
-		DibuatPada: item.DibuatPada.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	response.Success(c, dto.ToTugasLapanganResponse(*item))
 }
 
 // POST /v1/lapangan/tugas/bulk
@@ -93,16 +61,18 @@ func (h *Handler) Bulk(c *gin.Context) {
 		return
 	}
 
-	count, err := h.uc.BulkAction(c.Request.Context(), req.IDs, req.Action)
+	hasil, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Aksi, pemanggil(c))
 	if err != nil {
-		switch err {
-		case usecase.ErrInvalidAction:
+		switch {
+		case errors.Is(err, usecase.ErrInvalidAction):
 			response.BadRequest(c, "Aksi tidak valid")
+		case errors.Is(err, usecase.ErrValidasi):
+			response.BadRequest(c, err.Error())
 		default:
 			response.InternalError(c, "Gagal memproses aksi massal")
 		}
 		return
 	}
 
-	response.Success(c, dto.BulkTugasResponse{Berhasil: int(count)})
+	response.Success(c, dto.BulkTugasResponse{Berhasil: hasil.Berhasil, Gagal: hasil.Gagal})
 }

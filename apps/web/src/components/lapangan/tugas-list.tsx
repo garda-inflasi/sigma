@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { BellRing, CheckCheck, CloudDownload, MapPin, Play } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkActionBar, type BulkAction } from "@/components/data-table/bulk-action-bar";
@@ -14,7 +14,8 @@ import { CountUp } from "@/components/motion/count-up";
 import type { TugasLapangan } from "@/lib/data/types";
 import { formatRelatif } from "@/lib/format";
 import { ease, fadeUp, stagger } from "@/lib/motion/presets";
-import { useTugasSaya } from "@/lib/query/hooks";
+import { useBulkAction, useTugasSaya } from "@/lib/query/hooks";
+import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 
 const STATUS = {
@@ -38,9 +39,14 @@ function Cincin({ pct }: { pct: number }) {
 /** Daftar tugas survei: progres, tenggat, pengingat, mulai cepat ke form input. */
 export function TugasList() {
   const { data, isLoading } = useTugasSaya();
-  const [tugas, setTugas] = useState<TugasLapangan[]>([]);
+  const tugas = useMemo(() => data ?? [], [data]);
   const [sel, setSel] = useState<string[]>([]);
-  useEffect(() => { if (data) setTugas(data); }, [data]);
+  const tandaiSelesai = useBulkAction<TugasLapangan>({
+    sumber: "lapangan/tugas",
+    queryKey: qk.tugas.saya(),
+    invalidate: qk.tugas.saya(),
+    patch: (t) => ({ ...t, status: "SELESAI" }),
+  });
 
   const aktif = tugas.filter((t) => t.status !== "SELESAI");
   const target = tugas.reduce((s, t) => s + t.target, 0);
@@ -53,7 +59,7 @@ export function TugasList() {
     {
       id: "selesai", label: "Tandai selesai", icon: CheckCheck,
       enabled: (r) => r.every((t) => t.terisi >= t.target && t.status !== "SELESAI"),
-      run: (r) => { setTugas((ts) => ts.map((t) => (r.some((x) => x.id === t.id) ? { ...t, status: "SELESAI" } : t))); toast.success(`${r.length} tugas ditandai selesai`); },
+      run: async (r) => { await tandaiSelesai.mutateAsync({ aksi: "tandai_selesai", ids: r.map((t) => t.id), label: "Tugas ditandai selesai" }); setSel([]); },
     },
   ];
 

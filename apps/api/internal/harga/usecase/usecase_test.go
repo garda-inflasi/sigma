@@ -291,3 +291,15 @@ func TestBulkAction_AuditFailureDoesNotUndoAction(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Berhasil)
 }
+
+func TestBulkAction_NothingChangedIsNotAudited(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+
+	hasil, err := uc.BulkAction(t.Context(), []string{"a"}, "validasi", "u")
+
+	require.NoError(t, err)
+	assert.Equal(t, HasilBulk{Gagal: 1}, hasil)
+	assert.Empty(t, recorder.Entries())
+}

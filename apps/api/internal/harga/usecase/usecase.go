@@ -204,6 +204,9 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID s
 	}
 
 	hasil := HasilBulk{Berhasil: len(changed), Gagal: len(unik) - len(changed)}
+	if len(changed) == 0 {
+		return hasil, nil
+	}
 	uc.catat(ctx, audit.Entry{
 		AktorID: aktorID, Aksi: "HARGA_" + strings.ToUpper(aksi), Entitas: "entri_harga",
 		EntitasID: fmt.Sprintf("%d entri", hasil.Berhasil), Hasil: audit.HasilBerhasil,

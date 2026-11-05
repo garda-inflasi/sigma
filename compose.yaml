@@ -85,6 +85,18 @@ services:
       JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
       EWS_EVAL_INTERVAL: "${EWS_EVAL_INTERVAL:-15m}"
+      EWS_NOTIF_INTERVAL: "${EWS_NOTIF_INTERVAL:-30s}"
+      EWS_ESKALASI_MENIT: "${EWS_ESKALASI_MENIT:-0}"
+      # Pengiriman nyata hanya bila diisi; kosong = notifikasi hanya dicatat di outbox.
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+      VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+      VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
+      APP_PUBLIC_URL: "${APP_PUBLIC_URL:-}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
     depends_on:

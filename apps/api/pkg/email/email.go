@@ -3,6 +3,8 @@ package email
 import (
 	"fmt"
 	"net/smtp"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -27,6 +29,22 @@ func DefaultConfig() Config {
 		From:     "noreply@gardainflasi.id",
 		FromName: "Garda Inflasi",
 	}
+}
+
+// ConfigFromEnv membaca SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, dan SMTP_FROM.
+// SMTP_HOST kosong berarti pengiriman dimatikan (lihat Configured).
+func ConfigFromEnv() Config {
+	cfg := DefaultConfig()
+	cfg.Host = os.Getenv("SMTP_HOST")
+	if port, err := strconv.Atoi(os.Getenv("SMTP_PORT")); err == nil && port > 0 {
+		cfg.Port = port
+	}
+	cfg.Username = os.Getenv("SMTP_USERNAME")
+	cfg.Password = os.Getenv("SMTP_PASSWORD")
+	if from := os.Getenv("SMTP_FROM"); from != "" {
+		cfg.From = from
+	}
+	return cfg
 }
 
 // Sender handles email sending via SMTP.
@@ -63,6 +81,16 @@ func (s *Sender) SendResetPassword(to, resetToken string) error {
 `, resetToken, resetToken)
 
 	return s.send(to, subject, body)
+}
+
+// Configured melaporkan apakah SMTP dikonfigurasi; tanpa itu send tidak mengirim apa pun.
+func (s *Sender) Configured() bool { return s.cfg.Host != "" }
+
+// SendHTML mengirim email HTML umum. Baris baru pada penerima atau subjek dibuang agar
+// tidak dapat menyisipkan header tambahan.
+func (s *Sender) SendHTML(to, subject, htmlBody string) error {
+	oneLine := strings.NewReplacer("\r", " ", "\n", " ")
+	return s.send(oneLine.Replace(to), oneLine.Replace(subject), htmlBody)
 }
 
 func (s *Sender) send(to, subject, htmlBody string) error {

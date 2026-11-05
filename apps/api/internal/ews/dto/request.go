@@ -29,3 +29,27 @@ type UpdateAturanRequest struct {
 	Aktif         *bool    `json:"aktif" binding:"required"`
 	Keterangan    string   `json:"keterangan" binding:"max=500"`
 }
+
+// PreferensiItem mengatur satu kanal notifikasi pengguna.
+type PreferensiItem struct {
+	Kanal       string `json:"kanal" binding:"required,oneof=EMAIL PUSH"`
+	SeverityMin string `json:"severity_min" binding:"required,oneof=INFO WASPADA SIAGA KRITIS"`
+	Aktif       *bool  `json:"aktif" binding:"required"`
+}
+
+// SimpanPreferensiRequest menyimpan preferensi notifikasi milik pengguna yang masuk.
+type SimpanPreferensiRequest struct {
+	Preferensi []PreferensiItem `json:"preferensi" binding:"required,min=1,max=2,dive"`
+}
+
+// DaftarPushRequest adalah langganan Web Push dari PushSubscription.toJSON() browser.
+type DaftarPushRequest struct {
+	Endpoint string `json:"endpoint" binding:"required,url,max=2048"`
+	P256dh   string `json:"p256dh" binding:"required,max=255"`
+	Auth     string `json:"auth" binding:"required,max=255"`
+}
+
+// BatalPushRequest menyebut langganan yang dibatalkan.
+type BatalPushRequest struct {
+	Endpoint string `json:"endpoint" binding:"required,max=2048"`
+}

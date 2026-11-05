@@ -1014,6 +1014,132 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/ews/notifikasi/preferensi:
+    get:
+      summary: Preferensi notifikasi milik pengguna yang masuk
+      description: |
+        Memerlukan izin `ews.akui` (peran penindak alert yang menerima notifikasi). Bawaan bila belum
+        diatur: aktif, tingkat minimum SIAGA. `tersedia: false` berarti server belum mengonfigurasi
+        pengiriman nyata untuk kanal itu (SMTP_HOST untuk EMAIL, kunci VAPID untuk PUSH): notifikasi
+        hanya dicatat di outbox `ews_notifikasi`. `vapid_public_key` dipakai browser untuk berlangganan push.
+      operationId: getEwsPreferensi
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Preferensi per kanal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsPreferensiResponse"
+        "403":
+          description: Tanpa izin `ews.akui`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Menyimpan preferensi notifikasi
+      description: Memerlukan izin `ews.akui`. Mengembalikan preferensi terbaru. Dicatat di audit trail.
+      operationId: putEwsPreferensi
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimpanEwsPreferensiRequest"
+      responses:
+        "200":
+          description: Preferensi tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsPreferensiResponse"
+        "400":
+          description: Kanal atau tingkat minimum tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `ews.akui`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ews/notifikasi/langganan-push:
+    put:
+      summary: Mendaftarkan perangkat untuk Web Push
+      description: |
+        Memerlukan izin `ews.akui`. Isi dari `PushSubscription.toJSON()` browser. Endpoint yang sama
+        berpindah ke pengguna yang mendaftar terakhir. Dicatat di audit trail.
+      operationId: putEwsLanggananPush
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EwsLanggananPushRequest"
+      responses:
+        "200":
+          description: Langganan tersimpan
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `ews.akui`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Membatalkan langganan Web Push perangkat
+      description: Memerlukan izin `ews.akui`. Hanya langganan milik pengguna yang masuk.
+      operationId: deleteEwsLanggananPush
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint:
+                  type: string
+      responses:
+        "200":
+          description: Langganan dibatalkan
+        "403":
+          description: Tanpa izin `ews.akui`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Langganan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/ews/aturan/{id}:
     put:
       summary: Mengubah ambang suatu aturan EWS
@@ -4336,6 +4462,71 @@ components:
               description: Masih dalam masa peredaman setelah alert ditutup
             galat:
               type: integer
+
+    EwsPreferensiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            preferensi:
+              type: array
+              items:
+                type: object
+                properties:
+                  kanal:
+                    type: string
+                    enum: [EMAIL, PUSH]
+                  severity_min:
+                    type: string
+                    enum: [INFO, WASPADA, SIAGA, KRITIS]
+                  aktif:
+                    type: boolean
+                  tersedia:
+                    type: boolean
+                    description: Pengiriman nyata dikonfigurasi di server
+            vapid_public_key:
+              type: string
+              description: Kosong bila Web Push tidak dikonfigurasi
+
+    SimpanEwsPreferensiRequest:
+      type: object
+      required: [preferensi]
+      properties:
+        preferensi:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            type: object
+            required: [kanal, severity_min, aktif]
+            properties:
+              kanal:
+                type: string
+                enum: [EMAIL, PUSH]
+              severity_min:
+                type: string
+                enum: [INFO, WASPADA, SIAGA, KRITIS]
+              aktif:
+                type: boolean
+
+    EwsLanggananPushRequest:
+      type: object
+      required: [endpoint, p256dh, auth]
+      properties:
+        endpoint:
+          type: string
+          format: uri
+        p256dh:
+          type: string
+        auth:
+          type: string
 
     EwsAturanListResponse:
       type: object

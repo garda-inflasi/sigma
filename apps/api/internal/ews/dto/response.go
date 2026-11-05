@@ -132,3 +132,18 @@ func ToRiwayatResponses(items []domain.Riwayat) []RiwayatResponse {
 func ToEvaluasiResponse(r domain.RingkasanEvaluasi) EvaluasiResponse {
 	return EvaluasiResponse(r)
 }
+
+// PreferensiResponse adalah preferensi efektif satu kanal. Tersedia false berarti server
+// belum mengonfigurasi pengiriman nyata untuk kanal ini (notifikasi hanya dicatat).
+type PreferensiResponse struct {
+	Kanal       string `json:"kanal"`
+	SeverityMin string `json:"severity_min"`
+	Aktif       bool   `json:"aktif"`
+	Tersedia    bool   `json:"tersedia"`
+}
+
+// PreferensiNotifikasiResponse memuat preferensi dan kunci publik VAPID untuk langganan push.
+type PreferensiNotifikasiResponse struct {
+	Preferensi     []PreferensiResponse `json:"preferensi"`
+	VAPIDPublicKey string               `json:"vapid_public_key"`
+}

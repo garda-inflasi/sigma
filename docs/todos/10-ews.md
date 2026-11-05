@@ -9,7 +9,7 @@
 - **API Go:** `GET /v1/ews` (filter `status`/`severity`/`jenis`/`kabupaten_kode`, paginasi `page`/`limit`, header `X-Total-Count`), `GET /v1/ews/:id`, `GET /v1/ews/aturan` (`ews.lihat`), dan `POST /v1/ews/bulk` (`ews.akui`; `eskalasi` menuntut `ews.eskalasi`; hanya transisi sah, dicatat di audit). Tes usecase, seeder, integrasi (Postgres sungguhan), dan asap.
 - **Skema:** `ews_alert` (`id` VARCHAR, `severity`, `jenis`, `judul`, `pesan`, `komoditas_kode`, `kabupaten_kode`, `nilai`, `satuan_nilai`, `skor_dampak`, `status`, `sumber`, `dibuat_pada`, `diakui_*`, `aturan_id`) dan `aturan_ews` (ambang, `jendela_hari`, `kanal`, `aktif`, `keterangan`, `CHECK` waspada < siaga < kritis); entity cocok (migrasi 000030). Seeder `ews.reference` (9 aturan: pilot x lonjakan harga/stok/cuaca) dan `ews.demo` (17 alert).
 - **Web:** `/ews` membaca alert dan aturan dari API (`lib/api/ews.ts`); simulasi acak hanya di `MODE_MOCK`. Ambang tampil baca-saja sampai 10-B.
-- **Yang belum ada:** deteksi anomali statistik/ML, notifikasi multi-kanal ([10-D](#10-d--notifikasi-multi-kanal-fase-f-gelombang-f-4)). Rule engine (10-B) dan SSE (10-C) sudah ada.
+- **Yang belum ada:** deteksi anomali statistik/ML, WhatsApp. Rule engine (10-B), SSE (10-C), dan notifikasi email/push (10-D) sudah ada.
 
 ---
 
@@ -62,9 +62,15 @@
 
 ---
 
-## 10-D — Notifikasi multi-kanal *(Fase F, gelombang F-4)*
+## 10-D — Notifikasi multi-kanal *(Fase F, gelombang F-4)* — ✅ email dan push; WhatsApp belum
 
-1. **MIG**: `ews_notifikasi` (`alert_id`, `kanal`, `tujuan`, `status`, `percobaan`, `dikirim_pada`, `galat`), `preferensi_notifikasi` (`user_id`, `kanal`, `severity_min`, `aktif`).
-2. **API**: email (`pkg/email` sudah ada), push (PWA), WhatsApp; retry; preferensi per pengguna/peran; eskalasi otomatis bila tidak diakui dalam N menit.
-3. **FE**: halaman preferensi notifikasi.
-4. **TES**: pengiriman dengan penyedia palsu, retry, eskalasi.
+1. **MIG** (`000072_10d_ews_notifikasi.sql`): `ews_notifikasi` (outbox; UNIQUE `alert x pengguna x kanal` membuat antrean idempoten; status `MENUNGGU`, `TERKIRIM`, `GAGAL`, `DICATAT`), `preferensi_notifikasi` (`pengguna_id`, `kanal`, `severity_min`, `aktif`), `langganan_push`.
+2. **API** (`internal/ews/notifikasi`):
+   - [x] Penerima = pengguna aktif berperan dengan izin `ews.akui`, dibatasi kanal aturan alert (`aturan_ews.kanal`), preferensi (bawaan aktif, minimum SIAGA), dan tingkat alert. Alert yang naik tingkat hanya menotifikasi yang baru memenuhi syarat.
+   - [x] Adaptor yang dapat diganti (`domain.Pengirim`): email SMTP (`pkg/email`, aktif bila `SMTP_HOST`) dan Web Push (aktif bila `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`). Tanpa konfigurasi, tidak ada layanan luar yang dipanggil: baris outbox berstatus `DICATAT`.
+   - [x] Pekerja pengiriman di `cmd/api` (`EWS_NOTIF_INTERVAL`, 30s): klaim dengan lease (aman multi-instance), retry dengan backoff 1m..1j, `GAGAL` setelah 5 percobaan; langganan push yang ditolak (404/410) dibuang.
+   - [x] Eskalasi otomatis alert BARU >= SIAGA yang tidak diakui dalam N menit (`EWS_ESKALASI_MENIT`, bawaan 0 = mati): status DIESKALASI, riwayat oleh sistem, audit.
+   - [x] `GET/PUT /v1/ews/notifikasi/preferensi`, `PUT/DELETE /v1/ews/notifikasi/langganan-push` (`ews.akui`, diaudit).
+   - [ ] WhatsApp: kanal ada di kosakata tetapi belum ada adaptor maupun nomor telepon pengguna. Preferensi per peran (selain per pengguna): belum.
+3. **FE**: kartu "Notifikasi saya" di `/ews` (kanal, tingkat minimum, penanda bila server belum mengonfigurasi pengiriman, tombol aktifkan push + handler push di `sw.js`).
+4. **TES**: service dengan adaptor palsu (kirim, DICATAT, retry/backoff, GAGAL, eskalasi, preferensi), adaptor email (escape, tautan, timeout) dan Web Push terhadap endpoint localhost (enkripsi, VAPID, 410), integrasi Postgres (penerima per peran/preferensi/tingkat, idempoten, lease, eskalasi otomatis, endpoint 401/403/400).

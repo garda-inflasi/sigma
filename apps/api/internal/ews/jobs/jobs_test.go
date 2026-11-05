@@ -23,18 +23,31 @@ func TestParseInterval(t *testing.T) {
 }
 
 func TestConfigFromEnv(t *testing.T) {
-	t.Setenv("EWS_EVAL_INTERVAL", "")
+	for _, k := range []string{"EWS_EVAL_INTERVAL", "EWS_NOTIF_INTERVAL", "EWS_ESKALASI_MENIT"} {
+		t.Setenv(k, "")
+	}
 	cfg, err := ConfigFromEnv()
 	require.NoError(t, err)
-	assert.Equal(t, DefaultEvaluasiInterval, cfg.EvaluasiInterval)
+	assert.Equal(t, Config{EvaluasiInterval: DefaultEvaluasiInterval, NotifInterval: 30 * time.Second}, cfg, "bawaan aman: eskalasi otomatis mati")
 
 	t.Setenv("EWS_EVAL_INTERVAL", "off")
+	t.Setenv("EWS_NOTIF_INTERVAL", "10s")
+	t.Setenv("EWS_ESKALASI_MENIT", "90")
 	cfg, err = ConfigFromEnv()
 	require.NoError(t, err)
-	assert.Zero(t, cfg.EvaluasiInterval)
+	assert.Equal(t, Config{EvaluasiInterval: 0, NotifInterval: 10 * time.Second, EskalasiSetelah: 90 * time.Minute}, cfg)
+}
 
+func TestConfigFromEnv_InvalidValuesFallBackAndAreReported(t *testing.T) {
 	t.Setenv("EWS_EVAL_INTERVAL", "sering")
-	cfg, err = ConfigFromEnv()
+	t.Setenv("EWS_NOTIF_INTERVAL", "")
+	t.Setenv("EWS_ESKALASI_MENIT", "-5")
+
+	cfg, err := ConfigFromEnv()
+
+	require.Error(t, err)
 	assert.ErrorContains(t, err, "EWS_EVAL_INTERVAL")
+	assert.ErrorContains(t, err, "EWS_ESKALASI_MENIT")
 	assert.Equal(t, DefaultEvaluasiInterval, cfg.EvaluasiInterval)
+	assert.Zero(t, cfg.EskalasiSetelah)
 }

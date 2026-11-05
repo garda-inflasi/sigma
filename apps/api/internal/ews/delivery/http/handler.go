@@ -10,6 +10,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/ews/domain"
 	"github.com/garda-inflasi/api/internal/ews/dto"
+	"github.com/garda-inflasi/api/internal/ews/notifikasi"
 	"github.com/garda-inflasi/api/internal/ews/stream"
 	"github.com/garda-inflasi/api/internal/ews/usecase"
 	"github.com/garda-inflasi/api/pkg/middleware"
@@ -23,10 +24,11 @@ const totalCountHeader = "X-Total-Count"
 type Handler struct {
 	uc     *usecase.UseCase
 	stream *stream.Streamer
+	notif  *notifikasi.Service
 }
 
-func New(uc *usecase.UseCase, streamer *stream.Streamer) *Handler {
-	return &Handler{uc: uc, stream: streamer}
+func New(uc *usecase.UseCase, streamer *stream.Streamer, notif *notifikasi.Service) *Handler {
+	return &Handler{uc: uc, stream: streamer, notif: notif}
 }
 
 // Stream handles GET /v1/ews/stream (Server-Sent Events, event `alert`).
@@ -177,4 +179,73 @@ func izinAksi(action string) string {
 		return "ews.eskalasi"
 	}
 	return "ews.akui"
+}
+
+// GetPreferensi handles GET /v1/ews/notifikasi/preferensi (milik pengguna yang masuk).
+func (h *Handler) GetPreferensi(c *gin.Context) {
+	prefs, err := h.notif.DaftarPreferensi(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil preferensi notifikasi")
+		return
+	}
+	out := dto.PreferensiNotifikasiResponse{Preferensi: make([]dto.PreferensiResponse, len(prefs)), VAPIDPublicKey: h.notif.VAPIDPublicKey()}
+	for i, p := range prefs {
+		out.Preferensi[i] = dto.PreferensiResponse{Kanal: p.Kanal, SeverityMin: p.SeverityMin, Aktif: p.Aktif, Tersedia: p.Tersedia}
+	}
+	response.Success(c, out)
+}
+
+// PutPreferensi handles PUT /v1/ews/notifikasi/preferensi
+func (h *Handler) PutPreferensi(c *gin.Context) {
+	var req dto.SimpanPreferensiRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	prefs := make([]notifikasi.Preferensi, len(req.Preferensi))
+	for i, p := range req.Preferensi {
+		prefs[i] = notifikasi.Preferensi{Kanal: p.Kanal, SeverityMin: p.SeverityMin, Aktif: *p.Aktif}
+	}
+	err := h.notif.SimpanPreferensi(audit.RequestContext(c), c.GetString("user_id"), prefs)
+	switch {
+	case err == nil:
+		h.GetPreferensi(c)
+	case errors.Is(err, notifikasi.ErrKanalTidakValid), errors.Is(err, notifikasi.ErrSeverityTidakValid):
+		response.BadRequest(c, err.Error())
+	default:
+		response.InternalError(c, "Gagal menyimpan preferensi notifikasi")
+	}
+}
+
+// PutLanggananPush handles PUT /v1/ews/notifikasi/langganan-push
+func (h *Handler) PutLanggananPush(c *gin.Context) {
+	var req dto.DaftarPushRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	err := h.notif.DaftarPush(audit.RequestContext(c), c.GetString("user_id"), domain.LanggananPush{Endpoint: req.Endpoint, P256dh: req.P256dh, Auth: req.Auth})
+	if err != nil {
+		response.InternalError(c, "Gagal menyimpan langganan push")
+		return
+	}
+	response.Success(c, nil)
+}
+
+// DeleteLanggananPush handles DELETE /v1/ews/notifikasi/langganan-push
+func (h *Handler) DeleteLanggananPush(c *gin.Context) {
+	var req dto.BatalPushRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	ada, err := h.notif.BatalPush(audit.RequestContext(c), c.GetString("user_id"), req.Endpoint)
+	switch {
+	case err != nil:
+		response.InternalError(c, "Gagal membatalkan langganan push")
+	case !ada:
+		response.NotFound(c, "Langganan push tidak ditemukan")
+	default:
+		response.Success(c, nil)
+	}
 }

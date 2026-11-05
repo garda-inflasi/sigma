@@ -102,12 +102,8 @@ func main() {
 	// Agregat dashboard disegarkan berkala, selain setelah harga divalidasi atau dipublikasi.
 	go refresher.Shared(db, log).Run(bgCtx, dashboardRefreshInterval)
 
-	// Rule engine EWS mengevaluasi aturan ambang terhadap data nyata secara berkala.
-	ewsCfg, err := ewsjobs.ConfigFromEnv()
-	if err != nil {
-		log.Warn("konfigurasi EWS tidak valid, memakai bawaan", map[string]interface{}{"error": err.Error()})
-	}
-	go ewsjobs.Shared(db, log).Run(bgCtx, ewsCfg)
+	// EWS: rule engine terjadwal, aliran SSE, notifikasi (konfigurasi dari env EWS_*).
+	go ewsjobs.Shared(db, log).Run(bgCtx)
 
 	srv := &http.Server{
 		Addr: addr,

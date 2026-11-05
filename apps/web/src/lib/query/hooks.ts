@@ -47,6 +47,23 @@ export const useRiwayatHargaSaya = () => useQuery({ queryKey: qk.harga.saya(), q
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
 
+/** Preferensi notifikasi pengguna; `enabled` mencegah 403 bagi peran tanpa `ews.akui`. */
+export const usePreferensiNotifikasi = (enabled = true) =>
+  useQuery({ queryKey: qk.ews.preferensi(), queryFn: api.ews.preferensi, enabled });
+
+/** Menyimpan preferensi notifikasi; cache diganti dengan jawaban server. */
+export function useSimpanPreferensi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.ews.simpanPreferensi,
+    onSuccess: (view) => {
+      qc.setQueryData(qk.ews.preferensi(), view);
+      toast.success("Preferensi notifikasi disimpan");
+    },
+    onError: (err) => toast.error("Preferensi gagal disimpan", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+  });
+}
+
 /** Menyimpan ambang aturan. Galat (termasuk 409 versi usang) ditampilkan oleh pemanggil; aturan dimuat ulang dari server. */
 export function useUbahAturanEws() {
   const qc = useQueryClient();

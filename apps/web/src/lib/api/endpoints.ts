@@ -18,8 +18,8 @@ import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
 import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
 import {
-  toEwsAlert, toEwsAturan, toUbahAturanBody,
-  type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type UbahAturanInput,
+  toEwsAlert, toEwsAturan, toPreferensiBody, toPreferensiView, toUbahAturanBody,
+  type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
 } from "./ews";
 import { toKartu, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
@@ -122,6 +122,18 @@ export const api = {
       MODE_MOCK
         ? mockDelay({ aturan: 9, diukur: 0, dibuat: 0, dinaikkan: 0, dilewati: 0, diredam: 0, galat: 0 }, 300, 600)
         : apiFetch<EvaluasiEws>("/v1/ews/evaluasi", { method: "POST" }),
+    /** Preferensi notifikasi milik pengguna yang masuk (bawaan bila belum diatur). */
+    preferensi: (): Promise<PreferensiView> =>
+      MODE_MOCK
+        ? mockDelay<PreferensiView>({ vapidPublicKey: "", preferensi: [{ kanal: "EMAIL", severityMin: "SIAGA", aktif: true, tersedia: false }, { kanal: "PUSH", severityMin: "SIAGA", aktif: true, tersedia: false }] })
+        : apiFetch<PreferensiNotifikasiResponse>("/v1/ews/notifikasi/preferensi").then(toPreferensiView),
+    simpanPreferensi: (prefs: PreferensiNotifikasi[]): Promise<PreferensiView> =>
+      MODE_MOCK
+        ? mockDelay<PreferensiView>({ vapidPublicKey: "", preferensi: prefs }, 200, 400)
+        : apiFetch<PreferensiNotifikasiResponse>("/v1/ews/notifikasi/preferensi", { method: "PUT", body: JSON.stringify(toPreferensiBody(prefs)) }).then(toPreferensiView),
+    /** Mendaftarkan perangkat ini untuk Web Push. */
+    daftarPush: (body: { endpoint: string; p256dh: string; auth: string }) =>
+      MODE_MOCK ? mockDelay({ ok: true }, 200, 400) : apiFetch("/v1/ews/notifikasi/langganan-push", { method: "PUT", body: JSON.stringify(body) }),
   },
   intervensi: {
     list: (): Promise<KartuIntervensi[]> =>

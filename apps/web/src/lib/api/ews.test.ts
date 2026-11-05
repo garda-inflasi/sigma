@@ -3,7 +3,11 @@ import { describe, it } from "node:test";
 import {
   satuanAmbang,
   toEwsAlert,
+  kunciVapidKeBytes,
   toEwsAturan,
+  toLanggananPushBody,
+  toPreferensiBody,
+  toPreferensiView,
   toUbahAturanBody,
   validasiAmbang,
   type EwsAlertResponse,
@@ -120,5 +124,40 @@ describe("validasiAmbang", () => {
       { waspada: 0, siaga: 5, kritis: 9 },
       { waspada: Number.NaN, siaga: 5, kritis: 9 },
     ]) assert.notEqual(validasiAmbang(a), null);
+  });
+});
+
+describe("preferensi notifikasi", () => {
+  it("memetakan jawaban API ke tampilan dan kembali ke badan PUT", () => {
+    const view = toPreferensiView({
+      preferensi: [
+        { kanal: "EMAIL", severity_min: "SIAGA", aktif: true, tersedia: false },
+        { kanal: "PUSH", severity_min: "KRITIS", aktif: false, tersedia: true },
+      ],
+      vapid_public_key: "BKey",
+    });
+    assert.equal(view.vapidPublicKey, "BKey");
+    assert.deepEqual(view.preferensi[1], { kanal: "PUSH", severityMin: "KRITIS", aktif: false, tersedia: true });
+    assert.deepEqual(toPreferensiBody(view.preferensi), {
+      preferensi: [
+        { kanal: "EMAIL", severity_min: "SIAGA", aktif: true },
+        { kanal: "PUSH", severity_min: "KRITIS", aktif: false },
+      ],
+    });
+  });
+});
+
+describe("langganan push", () => {
+  it("mengambil endpoint dan kunci dari PushSubscription.toJSON()", () => {
+    assert.deepEqual(toLanggananPushBody({ endpoint: "https://push.example/a", keys: { p256dh: "k", auth: "a" } }), { endpoint: "https://push.example/a", p256dh: "k", auth: "a" });
+  });
+  it("menolak langganan yang tidak lengkap", () => {
+    assert.equal(toLanggananPushBody({}), null);
+    assert.equal(toLanggananPushBody({ endpoint: "https://x", keys: { p256dh: "k" } }), null);
+    assert.equal(toLanggananPushBody({ keys: { p256dh: "k", auth: "a" } }), null);
+  });
+  it("mengubah kunci VAPID base64url menjadi bytes", () => {
+    // "AQID_w" = bytes 01 02 03 ff (base64url tanpa padding, memakai '_' )
+    assert.deepEqual([...kunciVapidKeBytes("AQID_w")], [1, 2, 3, 255]);
   });
 });

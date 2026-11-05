@@ -154,3 +154,57 @@ export function validasiAmbang(i: Pick<UbahAturanInput, "waspada" | "siaga" | "k
 export function satuanAmbang(jenis: JenisEws): string {
   return jenis === "ANOMALI_CUACA" ? "mm" : "%";
 }
+
+/** Kanal notifikasi yang dapat diatur pengguna (dikirim lewat outbox). */
+export type KanalNotifikasi = "EMAIL" | "PUSH";
+
+export interface PreferensiResponse {
+  kanal: KanalNotifikasi;
+  severity_min: Severity;
+  aktif: boolean;
+  /** false: server belum mengonfigurasi pengiriman nyata untuk kanal ini (notifikasi hanya dicatat). */
+  tersedia: boolean;
+}
+
+export interface PreferensiNotifikasiResponse {
+  preferensi: PreferensiResponse[];
+  vapid_public_key: string;
+}
+
+export interface PreferensiNotifikasi {
+  kanal: KanalNotifikasi;
+  severityMin: Severity;
+  aktif: boolean;
+  tersedia: boolean;
+}
+
+export interface PreferensiView {
+  preferensi: PreferensiNotifikasi[];
+  /** Kunci publik VAPID untuk berlangganan Web Push; kosong bila push tidak dikonfigurasi. */
+  vapidPublicKey: string;
+}
+
+export function toPreferensiView(r: PreferensiNotifikasiResponse): PreferensiView {
+  return {
+    preferensi: r.preferensi.map((p) => ({ kanal: p.kanal, severityMin: p.severity_min, aktif: p.aktif, tersedia: p.tersedia })),
+    vapidPublicKey: r.vapid_public_key,
+  };
+}
+
+/** Badan PUT /v1/ews/notifikasi/preferensi. */
+export function toPreferensiBody(prefs: Pick<PreferensiNotifikasi, "kanal" | "severityMin" | "aktif">[]) {
+  return { preferensi: prefs.map((p) => ({ kanal: p.kanal, severity_min: p.severityMin, aktif: p.aktif })) };
+}
+
+/** Badan PUT /v1/ews/notifikasi/langganan-push dari PushSubscription.toJSON(); null bila tidak lengkap. */
+export function toLanggananPushBody(sub: { endpoint?: string; keys?: Record<string, string> }) {
+  const { endpoint, keys } = sub;
+  if (!endpoint || !keys?.p256dh || !keys.auth) return null;
+  return { endpoint, p256dh: keys.p256dh, auth: keys.auth };
+}
+
+/** Kunci VAPID (base64url) → bytes untuk pushManager.subscribe. */
+export function kunciVapidKeBytes(base64Url: string): Uint8Array {
+  const padded = base64Url.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(base64Url.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+}

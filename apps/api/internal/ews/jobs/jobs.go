@@ -1,40 +1,69 @@
 // Package jobs merakit komponen EWS yang dipakai bersama oleh route HTTP dan
-// pekerjaan latar belakang di cmd/api (rule engine terjadwal).
+// pekerjaan latar belakang di cmd/api: rule engine terjadwal, aliran SSE, dan
+// notifikasi.
 package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
+	authusecase "github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/internal/ews/domain"
 	"github.com/garda-inflasi/api/internal/ews/engine"
+	"github.com/garda-inflasi/api/internal/ews/notifikasi"
 	"github.com/garda-inflasi/api/internal/ews/repository/postgres"
 	"github.com/garda-inflasi/api/internal/ews/stream"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"gorm.io/gorm"
 )
 
-// DefaultEvaluasiInterval adalah jeda bawaan antar putaran rule engine.
+// DefaultEvaluasiInterval adalah jeda bawaan rule engine. Eskalasi otomatis mati
+// sampai EWS_ESKALASI_MENIT diisi.
 const DefaultEvaluasiInterval = 15 * time.Minute
 
 // Config mengatur pekerjaan latar belakang. Interval 0 menonaktifkan pekerjaannya.
 type Config struct {
+	// EvaluasiInterval: rule engine (EWS_EVAL_INTERVAL).
 	EvaluasiInterval time.Duration
+	// NotifInterval: pengiriman notifikasi dan pemeriksaan eskalasi (EWS_NOTIF_INTERVAL).
+	NotifInterval time.Duration
+	// EskalasiSetelah: alert BARU berseverity SIAGA atau lebih yang tak diakui selama ini
+	// dieskalasi otomatis (EWS_ESKALASI_MENIT; 0 = mati).
+	EskalasiSetelah time.Duration
 }
 
-// ConfigFromEnv membaca EWS_EVAL_INTERVAL (durasi Go, mis. "15m"; "0" atau "off"
-// untuk mematikan). Nilai kosong memakai bawaan; nilai tak valid menghasilkan galat.
+// ConfigFromEnv membaca EWS_EVAL_INTERVAL dan EWS_NOTIF_INTERVAL (durasi Go, mis. "15m";
+// "0" atau "off" mematikan) serta EWS_ESKALASI_MENIT. Nilai kosong memakai bawaan; nilai
+// tak valid memakai bawaan dan ikut dilaporkan sebagai galat.
 func ConfigFromEnv() (Config, error) {
-	interval, err := ParseInterval(os.Getenv("EWS_EVAL_INTERVAL"), DefaultEvaluasiInterval)
-	if err != nil {
-		return Config{EvaluasiInterval: DefaultEvaluasiInterval}, fmt.Errorf("EWS_EVAL_INTERVAL: %w", err)
+	cfg := Config{EvaluasiInterval: DefaultEvaluasiInterval, NotifInterval: notifikasi.DefaultInterval}
+	var errs []error
+
+	if d, err := ParseInterval(os.Getenv("EWS_EVAL_INTERVAL"), cfg.EvaluasiInterval); err != nil {
+		errs = append(errs, fmt.Errorf("EWS_EVAL_INTERVAL: %w", err))
+	} else {
+		cfg.EvaluasiInterval = d
 	}
-	return Config{EvaluasiInterval: interval}, nil
+	if d, err := ParseInterval(os.Getenv("EWS_NOTIF_INTERVAL"), cfg.NotifInterval); err != nil {
+		errs = append(errs, fmt.Errorf("EWS_NOTIF_INTERVAL: %w", err))
+	} else {
+		cfg.NotifInterval = d
+	}
+	if raw := strings.TrimSpace(os.Getenv("EWS_ESKALASI_MENIT")); raw != "" {
+		if menit, err := strconv.Atoi(raw); err != nil || menit < 0 {
+			errs = append(errs, fmt.Errorf("EWS_ESKALASI_MENIT: %q bukan bilangan bulat >= 0", raw))
+		} else {
+			cfg.EskalasiSetelah = time.Duration(menit) * time.Minute
+		}
+	}
+	return cfg, errors.Join(errs...)
 }
 
 // ParseInterval mengurai durasi; kosong = def, "0" atau "off" = 0.
@@ -53,16 +82,16 @@ func ParseInterval(raw string, def time.Duration) (time.Duration, error) {
 	return d, nil
 }
 
-// Jeda polling basis data oleh koneksi SSE: jaring pengaman saja bila Redis menyambungkan
-// antar-instance, sering bila tidak ada Redis (sinyal hanya membangunkan proses sendiri).
+// Jeda polling basis data oleh koneksi SSE. Dengan Redis sinyal sampai antar-instance dan
+// polling hanya jaring pengaman; tanpa Redis sinyal hanya membangunkan proses sendiri.
 const (
 	pollDenganRedis = 30 * time.Second
 	pollTanpaRedis  = 3 * time.Second
 	redisPingWindow = 3 * time.Second
 )
 
-// Peristiwa SSE disimpan selama ini sebelum dibuang; klien yang tertinggal lebih lama
-// dari ini cukup memuat ulang daftar alert.
+// Peristiwa SSE dibuang setelah masa ini; klien yang tertinggal lebih lama cukup memuat
+// ulang daftar alert.
 const (
 	retensiEvent        = 7 * 24 * time.Hour
 	intervalBersihEvent = time.Hour
@@ -70,9 +99,11 @@ const (
 
 // Jobs menampung komponen EWS bersama untuk satu koneksi basis data.
 type Jobs struct {
-	Engine   *engine.Engine
-	Streamer *stream.Streamer
+	Engine     *engine.Engine
+	Streamer   *stream.Streamer
+	Notifikasi *notifikasi.Service
 
+	cfg   Config
 	bus   stream.Bus
 	store domain.EventRepository
 	log   *logger.Logger
@@ -83,20 +114,30 @@ var (
 	shared   = map[*gorm.DB]*Jobs{}
 )
 
-// Shared mengembalikan satu Jobs per koneksi basis data, agar route dan cmd/api
-// memakai Engine yang sama.
+// Shared mengembalikan satu Jobs per koneksi basis data, agar route dan cmd/api memakai
+// komponen yang sama. Konfigurasi dibaca dari env saat pertama dibuat.
 func Shared(db *gorm.DB, log *logger.Logger) *Jobs {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
 	if j, ok := shared[db]; ok {
 		return j
 	}
-	repo, hub := postgres.New(db), stream.NewHub()
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		log.Warn("ews: konfigurasi env tidak valid, memakai bawaan untuk nilai tersebut", map[string]interface{}{"error": err.Error()})
+	}
+
+	repo, hub, auditWriter := postgres.New(db), stream.NewHub(), audit.NewWriter(db)
 	bus, poll := newBus(os.Getenv("REDIS_URL"), hub, log)
+	notif := notifikasi.New(repo, authusecase.RolesWithPermission(notifikasi.PermissionPenerima),
+		notifikasi.Config{Interval: cfg.NotifInterval, EskalasiSetelah: cfg.EskalasiSetelah, VAPIDPublicKey: notifikasi.VAPIDFromEnv().PublicKey},
+		auditWriter, log, notifikasi.DariEnv(repo)...)
+
 	j := &Jobs{
-		Engine:   engine.New(repo, audit.NewWriter(db), log, stream.NewPublisher(bus)),
-		Streamer: stream.NewStreamer(repo, hub, poll),
-		bus:      bus, store: repo, log: log,
+		Engine:     engine.New(repo, auditWriter, log, stream.NewPublisher(bus), notif),
+		Streamer:   stream.NewStreamer(repo, hub, poll),
+		Notifikasi: notif,
+		cfg:        cfg, bus: bus, store: repo, log: log,
 	}
 	shared[db] = j
 	return j
@@ -118,13 +159,15 @@ func newBus(redisURL string, hub *stream.Hub, log *logger.Logger) (stream.Bus, t
 	return bus, pollDenganRedis
 }
 
-// Run menjalankan pekerjaan latar belakang (rule engine terjadwal, penerima sinyal
-// Redis, pembersihan peristiwa lama) dan kembali setelah semuanya berhenti karena ctx selesai.
-func (j *Jobs) Run(ctx context.Context, cfg Config) {
+// Run menjalankan pekerjaan latar belakang (rule engine terjadwal, penerima sinyal Redis,
+// pengiriman notifikasi dan eskalasi, pembersihan peristiwa lama) dan kembali setelah
+// semuanya berhenti karena ctx selesai.
+func (j *Jobs) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, job := range []func(){
-		func() { j.Engine.Run(ctx, cfg.EvaluasiInterval) },
+		func() { j.Engine.Run(ctx, j.cfg.EvaluasiInterval) },
 		func() { j.bus.Run(ctx) },
+		func() { j.Notifikasi.Run(ctx) },
 		func() { j.bersihkanEvent(ctx) },
 	} {
 		wg.Add(1)

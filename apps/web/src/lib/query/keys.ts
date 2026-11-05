@@ -25,7 +25,7 @@ export const qk = {
     saya: () => ["harga", "saya"] as const,
     ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
   },
-  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const },
+  ews: { list: () => ["ews", "list"] as const, aturan: () => ["ews", "aturan"] as const, preferensi: () => ["ews", "preferensi"] as const },
   intervensi: { list: () => ["intervensi", "list"] as const },
   coldStorage: {
     all: () => ["cold-storage"] as const,

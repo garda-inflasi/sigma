@@ -22,6 +22,7 @@ import { useBulkAction, useEvaluasiEws, useEwsAturan, useEwsList } from "@/lib/q
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { AturanDialog } from "./aturan-dialog";
+import { NotifikasiPreferensi } from "./notifikasi-preferensi";
 import { JENIS_EWS, JenisIcon, formatNilaiEws } from "./ews-meta";
 
 const KANAL_LABEL: Record<string, string> = { DASHBOARD: "Dashboard", PUSH: "Push", EMAIL: "Email", WHATSAPP: "WhatsApp" };
@@ -146,7 +147,7 @@ export function EwsPage() {
             rowTone={(a) => (a.id === sorot ? "data" : undefined)}
           />
         </div>
-        <div className="xl:col-span-4"><AturanAmbang /></div>
+        <div className="space-y-6 xl:col-span-4"><AturanAmbang /><NotifikasiPreferensi /></div>
       </div>
     </div>
   );

@@ -7,10 +7,8 @@
 .gitignore
 .gitattributes
 
-# Node / pnpm
-node_modules
-apps/web/node_modules
-packages/*/node_modules
+# Node / pnpm (rekursif: pola tanpa **/ hanya cocok di akar konteks)
+**/node_modules
 .pnpm-store
 .pnpm-debug.log
 
@@ -32,6 +30,13 @@ build
 *.dylib
 *.test
 *.out
+
+# Worktree dan data lokal Claude Code (bisa berukuran gigabyte)
+.claude
+
+# Python (layanan ML)
+**/__pycache__
+**/*.pyc
 
 # IDE
 .idea

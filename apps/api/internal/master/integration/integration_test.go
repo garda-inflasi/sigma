@@ -29,8 +29,12 @@ import (
 const (
 	jwtSecret = "master-integration-secret-key-32chars!"
 
-	// ADMIN_SISTEM: master.lihat + master.ajukan; OPS_KOORDINATOR: hanya master.lihat; OPS_MAHASISWA: tidak ada.
+	// ADMIN_SISTEM dan MANAJER_DATA: master.lihat + master.ajukan; STRATEGIS_BPS dan STRATEGIS_FMIPA:
+	// master.lihat + master.setujui; OPS_KOORDINATOR: hanya master.lihat; OPS_MAHASISWA: tidak ada.
 	emailAjukan   = "superadmin@gardainflasi.id"
+	emailManajer  = "manajer.data@gardainflasi.id"
+	emailSetujui  = "strategis.bps@gardainflasi.id"
+	emailFMIPA    = "strategis.fmipa@gardainflasi.id"
 	emailLihat    = "koordinator.lapangan@gardainflasi.id"
 	emailTanpaIzn = "mahasiswa.1@gardainflasi.id"
 )
@@ -251,8 +255,34 @@ func kodes(rows []komoditasRow) []string {
 	return out
 }
 
+type rincianBulk struct {
+	Kode     string `json:"kode"`
+	Berhasil bool   `json:"berhasil"`
+	Pesan    string `json:"pesan"`
+}
+
+type hasilBulk struct {
+	Berhasil int           `json:"berhasil"`
+	Gagal    int           `json:"gagal"`
+	Rincian  []rincianBulk `json:"rincian"`
+}
+
+func decodeBulk(t *testing.T, w *httptest.ResponseRecorder) hasilBulk {
+	t.Helper()
+	var res struct {
+		Data hasilBulk `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &res), w.Body.String())
+	return res.Data
+}
+
 func TestMaster_BulkKomoditas(t *testing.T) {
 	s := sharedSuite(t)
+	const path = "/v1/master/komoditas/bulk"
+	// GLA dan MYK hanya disentuh tes ini; keduanya dikembalikan ke AKTIF v1 di akhir.
+	t.Cleanup(func() {
+		require.NoError(t, s.db.Exec(`UPDATE komoditas SET status = 'AKTIF', versi = 1 WHERE kode IN ('GLA', 'MYK')`).Error)
+	})
 	body := func(action string, kode ...string) map[string]any {
 		return map[string]any{"action": action, "kode": kode}
 	}
@@ -261,30 +291,119 @@ func TestMaster_BulkKomoditas(t *testing.T) {
 		require.NoError(t, s.db.Raw(`SELECT status::text FROM komoditas WHERE kode = ?`, kode).Scan(&status).Error)
 		return status
 	}
+	versiOf := func(kode string) int {
+		var versi int
+		require.NoError(t, s.db.Raw(`SELECT versi FROM komoditas WHERE kode = ?`, kode).Scan(&versi).Error)
+		return versi
+	}
+	auditCount := func(aksi, aktor string) int64 {
+		var n int64
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = ? AND aktor_id = ? AND entitas = 'komoditas'`, aksi, aktor).Scan(&n).Error)
+		return n
+	}
 
-	t.Run("hanya pemegang master.ajukan", func(t *testing.T) {
-		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/master/komoditas/bulk", emailLihat, body("arsipkan", "GLA")).Code)
-		assert.Equal(t, "AKTIF", statusOf("GLA"))
-	})
-
-	t.Run("ajukan, setujui, dan arsipkan mengubah status serta tercatat di audit", func(t *testing.T) {
-		for action, want := range map[string]string{
-			"ajukan_perubahan": "MENUNGGU_PERSETUJUAN",
-			"setujui":          "AKTIF",
-			"arsipkan":         "DIARSIPKAN",
-		} {
-			w := s.call(t, http.MethodPost, "/v1/master/komoditas/bulk", emailAjukan, body(action, "GLA", "MYK"))
-			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-			assert.Equal(t, want, statusOf("GLA"), action)
-			assert.Equal(t, want, statusOf("MYK"), action)
-
-			var n int64
-			require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = ? AND aktor_id = 'superadmin' AND entitas = 'komoditas'`, "BULK_"+action).Scan(&n).Error)
-			assert.EqualValues(t, 1, n, "tepat satu baris audit untuk %s", action)
+	t.Run("izin per aksi", func(t *testing.T) {
+		// Hanya melihat: tidak boleh apa pun (ditolak di rute).
+		for _, action := range []string{"ajukan_perubahan", "setujui", "arsipkan"} {
+			assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, path, emailLihat, body(action, "GLA")).Code, action)
 		}
+		// Pengaju (master.ajukan) tidak boleh menyetujui.
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, path, emailManajer, body("setujui", "GLA")).Code)
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, path, emailAjukan, body("setujui", "GLA")).Code)
+		// Penyetuju (master.setujui) tidak boleh mengajukan atau mengarsipkan.
+		for _, email := range []string{emailSetujui, emailFMIPA} {
+			assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, path, email, body("ajukan_perubahan", "GLA")).Code)
+			assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, path, email, body("arsipkan", "GLA")).Code)
+		}
+		assert.Equal(t, "AKTIF", statusOf("GLA"), "penolakan izin tidak mengubah data")
+		assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodPost, path, "", body("arsipkan", "GLA")).Code)
 	})
 
-	t.Run("aksi tidak dikenal", func(t *testing.T) {
-		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/master/komoditas/bulk", emailAjukan, body("hapus", "GLA")).Code)
+	t.Run("ajukan lalu setujui menaikkan versi dan tercatat di audit", func(t *testing.T) {
+		before := auditCount("BULK_ajukan_perubahan", "manajer_data")
+		w := s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "GLA", "MYK"))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		hasil := decodeBulk(t, w)
+		assert.Equal(t, 2, hasil.Berhasil)
+		assert.Zero(t, hasil.Gagal)
+		assert.Equal(t, "MENUNGGU_PERSETUJUAN", statusOf("GLA"))
+		assert.Equal(t, 1, versiOf("GLA"), "versi naik saat disetujui, bukan saat diajukan")
+		assert.Equal(t, before+1, auditCount("BULK_ajukan_perubahan", "manajer_data"))
+
+		beforeSetuju := auditCount("BULK_setujui", "strategis_bps")
+		w = s.call(t, http.MethodPost, path, emailSetujui, body("setujui", "GLA", "MYK"))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, 2, decodeBulk(t, w).Berhasil)
+		assert.Equal(t, "AKTIF", statusOf("GLA"))
+		assert.Equal(t, 2, versiOf("GLA"))
+		assert.Equal(t, 2, versiOf("MYK"))
+		assert.Equal(t, beforeSetuju+1, auditCount("BULK_setujui", "strategis_bps"))
+	})
+
+	t.Run("penyetuju kedua juga boleh (FMIPA)", func(t *testing.T) {
+		require.Equal(t, http.StatusOK, s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "GLA")).Code)
+		w := s.call(t, http.MethodPost, path, emailFMIPA, body("setujui", "GLA"))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, 1, decodeBulk(t, w).Berhasil)
+		assert.Equal(t, 3, versiOf("GLA"))
+	})
+
+	t.Run("arsipkan dari AKTIF dan dari MENUNGGU_PERSETUJUAN", func(t *testing.T) {
+		require.Equal(t, http.StatusOK, s.call(t, http.MethodPost, path, emailAjukan, body("ajukan_perubahan", "MYK")).Code)
+		w := s.call(t, http.MethodPost, path, emailAjukan, body("arsipkan", "GLA", "MYK"))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, 2, decodeBulk(t, w).Berhasil)
+		assert.Equal(t, "DIARSIPKAN", statusOf("GLA"))
+		assert.Equal(t, "DIARSIPKAN", statusOf("MYK"))
+		assert.EqualValues(t, 1, auditCount("BULK_arsipkan", "superadmin"))
+	})
+
+	t.Run("transisi tidak valid dan kode tak dikenal menjadi item gagal", func(t *testing.T) {
+		// GLA dan MYK kini DIARSIPKAN; BRS-MED AKTIF.
+		w := s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "BRS-MED", "GLA", "NGAWUR"))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		hasil := decodeBulk(t, w)
+		assert.Equal(t, 1, hasil.Berhasil)
+		assert.Equal(t, 2, hasil.Gagal)
+		byKode := map[string]rincianBulk{}
+		for _, r := range hasil.Rincian {
+			byKode[r.Kode] = r
+		}
+		assert.True(t, byKode["BRS-MED"].Berhasil)
+		assert.False(t, byKode["GLA"].Berhasil)
+		assert.Contains(t, byKode["GLA"].Pesan, "DIARSIPKAN")
+		assert.False(t, byKode["NGAWUR"].Berhasil)
+		assert.Contains(t, byKode["NGAWUR"].Pesan, "tidak ditemukan")
+		assert.Equal(t, "DIARSIPKAN", statusOf("GLA"), "item gagal tidak berubah")
+
+		// Setujui hanya berlaku untuk yang menunggu: BRS-MED menunggu, GLA arsip.
+		hasil = decodeBulk(t, s.call(t, http.MethodPost, path, emailSetujui, body("setujui", "GLA", "BRS-MED")))
+		assert.Equal(t, 1, hasil.Berhasil)
+		assert.Equal(t, 1, hasil.Gagal)
+		assert.Equal(t, "AKTIF", statusOf("BRS-MED"))
+		assert.Equal(t, 2, versiOf("BRS-MED"))
+		t.Cleanup(func() {
+			require.NoError(t, s.db.Exec(`UPDATE komoditas SET status = 'AKTIF', versi = 1 WHERE kode = 'BRS-MED'`).Error)
+		})
+
+		// Mengajukan ulang item yang sudah menunggu ditolak, bukan diam-diam dianggap berhasil.
+		require.Equal(t, http.StatusOK, s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "MYK")).Code)
+		hasil = decodeBulk(t, s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "MYK")))
+		assert.Equal(t, 0, hasil.Berhasil)
+		assert.Equal(t, 1, hasil.Gagal)
+	})
+
+	t.Run("kode ganda diproses sekali", func(t *testing.T) {
+		require.NoError(t, s.db.Exec(`UPDATE komoditas SET status = 'AKTIF', versi = 1 WHERE kode = 'GLA'`).Error)
+		hasil := decodeBulk(t, s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "GLA", "GLA")))
+		assert.Equal(t, 1, hasil.Berhasil)
+		assert.Zero(t, hasil.Gagal)
+		assert.Len(t, hasil.Rincian, 1)
+	})
+
+	t.Run("aksi tidak dikenal dan badan tidak valid", func(t *testing.T) {
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, path, emailAjukan, body("hapus", "GLA")).Code)
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, path, emailSetujui, body("hapus", "GLA")).Code)
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, path, emailAjukan, map[string]any{"action": "arsipkan", "kode": []string{}}).Code)
 	})
 }

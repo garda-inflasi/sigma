@@ -34,9 +34,15 @@ func (m *mockRepository) ListPasar(ctx context.Context, kabupatenKode string, q 
 	return args.Get(0).([]domain.Pasar), args.Get(1).(int64), args.Error(2)
 }
 
-func (m *mockRepository) BulkKomoditas(ctx context.Context, kode []string, action domain.BulkAction) (int64, error) {
-	args := m.Called(ctx, kode, action)
-	return args.Get(0).(int64), args.Error(1)
+func (m *mockRepository) StatusKomoditas(ctx context.Context, kode []string) (map[string]string, error) {
+	args := m.Called(ctx, kode)
+	status, _ := args.Get(0).(map[string]string)
+	return status, args.Error(1)
+}
+
+func (m *mockRepository) UbahStatusKomoditas(ctx context.Context, kode string, t domain.Transisi) (bool, error) {
+	args := m.Called(ctx, kode, t)
+	return args.Bool(0), args.Error(1)
 }
 
 // ── Test Helpers ──────────────────────────────────────────────────────
@@ -107,32 +113,96 @@ func TestListPasar_Success(t *testing.T) {
 
 // ── BulkKomoditas Tests ───────────────────────────────────────────────
 
-func TestBulkKomoditas_Actions(t *testing.T) {
-	cases := map[string]domain.BulkAction{
-		"ajukan_perubahan": domain.BulkAjukanPerubahan,
-		"setujui":          domain.BulkSetujui,
-		"arsipkan":         domain.BulkArsipkan,
+func TestBulkKomoditas_Transitions(t *testing.T) {
+	cases := []struct {
+		action    string
+		domain    domain.BulkAction
+		from      string
+		naikVersi bool
+	}{
+		{"ajukan_perubahan", domain.BulkAjukanPerubahan, "AKTIF", false},
+		{"setujui", domain.BulkSetujui, "MENUNGGU_PERSETUJUAN", true},
+		{"arsipkan", domain.BulkArsipkan, "AKTIF", false},
+		{"arsipkan", domain.BulkArsipkan, "MENUNGGU_PERSETUJUAN", false},
 	}
-	for action, domainAction := range cases {
-		t.Run(action, func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.action+"/"+tc.from, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc, recorder := newTestUseCase(repo)
 			kode := []string{"BRS-MED", "CBM-KRT"}
-			repo.On("BulkKomoditas", mock.Anything, kode, domainAction).Return(int64(2), nil)
+			transisi, _ := domain.TransisiUntuk(tc.domain)
+			assert.Equal(t, tc.naikVersi, transisi.NaikVersi)
+			repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": tc.from, "CBM-KRT": tc.from}, nil)
+			repo.On("UbahStatusKomoditas", mock.Anything, mock.Anything, transisi).Return(true, nil).Twice()
 
-			count, err := uc.BulkKomoditas(context.Background(), kode, action, "admin-1")
+			hasil, err := uc.BulkKomoditas(context.Background(), kode, tc.action, "admin-1")
 
 			require.NoError(t, err)
-			assert.EqualValues(t, 2, count)
+			assert.Equal(t, 2, hasil.Berhasil)
+			assert.Zero(t, hasil.Gagal)
+			assert.Equal(t, []domain.RincianBulk{{Kode: "BRS-MED", Berhasil: true}, {Kode: "CBM-KRT", Berhasil: true}}, hasil.Rincian)
 			entry, ok := recorder.Last()
 			require.True(t, ok, "aksi yang mengubah data tercatat di audit")
-			assert.Equal(t, "BULK_"+action, entry.Aksi)
+			assert.Equal(t, "BULK_"+tc.action, entry.Aksi)
 			assert.Equal(t, "admin-1", entry.AktorID)
 			assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 			assert.Equal(t, kode, entry.Metadata["kode"])
 			repo.AssertExpectations(t)
 		})
 	}
+}
+
+func TestBulkKomoditas_PerItemFailures(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	kode := []string{"BRS-MED", "TIDAK-ADA", "CBM-KRT", "BRS-MED", ""}
+	unik := []string{"BRS-MED", "TIDAK-ADA", "CBM-KRT"}
+	transisi, _ := domain.TransisiUntuk(domain.BulkAjukanPerubahan)
+	repo.On("StatusKomoditas", mock.Anything, unik).Return(map[string]string{"BRS-MED": "AKTIF", "CBM-KRT": "DIARSIPKAN"}, nil)
+	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", transisi).Return(true, nil).Once()
+
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "ajukan_perubahan", "admin-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, hasil.Berhasil)
+	assert.Equal(t, 2, hasil.Gagal)
+	require.Len(t, hasil.Rincian, 3, "kode ganda dan kosong tidak diproses ulang")
+	assert.True(t, hasil.Rincian[0].Berhasil)
+	assert.Equal(t, "TIDAK-ADA", hasil.Rincian[1].Kode)
+	assert.Contains(t, hasil.Rincian[1].Pesan, "tidak ditemukan")
+	assert.False(t, hasil.Rincian[2].Berhasil)
+	assert.Contains(t, hasil.Rincian[2].Pesan, "DIARSIPKAN")
+	repo.AssertNotCalled(t, "UbahStatusKomoditas", mock.Anything, "CBM-KRT", mock.Anything)
+	entry, _ := recorder.Last()
+	assert.Equal(t, []string{"BRS-MED"}, entry.Metadata["kode"], "audit hanya memuat kode yang berubah")
+	assert.Equal(t, []string{"TIDAK-ADA", "CBM-KRT"}, entry.Metadata["gagal"])
+}
+
+func TestBulkKomoditas_AllFailedWritesNoAudit(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	kode := []string{"BRS-MED"}
+	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "AKTIF"}, nil)
+
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "setujui", "admin-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, hasil.Gagal)
+	assert.Empty(t, recorder.Entries(), "tidak ada data yang berubah, tidak ada audit")
+}
+
+func TestBulkKomoditas_RaceLostIsFailedItem(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	kode := []string{"BRS-MED"}
+	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "AKTIF"}, nil)
+	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", mock.Anything).Return(false, nil)
+
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", "admin-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, hasil.Gagal)
+	assert.Contains(t, hasil.Rincian[0].Pesan, "berubah")
 }
 
 func TestBulkKomoditas_InvalidAction(t *testing.T) {
@@ -148,7 +218,7 @@ func TestBulkKomoditas_RepoError(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	kode := []string{"BRS-MED"}
-	repo.On("BulkKomoditas", mock.Anything, kode, domain.BulkArsipkan).Return(int64(0), assert.AnError)
+	repo.On("StatusKomoditas", mock.Anything, kode).Return(nil, assert.AnError)
 
 	_, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", "admin-1")
 
@@ -157,15 +227,34 @@ func TestBulkKomoditas_RepoError(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+func TestBulkKomoditas_UpdateErrorAborts(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	kode := []string{"BRS-MED"}
+	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "AKTIF"}, nil)
+	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", mock.Anything).Return(false, assert.AnError)
+
+	_, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", "admin-1")
+
+	assert.Error(t, err)
+}
+
 func TestBulkKomoditas_AuditFailureDoesNotFailAction(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	recorder.Err = assert.AnError
 	kode := []string{"BRS-MED"}
-	repo.On("BulkKomoditas", mock.Anything, kode, domain.BulkSetujui).Return(int64(1), nil)
+	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "MENUNGGU_PERSETUJUAN"}, nil)
+	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", mock.Anything).Return(true, nil)
 
-	count, err := uc.BulkKomoditas(context.Background(), kode, "setujui", "admin-1")
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "setujui", "admin-1")
 
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, count)
+	assert.Equal(t, 1, hasil.Berhasil)
+}
+
+func TestIzinUntukAksi(t *testing.T) {
+	assert.Equal(t, "master.setujui", domain.BulkSetujui.IzinUntuk())
+	assert.Equal(t, "master.ajukan", domain.BulkAjukanPerubahan.IzinUntuk())
+	assert.Equal(t, "master.ajukan", domain.BulkArsipkan.IzinUntuk())
 }

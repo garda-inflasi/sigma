@@ -3109,6 +3109,21 @@ paths:
   /v1/master/komoditas/bulk:
     post:
       summary: Menjalankan aksi massal pada master komoditas
+      description: |
+        Mengubah status komoditas per item. Izin dibedakan menurut aksi:
+        `setujui` membutuhkan `master.setujui` (STRATEGIS_BPS, STRATEGIS_FMIPA);
+        `ajukan_perubahan` dan `arsipkan` membutuhkan `master.ajukan`
+        (ADMIN_SISTEM, MANAJER_DATA, MANAJER_PROGRAM). Pemegang salah satunya
+        melewati rute tetapi mendapat 403 untuk aksi yang bukan haknya.
+
+        Transisi yang sah, dinilai per kode:
+        - `ajukan_perubahan`: AKTIF → MENUNGGU_PERSETUJUAN
+        - `setujui`: MENUNGGU_PERSETUJUAN → AKTIF, `versi` bertambah satu
+        - `arsipkan`: AKTIF atau MENUNGGU_PERSETUJUAN → DIARSIPKAN (tidak ada pemulihan)
+
+        Kode tak dikenal atau status yang tidak sesuai tidak menggagalkan permintaan;
+        item itu dilaporkan di `rincian` dengan `berhasil: false` dan `pesan`. Kode
+        ganda diproses sekali. Aksi yang mengubah data dicatat di audit trail.
       operationId: bulkKomoditas
       tags:
         - Master Data
@@ -3122,13 +3137,19 @@ paths:
               $ref: "#/components/schemas/BulkKomoditasRequest"
       responses:
         "200":
-          description: Aksi massal berhasil diproses
+          description: Aksi massal diproses; lihat `rincian` untuk hasil tiap kode
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BulkResultResponse"
+                $ref: "#/components/schemas/BulkKomoditasResponse"
         "400":
           description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Peran tidak memiliki izin untuk aksi ini (setujui tanpa master.setujui, atau ajukan/arsipkan tanpa master.ajukan)
           content:
             application/json:
               schema:
@@ -5442,6 +5463,38 @@ components:
           items:
             type: string
           example: ["BERAS", "CABAI"]
+
+    BulkKomoditasResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            berhasil:
+              type: integer
+              description: Komoditas yang statusnya berubah
+            gagal:
+              type: integer
+              description: Komoditas yang ditolak (tidak ditemukan atau status tidak sesuai)
+            rincian:
+              type: array
+              description: Hasil tiap kode unik, urut seperti permintaan
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  berhasil:
+                    type: boolean
+                  pesan:
+                    type: string
+                    description: Sebab gagal; tidak ada bila berhasil
 
     BulkPolicyBriefRequest:
       type: object

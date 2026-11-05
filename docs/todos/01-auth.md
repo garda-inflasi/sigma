@@ -85,4 +85,4 @@
 - [ ] Logout membersihkan cache TanStack Query dan store offline lapangan.
 - [ ] Coverage usecase auth dari 63% ke ≥ 80% (MFA, reset, lockout).
 - [ ] Tes `lib/bff/*` (cookies, csrf, rate-limit, safe-redirect), tes middleware, e2e Playwright penuh.
-- [ ] Satukan tiga salinan OpenAPI (`apps/api/docs`, `apps/api/pkg/swagger`, `packages/contracts`).
+- [x] Satukan tiga salinan OpenAPI (lihat [18 §B](18-platform-lintas-fitur.md)).

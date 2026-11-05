@@ -10,14 +10,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// openapi.yaml di sini adalah SALINAN HASIL GENERASI dari packages/contracts/openapi.yaml
+// (sumber tunggal). Go embed tidak bisa membaca di luar paket, jadi salinan ini
+// disinkronkan dengan `make openapi/sync`; TestEmbeddedSpecMatchesContracts gagal
+// bila keduanya berbeda. Jangan sunting berkas ini langsung.
+//
 //go:embed openapi.yaml
 var openapiFS embed.FS
 
-// Register adds Swagger UI routes to the router in development mode.
-// In production mode (GIN_MODE=release), Swagger UI is disabled.
+// Spec mengembalikan spesifikasi OpenAPI yang disajikan di /swagger/openapi.yaml.
+func Spec() ([]byte, error) { return openapiFS.ReadFile("openapi.yaml") }
+
+// enabled menentukan apakah Swagger UI disajikan. Bawaan: aktif selain
+// GIN_MODE=release. SWAGGER_ENABLED=true/false menimpa bawaan (mis. staging release).
+func enabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SWAGGER_ENABLED"))) {
+	case "true", "1":
+		return true
+	case "false", "0":
+		return false
+	}
+	return os.Getenv("GIN_MODE") != "release"
+}
+
+// Register adds Swagger UI routes to the router. Disabled in release mode
+// unless SWAGGER_ENABLED=true.
 func Register(router *gin.Engine) {
-	ginMode := os.Getenv("GIN_MODE")
-	if ginMode == "release" {
+	if !enabled() {
 		return
 	}
 
@@ -32,7 +51,7 @@ func Register(router *gin.Engine) {
 
 		// Serve the OpenAPI YAML file
 		if path == "/openapi.yaml" {
-			data, err := openapiFS.ReadFile("openapi.yaml")
+			data, err := Spec()
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 					"error": "OpenAPI spec not found",

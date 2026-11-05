@@ -24,7 +24,7 @@ Keputusan arsitektur yang masih terbuka:
 
 ## B. Kontrak API
 
-- [ ] Satukan tiga salinan OpenAPI: `apps/api/docs/openapi.yaml`, `apps/api/pkg/swagger/openapi.yaml`, `packages/contracts/openapi.yaml`. Satu sumber, lainnya dihasilkan atau dihapus.
+- [x] Satukan tiga salinan OpenAPI. Sumber tunggal: `packages/contracts/openapi.yaml`; `apps/api/docs/openapi.yaml` dihapus; `apps/api/pkg/swagger/openapi.yaml` salinan hasil generasi (`make openapi/sync`, `make openapi/check`) dan `pkg/swagger/swagger_test.go` gagal bila berbeda atau bila path analytics lama muncul. `/swagger/openapi.yaml` menyajikan spesifikasi terkini (aktif selain `GIN_MODE=release`, atau `SWAGGER_ENABLED=true`).
 - [ ] Hasilkan tipe TypeScript klien dari OpenAPI (ganti tipe manual di `lib/data/types.ts` yang mudah menyimpang).
 - [ ] Tes kontrak di CI: respons backend cocok dengan skema.
 - [ ] Konvensi: format error, paginasi (page/limit vs cursor), envelope respons `{ code, message, data }`, dan `Idempotency-Key` untuk semua POST yang mengubah data.

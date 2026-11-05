@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -73,6 +73,16 @@ db/seed/admin: ## Seed akun admin awal (SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD)
 
 db/seed/demo: ## Seed data demo (ditolak bila APP_ENV=production)
 	cd apps/api && go run ./cmd/seed demo
+
+# ── OpenAPI: sumber tunggal packages/contracts/openapi.yaml ─────────────
+# apps/api/pkg/swagger/openapi.yaml adalah salinan hasil generasi (go:embed tidak bisa
+# membaca di luar paket). Sunting HANYA packages/contracts/openapi.yaml, lalu sinkronkan.
+openapi/sync: ## Salin packages/contracts/openapi.yaml ke salinan embed Swagger (apps/api/pkg/swagger)
+	cp packages/contracts/openapi.yaml apps/api/pkg/swagger/openapi.yaml
+
+openapi/check: ## Gagal bila salinan embed Swagger berbeda dari sumber tunggal
+	@cmp -s packages/contracts/openapi.yaml apps/api/pkg/swagger/openapi.yaml || { echo "Beda: jalankan make openapi/sync"; exit 1; }
+	@echo "✓ OpenAPI sinkron"
 
 # ── Backup & restore (scripts/backup, lihat docs/DEPLOYMENT.md §10) ─────
 # Berjalan lewat `docker exec` ke container Postgres (PG_CONTAINER, bawaan garda-postgres).

@@ -45,8 +45,27 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 		c.Set("role", claims.Role)
 		c.Set("permissions", claims.Permissions)
 		c.Set("jti", claims.ID)
+
+		if claims.PasswordChangeRequired && !passwordChangeExempt[c.FullPath()] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"code":    PasswordChangeRequiredCode,
+				"message": "Anda harus mengganti kata sandi sebelum melanjutkan",
+			})
+			return
+		}
 		c.Next()
 	}
+}
+
+// PasswordChangeRequiredCode adalah kode galat 403 untuk akun yang wajib mengganti kata sandi.
+const PasswordChangeRequiredCode = "PASSWORD_CHANGE_REQUIRED"
+
+// passwordChangeExempt adalah satu-satunya rute yang terbuka bagi akun yang wajib
+// mengganti kata sandi: mengganti, keluar, dan membaca profil sendiri.
+var passwordChangeExempt = map[string]bool{
+	"/v1/auth/change-password": true,
+	"/v1/auth/logout":          true,
+	"/v1/auth/me":              true,
 }
 
 // bearerToken extracts the token from an `Authorization: Bearer <token>` header.

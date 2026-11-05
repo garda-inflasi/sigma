@@ -10,6 +10,12 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import {
+  PASSWORD_CHANGE_PATH,
+  PASSWORD_CHANGE_REQUIRED_CODE,
+  isPasswordChangeExempt,
+  requiresPasswordChange,
+} from "@/lib/auth/password-change";
 import { ROLES } from "@/lib/rbac/roles";
 
 // Routes that don't require authentication
@@ -90,6 +96,19 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL("/masuk", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Akun yang wajib mengganti kata sandi hanya boleh membuka halaman ganti kata sandi
+  if (requiresPasswordChange(accessToken) && !isPasswordChangeExempt(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: true, code: PASSWORD_CHANGE_REQUIRED_CODE, message: "Anda harus mengganti kata sandi sebelum melanjutkan." },
+        { status: 403 }
+      );
+    }
+    const changeUrl = new URL(PASSWORD_CHANGE_PATH, request.url);
+    changeUrl.searchParams.set("lanjut", pathname);
+    return NextResponse.redirect(changeUrl);
   }
 
   // Redirect root to role-specific beranda

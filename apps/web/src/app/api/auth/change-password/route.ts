@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
-import { getAccessToken } from "@/lib/bff/cookies";
+import {
+  getAccessToken,
+  setAccessTokenCookie,
+  setRefreshTokenCookie,
+} from "@/lib/bff/cookies";
 import { validateCSRF, validateOrigin } from "@/lib/bff/csrf";
 import { jsonResponse, errorResponse } from "@/lib/bff/security-headers";
 
@@ -23,12 +27,16 @@ export async function POST(request: NextRequest) {
       return errorResponse("Password lama dan baru wajib diisi.", 400);
     }
 
-    await authApi.changePassword(accessToken, {
+    const session = await authApi.changePassword(accessToken, {
       old_password,
       new_password,
     });
 
-    return jsonResponse({ success: true });
+    // Sesi lama dicabut server; pasang sesi baru agar pengguna tidak perlu masuk ulang.
+    const response = jsonResponse({ success: true });
+    setAccessTokenCookie(response, session.access_token);
+    setRefreshTokenCookie(response, session.refresh_token);
+    return response;
   } catch (error) {
     if (error instanceof Error && "status" in error) {
       const apiError = error as { status: number; message: string };

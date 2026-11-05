@@ -44,25 +44,11 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	resp := dto.LoginResponse{
+	response.Success(c, dto.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User: dto.UserResponse{
-			ID:            user.ID,
-			Nama:          user.Nama,
-			Email:         user.Email,
-			Peran:         user.Peran,
-			Lapis:         user.Lapis,
-			Lembaga:       user.Lembaga,
-			KabupatenKode: user.KabupatenKode,
-			MfaAktif:      user.MfaAktif,
-			Status:        user.Status,
-			TerakhirMasuk: user.TerakhirMasuk,
-			DibuatPada:    user.DibuatPada,
-		},
-	}
-
-	response.Success(c, resp)
+		User:         dto.ToUserResponse(user),
+	})
 }
 
 // POST /v1/auth/refresh
@@ -116,20 +102,7 @@ func (h *Handler) Me(c *gin.Context) {
 		return
 	}
 
-	resp := dto.UserResponse{
-		ID:            user.ID,
-		Nama:          user.Nama,
-		Email:         user.Email,
-		Peran:         user.Peran,
-		Lapis:         user.Lapis,
-		Lembaga:       user.Lembaga,
-		KabupatenKode: user.KabupatenKode,
-		MfaAktif:      user.MfaAktif,
-		Status:        user.Status,
-		TerakhirMasuk: user.TerakhirMasuk,
-		DibuatPada:    user.DibuatPada,
-	}
-	response.Success(c, resp)
+	response.Success(c, dto.ToUserResponse(user))
 }
 
 // POST /v1/auth/change-password
@@ -143,13 +116,14 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 	ip := c.ClientIP()
 
-	if err := h.uc.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword, ip); err != nil {
-		switch err {
-		case usecase.ErrWrongPassword:
+	accessToken, refreshToken, err := h.uc.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword, ip)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrWrongPassword):
 			response.Unauthorized(c, "Password lama salah")
-		case usecase.ErrWeakPassword:
-			response.BadRequest(c, "Password baru terlalu lemah")
-		case usecase.ErrPasswordReuse:
+		case errors.Is(err, usecase.ErrWeakPassword):
+			response.BadRequest(c, err.Error())
+		case errors.Is(err, usecase.ErrPasswordReuse):
 			response.BadRequest(c, "Password baru tidak boleh sama dengan password lama")
 		default:
 			response.InternalError(c, "Gagal mengubah password")
@@ -157,7 +131,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, nil)
+	response.Success(c, dto.ChangePasswordResponse{AccessToken: accessToken, RefreshToken: refreshToken})
 }
 
 // POST /v1/auth/forgot-password

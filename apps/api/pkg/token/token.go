@@ -13,7 +13,7 @@ import (
 // ── Constants ─────────────────────────────────────────────────────────
 
 const (
-	issuer  = "garda-auth"
+	issuer   = "garda-auth"
 	audience = "garda-api"
 	// ClockSkew is the allowed clock skew for JWT validation (30 seconds).
 	ClockSkew = 30 * time.Second
@@ -26,6 +26,9 @@ type Claims struct {
 	UserID      string   `json:"user_id"`
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
+	// PasswordChangeRequired menandai sesi akun yang wajib mengganti kata sandi;
+	// middleware menolak semua endpoint di luar daftar kecil selama klaim ini aktif.
+	PasswordChangeRequired bool `json:"wajib_ganti_password,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -99,9 +102,19 @@ func WithAudience(aud string) Option {
 
 // ── Token Creation ────────────────────────────────────────────────────
 
+// ClaimOption mengatur klaim tambahan pada access token.
+type ClaimOption func(*Claims)
+
+// WithPasswordChangeRequired menandai token milik akun yang wajib mengganti kata sandi.
+func WithPasswordChangeRequired(required bool) ClaimOption {
+	return func(c *Claims) {
+		c.PasswordChangeRequired = required
+	}
+}
+
 // CreateAccessToken creates a new signed JWT access token.
 // Includes jti (unique ID), sub (user ID), role, permissions, iss, aud, iat, exp, nbf.
-func (m *Manager) CreateAccessToken(userID string, role string, permissions []string) (string, error) {
+func (m *Manager) CreateAccessToken(userID string, role string, permissions []string, opts ...ClaimOption) (string, error) {
 	now := time.Now()
 	jti := uuid.New().String()
 
@@ -118,6 +131,9 @@ func (m *Manager) CreateAccessToken(userID string, role string, permissions []st
 			NotBefore: jwt.NewNumericDate(now.Add(-ClockSkew)),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTTL)),
 		},
+	}
+	for _, opt := range opts {
+		opt(claims)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

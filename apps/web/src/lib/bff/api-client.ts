@@ -112,11 +112,19 @@ export interface UserResponse {
   status: string;
   terakhir_masuk?: string;
   dibuat_pada: string;
+  /** Selama true, API menjawab 403 PASSWORD_CHANGE_REQUIRED selain untuk ganti kata sandi, keluar, dan profil. */
+  wajib_ganti_password: boolean;
 }
 
 export interface ChangePasswordRequest {
   old_password: string;
   new_password: string;
+}
+
+/** Sesi baru: ganti kata sandi mencabut sesi lama. */
+export interface ChangePasswordResponse {
+  access_token: string;
+  refresh_token: string;
 }
 
 export interface ForgotPasswordRequest {
@@ -216,7 +224,7 @@ export const authApi = {
     accessToken: string,
     data: ChangePasswordRequest
   ) =>
-    apiFetch<void>("/auth/change-password", {
+    apiFetch<ChangePasswordResponse>("/auth/change-password", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,

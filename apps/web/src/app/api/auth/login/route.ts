@@ -5,6 +5,7 @@ import {
   setRefreshTokenCookie,
 } from "@/lib/bff/cookies";
 import { setCSRFCookie, generateCSRFToken } from "@/lib/bff/csrf";
+import { postLoginDestination } from "@/lib/auth/password-change";
 import { checkLoginRateLimit } from "@/lib/bff/rate-limit";
 import { applySecurityHeaders } from "@/lib/bff/security-headers";
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     // Use the Host header to construct the correct redirect URL
     const host = request.headers.get("host") || "localhost";
     const protocol = request.headers.get("x-forwarded-proto") || "http";
-    const redirectUrl = `${protocol}://${host}${redirectTo}`;
+    const redirectUrl = `${protocol}://${host}${postLoginDestination(result.user.wajib_ganti_password, redirectTo)}`;
     const response = isFormPost
       ? NextResponse.redirect(redirectUrl)
       : NextResponse.json({ user: result.user });

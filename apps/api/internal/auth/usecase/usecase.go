@@ -164,32 +164,12 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 		return nil, "", "", ErrInvalidCredentials
 	}
 
-	// Get user permissions from RBAC
-	permissions := uc.getPermissionsForRole(user.Peran)
-
-	accessToken, err := uc.token.CreateAccessToken(user.ID, user.Peran, permissions)
+	accessToken, rawRefresh, err := uc.issueSession(ctx, user, uuid.New().String(), ip)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("create access token: %w", err)
-	}
-
-	familyID := uuid.New().String()
-	rawRefresh, refreshHash, err := uc.token.CreateRefreshToken()
-	if err != nil {
-		return nil, "", "", fmt.Errorf("create refresh token: %w", err)
+		return nil, "", "", err
 	}
 
 	now := time.Now()
-	rt := &domain.RefreshToken{
-		UserID:    user.ID,
-		TokenHash: refreshHash,
-		FamilyID:  familyID,
-		IP:        &ip,
-		ExpiresAt: now.Add(uc.cfg.RefreshTokenTTL),
-	}
-	if err := uc.repo.CreateRefreshToken(ctx, rt); err != nil {
-		return nil, "", "", fmt.Errorf("save refresh token: %w", err)
-	}
-
 	uc.recordLoginAttempt(ctx, &user.ID, ip, true, "")
 
 	user.TerakhirMasuk = &now
@@ -226,7 +206,6 @@ func (uc *UseCase) Refresh(ctx context.Context, refreshTokenStr, ip string) (str
 		return "", "", ErrTokenExpired
 	}
 
-	now := time.Now()
 	if err := uc.repo.RevokeRefreshToken(ctx, stored.ID); err != nil {
 		return "", "", fmt.Errorf("revoke old token: %w", err)
 	}
@@ -237,27 +216,9 @@ func (uc *UseCase) Refresh(ctx context.Context, refreshTokenStr, ip string) (str
 		return "", "", ErrUserNotFound
 	}
 
-	permissions := uc.getPermissionsForRole(user.Peran)
-
-	accessToken, err := uc.token.CreateAccessToken(stored.UserID, user.Peran, permissions)
+	accessToken, rawRefresh, err := uc.issueSession(ctx, user, stored.FamilyID, ip)
 	if err != nil {
-		return "", "", fmt.Errorf("create access token: %w", err)
-	}
-
-	rawRefresh, refreshHash, err := uc.token.CreateRefreshToken()
-	if err != nil {
-		return "", "", fmt.Errorf("create refresh token: %w", err)
-	}
-
-	rt := &domain.RefreshToken{
-		UserID:    stored.UserID,
-		TokenHash: refreshHash,
-		FamilyID:  stored.FamilyID,
-		IP:        &ip,
-		ExpiresAt: now.Add(uc.cfg.RefreshTokenTTL),
-	}
-	if err := uc.repo.CreateRefreshToken(ctx, rt); err != nil {
-		return "", "", fmt.Errorf("save new refresh token: %w", err)
+		return "", "", err
 	}
 
 	uc.log.Info("refresh success", map[string]interface{}{"user_id": stored.UserID, "ip": ip})
@@ -294,47 +255,47 @@ func (uc *UseCase) GetMe(ctx context.Context, userID string) (*domain.Pengguna, 
 
 // ── Password Management ───────────────────────────────────────────────
 
-// ChangePassword changes the user's password after verifying the old one.
-func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string, ip string) error {
+// ChangePassword mengganti kata sandi setelah memverifikasi yang lama, mematikan
+// penanda wajib ganti, lalu menerbitkan sesi baru: semua sesi lama dicabut, dan
+// token yang sedang dipakai masih membawa klaim wajib ganti kata sandi.
+func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string, ip string) (accessToken, refreshToken string, err error) {
 	user, err := uc.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return ErrUserNotFound
+		return "", "", ErrUserNotFound
 	}
 
 	if user.PasswordHash == nil {
-		return ErrWrongPassword
+		return "", "", ErrWrongPassword
 	}
 
 	if !crypto.VerifyPassword(oldPassword, *user.PasswordHash) {
 		uc.recordLoginAttempt(ctx, &userID, ip, false, "wrong_password_change")
-		return ErrWrongPassword
+		return "", "", ErrWrongPassword
 	}
 
 	if err := ValidatePassword(newPassword); err != nil {
-		return err
+		return "", "", err
 	}
 
-	// Prevent password reuse
 	if crypto.VerifyPassword(newPassword, *user.PasswordHash) {
-		return ErrPasswordReuse
+		return "", "", ErrPasswordReuse
 	}
 
-	hash, err := crypto.HashPassword(newPassword)
+	if err := uc.setPassword(ctx, user, newPassword, false); err != nil {
+		return "", "", err
+	}
+
+	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, userID); err != nil {
+		return "", "", fmt.Errorf("revoke sessions: %w", err)
+	}
+	accessToken, refreshToken, err = uc.issueSession(ctx, user, uuid.New().String(), ip)
 	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
+		return "", "", err
 	}
-	user.PasswordHash = &hash
-
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("update user: %w", err)
-	}
-
-	// Revoke all other sessions except current
-	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, userID)
 
 	uc.recordAuditLog(ctx, &userID, "CHANGE_PASSWORD", "pengguna", userID, "BERHASIL", &ip, nil)
 	uc.log.Info("password changed", map[string]interface{}{"user_id": userID, "ip": ip})
-	return nil
+	return accessToken, refreshToken, nil
 }
 
 // ForgotPassword creates a password reset token and stores it.
@@ -392,11 +353,6 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 		return err
 	}
 
-	hash, err := crypto.HashPassword(newPassword)
-	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
-	}
-
 	user, err := uc.repo.GetUserByID(ctx, stored.UserID)
 	if err != nil {
 		return ErrUserNotFound
@@ -407,9 +363,8 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 		return ErrPasswordReuse
 	}
 
-	user.PasswordHash = &hash
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("update user: %w", err)
+	if err := uc.setPassword(ctx, user, newPassword, false); err != nil {
+		return err
 	}
 
 	// Mark token as used
@@ -462,6 +417,7 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 		return fmt.Errorf("hash password: %w", err)
 	}
 	user.PasswordHash = &hash
+	user.WajibGantiPassword = true
 
 	if err := uc.repo.CreateUser(ctx, user); err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -576,14 +532,8 @@ func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, acto
 		return ErrUserNotFound
 	}
 
-	hash, err := crypto.HashPassword(newPassword)
-	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
-	}
-	user.PasswordHash = &hash
-
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("reset password: %w", err)
+	if err := uc.setPassword(ctx, user, newPassword, true); err != nil {
+		return err
 	}
 
 	// Force re-authentication everywhere after an administrative reset.
@@ -834,6 +784,50 @@ func (uc *UseCase) recordAuditLog(ctx context.Context, aktorID *string, aksi, en
 		Metadata:  metaStr,
 	}
 	_ = uc.repo.CreateAuditLog(ctx, log)
+}
+
+// issueSession menerbitkan access token (membawa penanda wajib ganti kata sandi
+// bila aktif) dan refresh token baru dalam keluarga familyID.
+func (uc *UseCase) issueSession(ctx context.Context, user *domain.Pengguna, familyID, ip string) (accessToken, refreshToken string, err error) {
+	accessToken, err = uc.token.CreateAccessToken(user.ID, user.Peran, uc.getPermissionsForRole(user.Peran),
+		token.WithPasswordChangeRequired(user.WajibGantiPassword))
+	if err != nil {
+		return "", "", fmt.Errorf("create access token: %w", err)
+	}
+
+	refreshToken, refreshHash, err := uc.token.CreateRefreshToken()
+	if err != nil {
+		return "", "", fmt.Errorf("create refresh token: %w", err)
+	}
+
+	rt := &domain.RefreshToken{
+		UserID:    user.ID,
+		TokenHash: refreshHash,
+		FamilyID:  familyID,
+		IP:        &ip,
+		ExpiresAt: time.Now().Add(uc.cfg.RefreshTokenTTL),
+	}
+	if err := uc.repo.CreateRefreshToken(ctx, rt); err != nil {
+		return "", "", fmt.Errorf("save refresh token: %w", err)
+	}
+	return accessToken, refreshToken, nil
+}
+
+// setPassword menyimpan kata sandi baru. wajibGanti true untuk kata sandi yang
+// ditetapkan pihak lain (reset admin): pemilik akun harus menggantinya sendiri.
+func (uc *UseCase) setPassword(ctx context.Context, user *domain.Pengguna, password string, wajibGanti bool) error {
+	hash, err := crypto.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	now := time.Now()
+	user.PasswordHash = &hash
+	user.WajibGantiPassword = wajibGanti
+	user.PasswordDiubahPada = &now
+	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("update user: %w", err)
+	}
+	return nil
 }
 
 func sha256Hex(s string) string {

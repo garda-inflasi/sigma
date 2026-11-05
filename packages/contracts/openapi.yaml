@@ -174,11 +174,13 @@ paths:
               $ref: "#/components/schemas/ChangePasswordRequest"
       responses:
         "200":
-          description: Password berhasil diubah
+          description: |
+            Password berhasil diubah. Penanda `wajib_ganti_password` dimatikan, semua sesi
+            lama dicabut, dan sesi baru dikembalikan.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/ChangePasswordResponse"
         "400":
           description: Password baru terlalu lemah atau sama dengan password lama
           content:
@@ -1262,6 +1264,23 @@ components:
             Password baru. Minimal 8 karakter, mengandung huruf besar,
             angka, dan karakter spesial.
 
+    ChangePasswordResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+
     ForgotPasswordRequest:
       type: object
       required:
@@ -1412,6 +1431,14 @@ components:
         dibuat_pada:
           type: string
           format: date-time
+        wajib_ganti_password:
+          type: boolean
+          description: |
+            True bila kata sandi akun ditetapkan pihak lain (admin awal, akun baru, reset
+            administrator). Selama aktif, semua endpoint selain `/v1/auth/change-password`,
+            `/v1/auth/logout`, dan `/v1/auth/me` menjawab 403 dengan `code`
+            `PASSWORD_CHANGE_REQUIRED`.
+          example: false
 
     UserResponse:
       type: object

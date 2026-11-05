@@ -30,7 +30,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*domain.Penggu
 
 func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*domain.Pengguna, error) {
 	var user domain.Pengguna
-	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("lower(email) = lower(?)", email).First(&user).Error; err != nil {
 		return nil, fmt.Errorf("get user by email: %w", err)
 	}
 	return &user, nil

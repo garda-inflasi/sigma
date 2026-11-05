@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { authApi } from "@/lib/bff/api-client";
 import { ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE, cookieSecure } from "@/lib/bff/cookie-policy";
 import { generateCSRFToken } from "@/lib/bff/csrf";
+import { postLoginDestination } from "@/lib/auth/password-change";
 
 export async function loginAction(formData: FormData) {
   const email = formData.get("email") as string;
@@ -49,8 +50,8 @@ export async function loginAction(formData: FormData) {
       maxAge: 24 * 60 * 60,
     });
 
-    // Redirect to the intended page
-    redirect(redirectTo);
+    // Akun yang wajib mengganti kata sandi dialihkan dulu ke halaman ganti kata sandi
+    redirect(postLoginDestination(result.user.wajib_ganti_password, redirectTo));
   } catch (error) {
     const message =
       error instanceof Error && "status" in error

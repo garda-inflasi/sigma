@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, KeyRound, LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -110,6 +110,11 @@ export function Topbar() {
               {resolvedTheme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
               {resolvedTheme === "dark" ? "Mode terang" : "Mode gelap"}
             </DropdownMenuItem>
+            {!MODE_MOCK && (
+              <DropdownMenuItem asChild className="rounded-md">
+                <Link href="/ganti-password"><KeyRound className="size-4" /> Ganti kata sandi</Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem asChild className="rounded-md">
               <Link href="/masuk"><LogOut className="size-4" /> Keluar</Link>
             </DropdownMenuItem>

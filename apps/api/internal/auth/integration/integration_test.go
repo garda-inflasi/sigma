@@ -45,10 +45,16 @@ func TestMain(m *testing.M) {
 // setupSuite menyiapkan basis data khusus tes ini (migrasi + akun uji) dan router.
 func setupSuite(t *testing.T) *Suite {
 	t.Helper()
+	return setupSuiteWith(t, seedData)
+}
+
+// setupSuiteWith seperti setupSuite dengan isi basis data yang ditentukan pemanggil.
+func setupSuiteWith(t *testing.T, seed func(*testing.T, *gorm.DB)) *Suite {
+	t.Helper()
 
 	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
 	pgtest.MigrateUp(t, db)
-	seedData(t, db)
+	seed(t, db)
 
 	tokenMgr := token.NewManager(jwtSecret)
 

@@ -17,8 +17,12 @@ type Pengguna struct {
 	MfaBackupCodes *string    `gorm:"column:mfa_backup_codes"`
 	Status         string     `gorm:"column:status;default:AKTIF"`
 	TerakhirMasuk  *time.Time `gorm:"column:terakhir_masuk"`
-	DibuatPada     time.Time  `gorm:"column:dibuat_pada;default:now()"`
-	DiupdatePada   time.Time  `gorm:"column:diupdate_pada;default:now()"`
+	// WajibGantiPassword aktif untuk akun yang kata sandinya ditetapkan pihak lain
+	// (admin awal, dibuat/di-reset admin); dimatikan oleh ganti atau reset kata sandi.
+	WajibGantiPassword bool       `gorm:"column:wajib_ganti_password;default:false"`
+	PasswordDiubahPada *time.Time `gorm:"column:password_diubah_pada"`
+	DibuatPada         time.Time  `gorm:"column:dibuat_pada;default:now()"`
+	DiupdatePada       time.Time  `gorm:"column:diupdate_pada;default:now()"`
 }
 
 func (Pengguna) TableName() string {

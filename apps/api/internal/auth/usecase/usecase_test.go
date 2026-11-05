@@ -436,13 +436,60 @@ func TestChangePassword_Success(t *testing.T) {
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
-	err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+	accessToken, refreshToken, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
 
 	require.NoError(t, err)
+	assert.NotEmpty(t, accessToken)
+	assert.NotEmpty(t, refreshToken)
+	assert.NotNil(t, user.PasswordDiubahPada, "waktu ganti kata sandi tercatat")
 
 	repo.AssertExpectations(t)
+}
+
+func TestChangePassword_ClearsMandatoryChangeFlagAndIssuesCleanToken(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	user := activeUser()
+	user.WajibGantiPassword = true
+
+	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
+	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
+
+	accessToken, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+
+	require.NoError(t, err)
+	assert.False(t, user.WajibGantiPassword)
+	claims, err := uc.token.VerifyToken(accessToken)
+	require.NoError(t, err)
+	assert.False(t, claims.PasswordChangeRequired, "token baru tidak lagi membawa klaim wajib ganti")
+}
+
+func TestLogin_MandatoryChangeFlagIsCarriedByToken(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+	user := activeUser()
+	user.WajibGantiPassword = true
+
+	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
+	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
+	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
+	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
+
+	result, accessToken, _, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
+
+	require.NoError(t, err)
+	assert.True(t, result.WajibGantiPassword)
+	claims, err := uc.token.VerifyToken(accessToken)
+	require.NoError(t, err)
+	assert.True(t, claims.PasswordChangeRequired)
 }
 
 func TestChangePassword_WrongOldPassword(t *testing.T) {
@@ -453,7 +500,7 @@ func TestChangePassword_WrongOldPassword(t *testing.T) {
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
-	err := uc.ChangePassword(context.Background(), "user-123", "WrongOld1!", "NewTest1@", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), "user-123", "WrongOld1!", "NewTest1@", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrWrongPassword)
 
@@ -467,7 +514,7 @@ func TestChangePassword_WeakPassword(t *testing.T) {
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 
-	err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "weak", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "weak", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrWeakPassword)
 
@@ -481,7 +528,7 @@ func TestChangePassword_PasswordReuse(t *testing.T) {
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 
-	err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "Test1234!", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrPasswordReuse)
 

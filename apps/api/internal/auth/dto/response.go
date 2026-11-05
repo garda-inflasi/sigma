@@ -19,6 +19,13 @@ type RefreshTokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// ChangePasswordResponse memuat sesi baru: ganti kata sandi mencabut semua sesi
+// lama, dan token lama masih membawa klaim wajib ganti kata sandi.
+type ChangePasswordResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
 type MeResponse struct {
 	User UserResponse `json:"user"`
 }
@@ -37,6 +44,9 @@ type UserResponse struct {
 	Status        string     `json:"status"`
 	TerakhirMasuk *time.Time `json:"terakhir_masuk,omitempty"`
 	DibuatPada    time.Time  `json:"dibuat_pada"`
+	// WajibGantiPassword true berarti seluruh endpoint selain ganti kata sandi,
+	// keluar, dan profil menjawab 403 PASSWORD_CHANGE_REQUIRED.
+	WajibGantiPassword bool `json:"wajib_ganti_password"`
 }
 
 type ListResponse struct {
@@ -82,6 +92,8 @@ func ToUserResponse(u *domain.Pengguna) UserResponse {
 		Status:        u.Status,
 		TerakhirMasuk: u.TerakhirMasuk,
 		DibuatPada:    u.DibuatPada,
+
+		WajibGantiPassword: u.WajibGantiPassword,
 	}
 }
 

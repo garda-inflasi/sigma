@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import { Camera, Check, MapPin, MapPinOff, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
@@ -13,10 +13,14 @@ import type { EntriHarga, StatusEntri } from "@/lib/data/types";
 import { toneClass } from "@/lib/design/tokens";
 import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { fadeUp, stagger } from "@/lib/motion/presets";
-import { useEntriHarga } from "@/lib/query/hooks";
+import type { HargaParams } from "@/lib/api/harga";
+import { useEntriHarga, useRingkasanHarga } from "@/lib/query/hooks";
+import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { FACET_STATUS_ENTRI, useHargaBulkActions, useHargaColumns } from "./harga-table";
 
+const STATUS_VALID = Object.keys(STATUS_ENTRI) as StatusEntri[];
+const statusDariQuery = (s: string | null) => STATUS_VALID.find((v) => v === s);
 const ALUR: StatusEntri[] = ["DRAF", "DIAJUKAN", "DIVALIDASI", "DIPUBLIKASI"];
 const getId = (r: EntriHarga) => r.id;
 
@@ -48,23 +52,23 @@ function AlurEntri({ e }: { e: EntriHarga }) {
 
 export function HargaPage() {
   const params = useSearchParams();
-  const status = params.get("status");
-  const { data, isLoading } = useEntriHarga();
+  const status = statusDariQuery(params.get("status"));
+  const query = useMemo<HargaParams>(() => (status ? { status } : {}), [status]);
+  const { data, isLoading } = useEntriHarga(query);
+  const { data: ringkasan } = useRingkasanHarga();
   const columns = useHargaColumns();
-  const actions = useHargaBulkActions();
+  const actions = useHargaBulkActions(qk.harga.list(query));
   const [detail, setDetail] = useState<EntriHarga | null>(null);
-  const n = (s: StatusEntri) => data?.filter((e) => e.status === s).length ?? 0;
-  const anomali = data?.filter((e) => Math.abs(e.deviasiPct) > 25).length ?? 0;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      <PageHeader title="Validasi harga" description="Entri lapangan mengalir dari draf, pengecekan otomatis, validasi koordinator, hingga publikasi. Centang beberapa baris untuk memproses sekaligus; Shift + klik untuk memilih rentang." />
+      <PageHeader title="Validasi harga" description="Ringkasan menghitung tujuh hari terakhir. Entri lapangan mengalir dari draf, pengecekan otomatis, validasi koordinator, hingga publikasi. Centang beberapa baris untuk memproses sekaligus; Shift + klik untuk memilih rentang." />
       <motion.div variants={stagger(0.06)} initial="hidden" animate="show" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: "Menunggu validasi", v: n("DIAJUKAN"), tone: "waspada" as const },
-          { label: "Divalidasi", v: n("DIVALIDASI"), tone: "data" as const },
-          { label: "Dipublikasi", v: n("DIPUBLIKASI"), tone: "normal" as const },
-          { label: "Deviasi > 25%", v: anomali, tone: "defisit" as const },
+          { label: "Menunggu validasi", v: ringkasan?.diajukan ?? 0, tone: "waspada" as const },
+          { label: "Divalidasi", v: ringkasan?.divalidasi ?? 0, tone: "data" as const },
+          { label: "Dipublikasi", v: ringkasan?.dipublikasi ?? 0, tone: "normal" as const },
+          { label: "Deviasi > 25%", v: ringkasan?.anomali ?? 0, tone: "defisit" as const },
         ].map((k) => (
           <motion.div key={k.label} variants={fadeUp} className="glass rounded-xl p-4">
             <p className="flex items-center gap-2 text-xs text-muted-foreground"><span className={cn("size-1.5 rounded-full", toneClass[k.tone].dot)} />{k.label}</p>

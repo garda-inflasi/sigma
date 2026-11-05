@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/harga/delivery/http"
 	"github.com/garda-inflasi/api/internal/harga/repository/postgres"
 	"github.com/garda-inflasi/api/internal/harga/usecase"
@@ -19,16 +20,18 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, deps.Logger)
+	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
 	harga := engine.Group("/harga")
 	harga.Use(middleware.JWTAuth(deps.Token))
 	{
 		harga.GET("", middleware.RequirePermission("harga.lihat"), handler.ListHarga)
+		harga.GET("/ringkasan", middleware.RequirePermission("harga.lihat"), handler.Ringkasan)
 		harga.GET("/tren", middleware.RequirePermission("harga.lihat"), handler.GetTren)
-		harga.POST("", middleware.RequirePermission("harga.input"), handler.CreateHarga)
+		harga.GET("/saya", middleware.RequirePermission("harga.input"), handler.ListSaya)
 		harga.GET("/:id", middleware.RequirePermission("harga.lihat"), handler.GetHargaByID)
-		harga.POST("/bulk", middleware.RequirePermission("harga.validasi"), handler.BulkHarga)
+		harga.POST("", middleware.RequirePermission("harga.input"), handler.CreateHarga)
+		harga.POST("/bulk", middleware.RequireAnyPermission("harga.validasi", "harga.publikasi"), handler.BulkHarga)
 	}
 }

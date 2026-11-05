@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import type { AuditFilter } from "@/lib/api/audit";
+import type { HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { StokColdStorage } from "@/lib/data/types";
@@ -28,8 +29,14 @@ export const useTrenHarga = (kode: string, kab: string) =>
   useQuery({ queryKey: qk.operasional.tren(kode, kab), queryFn: () => api.operasional.tren(kode, kab), placeholderData: (prev) => prev });
 export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.ringkasan(), queryFn: api.eksekutif.ringkasan });
 export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
-/** Daftar entri harga; `enabled` dipakai sidebar agar peran tanpa `harga.lihat` tidak memicu 403. */
-export const useEntriHarga = (enabled = true) => useQuery({ queryKey: qk.harga.list(), queryFn: api.harga.list, enabled });
+/** Daftar entri harga yang disaring server; `enabled` mencegah 403 bagi peran tanpa `harga.lihat`. */
+export const useEntriHarga = (params: HargaParams = {}, enabled = true) =>
+  useQuery({ queryKey: qk.harga.list(params), queryFn: () => api.harga.list(params), enabled, placeholderData: keepPreviousData });
+/** Jumlah entri per status pada `hari` terakhir. */
+export const useRingkasanHarga = (hari = 7, enabled = true) =>
+  useQuery({ queryKey: qk.harga.ringkasan(hari), queryFn: () => api.harga.ringkasan(hari), enabled, refetchInterval: LIVE });
+/** Riwayat entri milik pengguna yang masuk. */
+export const useRiwayatHargaSaya = () => useQuery({ queryKey: qk.harga.saya(), queryFn: api.harga.saya });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useIntervensi = () => useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity });
 /**
@@ -77,6 +84,8 @@ export function useBulkAction<T extends { id: string }>(opts: {
   sumber: string;
   queryKey: QueryKey;
   patch?: (row: T, aksi: string) => T | null; // null = hapus dari daftar
+  /** Segarkan query berawalan key ini dari server setelah selesai (tidak di mode mock). */
+  invalidate?: QueryKey;
 }) {
   const qc = useQueryClient();
   return useMutation({
@@ -96,8 +105,11 @@ export function useBulkAction<T extends { id: string }>(opts: {
     },
     onSuccess: (res, { label }) => {
       toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} data`, {
-        description: res.gagal ? `${res.gagal} data gagal diproses — lihat log audit.` : "Tercatat di audit trail.",
+        description: res.gagal ? `${res.gagal} data dilewati karena status atau pemisahan tugas.` : "Tercatat di audit trail.",
       });
+    },
+    onSettled: () => {
+      if (opts.invalidate && !MODE_MOCK) qc.invalidateQueries({ queryKey: opts.invalidate });
     },
   });
 }

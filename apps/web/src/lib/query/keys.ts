@@ -1,4 +1,5 @@
 import type { AuditFilter } from "@/lib/api/audit";
+import type { HargaParams } from "@/lib/api/harga";
 import type { ColdStorageParams } from "@/lib/api/cold-storage-query";
 
 /** Pabrik query key — hierarkis agar invalidasi dapat dilakukan per domain. */
@@ -15,7 +16,12 @@ export const qk = {
     ringkasan: () => ["eksekutif", "ringkasan"] as const,
     xai: (kode: string) => ["eksekutif", "xai", kode] as const,
   },
-  harga: { list: () => ["harga", "list"] as const },
+  harga: {
+    all: () => ["harga"] as const,
+    list: (params: HargaParams = {}) => ["harga", "list", params] as const,
+    saya: () => ["harga", "saya"] as const,
+    ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
+  },
   ews: { list: () => ["ews", "list"] as const },
   intervensi: { list: () => ["intervensi", "list"] as const },
   coldStorage: {

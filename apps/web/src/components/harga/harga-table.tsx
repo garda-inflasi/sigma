@@ -2,6 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { Camera, CheckCheck, Download, MapPinOff, RotateCcw, Send, XCircle } from "lucide-react";
+import type { QueryKey } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
@@ -89,11 +90,12 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
 }
 
 /** Aksi massal entri harga — mengikuti pemisahan tugas (SoD). */
-export function useHargaBulkActions(): BulkAction<EntriHarga>[] {
+export function useHargaBulkActions(listKey: QueryKey): BulkAction<EntriHarga>[] {
   const user = useSession();
   const mut = useBulkAction<EntriHarga>({
     sumber: "harga",
-    queryKey: qk.harga.list(),
+    queryKey: listKey,
+    invalidate: qk.harga.all(),
     patch: (r, aksi) => ({ ...r, status: ({ validasi: "DIVALIDASI", tolak: "DITOLAK", publikasi: "DIPUBLIKASI", kembalikan: "DRAF" } as Record<string, StatusEntri>)[aksi] ?? r.status }),
   });
   const ids = (rows: EntriHarga[]) => rows.map((r) => r.id);

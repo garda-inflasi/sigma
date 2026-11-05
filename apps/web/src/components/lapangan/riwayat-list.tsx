@@ -19,7 +19,7 @@ import { komoditasByKode, pasarById } from "@/lib/data/reference";
 import type { Tone } from "@/lib/design/tokens";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { feedItemFlat, spring } from "@/lib/motion/presets";
-import { useEntriHarga } from "@/lib/query/hooks";
+import { useRiwayatHargaSaya } from "@/lib/query/hooks";
 import { useFieldQueue, type EntriLokal, type StatusLokal } from "@/lib/stores/field-queue-store";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +51,7 @@ export function RiwayatList() {
   const items = useFieldQueue((s) => s.items);
   const hydrated = useFieldQueue((s) => s.hydrated);
   const { hapus, antrekan, perbarui } = useFieldQueue.getState();
-  const { data: server, isLoading } = useEntriHarga();
+  const { data: server, isLoading } = useRiwayatHargaSaya();
   const [filter, setFilter] = useState<"semua" | "aksi" | "menunggu" | "selesai">("semua");
   const [pilih, setPilih] = useState(false);
   const [sel, setSel] = useState<string[]>([]);

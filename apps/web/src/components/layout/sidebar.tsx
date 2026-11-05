@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSession } from "@/lib/auth/session-context";
 import { NAV, activeNav } from "@/lib/nav";
 import { spring } from "@/lib/motion/presets";
-import { useEntriHarga } from "@/lib/query/hooks";
+import { useRingkasanHarga } from "@/lib/query/hooks";
 import { can } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
 import { useEwsStore } from "@/lib/stores/ews-store";
@@ -24,8 +24,8 @@ export function useVisibleNav() {
 function useBadges() {
   const { role } = useSession();
   const unread = useEwsStore((s) => s.unread);
-  const { data } = useEntriHarga(can(role, "harga.lihat"));
-  const validasi = can(role, "harga.validasi") || can(role, "harga.publikasi") ? (data?.filter((e) => e.status === "DIAJUKAN").length ?? 0) : 0;
+  const { data } = useRingkasanHarga(90, can(role, "harga.lihat"));
+  const validasi = can(role, "harga.validasi") || can(role, "harga.publikasi") ? (data?.diajukan ?? 0) : 0;
   return { ews: unread, validasi };
 }
 

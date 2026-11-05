@@ -6,6 +6,10 @@ import {
   toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
+import {
+  filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery,
+  type EntriHargaResponse, type HargaParams, type RingkasanHarga,
+} from "./harga";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import * as m from "./mock";
 import type {
@@ -42,7 +46,15 @@ export const api = {
     ringkasan: () => get<RingkasanEksekutif>("/v1/dashboard/eksekutif", m.mockEksekutif),
     xai: (kode: string) => get<ProyeksiXai>(`/v1/prediksi/${kode}`, () => m.mockXai(kode)),
   },
-  harga: { list: () => get<EntriHarga[]>("/v1/harga?limit=500", () => m.mockEntri()) },
+  harga: {
+    list: (params: HargaParams = {}): Promise<EntriHarga[]> =>
+      MODE_MOCK ? mockDelay(() => filterMockEntri(m.mockEntri(), params)) : apiFetch<EntriHargaResponse[]>(`/v1/harga${toHargaQuery(params)}`).then((rows) => rows.map(toEntriHarga)),
+    /** Entri milik pengguna yang masuk (riwayat petugas lapangan). */
+    saya: (): Promise<EntriHarga[]> =>
+      MODE_MOCK ? mockDelay(m.mockEntri) : apiFetch<EntriHargaResponse[]>("/v1/harga/saya?limit=100").then((rows) => rows.map(toEntriHarga)),
+    ringkasan: (hari = 7): Promise<RingkasanHarga> =>
+      MODE_MOCK ? mockDelay(() => ringkasanDariEntri(m.mockEntri())) : apiFetch<RingkasanHarga>(`/v1/harga/ringkasan?hari=${hari}`),
+  },
   ews: { list: () => get<EwsAlert[]>("/v1/ews?limit=200", m.mockEws) },
   intervensi: {
     list: () => get<KartuIntervensi[]>("/v1/intervensi", m.mockKanban),

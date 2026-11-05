@@ -554,8 +554,82 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /v1/harga:
+    get:
+      summary: Mendaftar entri harga
+      description: |
+        Entri terbaru lebih dulu, disaring dan dipaginasi di server. Memerlukan izin `harga.lihat`.
+        Jumlah seluruh hasil filter ada di header `X-Total-Count`.
+      operationId: listHarga
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HargaStatus"
+        - $ref: "#/components/parameters/HargaWilayah"
+        - $ref: "#/components/parameters/HargaKomoditas"
+        - name: pasar_id
+          in: query
+          schema:
+            type: string
+        - name: dari
+          in: query
+          description: Tanggal awal (inklusif), YYYY-MM-DD waktu Aceh
+          schema:
+            type: string
+            format: date
+        - name: sampai
+          in: query
+          description: Tanggal akhir (inklusif), YYYY-MM-DD waktu Aceh
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Satu halaman entri harga
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil filter (bukan hanya halaman ini)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntriHargaListResponse"
+        "400":
+          description: Parameter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Mencatat entri harga baru
+      description: Entri disimpan berstatus DIAJUKAN atas nama pengguna. Memerlukan izin `harga.input`. Tercatat di audit trail.
       operationId: createHarga
       tags:
         - Harga
@@ -573,9 +647,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/CreateHargaResponse"
         "400":
-          description: Validasi gagal
+          description: Validasi gagal, komoditas atau pasar tidak ada, atau waktu pencatatan di masa depan
           content:
             application/json:
               schema:
@@ -587,7 +661,133 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Tidak memiliki izin
+          description: Tanpa izin `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/saya:
+    get:
+      summary: Mendaftar entri harga milik pengguna yang masuk
+      description: Riwayat petugas lapangan. Memerlukan izin `harga.input`. Parameter dan header sama dengan `GET /v1/harga`.
+      operationId: listHargaSaya
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/HargaStatus"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Entri milik pengguna
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntriHargaListResponse"
+        "403":
+          description: Tanpa izin `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/ringkasan:
+    get:
+      summary: Jumlah entri harga per status
+      operationId: getHargaRingkasan
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: hari
+          in: query
+          description: Jendela waktu dalam hari terakhir
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 7
+      responses:
+        "200":
+          description: Ringkasan per status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RingkasanHargaResponse"
+        "403":
+          description: Tanpa izin `harga.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/tren:
+    get:
+      summary: Tren harga komoditas di satu kabupaten/kota
+      description: Rata-rata harga entri berstatus DIVALIDASI atau DIPUBLIKASI per hari atau pekan, dipisah menurut produsen dan konsumen. Hari tanpa entri tidak muncul.
+      operationId: getHargaTren
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: komoditas
+          in: query
+          required: true
+          description: Kode komoditas
+          schema:
+            type: string
+        - name: wilayah
+          in: query
+          required: true
+          description: Kode kabupaten/kota
+          schema:
+            type: string
+        - name: hari
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 45
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum: [harian, mingguan]
+            default: harian
+      responses:
+        "200":
+          description: Deret tren menaik menurut tanggal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrenHargaResponse"
+        "400":
+          description: Komoditas atau wilayah kosong, atau interval tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.lihat`
           content:
             application/json:
               schema:
@@ -596,6 +796,17 @@ paths:
   /v1/harga/bulk:
     post:
       summary: Menjalankan aksi massal pada entri harga
+      description: |
+        Memerlukan `harga.validasi` untuk aksi validasi, tolak, dan kembalikan, atau `harga.publikasi` untuk aksi publikasi.
+        Entri yang statusnya tidak memenuhi syarat, atau yang dicatat oleh pelaku sendiri
+        (validasi dan publikasi), dilewati dan dihitung di `gagal`. Tercatat di audit trail.
+
+        | Aksi | Dari status | Ke status |
+        | --- | --- | --- |
+        | validasi | DIAJUKAN | DIVALIDASI |
+        | publikasi | DIVALIDASI | DIPUBLIKASI |
+        | tolak | DIAJUKAN | DITOLAK |
+        | kembalikan | DIAJUKAN, DIVALIDASI | DRAF |
       operationId: bulkHarga
       tags:
         - Harga
@@ -606,14 +817,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BulkActionRequest"
+              $ref: "#/components/schemas/BulkHargaRequest"
       responses:
         "200":
-          description: Aksi massal berhasil diproses
+          description: Aksi massal diproses
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BulkResultResponse"
+                $ref: "#/components/schemas/BulkHargaResponse"
         "400":
           description: Validasi gagal atau aksi tidak valid
           content:
@@ -627,7 +838,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Tidak memiliki izin
+          description: Tanpa izin untuk aksi tersebut
           content:
             application/json:
               schema:
@@ -646,7 +857,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
           description: ID entri harga
       responses:
         "200":
@@ -654,40 +865,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
-        "404":
-          description: Entri harga tidak ditemukan
+                $ref: "#/components/schemas/HargaDetailResponse"
+        "403":
+          description: Tanpa izin `harga.lihat`
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
-  /v1/harga/tren:
-    get:
-      summary: Mendapatkan tren harga per komoditas/wilayah
-      operationId: getHargaTren
-      tags:
-        - Harga
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: komoditas_kode
-          in: query
-          schema:
-            type: string
-        - name: wilayah_kode
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Data tren harga
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessResponse"
-        "401":
-          description: Token tidak valid
+        "404":
+          description: Entri harga tidak ditemukan
           content:
             application/json:
               schema:
@@ -1175,7 +1361,7 @@ paths:
         - Cold Storage
       security:
         - BearerAuth: []
-      parameters: 
+      parameters:
         - name: cold_storage_id
           in: query
           schema:
@@ -1194,7 +1380,16 @@ paths:
           in: query
           schema:
             type: string
-            enum: [sisa_masa_simpan, komoditas, fasilitas, volume, masuk, risiko, pemilik]
+            enum:
+              [
+                sisa_masa_simpan,
+                komoditas,
+                fasilitas,
+                volume,
+                masuk,
+                risiko,
+                pemilik,
+              ]
             default: sisa_masa_simpan
           description: Kolom pengurutan stok
         - name: order
@@ -1300,6 +1495,26 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Masukkan token JWT yang diperoleh dari endpoint login
+
+  parameters:
+    HargaStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+    HargaWilayah:
+      name: wilayah
+      in: query
+      description: Kode kabupaten/kota
+      schema:
+        type: string
+    HargaKomoditas:
+      name: komoditas
+      in: query
+      description: Kode komoditas
+      schema:
+        type: string
 
   schemas:
     # ── Response Envelope ──────────────────────────────────────────────
@@ -1791,23 +2006,245 @@ components:
       required:
         - komoditas_kode
         - pasar_id
+        - tipe
         - harga
       properties:
         komoditas_kode:
           type: string
-          example: BERAS
+          example: BWM
         pasar_id:
           type: string
-          example: P1
-        harga:
-          type: integer
-          example: 12000
+          example: PSR-1171-01
         tipe:
           type: string
-          example: HARIAN
-        tanggal:
+          enum: [PRODUSEN, KONSUMEN]
+        harga:
+          type: integer
+          minimum: 1
+          description: Rupiah per satuan komoditas (satuan diambil dari master komoditas)
+          example: 43500
+        kualitas:
+          type: string
+          enum: [PREMIUM, MEDIUM, ASALAN]
+          default: MEDIUM
+        catatan:
+          type: string
+          maxLength: 1000
+        dicatat_pada:
           type: string
           format: date-time
+          description: Waktu pencatatan di lapangan; bawaan sekarang, tidak boleh di masa depan
+
+    CreateHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+
+    BulkHargaRequest:
+      type: object
+      required:
+        - aksi
+        - ids
+      properties:
+        aksi:
+          type: string
+          enum: [validasi, publikasi, tolak, kembalikan]
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: string
+
+    BulkHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            berhasil:
+              type: integer
+              description: Entri yang statusnya berubah
+            gagal:
+              type: integer
+              description: Entri yang dilewati (id tidak ada, status tidak memenuhi syarat, atau dicatat pelaku sendiri)
+
+    EntriHarga:
+      type: object
+      properties:
+        id:
+          type: string
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        pasar_id:
+          type: string
+        pasar_nama:
+          type: string
+        kabupaten_kode:
+          type: string
+        wilayah:
+          type: string
+          description: Nama resmi kabupaten/kota
+          example: KABUPATEN ACEH BESAR
+        tipe:
+          type: string
+          enum: [PRODUSEN, KONSUMEN]
+        harga:
+          type: integer
+        satuan:
+          type: string
+        kualitas:
+          type: string
+          enum: [PREMIUM, MEDIUM, ASALAN]
+        petugas_id:
+          type: string
+          nullable: true
+        petugas_nama:
+          type: string
+          nullable: true
+        dicatat_pada:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+        deviasi_pct:
+          type: number
+          description: Deviasi terhadap harga wajar, dalam persen
+        skor_anomali:
+          type: number
+          description: 0 sampai 1
+        ada_foto:
+          type: boolean
+        dalam_geofence:
+          type: boolean
+
+    EntriHargaListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntriHarga"
+
+    HargaDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          allOf:
+            - $ref: "#/components/schemas/EntriHarga"
+            - type: object
+              properties:
+                sumber:
+                  type: string
+                  enum: [LAPANGAN, PIHPS, BAPANAS, PORTAL_DAERAH]
+                lat:
+                  type: number
+                  nullable: true
+                lng:
+                  type: number
+                  nullable: true
+                foto_url:
+                  type: string
+                  nullable: true
+                catatan:
+                  type: string
+                  nullable: true
+                divalidasi_oleh:
+                  type: string
+                  nullable: true
+                divalidasi_pada:
+                  type: string
+                  format: date-time
+                  nullable: true
+                dipublikasi_oleh:
+                  type: string
+                  nullable: true
+                dipublikasi_pada:
+                  type: string
+                  format: date-time
+                  nullable: true
+                dibuat_pada:
+                  type: string
+                  format: date-time
+                diupdate_pada:
+                  type: string
+                  format: date-time
+
+    RingkasanHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            draf:
+              type: integer
+            diajukan:
+              type: integer
+            divalidasi:
+              type: integer
+            dipublikasi:
+              type: integer
+            ditolak:
+              type: integer
+            anomali:
+              type: integer
+              description: Entri dengan deviasi mutlak di atas 25%
+
+    TrenHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              tanggal:
+                type: string
+                format: date-time
+                description: Awal hari atau pekan (waktu Aceh)
+              produsen:
+                type: number
+                nullable: true
+              konsumen:
+                type: number
+                nullable: true
 
     CreateIntervensiRequest:
       type: object

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/ml test/web lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -46,6 +46,9 @@ test/ml: ## Jalankan tes unit layanan ML (Python, tanpa dependensi)
 
 test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test
+
+test/e2e: ## Uji e2e Playwright terhadap stack Docker yang berjalan (E2E_BASE_URL, bawaan http://localhost:8090)
+	cd apps/web && pnpm exec playwright install chromium && pnpm exec playwright test
 
 lint/api: ## Lint Go code
 	cd apps/api && golangci-lint run ./...

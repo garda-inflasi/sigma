@@ -58,3 +58,7 @@ build/
 
 # === Turbo ===
 .turbo/
+
+# === Playwright (apps/web) ===
+apps/web/test-results/
+apps/web/playwright-report/

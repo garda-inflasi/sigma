@@ -1,0 +1,45 @@
+# 09 — Dashboard eksekutif
+
+**Prioritas:** P0 (Fase 2) · **Status:** UI ✅ · Backend 🟡 · Terhubung 🟡 · Skema & seed ⬜ · Tes ⬜
+**Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
+
+## Yang sudah ada
+
+- **UI:** `/eksekutif` memakai [inflation-hero](../../apps/web/src/components/eksekutif/inflation-hero.tsx) (koridor inflasi), [food-balance](../../apps/web/src/components/eksekutif/food-balance.tsx) (neraca pangan), [fiscal-space](../../apps/web/src/components/eksekutif/fiscal-space.tsx) (ruang fiskal), [xai-panel](../../apps/web/src/components/eksekutif/xai-panel.tsx), [exec-side](../../apps/web/src/components/eksekutif/exec-side.tsx).
+- **API Go (`dashboard`):** `GET /v1/dashboard/eksekutif` (izin `dashboard.eksekutif`) → `RingkasanEksekutif`.
+- **API Go (`analytics`, tidak dipakai web):** `/v1/dashboard/summary`, `/v1/inflation/trends`, `/v1/food-balance`, `/v1/fiscal-space`.
+- **Kritis:** repository membaca tabel `ringkasan_eksekutif`, `komoditas_sumbangan`, `daerah_inflasi`, `tren_inflasi`, **semuanya tidak ada di migrasi**; `/v1/dashboard/eksekutif` error pada DB hasil migrasi. Tabel `ruang_fiskal` (`tahun`, `instrumen`, `pagu`, `realisasi`, `per_tanggal`, UNIQUE) ada tetapi tidak dirujuk kode.
+
+---
+
+## 09-A — Eksekutif dari tabel yang benar, berlabel demo *(Fase P, urutan #14)*
+
+**Tujuan:** `/eksekutif` tampil dari database. Data demo **berlabel jelas**; angka resmi tidak pernah di-seed.
+**Bergantung pada:** 08-A. Panel XAI menunggu [11-A](11-prediksi-xai.md).
+
+1. **MIG**
+   - [ ] `inflasi_bulanan` (`wilayah_kode`, `periode` DATE, `ihk`, `inflasi_mtm`, `inflasi_yoy`, `inflasi_ytd`, `sumber`, UNIQUE `(wilayah_kode, periode)`) menggantikan `ringkasan_eksekutif` dan `tren_inflasi`.
+   - [ ] `andil_inflasi` (`periode`, `wilayah_kode`, `komoditas_kode`, `andil`, `inflasi_pct`) menggantikan `komoditas_sumbangan`. `daerah_inflasi` tidak perlu tabel: tertinggi/terendah dihitung dari `inflasi_bulanan`.
+   - [ ] `neraca_pangan` (`komoditas_kode`, `wilayah_kode`, `periode`, `produksi_ton`, `konsumsi_ton`, `stok_ton`, kolom turunan surplus/defisit).
+   - [ ] `target_inflasi` (`tahun`, `batas_bawah`, `batas_atas`).
+   - [ ] `ruang_fiskal`: tambah `sumber`, `diimpor_pada`. Kolom `sumber` (`BPS`, `BI`, `DJPB`, `DEMO`) pada semua tabel di atas agar data demo dan resmi tidak tercampur.
+2. **SEED**
+   - [ ] `reference`: `target_inflasi`.
+   - [ ] `demo`: inflasi, andil, neraca, dan ruang fiskal tiruan ber-`sumber='DEMO'`, bentuk mengikuti `mockEksekutif`. UI menampilkan banner "Data demo".
+   - [ ] **Produksi:** angka resmi hanya lewat impor (lihat 09-B di bawah); jangan seed angka yang tampak resmi.
+3. **API**
+   - [ ] Tulis ulang query ke tabel baru; izin `fiskal.lihat` untuk ruang fiskal; selaraskan DTO dengan `RingkasanEksekutif`.
+   - [ ] Keputusan D4: hapus atau gabungkan route `analytics` yang menduplikasi.
+4. **FE**: `api.eksekutif.ringkasan` sudah memanggil API; cocokkan bentuk; banner data demo. Panel XAI (`useXai`) menunggu 11-A.
+5. **TES**: tidak ada baris `DEMO` setelah seed produksi; bentuk respons cocok; hapus entri dashboard dari `belumSelaras`.
+6. **DoD** — checklist [00 §4](00-cara-kerja.md).
+
+---
+
+## 09-B — Data resmi dan fitur eksekutif *(Fase F, gelombang F-3)*
+
+- [ ] Impor inflasi/andil dari BPS/BI, ruang fiskal dari DJPb (format impor ditetapkan; lihat [05-C](05-sumber-data.md)).
+- [ ] Koridor inflasi dan proyeksi ke depan memakai model ([11-B](11-prediksi-xai.md)).
+- [ ] Filter wilayah, komoditas, periode (PRD §3.2); ringkasan EWS, rekomendasi AI, status intervensi (dengan cache).
+- [ ] Ekspor tampilan ke PDF/gambar untuk rapat; tampilkan "data per tanggal/jam" dan sumbernya.
+- [ ] Tes usecase/handler, izin (hanya peran strategis/manajerial), kontrak.

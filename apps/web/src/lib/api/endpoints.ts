@@ -1,5 +1,9 @@
 import { apiFetch, mockDelay, MODE_MOCK } from "./client";
-import { toAuditPage, toAuditQuery, queryMockAudit, type AuditFilter, type AuditPage, type AuditPageResponse } from "./audit";
+import {
+  queryMockAudit, toAuditDetail, toAuditPage, toAuditQuery, toMockAuditDetail, unduhEksporAudit,
+  type AuditDetailResponse, type AuditFilter, type AuditPage, type AuditPageResponse, type HasilEkspor,
+} from "./audit";
+import { exportCsv } from "@/lib/csv";
 import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import {
@@ -32,7 +36,7 @@ import { USERS } from "@/lib/data/reference";
 import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
+  AuditDetail, ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -152,6 +156,36 @@ export const api = {
       MODE_MOCK
         ? mockDelay(() => queryMockAudit(m.mockAudit(), filter, cursor))
         : apiFetch<AuditPageResponse>(`/v1/audit${toAuditQuery(filter, cursor)}`).then(toAuditPage),
+    /** Satu entri lengkap dengan diff sebelum/sesudah. */
+    detail: (id: string): Promise<AuditDetail> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const row = m.mockAudit().find((r) => r.id === id);
+            if (!row) throw new Error("Entri audit tidak ditemukan");
+            return toMockAuditDetail(row);
+          })
+        : apiFetch<AuditDetailResponse>(`/v1/audit/${encodeURIComponent(id)}`).then(toAuditDetail),
+    /** Mengunduh CSV sesuai filter (dibuat server; mode mock membuatnya di klien). */
+    ekspor: (filter: AuditFilter): Promise<HasilEkspor> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const { rows } = queryMockAudit(m.mockAudit(), filter, undefined, Number.MAX_SAFE_INTEGER);
+            exportCsv(
+              rows,
+              [
+                { header: "Waktu", value: (a) => a.waktu },
+                { header: "Aktor", value: (a) => a.aktor },
+                { header: "Peran", value: (a) => a.peran },
+                { header: "Aksi", value: (a) => a.aksi },
+                { header: "Entitas", value: (a) => `${a.entitas} ${a.entitasId}` },
+                { header: "Hasil", value: (a) => a.hasil },
+                { header: "IP", value: (a) => a.ip },
+              ],
+              "audit-trail",
+            );
+            return { baris: rows.length, terpotong: false };
+          })
+        : unduhEksporAudit(filter),
   },
   brief: {
     list: (): Promise<PolicyBrief[]> =>

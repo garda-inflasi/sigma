@@ -1671,6 +1671,26 @@ paths:
           schema:
             type: string
             enum: [BERHASIL, GAGAL, DITOLAK]
+        - name: entitas_id
+          in: query
+          description: ID objek persis (jejak satu objek)
+          schema:
+            type: string
+        - name: peran
+          in: query
+          description: Peran aktor persis (snapshot saat aksi)
+          schema:
+            type: string
+        - name: correlation_id
+          in: query
+          description: Semua baris dari satu permintaan
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Pencarian bebas (tak peka huruf besar-kecil) pada aksi, entitas, id entitas, nama/email aktor, dan correlation id
+          schema:
+            type: string
         - name: limit
           in: query
           description: Ukuran halaman (bawaan 50, maksimum 200)
@@ -1703,6 +1723,139 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tanpa izin `audit.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/audit/export:
+    get:
+      summary: Ekspor jejak audit ke CSV
+      description: |
+        Memakai filter yang sama dengan `/v1/audit` (limit dan cursor diabaikan). CSV bertitik koma
+        dengan BOM UTF-8, terbaru lebih dulu, paling banyak 20.000 baris (`X-Export-Truncated: true`
+        bila terpotong; persempit filter). Sel yang diawali `=`, `+`, `-`, `@` diberi awalan `'`
+        agar tidak dibaca sebagai rumus. Ekspor dicatat sebagai `EKSPOR_DATA`. Butuh izin `audit.lihat`.
+      operationId: auditExport
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: dari
+          in: query
+          schema:
+            type: string
+        - name: sampai
+          in: query
+          schema:
+            type: string
+        - name: aktor
+          in: query
+          schema:
+            type: string
+        - name: aksi
+          in: query
+          schema:
+            type: string
+        - name: entitas
+          in: query
+          schema:
+            type: string
+        - name: hasil
+          in: query
+          schema:
+            type: string
+            enum: [BERHASIL, GAGAL, DITOLAK]
+        - name: entitas_id
+          in: query
+          schema:
+            type: string
+        - name: peran
+          in: query
+          schema:
+            type: string
+        - name: correlation_id
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Berkas CSV
+          headers:
+            X-Export-Rows:
+              description: Jumlah baris data
+              schema:
+                type: integer
+            X-Export-Truncated:
+              description: "`true` bila hasil dipotong pada batas baris"
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Filter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `audit.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/audit/{id}:
+    get:
+      summary: Detail satu entri audit dengan diff sebelum/sesudah
+      description: |
+        `perubahan` meratakan objek `sebelum`/`sesudah` menjadi daftar bidang yang berbeda
+        (path bertitik; larik dibandingkan utuh). Butuh izin `audit.lihat`.
+      operationId: auditDetail
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entri audit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditDetailResponse"
+        "401":
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `audit.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Entri tidak ada
           content:
             application/json:
               schema:
@@ -4295,6 +4448,39 @@ components:
           description: Keadaan objek sesudah aksi
         metadata:
           type: object
+
+    AuditPerubahan:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Path bertitik ("$" bila keadaan bukan objek)
+        jenis:
+          type: string
+          enum: [DITAMBAH, DIUBAH, DIHAPUS]
+        sebelum:
+          description: Nilai JSON sebelum (tak ada pada DITAMBAH)
+        sesudah:
+          description: Nilai JSON sesudah (tak ada pada DIHAPUS)
+
+    AuditDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          allOf:
+            - $ref: "#/components/schemas/AuditRow"
+            - type: object
+              properties:
+                perubahan:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AuditPerubahan"
 
     AuditPageResponse:
       type: object

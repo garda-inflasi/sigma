@@ -97,6 +97,27 @@ export const useAudit = (filter: AuditFilter) =>
     getNextPageParam: (last) => last.nextCursor,
     placeholderData: keepPreviousData,
   });
+/** Detail satu entri audit (dengan diff); kosong sampai `id` dipilih. */
+export const useAuditDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.audit.detail(id ?? ""),
+    queryFn: () => api.audit.detail(id as string),
+    enabled: !!id,
+    staleTime: Infinity, // baris audit tidak pernah berubah
+  });
+/** Ekspor CSV sesuai filter yang sedang aktif. */
+export function useEksporAudit() {
+  return useMutation({
+    mutationFn: (filter: AuditFilter) => api.audit.ekspor(filter),
+    onSuccess: (res) =>
+      res.terpotong
+        ? toast.warning(`Ekspor dipotong pada ${res.baris.toLocaleString("id-ID")} baris`, { description: "Persempit filter (rentang tanggal, aksi) untuk mendapat sisanya." })
+        : toast.success(`${res.baris.toLocaleString("id-ID")} baris diekspor`, { description: "Ekspor tercatat di audit trail." }),
+    onError: (err) => {
+      toast.error("Ekspor gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
 /** Menyusun draf brief; galat ditampilkan oleh pemanggil (dialog generator). */
 export function useSusunBrief() {

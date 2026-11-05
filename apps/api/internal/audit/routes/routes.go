@@ -22,5 +22,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	uc := usecase.New(repo)
 	handler := http.New(uc)
 
-	engine.GET("/audit", middleware.JWTAuth(deps.Token), middleware.RequirePermission("audit.lihat"), handler.List)
+	auth, canRead := middleware.JWTAuth(deps.Token), middleware.RequirePermission("audit.lihat")
+	engine.GET("/audit", auth, canRead, handler.List)
+	engine.GET("/audit/export", auth, canRead, handler.Export)
+	engine.GET("/audit/:id", auth, canRead, handler.Get)
 }

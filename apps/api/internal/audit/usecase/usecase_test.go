@@ -36,6 +36,15 @@ func (f *fakeRepo) FindActor(_ context.Context, id string) (*domain.Actor, error
 	return nil, domain.ErrActorNotFound
 }
 
+func (f *fakeRepo) Get(_ context.Context, id string) (*domain.AuditLog, error) {
+	for i := range f.rows {
+		if f.rows[i].ID == id {
+			return &f.rows[i], f.err
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *fakeRepo) List(_ context.Context, filter domain.Filter, after *domain.Cursor, limit int) ([]domain.AuditLog, error) {
 	f.gotFilter, f.gotAfter, f.gotLimit = filter, after, limit
 	if limit < len(f.rows) {

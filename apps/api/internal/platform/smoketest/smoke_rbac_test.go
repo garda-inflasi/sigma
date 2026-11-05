@@ -29,6 +29,7 @@ var routePermissions = map[string]string{
 	"/v1/sumber-data":               "sumber.lihat",
 	"/v1/users":                     "pengguna.kelola",
 	"/v1/audit":                     "audit.lihat",
+	"/v1/audit/export":              "audit.lihat",
 }
 
 // lapanganTugasRoles adalah peran yang boleh membuka /v1/lapangan/tugas/saya:

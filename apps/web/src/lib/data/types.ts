@@ -182,6 +182,23 @@ export interface AuditRow {
   ip: string;
 }
 
+/** Satu bidang yang berbeda antara keadaan sebelum dan sesudah aksi. */
+export interface AuditPerubahan {
+  path: string;
+  jenis: "DITAMBAH" | "DIUBAH" | "DIHAPUS";
+  sebelum?: unknown;
+  sesudah?: unknown;
+}
+
+/** Entri audit lengkap (`GET /v1/audit/:id`). */
+export interface AuditDetail extends AuditRow {
+  userAgent: string;
+  correlationId: string;
+  email: string;
+  metadata?: Record<string, unknown>;
+  perubahan: AuditPerubahan[];
+}
+
 export interface PolicyBrief {
   id: string;
   periode: string;

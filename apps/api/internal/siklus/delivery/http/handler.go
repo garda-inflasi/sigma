@@ -1,10 +1,12 @@
 package http
 
 import (
-	"github.com/gin-gonic/gin"
+	"errors"
+
 	"github.com/garda-inflasi/api/internal/siklus/dto"
 	"github.com/garda-inflasi/api/internal/siklus/usecase"
 	"github.com/garda-inflasi/api/pkg/response"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
@@ -19,18 +21,17 @@ func New(uc *usecase.UseCase) *Handler {
 func (h *Handler) GetAktif(c *gin.Context) {
 	var req dto.SiklusAktifRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "Validasi gagal: parameter wilayah_kode diperlukan")
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
 
 	siklus, err := h.uc.GetAktif(c.Request.Context(), req.WilayahKode)
 	if err != nil {
-		switch err {
-		case usecase.ErrSiklusNotFound:
+		if errors.Is(err, usecase.ErrSiklusNotFound) {
 			response.NotFound(c, "Siklus aktif tidak ditemukan untuk wilayah ini")
-		default:
-			response.InternalError(c, "Kesalahan server")
+			return
 		}
+		response.InternalError(c, "Kesalahan server")
 		return
 	}
 

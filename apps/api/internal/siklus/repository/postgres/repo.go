@@ -19,12 +19,16 @@ func New(db *gorm.DB) *Repository {
 // GetActiveByWilayah returns the currently active cycle for a region.
 // Active means AkhirPada IS NULL (the cycle has not ended yet).
 func (r *Repository) GetActiveByWilayah(ctx context.Context, wilayahKode string) (*domain.SiklusEkonomi, error) {
-	var siklus domain.SiklusEkonomi
+	var siklus []domain.SiklusEkonomi
 	if err := r.db.WithContext(ctx).
 		Where("wilayah_kode = ? AND akhir_pada IS NULL", wilayahKode).
 		Order("mulai_pada DESC").
-		First(&siklus).Error; err != nil {
+		Limit(1).
+		Find(&siklus).Error; err != nil {
 		return nil, fmt.Errorf("get active siklus by wilayah: %w", err)
 	}
-	return &siklus, nil
+	if len(siklus) == 0 {
+		return nil, domain.ErrNotFound
+	}
+	return &siklus[0], nil
 }

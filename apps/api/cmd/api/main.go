@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
+	"github.com/garda-inflasi/api/internal/dashboard/refresher"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -18,6 +19,9 @@ import (
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 )
+
+// dashboardRefreshInterval adalah jeda penyegaran berkala agregat dashboard.
+const dashboardRefreshInterval = 5 * time.Minute
 
 func main() {
 	addr := os.Getenv("APP_ADDR")
@@ -89,6 +93,11 @@ func main() {
 
 	// Register all other modules
 	modules.RegisterAll(v1, db, log, tokenMgr)
+
+	// Agregat dashboard disegarkan berkala, selain setelah harga divalidasi atau dipublikasi.
+	refreshCtx, stopRefresh := context.WithCancel(context.Background())
+	defer stopRefresh()
+	go refresher.Shared(db, log).Run(refreshCtx, dashboardRefreshInterval)
 
 	srv := &http.Server{
 		Addr: addr,

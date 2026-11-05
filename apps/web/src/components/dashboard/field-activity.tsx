@@ -3,24 +3,15 @@
 import { motion } from "motion/react";
 import { PanelTitle } from "@/components/garda/page-header";
 import { Shimmer } from "@/components/garda/shimmer";
-import { namaWilayah } from "@/lib/data/generators";
-import { USERS } from "@/lib/data/reference";
+import { capaianPct } from "@/lib/api/dashboard";
 import { ease } from "@/lib/motion/presets";
-import { useEntriHarga } from "@/lib/query/hooks";
+import { useAktivitasLapangan } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
-
-const TARGET_PER_AGEN = 14;
 
 /** Aktivitas tim lapangan per wilayah: capaian entri hari ini vs target. */
 export function FieldActivity() {
-  const { data, isLoading } = useEntriHarga();
-  const agen = USERS.filter((u) => u.role === "OPS_MAHASISWA");
-  const perKab = [...new Set(agen.map((a) => a.kabupatenKode!))].map((kode) => {
-    const nAgen = agen.filter((a) => a.kabupatenKode === kode).length;
-    const entri = data?.filter((e) => e.kabupatenKode === kode).length ?? 0;
-    const target = nAgen * TARGET_PER_AGEN;
-    return { kode, nama: namaWilayah(kode), nAgen, entri, target, pct: Math.min(100, (entri / target) * 100) };
-  }).sort((a, b) => b.pct - a.pct);
+  const { data, isLoading } = useAktivitasLapangan();
+  const perKab = (data ?? []).map((a) => ({ ...a, pct: capaianPct(a) })).sort((a, b) => b.pct - a.pct);
 
   return (
     <section className="glass h-full rounded-xl p-5 sm:p-6">
@@ -28,6 +19,8 @@ export function FieldActivity() {
       <ul className="mt-5 space-y-3.5">
         {isLoading
           ? Array.from({ length: 6 }).map((_, i) => <Shimmer key={i} className="h-9 w-full" />)
+          : perKab.length === 0
+          ? <li className="text-sm text-muted-foreground">Belum ada petugas lapangan aktif.</li>
           : perKab.map((k, i) => (
             <li key={k.kode}>
               <div className="flex items-baseline justify-between gap-2 text-sm">

@@ -7,19 +7,30 @@ import {
   type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
 import {
+  aktivitasMock, toAktivitasLapangan, toHeatmap, toKpiOperasional,
+  type AktivitasLapangan, type AktivitasLapanganResponse, type Heatmap, type HeatmapResponse, type KpiResponse,
+} from "./dashboard";
+import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery,
   type EntriHargaResponse, type HargaParams, type RingkasanHarga,
 } from "./harga";
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
+import { USERS } from "@/lib/data/reference";
 import * as m from "./mock";
 import type {
   ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
-  PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StokColdStorage, SumberData, TugasLapangan,
+  PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string };
-type Heatmap = { kabupaten: { kode: string; nama: string }[]; komoditas: { kode: string; nama: string; pilot: boolean }[]; sel: SelHeatmap[] };
+
+/** Jumlah petugas lapangan mock per kabupaten, untuk target aktivitas harian. */
+const petugasPerKabupatenMock = () => {
+  const n = new Map<string, number>();
+  for (const u of USERS) if (u.role === "OPS_MAHASISWA" && u.kabupatenKode) n.set(u.kabupatenKode, (n.get(u.kabupatenKode) ?? 0) + 1);
+  return n;
+};
 
 const get = <T,>(path: string, mock: () => T) => (MODE_MOCK ? mockDelay(mock) : apiFetch<T>(path));
 
@@ -37,8 +48,14 @@ export const api = {
   /** Siklus ekonomi dominan wilayah — menggerakkan warna ambient seluruh UI */
   siklus: { aktif: () => get<{ siklus: "normal" | "tekanan" | "surplus"; sejak: string }>("/v1/siklus/aktif", () => ({ siklus: "tekanan", sejak: "2026-09-27" })) },
   operasional: {
-    kpi: () => get<KpiOperasional[]>("/v1/dashboard/operasional/kpi", m.mockKpi),
-    heatmap: () => get<Heatmap>("/v1/dashboard/operasional/heatmap", m.mockHeatmap),
+    kpi: (): Promise<KpiOperasional[]> =>
+      MODE_MOCK ? mockDelay(m.mockKpi) : apiFetch<KpiResponse[]>("/v1/dashboard/operasional/kpi").then((rows) => rows.map(toKpiOperasional)),
+    heatmap: (): Promise<Heatmap> =>
+      MODE_MOCK ? mockDelay(m.mockHeatmap) : apiFetch<HeatmapResponse>("/v1/dashboard/operasional/heatmap").then(toHeatmap),
+    aktivitas: (): Promise<AktivitasLapangan[]> =>
+      MODE_MOCK
+        ? mockDelay(() => aktivitasMock(m.mockEntri(), petugasPerKabupatenMock()))
+        : apiFetch<AktivitasLapanganResponse[]>("/v1/dashboard/operasional/aktivitas-lapangan").then((rows) => rows.map(toAktivitasLapangan)),
     marker: () => get<ReturnType<typeof m.mockMapMarkers>>("/v1/spasial/wilayah", m.mockMapMarkers),
     tren: (kode: string, kab: string) =>
       get<ReturnType<typeof m.mockTrenHarga>>(`/v1/harga/tren?komoditas=${kode}&wilayah=${kab}`, () => m.mockTrenHarga(kode, kab)),

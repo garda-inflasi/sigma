@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/dashboard/delivery/http"
 	"github.com/garda-inflasi/api/internal/dashboard/repository/postgres"
 	"github.com/garda-inflasi/api/internal/dashboard/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +28,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	{
 		operasional.GET("/kpi", handler.GetKpiOperasional)
 		operasional.GET("/heatmap", handler.GetHeatmap)
+		operasional.GET("/aktivitas-lapangan", handler.GetAktivitasLapangan)
 	}
 
 	// Eksekutif — requires dashboard.eksekutif permission
@@ -37,4 +38,3 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		eksekutif.GET("", handler.GetRingkasanEksekutif)
 	}
 }
-

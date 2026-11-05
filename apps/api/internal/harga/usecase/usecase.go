@@ -34,15 +34,22 @@ const (
 	toleransiWaktu = 5 * time.Minute
 )
 
-type UseCase struct {
-	repo  domain.Repository
-	audit audit.Writer
-	log   *logger.Logger
-	now   func() time.Time
+// AgregatRefresher menyegarkan agregat dashboard setelah status entri berubah.
+// Trigger tidak menunggu dan tidak pernah menggagalkan aksi.
+type AgregatRefresher interface {
+	Trigger()
 }
 
-func New(repo domain.Repository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
-	return &UseCase{repo: repo, audit: auditWriter, log: log, now: time.Now}
+type UseCase struct {
+	repo    domain.Repository
+	audit   audit.Writer
+	refresh AgregatRefresher
+	log     *logger.Logger
+	now     func() time.Time
+}
+
+func New(repo domain.Repository, auditWriter audit.Writer, refresh AgregatRefresher, log *logger.Logger) *UseCase {
+	return &UseCase{repo: repo, audit: auditWriter, refresh: refresh, log: log, now: time.Now}
 }
 
 // ListHarga mengembalikan satu halaman entri beserta jumlah seluruh hasil filter.
@@ -207,6 +214,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID s
 	if len(changed) == 0 {
 		return hasil, nil
 	}
+	uc.refresh.Trigger()
 	uc.catat(ctx, audit.Entry{
 		AktorID: aktorID, Aksi: "HARGA_" + strings.ToUpper(aksi), Entitas: "entri_harga",
 		EntitasID: fmt.Sprintf("%d entri", hasil.Berhasil), Hasil: audit.HasilBerhasil,

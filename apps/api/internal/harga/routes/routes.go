@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/dashboard/refresher"
 	"github.com/garda-inflasi/api/internal/harga/delivery/http"
 	"github.com/garda-inflasi/api/internal/harga/repository/postgres"
 	"github.com/garda-inflasi/api/internal/harga/usecase"
@@ -20,7 +21,7 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
+	uc := usecase.New(repo, audit.NewWriter(deps.DB), refresher.Shared(deps.DB, deps.Logger), deps.Logger)
 	handler := http.New(uc)
 
 	harga := engine.Group("/harga")

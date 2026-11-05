@@ -166,6 +166,9 @@ func Build(in Input, now time.Time) []domain.EntriHarga {
 					tipe = append(tipe, domain.TipeProdusen)
 				}
 				for _, t := range tipe {
+					if offset == 0 && rng.Float64() >= cakupanHariIni(pi, len(in.Petugas)) {
+						continue
+					}
 					e := buatEntri(rng, in, p, k, t, offset, pi, ki, indeksHari, awalHari, batasWaktu, now)
 					out = append(out, e)
 					if offset <= 1 && rng.Float64() < pDuplikat {
@@ -176,6 +179,15 @@ func Build(in Input, now time.Time) []domain.EntriHarga {
 		}
 	}
 	return out
+}
+
+// cakupanHariIni adalah peluang sebuah harga sudah tercatat hari ini; petugas
+// berindeks lebih tinggi lebih lengkap, sehingga capaian antarwilayah bervariasi.
+func cakupanHariIni(indeks, jumlah int) float64 {
+	if jumlah <= 1 {
+		return 1
+	}
+	return 0.45 + 0.5*float64(indeks)/float64(jumlah-1)
 }
 
 func buatEntri(rng *rand.Rand, in Input, p Petugas, k Komoditas, tipe string, offset, pi, ki int, indeksHari float64, awalHari, batasWaktu, now time.Time) domain.EntriHarga {

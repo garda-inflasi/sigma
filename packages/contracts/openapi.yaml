@@ -1155,6 +1155,122 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/siklus/aktif:
+    get:
+      summary: Siklus ekonomi aktif suatu wilayah
+      description: |
+        Siklus dominan yang mewarnai seluruh antarmuka. Tanpa `wilayah_kode`, yang dipakai adalah
+        provinsi Aceh (`11`). Memerlukan izin `dashboard.operasional`.
+      operationId: getSiklusAktif
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: wilayah_kode
+          in: query
+          description: Kode provinsi
+          schema:
+            type: string
+            default: "11"
+      responses:
+        "200":
+          description: Siklus aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiklusAktifResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Wilayah tidak punya siklus aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/kpi:
+    get:
+      summary: Kartu KPI dashboard operasional
+      description: |
+        Empat kartu (entri harga hari ini, tingkat validasi, komoditas di atas ambang, utilisasi
+        cold storage) dari materialized view `mv_kpi_operasional`, yang disegarkan berkala dan setelah
+        harga divalidasi atau dipublikasi. `tren` memuat 14 hari terakhir. `tone` mengikuti pencapaian
+        target (`target_kpi`); kartu tanpa target bernada `data`. Memerlukan izin `dashboard.operasional`.
+      operationId: getKpiOperasional
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Kartu KPI
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiOperasionalListResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/heatmap:
+    get:
+      summary: Peta panas harga konsumen
+      description: |
+        Perubahan harga konsumen terakhir terhadap rata-rata tertimbang tujuh hari sebelumnya,
+        per komoditas dan kabupaten/kota, dari `mv_heatmap_harga`. Hanya kabupaten dan komoditas
+        yang punya data yang dikembalikan. Memerlukan izin `dashboard.operasional`.
+      operationId: getHeatmapHarga
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Kabupaten, komoditas, dan sel peta panas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeatmapResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/aktivitas-lapangan:
+    get:
+      summary: Capaian entri harga hari ini per kabupaten/kota
+      description: |
+        Entri harga konsumen (selain DRAF) hari ini menurut waktu Aceh terhadap target harian:
+        jumlah petugas lapangan aktif kali jumlah komoditas aktif. Memerlukan izin `dashboard.operasional`.
+      operationId: getAktivitasLapangan
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Aktivitas per kabupaten/kota berpetugas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AktivitasLapanganListResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/audit:
     get:
       summary: Daftar jejak audit (terbaru lebih dulu)
@@ -2386,6 +2502,138 @@ components:
             gagal:
               type: integer
               description: Tugas yang dilewati (tidak ada, bukan milik pemanggil, belum memenuhi target, atau sudah selesai)
+
+    SiklusAktifResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            siklus:
+              type: string
+              enum: [normal, tekanan, surplus]
+            sejak:
+              type: string
+              format: date
+              description: Tanggal mulai siklus, waktu Aceh
+
+    KpiOperasional:
+      type: object
+      properties:
+        id:
+          type: string
+          enum: [entri, validasi, waspada, cs]
+        label:
+          type: string
+        nilai:
+          type: number
+        format:
+          type: string
+          enum: [angka, persen]
+        delta:
+          type: number
+          description: Persen untuk `entri`, selisih jumlah untuk `waspada`, poin untuk indikator persen
+        keterangan_delta:
+          type: string
+        tren:
+          type: array
+          items:
+            type: number
+          description: Nilai harian 14 hari terakhir, terlama lebih dulu
+        tone:
+          type: string
+          enum: [data, normal, waspada, defisit]
+        href:
+          type: string
+
+    KpiOperasionalListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiOperasional"
+
+    HeatmapResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            kabupaten:
+              type: array
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  nama:
+                    type: string
+            komoditas:
+              type: array
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  nama:
+                    type: string
+                  pilot:
+                    type: boolean
+            sel:
+              type: array
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  delta:
+                    type: number
+                    description: Perubahan harga konsumen terakhir terhadap rata-rata 7 hari sebelumnya, persen
+                  harga:
+                    type: number
+                    description: Harga konsumen rata-rata pada tanggal terakhir yang tersedia
+
+    AktivitasLapanganListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              kabupaten_kode:
+                type: string
+              kabupaten_nama:
+                type: string
+              jumlah_petugas:
+                type: integer
+              entri:
+                type: integer
+              target:
+                type: integer
 
     CreateIntervensiRequest:
       type: object

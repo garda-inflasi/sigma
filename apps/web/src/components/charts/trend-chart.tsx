@@ -48,8 +48,8 @@ export function TrendChart() {
               <XAxis dataKey="tanggal" tickFormatter={(v) => formatTanggal(v, "d MMM")} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} minTickGap={28} />
               <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}rb`} tick={{ fontSize: 11, fill: "var(--muted-foreground)", fontFamily: "var(--font-mono)" }} axisLine={false} tickLine={false} width={44} domain={["auto", "auto"]} />
               <Tooltip content={<GlassTooltip valueFormat={(v) => `${formatRupiah(v)}/${kom.satuan}`} />} cursor={{ stroke: garda.navy[300], strokeDasharray: "3 3" }} />
-              <Area type="monotone" dataKey="konsumen" name="Konsumen" stroke={garda.navy[700]} strokeWidth={2} fill="url(#g-konsumen)" animationDuration={1200} animationEasing="ease-out" />
-              <Line type="monotone" dataKey="produsen" name="Produsen" stroke={garda.data[500]} strokeWidth={2} dot={false} animationDuration={1400} animationEasing="ease-out" />
+              <Area type="monotone" connectNulls dataKey="konsumen" name="Konsumen" stroke={garda.navy[700]} strokeWidth={2} fill="url(#g-konsumen)" animationDuration={1200} animationEasing="ease-out" />
+              <Line type="monotone" connectNulls dataKey="produsen" name="Produsen" stroke={garda.data[500]} strokeWidth={2} dot={false} animationDuration={1400} animationEasing="ease-out" />
             </ComposedChart>
           </ResponsiveContainer>
         )}

@@ -98,3 +98,11 @@ Tes yang memakai Postgres memakai `internal/platform/pgtest` (container bersama 
 sungguhan). Jangan menulis pemisah SQL goose sendiri. Migrasi baru: nomor berikutnya dari
 `db/migrations`, wajib `Up` dan `Down`, tanpa data demo, tanpa `DELETE`/`TRUNCATE`
 (aturan lengkap di `docs/todos/00-cara-kerja.md` §3).
+
+### 5. Agregat dashboard
+
+KPI, peta panas, dan agregat harga harian adalah materialized view (`agregat_harga_harian`,
+`mv_heatmap_harga`, `mv_kpi_operasional`) atas `entri_harga`. `internal/dashboard/refresher`
+menyegarkannya dengan `REFRESH ... CONCURRENTLY`: tiap 5 menit dari `cmd/api` dan segera setelah
+harga divalidasi atau dipublikasi. Seeder `dashboard.demo` menyegarkannya setelah data demo terisi.
+Menambah view baru berarti menambahkannya ke `refresher.Views` (urut menurut ketergantungan).

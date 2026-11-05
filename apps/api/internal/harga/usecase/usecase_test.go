@@ -59,11 +59,20 @@ func (m *mockRepository) Transisi(ctx context.Context, ids []string, aksi domain
 
 var fixedNow = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 
+type fakeRefresher struct{ triggers int }
+
+func (f *fakeRefresher) Trigger() { f.triggers++ }
+
 func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
-	recorder := &audittest.Recorder{}
-	uc := New(repo, recorder, logger.NewDefault())
-	uc.now = func() time.Time { return fixedNow }
+	uc, recorder, _ := newTestUseCaseWithRefresher(repo)
 	return uc, recorder
+}
+
+func newTestUseCaseWithRefresher(repo *mockRepository) (*UseCase, *audittest.Recorder, *fakeRefresher) {
+	recorder, refresh := &audittest.Recorder{}, &fakeRefresher{}
+	uc := New(repo, recorder, refresh, logger.NewDefault())
+	uc.now = func() time.Time { return fixedNow }
+	return uc, recorder, refresh
 }
 
 func TestListHarga_NormalizesPaging(t *testing.T) {
@@ -302,4 +311,19 @@ func TestBulkAction_NothingChangedIsNotAudited(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, HasilBulk{Gagal: 1}, hasil)
 	assert.Empty(t, recorder.Entries())
+}
+
+func TestBulkAction_RefreshesDashboardOnlyWhenRowsChanged(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _, refresh := newTestUseCaseWithRefresher(repo)
+	repo.On("Transisi", mock.Anything, []string{"a"}, domain.BulkValidasi, "u", fixedNow).Return([]string{}, nil).Once()
+	repo.On("Transisi", mock.Anything, []string{"b"}, domain.BulkValidasi, "u", fixedNow).Return([]string{"b"}, nil).Once()
+
+	_, err := uc.BulkAction(t.Context(), []string{"a"}, "validasi", "u")
+	require.NoError(t, err)
+	assert.Zero(t, refresh.triggers, "tanpa perubahan tidak perlu menyegarkan agregat")
+
+	_, err = uc.BulkAction(t.Context(), []string{"b"}, "validasi", "u")
+	require.NoError(t, err)
+	assert.Equal(t, 1, refresh.triggers)
 }

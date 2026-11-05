@@ -9,6 +9,7 @@ export const qk = {
     all: ["operasional"] as const,
     kpi: () => ["operasional", "kpi"] as const,
     heatmap: () => ["operasional", "heatmap"] as const,
+    aktivitas: () => ["operasional", "aktivitas"] as const,
     marker: () => ["operasional", "marker"] as const,
     tren: (kode: string, kab: string) => ["operasional", "tren", kode, kab] as const,
   },

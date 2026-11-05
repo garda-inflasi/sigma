@@ -1,6 +1,7 @@
 package seeder
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -51,9 +52,10 @@ func TestBuild_UniqueIDsAndRowCount(t *testing.T) {
 		assert.False(t, ids[e.ID], "id ganda: %s", e.ID)
 		ids[e.ID] = true
 	}
-	// 2 petugas x 3 komoditas x 90 hari = 540 harga konsumen, ditambah harga produsen
-	// cabai dan bawang merah dari kedua petugas, dan duplikat.
-	assert.GreaterOrEqual(t, len(entri), 540+2*2*HariHistori)
+	// Per hari 2 petugas x (3 harga konsumen + 2 harga produsen cabai dan bawang merah) = 10 baris;
+	// hari ini hanya sebagian yang sudah tercatat.
+	assert.GreaterOrEqual(t, len(entri), 10*(HariHistori-1))
+	assert.LessOrEqual(t, len(entri), 11*HariHistori, "paling banyak sepuluh baris sehari ditambah duplikat")
 }
 
 func TestBuild_RowsAreValid(t *testing.T) {
@@ -84,8 +86,25 @@ func TestBuild_RowsAreValid(t *testing.T) {
 	}
 }
 
+// inputBesar meniru ukuran data demo: sepuluh petugas dan empat belas komoditas.
+func inputBesar() Input {
+	in := sampleInput()
+	in.Petugas = nil
+	for i := range 10 {
+		in.Petugas = append(in.Petugas, Petugas{
+			ID: fmt.Sprintf("mahasiswa_%d", i+1), KabupatenKode: fmt.Sprintf("11%02d", i+1),
+			PasarID: fmt.Sprintf("PSR-11%02d-01", i+1), PasarLat: 5.5, PasarLng: 95.3, RadiusMeter: 400,
+		})
+	}
+	in.Komoditas = nil
+	for _, kode := range []string{"BRS-MED", "BRS-PRM", "BWM", "BWP", "CBM-KRT", "CBR-RWT", "DAG-AYM", "DAG-SPI", "GLA", "IKN-TGK", "KTG", "MYK", "TLR", "TMT"} {
+		in.Komoditas = append(in.Komoditas, Komoditas{Kode: kode, Satuan: "kg", HargaAcuan: 20000})
+	}
+	return in
+}
+
 func TestBuild_ShapesHistoryAndStatuses(t *testing.T) {
-	entri := Build(sampleInput(), seedNow)
+	entri := Build(inputBesar(), seedNow)
 
 	perStatus := map[string]int{}
 	var outlier, luarGeofence, duplikat, foto int

@@ -74,6 +74,7 @@ VM **tidak pernah** build apa pun (`--no-build` wajib di semua `docker compose u
 | Gagal → balik sendiri | Healthcheck gate + auto rollback |
 | Migrasi nyata | Service `migrate` (image API berisi `./migrate` + `db/migrations`) jalan sebelum aplikasi naik; kegagalannya menghentikan deploy |
 | Tanpa data demo | Service `seed` di produksi hanya `reference` dan `admin`; seeder `demo` menolak `APP_ENV=production` |
+| Tanpa penangkap email | Service `mailpit` (dev/demo) berada di profil compose `mailpit` yang hanya dinyalakan `make docker/demo/up`; skrip deploy tidak pernah menyebutnya dan `SMTP_*` di `compose.yaml` kosong secara bawaan |
 | Secret tidak bocor | `.env` **tidak pernah** ditransfer; `mask_secret` di semua log |
 
 ---
@@ -601,6 +602,7 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `APP_ENV` | `production` di server (dipasang compose.prod.yaml): menolak rahasia bawaan dan menyalakan penegakan MFA |
 | `MFA_ENFORCE` | Menimpa penegakan MFA (`true`/`false`); kosong = ikut `APP_ENV` |
 | `APP_PUBLIC_URL` | Origin publik untuk tautan di email (reset kata sandi) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM` | Relay email produksi. `SMTP_HOST` kosong = email tidak dikirim. `SMTP_USERNAME` kosong = tanpa autentikasi (relay internal tepercaya); isi untuk memakai AUTH PLAIN. **Jangan** memakai `COMPOSE_PROFILES=mailpit` di VM: Mailpit hanya untuk dev/demo (`make docker/demo/up`, UI di `127.0.0.1:${MAILPIT_PORT:-8025}`) |
 | `API_RATE_LIMIT_PER_MENIT` | Batas permintaan API per menit per IP klien (bawaan 600) |
 | `TRUSTED_PROXIES` | CIDR proxy tepercaya untuk `X-Forwarded-For` (bawaan jaringan privat tempat Caddy berada) |
 | `GO_API_BASE_URL` | `http://api:8080/v1` (internal) |

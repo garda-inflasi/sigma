@@ -55,6 +55,14 @@ menyentuh database dev. Untuk mengulang dari data awal: `make docker/demo/down` 
 Login: `superadmin@gardainflasi.id` / `Garda2024!` (semua akun demo memakai kata sandi itu).
 Login lewat web dibatasi 5 percobaan per menit per IP.
 
+Email (reset kata sandi, notifikasi EWS) di demo tidak keluar ke internet: `make docker/demo/up` ikut
+menyalakan [Mailpit](https://mailpit.axllent.org) (service `mailpit`, profil compose `mailpit`) dan
+mengarahkan `SMTP_HOST=mailpit` `SMTP_PORT=1025` ke sana tanpa autentikasi (`SMTP_USERNAME` kosong = tanpa
+AUTH). Kotak masuknya di `http://localhost:8025` (hanya loopback host; ubah dengan `DEMO_MAILPIT_PORT`),
+API-nya di `http://localhost:8025/api/v1/messages` (dipakai e2e `auth.spec.ts`, variabel `E2E_MAILPIT_URL`).
+Tautan reset memakai `APP_PUBLIC_URL` (`http://localhost:8090`). Produksi tidak menjalankan Mailpit:
+profilnya tidak pernah diaktifkan oleh `compose.prod.yaml` maupun skrip deploy.
+
 `docker compose up` biasa (port bawaan, setelah `make docker/infra/up`) juga menjalankan service
 `migrate` lalu `seed`; API baru naik setelah migrasi sukses.
 

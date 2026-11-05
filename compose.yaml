@@ -189,6 +189,28 @@ services:
     networks:
       - garda_inflasi_net
 
+  # Penangkap email untuk dev/demo (profil "mailpit"): menerima SMTP tanpa autentikasi dan menampilkan
+  # pesan di UI/API HTTP. TIDAK ikut berjalan tanpa profil (produksi memakai compose.prod.yaml tanpa
+  # profil ini dan tidak pernah menyebut `mailpit` di perintah `up`). `make docker/demo/up` menyalakannya
+  # dan mengarahkan SMTP_HOST=mailpit SMTP_PORT=1025 ke sini. Port SMTP tidak dipublikasikan.
+  mailpit:
+    image: axllent/mailpit:v1.27.0
+    container_name: garda-mailpit
+    profiles: ["mailpit"]
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "500"
+    ports:
+      # UI + API HTTP (mis. GET /api/v1/messages) hanya di loopback host.
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - garda_inflasi_net
+
   web:
     build:
       context: .

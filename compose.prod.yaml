@@ -23,6 +23,9 @@
 # service pada `up` (lihat scripts/deploy/remote-deploy.sh dan rollback.sh); `up -d`
 # tanpa nama akan ikut menaikkan stub tersebut (mis. postgres tanpa volume).
 #
+# Service `mailpit` di compose.yaml (penangkap email dev/demo) berada di profil `mailpit` dan sengaja
+# tidak disebut di sini: tanpa COMPOSE_PROFILES=mailpit ia tidak pernah ikut berjalan di VM.
+#
 # Variabel bertanda ":?" WAJIB ada di .env VM; compose berhenti dengan pesan jelas
 # bila kosong, sehingga produksi tidak pernah jatuh ke nilai bawaan pengembangan.
 # Pemeriksaan kekuatan nilai dilakukan remote-deploy.sh (sebelum deploy) dan API

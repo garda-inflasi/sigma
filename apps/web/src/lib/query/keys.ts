@@ -45,7 +45,7 @@ export const qk = {
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
   audit: { list: (filter: AuditFilter) => ["audit", "list", filter] as const },
-  brief: { list: () => ["policy-brief"] as const },
+  brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
   tugas: { saya: () => ["tugas", "saya"] as const },
   master: {
     komoditas: () => ["master", "komoditas"] as const,

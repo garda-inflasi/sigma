@@ -186,13 +186,17 @@ export interface PolicyBrief {
   id: string;
   periode: string;
   judul: string;
-  status: "DRAF" | "TELAAH" | "DISETUJUI" | "DIDISTRIBUSIKAN";
+  /** DIPROSES = draf sedang disusun di server; GAGAL = penyusunan gagal dan dapat diulang. */
+  status: "DIPROSES" | "GAGAL" | "DRAF" | "TELAAH" | "DISETUJUI" | "DIDISTRIBUSIKAN";
   disusunOleh: string;
   diperbarui: string;
   jumlahRekomendasi: number;
   halaman: number;
   /** Ada pada brief dari API; mode mock tidak mengisinya. */
   ringkasan?: string;
+  /** Asal narasi (LLM, templat, atau data demo) dan label yang wajib tampil bersama isinya. */
+  sumberNarasi?: "LLM" | "TEMPLAT" | "DEMO";
+  labelDraf?: string;
 }
 
 export interface TugasLapangan {

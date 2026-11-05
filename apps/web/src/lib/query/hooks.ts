@@ -114,8 +114,22 @@ export const useAudit = (filter: AuditFilter) =>
     getNextPageParam: (last) => last.nextCursor,
     placeholderData: keepPreviousData,
   });
-export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
-/** Menyusun draf brief; galat ditampilkan oleh pemanggil (dialog generator). */
+/** Daftar brief; dimuat ulang berkala selama ada brief yang masih disusun server (DIPROSES). */
+export const useBriefs = () =>
+  useQuery({
+    queryKey: qk.brief.list(),
+    queryFn: api.brief.list,
+    refetchInterval: (query) => (query.state.status !== "error" && query.state.data?.some((b) => b.status === "DIPROSES") ? 3000 : false),
+  });
+/** Brief lengkap; dipantau tiap 2 detik selama server masih menyusun drafnya (status DIPROSES). */
+export const useBriefDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.brief.detail(id ?? ""),
+    queryFn: () => api.brief.detail(id!),
+    enabled: !!id,
+    refetchInterval: (query) => (query.state.status !== "error" && query.state.data?.status === "DIPROSES" ? 2000 : false),
+  });
+/** Memulai penyusunan draf brief (juga untuk mengulang brief GAGAL); galat ditampilkan oleh pemanggil (dialog generator). */
 export function useSusunBrief() {
   const qc = useQueryClient();
   return useMutation({

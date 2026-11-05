@@ -20,6 +20,15 @@ export const STATUS_ENTRI: Record<string, { tone: Tone; label: string }> = {
   DITOLAK: { tone: "defisit", label: "Ditolak" },
 };
 
+export const STATUS_BRIEF: Record<"DIPROSES" | "GAGAL" | "DRAF" | "TELAAH" | "DISETUJUI" | "DIDISTRIBUSIKAN", { tone: Tone; label: string }> = {
+  DIPROSES: { tone: "data", label: "Disusun" },
+  GAGAL: { tone: "defisit", label: "Gagal" },
+  DRAF: { tone: "netral", label: "Draf" },
+  TELAAH: { tone: "waspada", label: "Ditelaah" },
+  DISETUJUI: { tone: "normal", label: "Disetujui" },
+  DIDISTRIBUSIKAN: { tone: "data", label: "Didistribusikan" },
+};
+
 export const STATUS_EWS: Record<string, { tone: Tone; label: string }> = {
   BARU: { tone: "defisit", label: "Baru" },
   DIAKUI: { tone: "data", label: "Diakui" },

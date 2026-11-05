@@ -1,6 +1,6 @@
 # 15 — Policy brief generator
 
-**Prioritas:** P0 (PRD §3.3) · **Status:** UI ✅ · Backend 🟡 · Terhubung ✅ · Skema & seed ✅ · Tes ✅ (15-A selesai; generator nyata di 15-B)
+**Prioritas:** P0 (PRD §3.3) · **Status:** UI ✅ · Backend 🟡 · Terhubung ✅ · Skema & seed ✅ · Tes ✅ (15-A dan 15-B selesai; telaah, persetujuan, ekspor di 15-C)
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -31,21 +31,21 @@
 
 ---
 
-## 15-B — Generator nyata (data + LLM) *(Fase F, gelombang F-4)*
+## 15-B — Generator nyata (data + LLM) *(Fase F, gelombang F-4)* — selesai (LLM nyata belum teruji)
 
-**Bergantung pada:** 15-A, 09-B, 10-B, 11-B, 14-A. Untuk LLM gunakan skill `claude-api` dan model Claude terbaru.
+**Bergantung pada:** 15-A, 09-B, 10-B, 11-B, 14-A. Konteks yang dikumpulkan sekarang: inflasi, harga, peringatan dini, proyeksi; status intervensi, neraca pangan, dan ruang fiskal menyusul.
 
 1. **MIG**
-   - [ ] Nilai status `DIPROSES` dan `GAGAL`: `ALTER TYPE … ADD VALUE` di migration **terpisah** dengan `-- +goose NO TRANSACTION`, tidak dipakai di migration yang sama.
-   - [ ] `policy_brief`: `konten` JSONB (narasi per bagian), `snapshot_data` JSONB (angka dasar yang dipakai), `model_llm`, `prompt_versi`.
-   - [ ] `brief_job` (`id`, `brief_id`, `status`, `mulai`, `selesai`, `galat`), `policy_brief_versi` (`brief_id`, `versi`, `konten`, `oleh`, `waktu`).
-2. **SEED** (`reference`): templat brief (daftar bagian dan urutannya).
+   - [x] `000092`: nilai status `DIPROSES` dan `GAGAL` (`ALTER TYPE … ADD VALUE`, `NO TRANSACTION`, terpisah dari migration yang memakainya).
+   - [x] `000093`: `policy_brief.konten` (narasi per bagian + lampiran sitasi), `snapshot_data` (fakta yang dipakai), `sumber_narasi` (`LLM`|`TEMPLAT`|`DEMO`), `model_llm`, `prompt_versi`, `prompt_hash`, `galat`; `brief_job` (percobaan penyusunan); `policy_brief_versi` (versi isi, satu baris per penyusunan).
+2. **SEED**: [x] `brief.demo` diperluas: brief contoh berlabel `DEMO` dengan `konten` (idempoten; brief contoh lama yang kontennya kosong dilengkapi, yang sudah berisi tidak ditimpa). Daftar bagian brief berupa konstanta kode, belum tabel referensi.
 3. **API**
-   - [ ] **Pengumpul konteks** untuk periode terpilih: inflasi, harga komoditas utama, EWS, proyeksi + faktor XAI, status intervensi, neraca pangan, ruang fiskal.
-   - [ ] **Penyusun narasi** dengan LLM memakai templat terstruktur (ringkasan, temuan, risiko, rekomendasi untuk Pemda & TPID, lampiran). **Anti-halusinasi:** semua angka disisipkan dari data terstruktur lewat placeholder; LLM hanya menulis narasi; sertakan sitasi sumber.
-   - [ ] Proses asinkron: `Generate` mengembalikan id + status `DIPROSES`, klien polling/SSE sampai `DRAF` siap (UI sekarang berasumsi 2–3 detik).
-4. **FE**: polling status, penanganan galat/timeout dengan opsi coba lagi, pratinjau dokumen.
-5. **TES**: pengumpul konteks dengan data tetap; **uji otomatis bahwa angka di narasi cocok dengan data sumber**.
+   - [x] **Pengumpul konteks** (`repository/postgres/konteks.go` + `BangunKonteks`, murni dan deterministik): inflasi dan sasaran, andil, perubahan harga bulanan, peringatan dini, proyeksi model produksi → daftar fakta ber-id dengan nilai terformat dan sumber (`inflasi_bulanan (BPS|DEMO)`, `entri_harga`, `ews_alert`, `prediksi_harga`); data demo menambah catatan keandalan.
+   - [x] **`Generator`**: templat deterministik (cadangan, selalu ada) dan klien Claude Messages API (`net/http`, aktif hanya bila `ANTHROPIC_API_KEY` ada; model dari `LLM_MODEL`, bawaan `claude-sonnet-5-5`; jawaban berskema JSON lewat structured outputs; retry untuk 429/5xx/jaringan). Tanpa kunci perilakunya = templat.
+   - [x] **Anti-halusinasi:** narasi menyebut angka/nama hanya lewat placeholder `{{ID}}` yang diganti server dengan nilai fakta; teks di luar placeholder tidak boleh memuat angka, placeholder harus dikenal; narasi LLM yang melanggar atau gagal digantikan templat dengan alasan dicatat (tanpa mengutip teks yang ditolak). Lampiran memuat sitasi sumber tiap fakta yang dipakai. Hasil LLM berlabel "Draf AI — wajib ditelaah manusia" dengan model, versi prompt, dan hash prompt.
+   - [x] **Asinkron:** `POST /v1/policy-brief/generate` menjawab brief `DIPROSES`; `GET /v1/policy-brief/{id}` untuk memantau (isi, label, jejak model); brief `GAGAL` atau `DIPROSES` basi (> 5 menit) dapat diulang; audit `GENERATE_BRIEF`, `BRIEF_DRAF_SELESAI`, `BRIEF_DRAF_GAGAL`. Proses berjalan sebagai goroutine di instance API (belum antrean tahan restart).
+4. **FE**: [x] dialog generator memantau status sampai draf siap, menampilkan label draf, bagian bernarasi, jejak model, dan sitasi sumber; galat dengan "Coba lagi"; daftar brief memuat ulang berkala selama ada brief `DIPROSES`. [ ] Pratinjau dokumen halaman penuh/ekspor (15-C).
+5. **TES**: [x] pengumpul konteks dengan data tetap; render dan aturan anti-halusinasi (angka bebas, placeholder tak dikenal/rusak, batas butir); **angka di narasi final cocok dengan nilai fakta sumber**; templat pada berbagai kombinasi data; klien Claude dengan `httptest` (kontrak permintaan, retry, penolakan, galat, tanpa kebocoran kunci); integrasi pada DB hasil migrasi dengan Generator palsu (LLM berhasil, LLM gagal/mengarang angka, pengumpulan data gagal lalu diulang, duplikat/basi). **Tidak ada tes yang memanggil API Anthropic sungguhan.**
 
 ---
 

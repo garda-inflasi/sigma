@@ -98,8 +98,9 @@ var briefContohSeeds = []briefContoh{
 }
 
 // SeedDemo menyimpan brief contoh. Idempoten: id yang sudah ada dibiarkan apa
-// adanya (status dan isi yang sudah berubah tidak ditimpa). Prasyarat: akun
-// manajer_kebijakan sudah ada (auth.demo).
+// adanya (status dan isi yang sudah berubah tidak ditimpa); satu-satunya pengecualian,
+// brief contoh dari sebelum kolom konten ada diberi konten dan penanda DEMO. Prasyarat:
+// akun manajer_kebijakan sudah ada (auth.demo).
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	var penyusun int64
 	if err := db.WithContext(ctx).Table("pengguna").Where("id = ?", PenyusunID).Count(&penyusun).Error; err != nil {
@@ -113,7 +114,11 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	if err != nil {
 		return DemoSummary{}, err
 	}
-	err = db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+	err = db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"konten", "sumber_narasi"}),
+		Where:     clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "policy_brief.konten = '{}'::jsonb"}}},
+	}).Create(&rows).Error
 	if err != nil {
 		return DemoSummary{}, fmt.Errorf("seed brief demo: %w", err)
 	}
@@ -128,10 +133,22 @@ func BuildBrief(now time.Time) ([]domain.PolicyBrief, error) {
 		if err != nil {
 			return nil, fmt.Errorf("seed brief demo: rekomendasi %s: %w", domain.BriefID(c.Periode), err)
 		}
+		konten, err := json.Marshal(domain.Konten{
+			Label: domain.LabelDemo, Penyusun: domain.PenyusunDemo,
+			Bagian: []domain.BagianKonten{
+				{Kode: domain.BagianRingkasan, Judul: "Ringkasan", Butir: []string{c.Ringkasan}},
+				{Kode: "rekomendasi", Judul: "Rekomendasi", Butir: c.Rekomendasi},
+			},
+			Lampiran: []domain.Fakta{},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("seed brief demo: konten %s: %w", domain.BriefID(c.Periode), err)
+		}
 		diperbarui := now.UTC().Add(-time.Duration(c.MenitLalu) * time.Minute)
 		rows[i] = domain.PolicyBrief{
 			ID: domain.BriefID(c.Periode), Periode: domain.LabelPeriode(c.Periode), Judul: c.Judul, Status: c.Status,
 			Ringkasan: c.Ringkasan, Rekomendasi: string(rekomendasi), Halaman: c.Halaman, DisusunOlehID: PenyusunID,
+			Konten: string(konten), SnapshotData: "{}", SumberNarasi: domain.PenyusunDemo,
 			DibuatPada: diperbarui.Add(-72 * time.Hour), Diperbarui: diperbarui,
 		}
 	}

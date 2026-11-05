@@ -21,7 +21,8 @@ import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type Ew
 import { toKartu, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
-import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
+import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
+import { mockBriefDetail } from "./brief-mock";
 import {
   toBarisModel, toBarisProyeksi, toHasilSimulasi, toProyeksiXai,
   type AksiModel, type AksiModelResult, type BarisModel, type BarisProyeksi, type HasilSimulasi, type ModelResponse,
@@ -178,7 +179,10 @@ export const api = {
   brief: {
     list: (): Promise<PolicyBrief[]> =>
       MODE_MOCK ? mockDelay(m.mockBriefs) : apiFetch<PolicyBriefResponse[]>("/v1/policy-brief").then((rows) => rows.map(toPolicyBrief)),
-    /** Menyimpan draf brief untuk periode YYYY-MM; kembaliannya brief yang tersimpan. */
+    /** Brief lengkap dengan isi dan jejak penyusunan; dipantau berkala selama berstatus DIPROSES. */
+    detail: (id: string): Promise<PolicyBriefDetail> =>
+      MODE_MOCK ? mockDelay(() => mockBriefDetail(id)) : apiFetch<PolicyBriefDetailResponse>(`/v1/policy-brief/${encodeURIComponent(id)}`).then(toPolicyBriefDetail),
+    /** Memulai penyusunan draf brief untuk periode YYYY-MM; kembaliannya brief berstatus DIPROSES (di server, penyusunan berjalan di latar belakang). */
     susun: (periode: string): Promise<PolicyBrief> =>
       MODE_MOCK
         ? mockDelay(() => m.mockBriefs()[0], 1200, 1800)

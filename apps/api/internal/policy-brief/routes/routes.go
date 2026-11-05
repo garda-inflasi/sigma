@@ -3,6 +3,8 @@ package routes
 import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/policy-brief/delivery/http"
+	"github.com/garda-inflasi/api/internal/policy-brief/domain"
+	"github.com/garda-inflasi/api/internal/policy-brief/generator"
 	"github.com/garda-inflasi/api/internal/policy-brief/repository/postgres"
 	"github.com/garda-inflasi/api/internal/policy-brief/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -16,17 +18,25 @@ type Dependencies struct {
 	DB     *gorm.DB
 	Logger *logger.Logger
 	Token  *token.Manager
+	// Generator menyusun narasi dengan LLM; nil memakai ANTHROPIC_API_KEY, dan tanpa kunci itu
+	// brief disusun dari templat deterministik.
+	Generator domain.Generator
 }
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
+	llm := deps.Generator
+	if llm == nil {
+		llm = generator.ClaudeDariEnv()
+	}
+	uc := usecase.New(repo, llm, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
 	group := engine.Group("/policy-brief")
 	group.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("brief.lihat"))
 	{
 		group.GET("", handler.List)
+		group.GET("/:id", handler.Get)
 		group.POST("/generate", middleware.RequirePermission("brief.susun"), handler.Generate)
 		group.POST("/bulk", handler.Bulk)
 	}

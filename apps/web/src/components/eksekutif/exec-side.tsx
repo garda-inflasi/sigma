@@ -3,7 +3,7 @@
 import { FileText } from "lucide-react";
 import Link from "next/link";
 import { PanelTitle } from "@/components/garda/page-header";
-import { STATUS_EWS, StatusBadge } from "@/components/garda/status-badge";
+import { STATUS_BRIEF, STATUS_EWS, StatusBadge } from "@/components/garda/status-badge";
 import { SpringLink } from "@/components/garda/spring-button";
 import { CountUp } from "@/components/motion/count-up";
 import { useCan } from "@/lib/auth/session-context";
@@ -68,12 +68,12 @@ export function LatestBrief() {
   const bisaSusun = useCan("brief.susun");
   const b = data?.[0];
   if (!b) return null;
-  const st = { DRAF: { tone: "netral", label: "Draf" }, TELAAH: { tone: "waspada", label: "Ditelaah" }, DISETUJUI: { tone: "normal", label: "Disetujui" }, DIDISTRIBUSIKAN: { tone: "data", label: "Didistribusikan" } } as const;
+  const st = STATUS_BRIEF[b.status];
   return (
     <section className="glass rounded-xl p-5">
       <div className="flex items-center justify-between">
         <span className="grid size-10 place-items-center rounded-xl bg-navy-50 text-navy-700 dark:bg-white/10 dark:text-navy-200"><FileText className="size-5" /></span>
-        <StatusBadge tone={st[b.status].tone}>{st[b.status].label}</StatusBadge>
+        <StatusBadge tone={st.tone}>{st.label}</StatusBadge>
       </div>
       <p className="mt-4 text-xs text-muted-foreground">Policy brief {b.periode}</p>
       <p className="mt-1 font-display leading-snug font-semibold">{b.judul}</p>

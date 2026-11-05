@@ -29,9 +29,9 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 3   | Audit trail                               | `/audit`                   | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [03-audit.md](03-audit.md)                                 |
 | 4   | Master data                               | `/master/[entitas]`        | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
 | 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
-| 6   | Validasi harga                            | `/data/harga`              | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [06-harga-validasi.md](06-harga-validasi.md)               |
-| 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ⬜     |      ⬜      | ⬜  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
-| 8   | Dashboard operasional                     | `/operasional`             | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
+| 6   | Validasi harga                            | `/data/harga`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [06-harga-validasi.md](06-harga-validasi.md)               |
+| 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
+| 8   | Dashboard operasional                     | `/operasional`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
 | 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
 | 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [10-ews.md](10-ews.md)                                     |
 | 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
@@ -46,20 +46,16 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 
 "Backend ⬜" berarti ada route/CRUD tipis tetapi logika inti (AI, scraping, generator) belum ada. "Backend 🟡" berarti route dan query dasar ada, tetapi aturan bisnis penuh belum. "Skema & seed ⬜" berarti, berdasarkan analisis kode, query modul itu akan gagal pada database hasil migrasi atau tabelnya kosong (detail di §19).
 
-## Masalah lintas fitur yang paling mendesak
+## Status setelah Fase P (diperbarui 5 Nov 2026)
 
-Detail ada di [19-migration-seeder.md](19-migration-seeder.md) (data) dan [18-platform-lintas-fitur.md](18-platform-lintas-fitur.md) (lainnya).
+Fondasi (F0), seluruh slice `-A` Fase P, dan F1 sudah dikerjakan dan lolos `go test ./...` serta typecheck/tes web. Semua halaman tampil dari API Go dan database; stack Docker demo ada di [README akar](../../README.md) (`make docker/demo/up`). Yang **belum** selesai dan perlu diketahui:
 
-1. **Entity Go tidak cocok dengan migrasi untuk sebagian besar modul.** Empat tabel yang dicari kode tidak ada di migrasi (`kartu_intervensi`, `proyeksi_xai`, `siklus_ekonomi`, `wilayah`), dashboard membaca enam tabel yang tidak ada, dan `ews`, `harga`, `lapangan`, `policy-brief`, `sumber-data` memakai kolom/tipe id yang berbeda dari tabelnya. Hanya `auth`, `audit`, `cold-storage`, `master` yang cocok. Begitu `NEXT_PUBLIC_API_BASE_URL` diisi, sebagian besar halaman kemungkinan error. _Berdasarkan analisis statis; API belum dijalankan terhadap DB hasil migrasi. Langkah pertama adalah tes kontrak skema (task F0-3 dan F0-6 ([19 §5](19-migration-seeder.md)))._
-2. **Mayoritas tabel kosong setelah seed.** Tidak ada seeder Postgres untuk harga, EWS, intervensi, tugas lapangan, brief, prediksi, sumber data, dan lainnya; `cmd/seed` hanya mengisi cold storage. Mock web yang disebut "identik dengan seeder" tidak punya padanan di database.
-3. **Migrasi dilewati diam-diam saat deploy.** Image API tidak berisi `goose` maupun direktori migrasi, sedangkan skrip deploy menelan ketiadaan itu dan melaporkan sukses. Berdasarkan kode, database produksi tidak akan punya skema. _Belum diuji di server._
-4. **Migrasi 000006 menanam 25 akun demo ber-password sama (`Garda2024!`) dan menjalankan `DELETE FROM role_permissions`.** Keduanya ikut ke produksi.
-5. **Tabel RBAC di database tidak dipakai.** Izin berasal dari peta di kode Go. Selain itu, route yang meminta `lapangan.lihat`, `lapangan.baca`, `lapangan.validasi`, dan `prediksi.baca` tidak diberikan ke peran manapun, jadi selalu 403 (termasuk semua `/v1/lapangan/*`).
-6. **Penyebab 4 tes integrasi cold-storage gagal sudah ditemukan:** tes memakai email `@garda-inflasi.id`, seed memakai `@gardainflasi.id`. Cukup seragamkan domain. (Dugaan awal di versi pertama berkas ini, yaitu seed pindah ke `cmd/seed`, keliru.)
-7. **Dua modul analitik yang tumpang tindih.** `dashboard` + `prediksi` (Postgres) dipakai web; `analytics` (MongoDB, `/v1/operations/*`, `/v1/predictions/*`, `/v1/validations/*`) tidak dipanggil web sama sekali.
-8. **Endpoint yang diminta web tetapi tidak ada di backend:** `POST /v1/lapangan/harga`, `GET /v1/ews/stream` (SSE), `/v1/auth/sso/*`, endpoint KPI, bulk untuk policy brief dan model.
-9. **Halaman yang selalu memakai data statis walau backend aktif:** `/master/*` (data referensi statis), `/kpi`.
-10. **MFA tidak punya UI** (tidak ada langkah kode OTP saat login maupun halaman setup), padahal diwajibkan untuk banyak peran. **Tautan reset password buntu:** halaman `/reset-password` tidak ada.
+1. **Fase F (fitur nyata) belum dikerjakan:** layanan ML/prediksi nyata, penyusunan brief dengan LLM, ingestion/scraping sumber data, SSE `GET /v1/ews/stream`, PostGIS, workflow persetujuan, MFA UI, halaman reset password, SSO, sinkronisasi offline lapangan (`POST /v1/lapangan/harga`). Data pada halaman prediksi, eksekutif, peta, dan sebagian sumber data adalah **data demo** yang berlabel demo.
+2. **Penegakan izin per halaman di edge belum ada:** `middleware.ts` hanya memeriksa keberadaan cookie. Izin ditegakkan di API Go (403) dan sidebar menyembunyikan menu; membuka URL halaman tanpa izin menampilkan halaman dengan pesan galat, bukan `/akses-ditolak`.
+3. **Aksi yang masih simulasi di klien:** ajukan/setujui/arsip master data (04-B), "Tugaskan ke saya" dan eskalasi kanban (14-B), unduh data acuan lapangan (07-B), promosi/arsip model prediksi (11-C).
+4. **Belum diuji:** beban data besar (`EXPLAIN` pada ratusan ribu baris), e2e Playwright otomatis, dan penjadwal di luar proses API (refresh materialized view dan `cmd/kpi` belum dipasang ke cron/deploy).
+5. **Asumsi yang perlu dikonfirmasi pemilik program:** target `target_kpi` awal, target inflasi 2025–2027 (1,5–3,5%), skor ruang fiskal heuristik, dan kode/koordinat wilayah-pasar perkiraan.
+6. **Dua salinan OpenAPI lama** (`apps/api/docs`, `apps/api/pkg/swagger`) masih berisi spesifikasi analytics; yang diperbarui hanya `packages/contracts/openapi.yaml`.
 
 ## Urutan pengerjaan
 

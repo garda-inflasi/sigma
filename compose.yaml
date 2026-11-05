@@ -13,7 +13,7 @@
 #
 # `docker compose up` juga menjalankan service sekali-jalan:
 #   migrate → menerapkan db/migrations (api menunggu sampai selesai)
-#   seed    → mengisi data (lapis reference+admin+demo; produksi hanya reference+admin)
+#   seed    → mengisi data (lokal: reference+demo; produksi: reference+admin)
 #
 # Caddy menyediakan:
 #   http://localhost/       → Next.js frontend
@@ -49,8 +49,8 @@ services:
   seed:
     <<: *api-image
     container_name: garda-seed
-    # Lokal: semua lapis. Produksi menimpanya di compose.prod.yaml (tanpa demo).
-    command: ["./seed", "all"]
+    # Lokal: reference + demo (demo sudah memuat akun admin demo). Produksi menimpanya di compose.prod.yaml (tanpa demo).
+    command: ["./seed", "reference", "demo"]
     restart: "no"
     healthcheck:
       disable: true

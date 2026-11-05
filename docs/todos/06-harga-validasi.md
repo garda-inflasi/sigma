@@ -18,16 +18,16 @@
 **Bergantung pada:** 04-A.
 
 1. **MIG**
-   - [ ] `entri_harga`: tambah `dibuat_pada` dan `diupdate_pada` (`DEFAULT now()`). Kolom `periode` dihapus dari entity (atau generated column `date_trunc('month', dicatat_pada)` bila memang dipakai query).
-   - [ ] `CHECK (harga > 0)`; index parsial `WHERE status = 'DIAJUKAN'` untuk antrean validasi.
+   - [x] `entri_harga`: tambah `dibuat_pada` dan `diupdate_pada` (`DEFAULT now()`). Kolom `periode` dihapus dari entity (atau generated column `date_trunc('month', dicatat_pada)` bila memang dipakai query).
+   - [x] `CHECK (harga > 0)`; index parsial `WHERE status = 'DIAJUKAN'` untuk antrean validasi.
 2. **SEED** (`demo`)
-   - [ ] Histori ±90 hari untuk komoditas pilot × pasar utama dengan PRNG seed tetap, tanggal relatif `now`; sebaran status (`DIAJUKAN/DIVALIDASI/DIPUBLIKASI/DITOLAK/DRAF`); sisipkan outlier, duplikat, dan di luar geofence; `petugas_id` dari akun mahasiswa/koordinator.
-   - [ ] Bentuk dan jumlah meniru `mockEntri` di `lib/api/mock.ts`.
+   - [x] Histori ±90 hari untuk komoditas pilot × pasar utama dengan PRNG seed tetap, tanggal relatif `now`; sebaran status (`DIAJUKAN/DIVALIDASI/DIPUBLIKASI/DITOLAK/DRAF`); sisipkan outlier, duplikat, dan di luar geofence; `petugas_id` dari akun mahasiswa/koordinator.
+   - [x] Bentuk dan jumlah meniru `mockEntri` di `lib/api/mock.ts`.
 3. **API**
-   - [ ] Selaraskan entity dengan migrasi.
-   - [ ] `GET /v1/harga`: filter (status, wilayah, komoditas, tanggal) + paginasi sisi server (UI memuat 500 baris sekaligus, tidak skala). `GET /v1/harga/tren`: agregasi harian/mingguan.
+   - [x] Selaraskan entity dengan migrasi.
+   - [x] `GET /v1/harga`: filter (status, wilayah, komoditas, tanggal) + paginasi sisi server (UI memuat 500 baris sekaligus, tidak skala). `GET /v1/harga/tren`: agregasi harian/mingguan.
 4. **FE**
-   - [ ] `useEntriHarga` memakai paginasi/filter server; cocokkan bentuk respons dengan `EntriHarga`. Tren (`api.operasional.tren`) sudah memanggil `/v1/harga/tren`.
+   - [x] `useEntriHarga` memakai paginasi/filter server; cocokkan bentuk respons dengan `EntriHarga`. Tren (`api.operasional.tren`) sudah memanggil `/v1/harga/tren`.
 5. **TES**: integrasi list/tren/detail; hapus `harga` dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 

@@ -19,13 +19,13 @@
 **Bergantung pada:** 06-A, 02-A.
 
 1. **MIG**
-   - [ ] `tugas_lapangan`: tambah `dibuat_pada`, `dibuat_oleh_id`, `selesai_pada`, `jumlah_selesai`. Entity memakai `id` string; buang `lokasi`/`pic` (lokasi = pasar).
+   - [x] `tugas_lapangan`: tambah `dibuat_pada`, `dibuat_oleh_id`, `selesai_pada`, `jumlah_selesai`. Entity memakai `id` string; buang `lokasi`/`pic` (lokasi = pasar).
 2. **SEED** (`demo`)
-   - [ ] Tugas untuk koordinator dan 10 akun mahasiswa (`mahasiswa_1`…`mahasiswa_10`, kabupaten sesuai seed pengguna) dengan campuran `BELUM/BERJALAN/SELESAI/TERLAMBAT` dan tenggat relatif `now`, meniru `mockTugas`.
+   - [x] Tugas untuk koordinator dan 10 akun mahasiswa (`mahasiswa_1`…`mahasiswa_10`, kabupaten sesuai seed pengguna) dengan campuran `BELUM/BERJALAN/SELESAI/TERLAMBAT` dan tenggat relatif `now`, meniru `mockTugas`.
 3. **API**
-   - [ ] Selaraskan entity; `GET /v1/lapangan/tugas/saya` mengembalikan bentuk `TugasLapangan` (progres dihitung); izin sesuai hasil 02-A.
+   - [x] Selaraskan entity; `GET /v1/lapangan/tugas/saya` mengembalikan bentuk `TugasLapangan` (progres dihitung); izin sesuai hasil 02-A.
 4. **FE**
-   - [ ] `useTugasSaya` ke API; cocokkan bentuk respons.
+   - [x] `useTugasSaya` ke API; cocokkan bentuk respons.
 5. **TES**: tiap akun lapangan demo punya ≥ 1 tugas aktif; hapus `lapangan` dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 

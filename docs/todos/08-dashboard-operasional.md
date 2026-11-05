@@ -18,17 +18,17 @@
 **Bergantung pada:** 06-A (data harga). Putuskan D4 (modul `analytics`) sebelum mulai.
 
 1. **MIG**
-   - [ ] `agregat_harga_harian` (komoditas, kabupaten, tanggal, rata-rata, min, maks, n) sebagai materialized view atau tabel dengan UNIQUE index (agar `REFRESH … CONCURRENTLY` bisa dipakai).
-   - [ ] `mv_heatmap_harga` (dari agregat; kategori berdasarkan deviasi terhadap `harga_acuan`) dan `mv_kpi_operasional` (dari `entri_harga`, `tugas_lapangan`, `ews_alert`).
-   - [ ] `target_kpi` (`indikator`, `target`, `periode`) untuk menghitung `capaian_pct`.
-   - [ ] **`siklus_ekonomi`** (`id`, `wilayah_kode` FK, `siklus` bertipe enum `siklus` yang sudah ada, `mulai_pada`, `akhir_pada`) + index parsial `WHERE akhir_pada IS NULL`. Entity memakai enum `siklus`.
+   - [x] `agregat_harga_harian` (komoditas, kabupaten, tanggal, rata-rata, min, maks, n) sebagai materialized view atau tabel dengan UNIQUE index (agar `REFRESH … CONCURRENTLY` bisa dipakai).
+   - [x] `mv_heatmap_harga` (dari agregat; kategori berdasarkan deviasi terhadap `harga_acuan`) dan `mv_kpi_operasional` (dari `entri_harga`, `tugas_lapangan`, `ews_alert`).
+   - [x] `target_kpi` (`indikator`, `target`, `periode`) untuk menghitung `capaian_pct`.
+   - [x] **`siklus_ekonomi`** (`id`, `wilayah_kode` FK, `siklus` bertipe enum `siklus` yang sudah ada, `mulai_pada`, `akhir_pada`) + index parsial `WHERE akhir_pada IS NULL`. Entity memakai enum `siklus`.
 2. **SEED**
-   - [ ] `reference`: `target_kpi` awal.
-   - [ ] `demo`: satu baris `siklus_ekonomi` aktif `TEKANAN` sejak 2026-09-27 (sama dengan mock). Agregat/MV **tidak di-seed langsung**: dihitung dari seed harga lalu di-refresh (urutan: harga → refresh MV).
+   - [x] `reference`: `target_kpi` awal.
+   - [x] `demo`: satu baris `siklus_ekonomi` aktif `TEKANAN` sejak 2026-09-27 (sama dengan mock). Agregat/MV **tidak di-seed langsung**: dihitung dari seed harga lalu di-refresh (urutan: harga → refresh MV).
 3. **API**
-   - [ ] Tulis ulang query dashboard ke MV; siklus entity ke tabel baru; selaraskan DTO dengan `KpiOperasional`/`Heatmap`.
-   - [ ] Job refresh MV terjadwal, ditambah refresh setelah publikasi harga (UI polling 30 detik).
-   - [ ] Keputusan D4: hapus atau gabungkan route `analytics` yang menduplikasi (`/v1/operations/*`).
+   - [x] Tulis ulang query dashboard ke MV; siklus entity ke tabel baru; selaraskan DTO dengan `KpiOperasional`/`Heatmap`.
+   - [x] Job refresh MV terjadwal, ditambah refresh setelah publikasi harga (UI polling 30 detik).
+   - [x] Keputusan D4: hapus atau gabungkan route `analytics` yang menduplikasi (`/v1/operations/*`).
 4. **FE**
    - [ ] `api.operasional.*` dan `api.siklus` sudah memanggil API; cocokkan bentuk. Ganti `USERS` statis di `field-activity` dengan nama petugas dari API (marker peta menyusul di [12-A](12-peta-spasial.md)).
 5. **TES**

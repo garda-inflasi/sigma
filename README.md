@@ -43,6 +43,12 @@ Memakai port host alternatif agar tidak bentrok: web `http://localhost:8090` (HT
 Postgres `5433`, Redis `6380`. Ubah lewat `DEMO_POSTGRES_PORT`, `DEMO_REDIS_PORT`,
 `DEMO_CADDY_HTTP_PORT`, `DEMO_CADDY_HTTPS_PORT`.
 
+Demo memakai volume sendiri (`garda_demo_postgres_data`, `garda_demo_redis_data`) sehingga tidak
+menyentuh database dev. Untuk mengulang dari data awal: `make docker/demo/down` lalu
+`docker volume rm garda_demo_postgres_data garda_demo_redis_data` dan `make docker/demo/up`.
+Login: `superadmin@gardainflasi.id` / `Garda2024!` (semua akun demo memakai kata sandi itu).
+Login lewat web dibatasi 5 percobaan per menit per IP.
+
 `docker compose up` biasa (port bawaan, setelah `make docker/infra/up`) juga menjalankan service
 `migrate` lalu `seed`; API baru naik setelah migrasi sukses.
 

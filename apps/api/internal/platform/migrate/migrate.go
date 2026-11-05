@@ -1,4 +1,5 @@
-// Package migrate menerapkan migrasi SQL goose dari direktori db/migrations.
+// Package migrate menerapkan migrasi SQL goose dari direktori db/migrations, ditambah migrasi data
+// berbasis Go yang membutuhkan kunci dari lingkungan (mfa_secret.go).
 // Dipakai oleh cmd/migrate dan oleh tes agar skema yang diuji identik dengan
 // skema yang dijalankan saat deploy.
 package migrate
@@ -26,7 +27,7 @@ func New(db *sql.DB, dir string) (*Migrator, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("direktori migrasi %q bukan direktori", dir)
 	}
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS(dir))
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS(dir), goose.WithGoMigrations(migrasiGo()...))
 	if err != nil {
 		return nil, fmt.Errorf("buat provider goose: %w", err)
 	}

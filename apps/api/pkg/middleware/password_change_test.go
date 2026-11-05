@@ -72,3 +72,57 @@ func TestJWTAuth_NoPasswordChangeRequired_AllRoutesOpen(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+func TestJWTAuth_MFASetupRequired_OnlySetupRoutesOpen(t *testing.T) {
+	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
+	router := gin.New()
+	v1 := router.Group("/v1")
+	v1.Use(JWTAuth(tokenMgr))
+	for _, path := range []string{"/auth/me", "/auth/logout", "/auth/change-password", "/auth/mfa/setup", "/auth/mfa/verify", "/auth/mfa/disable", "/harga"} {
+		v1.Any(path, func(c *gin.Context) { c.Status(http.StatusOK) })
+	}
+
+	cases := map[string]int{
+		"/v1/auth/mfa/setup":       http.StatusOK,
+		"/v1/auth/mfa/verify":      http.StatusOK,
+		"/v1/auth/me":              http.StatusOK,
+		"/v1/auth/logout":          http.StatusOK,
+		"/v1/auth/change-password": http.StatusOK,
+		"/v1/auth/mfa/disable":     http.StatusForbidden,
+		"/v1/harga":                http.StatusForbidden,
+	}
+	for path, want := range cases {
+		t.Run(path, func(t *testing.T) {
+			tokenStr, err := tokenMgr.CreateAccessToken("user-1", "ADMIN_SISTEM", []string{"harga.lihat"}, token.WithMFASetupRequired(true))
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, want, w.Code)
+			if want == http.StatusForbidden {
+				var body struct {
+					Code string `json:"code"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+				assert.Equal(t, MFASetupRequiredCode, body.Code)
+			}
+		})
+	}
+}
+
+func TestJWTAuth_RejectsMFAChallengeToken(t *testing.T) {
+	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
+	router := passwordChangeRouter(tokenMgr)
+	challenge, err := tokenMgr.CreateMFAChallengeToken("user-1")
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+challenge)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code, "token tantangan MFA bukan kredensial sesi")
+}

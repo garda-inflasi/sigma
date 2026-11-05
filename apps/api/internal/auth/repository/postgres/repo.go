@@ -186,6 +186,86 @@ func (r *Repository) RevokeAllUserRefreshTokens(ctx context.Context, userID stri
 		Update("revoked_at", now).Error
 }
 
+// ── MFA ───────────────────────────────────────────────────────────────
+
+func (r *Repository) ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"UPDATE pengguna SET mfa_aktif = true, mfa_langkah_terakhir = ?, diupdate_pada = now() WHERE id = ?",
+			langkah, userID,
+		).Error; err != nil {
+			return fmt.Errorf("aktifkan mfa: %w", err)
+		}
+		return replaceBackupCodes(tx, userID, kodeHash)
+	})
+}
+
+func (r *Repository) ReplaceBackupCodes(ctx context.Context, userID string, kodeHash []string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return replaceBackupCodes(tx, userID, kodeHash)
+	})
+}
+
+func replaceBackupCodes(tx *gorm.DB, userID string, kodeHash []string) error {
+	if err := tx.Exec("DELETE FROM mfa_kode_cadangan WHERE user_id = ?", userID).Error; err != nil {
+		return fmt.Errorf("hapus kode cadangan lama: %w", err)
+	}
+	if len(kodeHash) == 0 {
+		return nil
+	}
+	rows := make([]domain.KodeCadanganMFA, len(kodeHash))
+	for i, h := range kodeHash {
+		rows[i] = domain.KodeCadanganMFA{UserID: userID, KodeHash: h}
+	}
+	if err := tx.Create(&rows).Error; err != nil {
+		return fmt.Errorf("simpan kode cadangan: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) UseBackupCode(ctx context.Context, userID, kodeHash string, now time.Time) (bool, error) {
+	res := r.db.WithContext(ctx).Exec(
+		"UPDATE mfa_kode_cadangan SET dipakai_pada = ? WHERE user_id = ? AND kode_hash = ? AND dipakai_pada IS NULL",
+		now, userID, kodeHash,
+	)
+	if res.Error != nil {
+		return false, fmt.Errorf("pakai kode cadangan: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
+}
+
+func (r *Repository) CountBackupCodes(ctx context.Context, userID string) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&domain.KodeCadanganMFA{}).Where("user_id = ? AND dipakai_pada IS NULL", userID).Count(&n).Error
+	return n, err
+}
+
+func (r *Repository) AdvanceMFAStep(ctx context.Context, userID string, langkah int64) (bool, error) {
+	res := r.db.WithContext(ctx).Exec(
+		"UPDATE pengguna SET mfa_langkah_terakhir = ? WHERE id = ? AND mfa_langkah_terakhir < ?",
+		langkah, userID, langkah,
+	)
+	if res.Error != nil {
+		return false, fmt.Errorf("majukan langkah mfa: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
+}
+
+func (r *Repository) ClearMFA(ctx context.Context, userID string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"UPDATE pengguna SET mfa_aktif = false, mfa_secret = NULL, mfa_langkah_terakhir = 0, diupdate_pada = now() WHERE id = ?",
+			userID,
+		).Error; err != nil {
+			return fmt.Errorf("nonaktifkan mfa: %w", err)
+		}
+		if err := tx.Exec("DELETE FROM mfa_kode_cadangan WHERE user_id = ?", userID).Error; err != nil {
+			return fmt.Errorf("hapus kode cadangan: %w", err)
+		}
+		return nil
+	})
+}
+
 // ── Bulk User Actions ─────────────────────────────────────────────────
 
 func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {

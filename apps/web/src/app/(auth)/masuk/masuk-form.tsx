@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { API_BASE, MODE_MOCK } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import { loginAction, loginFormAction } from "@/lib/actions/login";
 
 /** Logo "G" Google empat warna — SVG inline agar tidak bergantung aset eksternal. */
 function GoogleGlyph({ className }: { className?: string }) {
@@ -48,9 +47,12 @@ const DEMO_SANDI = "acehkukaya";
 export function MasukForm({
   redirect,
   googleSso,
+  galatAwal,
 }: {
   redirect: string;
   googleSso: string;
+  /** Pesan gagal dari BFF setelah kiriman form (?error=). */
+  galatAwal?: string;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState(MODE_MOCK ? DEMO_EMAIL : "");
@@ -58,7 +60,7 @@ export function MasukForm({
   const [lihat, setLihat] = useState(false);
   const [ingat, setIngat] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [galat, setGalat] = useState<string | null>(null);
+  const [galat, setGalat] = useState<string | null>(galatAwal ?? null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,23 +97,6 @@ export function MasukForm({
         router.refresh();
         return;
       }
-
-      // Gunakan server action untuk login — cookies di-set di server, redirect via browser
-      const formData = new FormData();
-      formData.append("email", email.trim());
-      formData.append("password", sandi);
-      formData.append("redirect", redirect);
-
-      const result = await loginAction(formData);
-
-      // Jika result ada, berarti error (redirect tidak terjadi)
-      if (result && "error" in result) {
-        throw new Error(result.error);
-      }
-
-      // Seharusnya tidak sampai sini karena redirect() melempar error
-      // Tapi untuk jaga-jaga, lakukan redirect manual
-      window.location.assign(redirect);
     } catch (err) {
       const pesan =
         err instanceof Error

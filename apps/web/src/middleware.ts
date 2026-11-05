@@ -16,6 +16,12 @@ import {
   isPasswordChangeExempt,
   requiresPasswordChange,
 } from "@/lib/auth/password-change";
+import {
+  MFA_SETUP_PATH,
+  MFA_SETUP_REQUIRED_CODE,
+  isMfaSetupExempt,
+  requiresMfaSetup,
+} from "@/lib/auth/mfa";
 import { ROLES } from "@/lib/rbac/roles";
 
 // Routes that don't require authentication
@@ -108,6 +114,19 @@ export async function middleware(request: NextRequest) {
     const changeUrl = new URL(PASSWORD_CHANGE_PATH, request.url);
     changeUrl.searchParams.set("lanjut", pathname);
     return NextResponse.redirect(changeUrl);
+  }
+
+  // Akun yang wajib setup MFA hanya boleh membuka halaman setup (setelah ganti kata sandi bila diwajibkan)
+  if (requiresMfaSetup(accessToken) && !isMfaSetupExempt(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: true, code: MFA_SETUP_REQUIRED_CODE, message: "Anda harus mengaktifkan verifikasi dua langkah sebelum melanjutkan." },
+        { status: 403 }
+      );
+    }
+    const setupUrl = new URL(MFA_SETUP_PATH, request.url);
+    setupUrl.searchParams.set("lanjut", pathname);
+    return NextResponse.redirect(setupUrl);
   }
 
   // Redirect root to role-specific beranda

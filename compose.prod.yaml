@@ -25,6 +25,8 @@ services:
     environment:
       GIN_MODE: release
       APP_ADDR: ":8080"
+      # Mewajibkan AES_KEY sendiri (kunci contoh ditolak) dan MFA bagi peran wajib.
+      APP_ENV: production
     restart: unless-stopped
 
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
@@ -32,6 +34,8 @@ services:
   migrate:
     image: garda-api:${IMAGE_TAG:-latest}
     build: !reset null
+    environment:
+      APP_ENV: production
 
   # Produksi hanya mengisi referensi dan admin awal, tidak pernah demo.
   seed:

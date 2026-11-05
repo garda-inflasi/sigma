@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/qr"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -21,7 +22,8 @@ func New(uc *usecase.UseCase) *Handler {
 }
 
 // POST /v1/auth/login
-// Returns user profile only. Tokens are returned in response body for the BFF to set as HttpOnly cookies.
+// Returns user profile and tokens for the BFF to set as HttpOnly cookies. Akun dengan MFA aktif
+// menerima mfa_required dan mfa_token tanpa sesi.
 func (h *Handler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -29,15 +31,14 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	ip := c.ClientIP()
-	user, accessToken, refreshToken, err := h.uc.Login(audit.RequestContext(c), req.Email, req.Password, ip)
+	res, err := h.uc.Login(audit.RequestContext(c), req.Email, req.Password, c.ClientIP())
 	if err != nil {
-		switch err {
-		case usecase.ErrInvalidCredentials:
+		switch {
+		case errors.Is(err, usecase.ErrInvalidCredentials):
 			response.Unauthorized(c, "Email atau password salah")
-		case usecase.ErrAccountLocked:
+		case errors.Is(err, usecase.ErrAccountLocked):
 			response.Error(c, http.StatusTooManyRequests, "429", "Akun terkunci, coba lagi nanti")
-		case usecase.ErrAccountInactive:
+		case errors.Is(err, usecase.ErrAccountInactive):
 			response.Forbidden(c, "Akun tidak aktif, hubungi administrator")
 		default:
 			response.InternalError(c, "Kesalahan server")
@@ -45,11 +46,19 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		User:         dto.ToUserResponse(user),
-	})
+	response.Success(c, loginResponse(res))
+}
+
+// loginResponse memetakan hasil login; profil dan token sesi hanya ada setelah semua faktor terbukti.
+func loginResponse(res *usecase.LoginResult) dto.LoginResponse {
+	if res.MFARequired {
+		return dto.LoginResponse{MFARequired: true, MFAToken: res.MFAToken}
+	}
+	user := dto.ToUserResponse(res.User)
+	return dto.LoginResponse{
+		AccessToken: res.AccessToken, RefreshToken: res.RefreshToken, User: &user,
+		MFASetupDiwajibkan: res.MFASetupRequired,
+	}
 }
 
 // POST /v1/auth/refresh
@@ -101,8 +110,18 @@ func (h *Handler) Me(c *gin.Context) {
 		response.NotFound(c, "Pengguna tidak ditemukan")
 		return
 	}
+	status, err := h.uc.MFAStatus(c.Request.Context(), user)
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil status MFA")
+		return
+	}
 
-	response.Success(c, dto.ToUserResponse(user))
+	response.Success(c, dto.MeUserResponse{
+		UserResponse:        dto.ToUserResponse(user),
+		MfaSetupDiwajibkan:  status.SetupDiwajibkan,
+		MfaWajib:            status.Wajib,
+		KodeCadanganTersisa: status.KodeCadanganTersisa,
+	})
 }
 
 // POST /v1/auth/change-password
@@ -409,24 +428,49 @@ func (h *Handler) BulkUser(c *gin.Context) {
 
 // ── MFA Handlers ──────────────────────────────────────────────────────
 
-// POST /v1/auth/mfa/setup
-func (h *Handler) SetupMFA(c *gin.Context) {
-	userID := c.GetString("user_id")
-
-	secret, uri, backupCodes, err := h.uc.SetupMFA(audit.RequestContext(c), userID)
-	if err != nil {
+// mfaError memetakan galat MFA ke respons; true bila galat sudah dijawab.
+func mfaError(c *gin.Context, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, usecase.ErrMFAChallengeInvalid):
+		response.Unauthorized(c, err.Error())
+	case errors.Is(err, usecase.ErrAccountLocked):
+		response.Error(c, http.StatusTooManyRequests, "429", "Terlalu banyak percobaan, coba lagi nanti")
+	case errors.Is(err, usecase.ErrMFACodeInvalid), errors.Is(err, usecase.ErrMFANotSetup):
 		response.BadRequest(c, err.Error())
+	case errors.Is(err, usecase.ErrMFAAlreadyActive):
+		response.Conflict(c, err.Error())
+	case errors.Is(err, usecase.ErrMFAMandatory):
+		response.Forbidden(c, err.Error())
+	case errors.Is(err, usecase.ErrWrongPassword):
+		response.Unauthorized(c, "Password salah")
+	case errors.Is(err, usecase.ErrMFAUnavailable):
+		response.Error(c, http.StatusServiceUnavailable, "503", err.Error())
+	default:
+		response.InternalError(c, "Kesalahan server")
+	}
+	return true
+}
+
+// POST /v1/auth/mfa/setup
+// Menyiapkan rahasia TOTP (belum aktif sampai /mfa/verify). Terbuka juga bagi akun yang wajib setup MFA.
+func (h *Handler) SetupMFA(c *gin.Context) {
+	setup, err := h.uc.SetupMFA(audit.RequestContext(c), c.GetString("user_id"))
+	if mfaError(c, err) {
+		return
+	}
+	svg, err := qr.SVG(setup.ProvisioningURI)
+	if err != nil {
+		response.InternalError(c, "Gagal membuat kode QR")
 		return
 	}
 
-	response.Success(c, dto.MFASetupResponse{
-		Secret:          secret,
-		ProvisioningURI: uri,
-		BackupCodes:     backupCodes,
-	})
+	response.Success(c, dto.MFASetupResponse{Secret: setup.Secret, ProvisioningURI: setup.ProvisioningURI, QRSVG: svg})
 }
 
 // POST /v1/auth/mfa/verify
+// Memverifikasi kode pertama, mengaktifkan MFA, dan menerbitkan sesi baru beserta kode cadangan (sekali tampil).
 func (h *Handler) VerifyMFA(c *gin.Context) {
 	var req dto.MFAVerifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -434,16 +478,16 @@ func (h *Handler) VerifyMFA(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
-	if err := h.uc.VerifyMFA(audit.RequestContext(c), userID, req.Code); err != nil {
-		response.BadRequest(c, err.Error())
+	res, err := h.uc.VerifyMFA(audit.RequestContext(c), c.GetString("user_id"), req.Code, c.ClientIP())
+	if mfaError(c, err) {
 		return
 	}
 
-	response.Success(c, nil)
+	response.Success(c, dto.MFAVerifyResponse{AccessToken: res.AccessToken, RefreshToken: res.RefreshToken, KodeCadangan: res.KodeCadangan})
 }
 
 // POST /v1/auth/mfa/validate
+// Publik: menukar mfa_token dari login dan kode OTP atau kode cadangan dengan sesi.
 func (h *Handler) ValidateMFA(c *gin.Context) {
 	var req dto.MFAValidateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -451,19 +495,34 @@ func (h *Handler) ValidateMFA(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
-	valid, err := h.uc.ValidateMFACode(audit.RequestContext(c), userID, req.Code)
+	res, err := h.uc.ValidateMFALogin(audit.RequestContext(c), req.MFAToken, req.Code, c.ClientIP())
 	if err != nil {
-		response.BadRequest(c, err.Error())
+		if errors.Is(err, usecase.ErrMFACodeInvalid) {
+			response.Unauthorized(c, "Kode tidak valid")
+			return
+		}
+		mfaError(c, err)
 		return
 	}
 
-	if !valid {
-		response.Unauthorized(c, "Kode MFA tidak valid")
+	response.Success(c, loginResponse(res))
+}
+
+// POST /v1/auth/mfa/backup-codes
+// Menerbitkan kode cadangan baru (yang lama hangus) setelah konfirmasi kata sandi; sekali tampil.
+func (h *Handler) RegenerateBackupCodes(c *gin.Context) {
+	var req dto.MFARegenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
 
-	response.Success(c, nil)
+	kode, err := h.uc.RegenerateBackupCodes(audit.RequestContext(c), c.GetString("user_id"), req.Password)
+	if mfaError(c, err) {
+		return
+	}
+
+	response.Success(c, dto.MFABackupCodesResponse{KodeCadangan: kode})
 }
 
 // POST /v1/auth/mfa/disable
@@ -474,14 +533,7 @@ func (h *Handler) DisableMFA(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString("user_id")
-	if err := h.uc.DisableMFA(audit.RequestContext(c), userID, req.Password); err != nil {
-		switch err {
-		case usecase.ErrWrongPassword:
-			response.Unauthorized(c, "Password salah")
-		default:
-			response.BadRequest(c, err.Error())
-		}
+	if mfaError(c, h.uc.DisableMFA(audit.RequestContext(c), c.GetString("user_id"), req.Password)) {
 		return
 	}
 

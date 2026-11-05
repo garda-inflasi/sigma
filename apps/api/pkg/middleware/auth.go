@@ -53,6 +53,13 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			})
 			return
 		}
+		if claims.MFASetupRequired && !mfaSetupExempt[c.FullPath()] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"code":    MFASetupRequiredCode,
+				"message": "Anda harus mengaktifkan autentikasi dua langkah (MFA) sebelum melanjutkan",
+			})
+			return
+		}
 		c.Next()
 	}
 }
@@ -63,6 +70,19 @@ const PasswordChangeRequiredCode = "PASSWORD_CHANGE_REQUIRED"
 // passwordChangeExempt adalah satu-satunya rute yang terbuka bagi akun yang wajib
 // mengganti kata sandi: mengganti, keluar, dan membaca profil sendiri.
 var passwordChangeExempt = map[string]bool{
+	"/v1/auth/change-password": true,
+	"/v1/auth/logout":          true,
+	"/v1/auth/me":              true,
+}
+
+// MFASetupRequiredCode adalah kode galat 403 untuk akun yang wajib mengaktifkan MFA tetapi belum.
+const MFASetupRequiredCode = "MFA_SETUP_REQUIRED"
+
+// mfaSetupExempt adalah satu-satunya rute yang terbuka bagi akun yang wajib setup MFA: memulai dan
+// memverifikasi setup, mengganti kata sandi (bila juga diwajibkan), keluar, dan membaca profil sendiri.
+var mfaSetupExempt = map[string]bool{
+	"/v1/auth/mfa/setup":       true,
+	"/v1/auth/mfa/verify":      true,
 	"/v1/auth/change-password": true,
 	"/v1/auth/logout":          true,
 	"/v1/auth/me":              true,

@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/delivery/http"
 	"github.com/garda-inflasi/api/internal/auth/repository/postgres"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/email"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
@@ -27,9 +28,11 @@ type Options struct {
 }
 
 func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
-	cfg := usecase.DefaultConfig()
+	var cfg usecase.Config
 	if len(opts) > 0 {
 		cfg = opts[0].UseCaseConfig
+	} else {
+		cfg = ConfigFromEnv(os.Getenv)
 	}
 
 	// Setup email sender from environment
@@ -62,6 +65,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		public.POST("/refresh", handler.Refresh)
 		public.POST("/forgot-password", handler.ForgotPassword)
 		public.POST("/reset-password", handler.ResetPassword)
+		// Menukar token tantangan dari login dan kode OTP dengan sesi; belum ada sesi, jadi publik.
+		public.POST("/mfa/validate", handler.ValidateMFA)
 	}
 
 	// Protected routes — require valid JWT
@@ -77,7 +82,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		{
 			mfa.POST("/setup", handler.SetupMFA)
 			mfa.POST("/verify", handler.VerifyMFA)
-			mfa.POST("/validate", handler.ValidateMFA)
+			mfa.POST("/backup-codes", handler.RegenerateBackupCodes)
 			mfa.POST("/disable", handler.DisableMFA)
 		}
 
@@ -103,4 +108,28 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			rbac.GET("/permissions", handler.ListPermissions)
 		}
 	}
+}
+
+// ConfigFromEnv membangun konfigurasi usecase dari lingkungan. MFA_ENFORCE ("true"/"false") menentukan
+// apakah MFA diwajibkan bagi peran wajib; bila kosong, diwajibkan hanya di produksi (APP_ENV=production),
+// sehingga lokal dan demo tetap dapat masuk tanpa setup. AES_KEY menyegel rahasia TOTP (lihat crypto.KeyringFromEnv).
+// Konfigurasi yang salah menghentikan proses saat start (panic) agar tidak berjalan tanpa perlindungan.
+func ConfigFromEnv(getenv func(string) string) usecase.Config {
+	cfg := usecase.DefaultConfig()
+
+	cfg.MFAEnforce = getenv("APP_ENV") == "production"
+	if raw := getenv("MFA_ENFORCE"); raw != "" {
+		enforce, err := strconv.ParseBool(raw)
+		if err != nil {
+			panic("MFA_ENFORCE harus true atau false, bukan " + raw)
+		}
+		cfg.MFAEnforce = enforce
+	}
+
+	ring, err := crypto.KeyringFromEnv(getenv)
+	if err != nil {
+		panic("konfigurasi AES_KEY: " + err.Error())
+	}
+	cfg.MFAKey = ring
+	return cfg
 }

@@ -85,10 +85,35 @@ export interface LoginRequest {
   password: string;
 }
 
+/**
+ * Hasil login. Akun ber-MFA menerima `mfa_required` dan `mfa_token` tanpa sesi; selain itu token sesi dan
+ * profil terisi, dan `mfa_setup_diwajibkan` true berarti sesi hanya membuka endpoint setup MFA.
+ */
 export interface LoginResponse {
+  access_token?: string;
+  refresh_token?: string;
+  user?: UserResponse;
+  mfa_required?: boolean;
+  mfa_token?: string;
+  mfa_setup_diwajibkan?: boolean;
+}
+
+/** Sesi penuh hasil login atau validasi MFA. */
+export type SessionResponse = Required<Pick<LoginResponse, "access_token" | "refresh_token" | "user">> &
+  Pick<LoginResponse, "mfa_setup_diwajibkan">;
+
+export interface MfaSetupResponse {
+  secret: string;
+  provisioning_uri: string;
+  /** Kode QR provisioning_uri sebagai dokumen SVG. */
+  qr_svg: string;
+}
+
+export interface MfaVerifyResponse {
   access_token: string;
   refresh_token: string;
-  user: UserResponse;
+  /** Hanya tampil sekali. */
+  kode_cadangan: string[];
 }
 
 export interface RefreshTokenRequest {
@@ -114,6 +139,12 @@ export interface UserResponse {
   dibuat_pada: string;
   /** Selama true, API menjawab 403 PASSWORD_CHANGE_REQUIRED selain untuk ganti kata sandi, keluar, dan profil. */
   wajib_ganti_password: boolean;
+  /** Hanya pada GET /auth/me: akun wajib MFA tetapi belum aktif (403 MFA_SETUP_REQUIRED selain endpoint setup). */
+  mfa_setup_diwajibkan?: boolean;
+  /** Hanya pada GET /auth/me: MFA tidak boleh dinonaktifkan pemilik akun. */
+  mfa_wajib?: boolean;
+  /** Hanya pada GET /auth/me: sisa kode cadangan bila MFA aktif. */
+  kode_cadangan_tersisa?: number;
 }
 
 export interface ChangePasswordRequest {
@@ -230,6 +261,40 @@ export const authApi = {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(data),
+    }),
+
+  /** Menukar token tantangan dari login dan kode OTP/cadangan dengan sesi. */
+  mfaValidate: (data: { mfa_token: string; code: string }) =>
+    apiFetch<LoginResponse>("/auth/mfa/validate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  mfaSetup: (accessToken: string) =>
+    apiFetch<MfaSetupResponse>("/auth/mfa/setup", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  mfaVerify: (accessToken: string, code: string) =>
+    apiFetch<MfaVerifyResponse>("/auth/mfa/verify", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ code }),
+    }),
+
+  mfaBackupCodes: (accessToken: string, password: string) =>
+    apiFetch<{ kode_cadangan: string[] }>("/auth/mfa/backup-codes", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ password }),
+    }),
+
+  mfaDisable: (accessToken: string, password: string) =>
+    apiFetch<void>("/auth/mfa/disable", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ password }),
     }),
 
   forgotPassword: (data: ForgotPasswordRequest) =>

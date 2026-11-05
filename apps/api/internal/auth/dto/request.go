@@ -72,10 +72,16 @@ type MFAVerifyRequest struct {
 	Code string `json:"code" binding:"required,len=6"`
 }
 
+// MFAValidateRequest menukar token tantangan dari login dan kode OTP (enam digit) atau kode cadangan dengan sesi.
 type MFAValidateRequest struct {
-	Code string `json:"code" binding:"required"`
+	MFAToken string `json:"mfa_token" binding:"required"`
+	Code     string `json:"code" binding:"required,max=32"`
 }
 
 type MFADisableRequest struct {
+	Password string `json:"password" binding:"required"`
+}
+
+type MFARegenerateRequest struct {
 	Password string `json:"password" binding:"required"`
 }

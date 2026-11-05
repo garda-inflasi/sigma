@@ -9,6 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { MFA_CHALLENGE_COOKIE, MFA_CHALLENGE_MAX_AGE } from "@/lib/auth/mfa";
 import { ACCESS_COOKIE, REFRESH_COOKIE, cookieSecure } from "./cookie-policy";
 
 interface CookieOptions {
@@ -52,6 +53,30 @@ export function setRefreshTokenCookie(
 }
 
 /**
+ * Menyimpan token tantangan MFA (lima menit) sebagai cookie httpOnly yang hanya dikirim ke /api/auth,
+ * sehingga tidak tampil di URL maupun terbaca skrip halaman.
+ */
+export function setMfaChallengeCookie(response: NextResponse, token: string): void {
+  response.cookies.set(MFA_CHALLENGE_COOKIE, token, {
+    httpOnly: true,
+    secure: cookieSecure(),
+    sameSite: "strict",
+    path: "/api/auth",
+    maxAge: MFA_CHALLENGE_MAX_AGE,
+  });
+}
+
+export function clearMfaChallengeCookie(response: NextResponse): void {
+  response.cookies.set(MFA_CHALLENGE_COOKIE, "", {
+    httpOnly: true,
+    secure: cookieSecure(),
+    sameSite: "strict",
+    path: "/api/auth",
+    maxAge: 0,
+  });
+}
+
+/**
  * Clears both token cookies on the given response (for logout).
  */
 export function clearTokenCookies(response: NextResponse): void {
@@ -79,6 +104,13 @@ export async function getAccessToken(): Promise<string | undefined> {
   const { cookies } = await import("next/headers");
   const jar = await cookies();
   return jar.get(ACCESS_COOKIE)?.value;
+}
+
+/** Token tantangan MFA dari cookie, bila masih ada. */
+export async function getMfaChallenge(): Promise<string | undefined> {
+  const { cookies } = await import("next/headers");
+  const jar = await cookies();
+  return jar.get(MFA_CHALLENGE_COOKIE)?.value;
 }
 
 /**

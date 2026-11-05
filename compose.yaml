@@ -43,6 +43,9 @@ services:
       disable: true
     environment:
       <<: *database-env
+      # Migrasi data MFA menyegel mfa_secret lama dengan AES_KEY: harus sama dengan kunci api.
+      APP_ENV: "${APP_ENV:-development}"
+      AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
     networks:
       - garda_inflasi_net
 
@@ -57,6 +60,8 @@ services:
     environment:
       <<: *database-env
       APP_ENV: "${APP_ENV:-development}"
+      # Akun demo ber-MFA disegel dengan kunci yang sama dengan api.
+      AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
       SEED_ADMIN_EMAIL: "${SEED_ADMIN_EMAIL:-}"
       SEED_ADMIN_PASSWORD: "${SEED_ADMIN_PASSWORD:-}"
     depends_on:
@@ -84,6 +89,9 @@ services:
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
       JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
+      # production mewajibkan AES_KEY sendiri dan MFA bagi peran wajib; lokal/demo tidak dipaksa.
+      APP_ENV: "${APP_ENV:-development}"
+      MFA_ENFORCE: "${MFA_ENFORCE:-}"
       APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.

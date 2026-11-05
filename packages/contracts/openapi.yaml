@@ -41,6 +41,13 @@ paths:
   /v1/auth/login:
     post:
       summary: Login pengguna
+      description: |
+        Akun dengan MFA aktif tidak langsung menerima sesi: respons berisi `mfa_required: true` dan `mfa_token`
+        (berlaku 5 menit), yang ditukar dengan kode OTP di `POST /v1/auth/mfa/validate`. Akun yang wajib MFA
+        (peran strategis, manajerial, koordinator lapangan, admin, atau bertanda `mfa_wajib`, bila `MFA_ENFORCE`
+        menyala; bawaan hanya di produksi) tetapi belum setup menerima sesi dengan `mfa_setup_diwajibkan: true`:
+        semua endpoint selain `/v1/auth/mfa/setup`, `/v1/auth/mfa/verify`, ganti password, keluar, dan profil
+        menjawab 403 dengan kode `MFA_SETUP_REQUIRED`.
       operationId: authLogin
       tags:
         - Authentication
@@ -150,7 +157,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserResponse"
+                $ref: "#/components/schemas/MeResponse"
         "401":
           description: Token tidak valid
           content:
@@ -261,7 +268,10 @@ paths:
 
   /v1/auth/mfa/setup:
     post:
-      summary: Memulai setup MFA (menghasilkan secret TOTP)
+      summary: Memulai setup MFA (menghasilkan rahasia TOTP dan QR)
+      description: |
+        Rahasia disimpan bersegel AES (versi kunci tertera) dan belum aktif sampai `/v1/auth/mfa/verify`.
+        Memanggil ulang sebelum verifikasi mengganti rahasia. Terbuka juga bagi sesi yang wajib setup MFA.
       operationId: authMFASetup
       tags:
         - Multi-Factor Authentication
@@ -269,19 +279,25 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: Secret TOTP berhasil dibuat
+          description: Rahasia TOTP berhasil dibuat
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MFASetupResponse"
-        "400":
-          description: MFA sudah aktif atau token tidak valid
+        "401":
+          description: Token tidak valid
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Token tidak valid
+        "409":
+          description: MFA sudah aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Kunci enkripsi MFA (AES_KEY) belum dikonfigurasi
           content:
             application/json:
               schema:
@@ -289,7 +305,10 @@ paths:
 
   /v1/auth/mfa/verify:
     post:
-      summary: Memverifikasi dan mengaktifkan MFA dengan kode TOTP
+      summary: Memverifikasi kode pertama dan mengaktifkan MFA
+      description: |
+        Menerbitkan kode cadangan (sekali tampil, hanya hash yang tersimpan) dan sesi baru: semua sesi lama
+        dicabut dan sesi baru tidak lagi dibatasi ke setup MFA. Kode salah dihitung terhadap batas kunci akun.
       operationId: authMFAVerify
       tags:
         - Multi-Factor Authentication
@@ -307,9 +326,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/MFAVerifyResponse"
         "400":
-          description: Kode TOTP tidak valid
+          description: Kode TOTP tidak valid atau setup belum dimulai
           content:
             application/json:
               schema:
@@ -320,11 +339,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: MFA sudah aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Terlalu banyak percobaan salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/auth/mfa/validate:
     post:
-      summary: Memvalidasi kode MFA (TOTP atau backup code)
+      summary: Menukar token tantangan MFA dan kode OTP dengan sesi
+      description: |
+        Publik (belum ada sesi). `code` adalah kode TOTP enam digit atau kode cadangan (huruf besar/kecil dan
+        tanda hubung diabaikan). Kode TOTP hanya berlaku sekali per langkah waktu 30 detik; kode cadangan sekali
+        pakai. Kode salah dihitung terhadap batas kunci akun yang sama dengan kata sandi salah.
       operationId: authMFAValidate
+      tags:
+        - Multi-Factor Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAValidateRequest"
+      responses:
+        "200":
+          description: Sesi diterbitkan (bentuk sama dengan login berhasil)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tantangan tidak valid atau kedaluwarsa, atau kode salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Akun terkunci karena terlalu banyak percobaan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/mfa/backup-codes:
+    post:
+      summary: Menerbitkan kode cadangan baru
+      description: Kode lama hangus. Memerlukan konfirmasi kata sandi. Kode polos hanya tampil sekali.
+      operationId: authMFABackupCodes
       tags:
         - Multi-Factor Authentication
       security:
@@ -334,22 +408,22 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MFAValidateRequest"
+              $ref: "#/components/schemas/MFADisableRequest"
       responses:
         "200":
-          description: Kode MFA valid
+          description: Kode cadangan baru
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/MFABackupCodesResponse"
         "400":
-          description: Kode MFA tidak valid (error)
+          description: MFA belum aktif
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Kode MFA tidak valid (unauthorized) atau token tidak valid
+          description: Password salah atau token tidak valid
           content:
             application/json:
               schema:
@@ -358,6 +432,9 @@ paths:
   /v1/auth/mfa/disable:
     post:
       summary: Menonaktifkan MFA
+      description: |
+        Memerlukan konfirmasi kata sandi. Rahasia dan semua kode cadangan dihapus. Ditolak (403) untuk akun
+        yang MFA-nya diwajibkan.
       operationId: authMFADisable
       tags:
         - Multi-Factor Authentication
@@ -376,14 +453,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
-        "400":
-          description: Gagal menonaktifkan MFA
+        "401":
+          description: Password salah atau token tidak valid
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Password salah atau token tidak valid
+        "403":
+          description: MFA diwajibkan untuk akun ini
           content:
             application/json:
               schema:
@@ -2704,6 +2781,15 @@ components:
               description: Refresh token
             user:
               $ref: "#/components/schemas/UserObject"
+            mfa_required:
+              type: boolean
+              description: True bila akun harus menyelesaikan MFA; token sesi dan user tidak disertakan
+            mfa_token:
+              type: string
+              description: Token tantangan MFA (5 menit), bukan kredensial sesi
+            mfa_setup_diwajibkan:
+              type: boolean
+              description: Sesi hanya membuka endpoint setup MFA sampai MFA diaktifkan
 
     RefreshTokenRequest:
       type: object
@@ -2806,21 +2892,15 @@ components:
           properties:
             secret:
               type: string
-              description: Base32-encoded secret key untuk ditambahkan ke authenticator app
+              description: Rahasia base32 (20 byte acak) untuk entri manual di aplikasi autentikator
               example: JBSWY3DPEHPK3PXP
             provisioning_uri:
               type: string
-              format: uri
-              description: URI untuk QR code (otpauth://)
-              example: otpauth://totp/Garda%20Inflasi:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Garda%20Inflasi
-            backup_codes:
-              type: array
-              items:
-                type: string
-              description: 8 kode cadangan sekali pakai (8 karakter alfanumerik)
-              example:
-                - F3119FBC
-                - 38F46BF0
+              description: URI otpauth:// untuk kode QR
+              example: otpauth://totp/Garda%20Inflasi:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Garda+Inflasi
+            qr_svg:
+              type: string
+              description: Kode QR dari provisioning_uri sebagai dokumen SVG
 
     MFAVerifyRequest:
       type: object
@@ -2829,18 +2909,85 @@ components:
       properties:
         code:
           type: string
+          minLength: 6
+          maxLength: 6
           description: Kode TOTP 6 digit dari authenticator app
           example: "123456"
+
+    MFAVerifyResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            kode_cadangan:
+              type: array
+              description: 10 kode cadangan sekali pakai, format XXXXX-XXXXX; hanya tampil sekali
+              items:
+                type: string
+
+    MFABackupCodesResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            kode_cadangan:
+              type: array
+              items:
+                type: string
 
     MFAValidateRequest:
       type: object
       required:
+        - mfa_token
         - code
+      properties:
+        mfa_token:
+          type: string
+          description: Token tantangan dari respons login (mfa_required)
+        code:
+          type: string
+          maxLength: 32
+          description: Kode TOTP 6 digit atau kode cadangan
+          example: "123456"
+
+    MeResponse:
+      type: object
       properties:
         code:
           type: string
-          description: Kode TOTP 6 digit atau backup code 8 karakter
-          example: "123456"
+          example: "200"
+        message:
+          type: string
+        data:
+          allOf:
+            - $ref: "#/components/schemas/UserObject"
+            - type: object
+              properties:
+                mfa_setup_diwajibkan:
+                  type: boolean
+                  description: Akun wajib MFA tetapi belum mengaktifkannya
+                mfa_wajib:
+                  type: boolean
+                  description: MFA tidak boleh dinonaktifkan oleh pemilik akun
+                kode_cadangan_tersisa:
+                  type: integer
+                  description: Hanya ada bila MFA aktif
 
     MFADisableRequest:
       type: object

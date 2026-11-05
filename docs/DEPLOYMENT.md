@@ -182,7 +182,7 @@ REDIS_URL=redis://redis:6379/0
 
 # ── Secrets (WAJIB diganti, minimal 32 karakter acak) ───────────────────
 JWT_SECRET=GANTI_DENGAN_RANDOM_32_KARAKTER
-AES_KEY=GANTI_DENGAN_RANDOM_32_KARAKTER
+AES_KEY=GANTI_DENGAN_RANDOM_32_KARAKTER   # tepat 32 karakter; menyegel rahasia MFA
 GARDA_JWT_SECRET=GANTI_DENGAN_RANDOM_32_KARAKTER
 
 # ── App ─────────────────────────────────────────────────────────────────
@@ -542,7 +542,9 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `DATABASE_URL` | DSN lengkap untuk Go |
 | `REDIS_URL` | DSN Redis |
 | `JWT_SECRET` | Signing key JWT (≥32 char acak) |
-| `AES_KEY` | Enkripsi at-rest (≥32 char acak) |
+| `AES_KEY` | Enkripsi rahasia MFA di basis data, tepat 32 byte. Wajib di produksi (kunci contoh ditolak); migrasi `migrate` dan `seed` memakai kunci yang sama dengan `api` |
+| `APP_ENV` | `production` di server: mewajibkan `AES_KEY` sendiri dan menyalakan penegakan MFA |
+| `MFA_ENFORCE` | Menimpa penegakan MFA (`true`/`false`); kosong = ikut `APP_ENV` |
 | `GARDA_JWT_SECRET` | Secret untuk BFF Next.js |
 | `APP_ALLOWED_ORIGINS` | CORS allowlist |
 | `GO_API_BASE_URL` | `http://api:8080/v1` (internal) |

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/email"
@@ -115,15 +116,17 @@ type UseCase struct {
 	cfg         Config
 	log         *logger.Logger
 	emailSender *email.Sender
+	audit       audit.Writer
 }
 
-func New(repo domain.Repository, tokenMgr *token.Manager, cfg Config, log *logger.Logger, emailSender *email.Sender) *UseCase {
+func New(repo domain.Repository, tokenMgr *token.Manager, cfg Config, log *logger.Logger, emailSender *email.Sender, auditWriter audit.Writer) *UseCase {
 	return &UseCase{
 		repo:        repo,
 		token:       tokenMgr,
 		cfg:         cfg,
 		log:         log,
 		emailSender: emailSender,
+		audit:       auditWriter,
 	}
 }
 
@@ -135,12 +138,14 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 	if err != nil {
 		uc.log.Warn("login: user not found", map[string]interface{}{"email": email, "ip": ip})
 		uc.recordLoginAttempt(ctx, nil, ip, false, "user_not_found")
+		uc.recordFailedLogin(ctx, "", email, "user_not_found")
 		return nil, "", "", ErrInvalidCredentials
 	}
 
 	if user.Status != "AKTIF" {
 		uc.log.Warn("login: inactive account", map[string]interface{}{"user_id": user.ID, "status": user.Status})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "account_inactive")
+		uc.recordFailedLogin(ctx, user.ID, email, "account_inactive")
 		return nil, "", "", ErrAccountInactive
 	}
 
@@ -148,6 +153,7 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 		recentFails, err := uc.repo.CountRecentFailedAttempts(ctx, user.ID, time.Now().Add(-uc.cfg.LockoutDuration))
 		if err == nil && recentFails >= int64(uc.cfg.MaxFailedAttempts) {
 			uc.log.Warn("login: account locked", map[string]interface{}{"user_id": user.ID, "fails": recentFails})
+			uc.recordFailedLogin(ctx, user.ID, email, "account_locked")
 			return nil, "", "", ErrAccountLocked
 		}
 	}
@@ -155,12 +161,14 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 	if user.PasswordHash == nil {
 		uc.log.Warn("login: no password set (SSO only)", map[string]interface{}{"user_id": user.ID})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "no_password")
+		uc.recordFailedLogin(ctx, user.ID, email, "no_password")
 		return nil, "", "", ErrInvalidCredentials
 	}
 
 	if !crypto.VerifyPassword(password, *user.PasswordHash) {
 		uc.log.Warn("login: wrong password", map[string]interface{}{"user_id": user.ID, "ip": ip})
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "wrong_password")
+		uc.recordFailedLogin(ctx, user.ID, email, "wrong_password")
 		return nil, "", "", ErrInvalidCredentials
 	}
 
@@ -175,7 +183,7 @@ func (uc *UseCase) Login(ctx context.Context, email, password, ip string) (*doma
 	user.TerakhirMasuk = &now
 	_ = uc.repo.UpdateUser(ctx, user)
 
-	uc.recordAuditLog(ctx, &user.ID, "LOGIN", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	uc.recordAudit(ctx, user.ID, "LOGIN", user.ID)
 	uc.log.Info("login success", map[string]interface{}{"user_id": user.ID, "email": email, "ip": ip})
 	return user, accessToken, rawRefresh, nil
 }
@@ -196,8 +204,9 @@ func (uc *UseCase) Refresh(ctx context.Context, refreshTokenStr, ip string) (str
 			"user_id":   stored.UserID,
 		})
 		_ = uc.repo.RevokeRefreshTokenFamily(ctx, stored.FamilyID)
-		uc.recordAuditLog(ctx, &stored.UserID, "TOKEN_REUSE", "refresh_token", fmt.Sprintf("%d", stored.ID), "BLOKIR", nil, map[string]interface{}{
-			"family_id": stored.FamilyID,
+		uc.writeAudit(ctx, audit.Entry{
+			AktorID: stored.UserID, Aksi: "TOKEN_REUSE", Entitas: "refresh_token", EntitasID: fmt.Sprintf("%d", stored.ID),
+			Hasil: audit.HasilDitolak, Metadata: map[string]any{"family_id": stored.FamilyID},
 		})
 		return "", "", ErrInvalidToken
 	}
@@ -226,7 +235,7 @@ func (uc *UseCase) Refresh(ctx context.Context, refreshTokenStr, ip string) (str
 }
 
 // Logout revokes all refresh tokens for a user and blacklists the current JWT.
-func (uc *UseCase) Logout(ctx context.Context, userID string, jti string, ip string) error {
+func (uc *UseCase) Logout(ctx context.Context, userID string, jti string) error {
 	// Revoke all active refresh tokens for this user
 	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, userID); err != nil {
 		return fmt.Errorf("revoke all tokens: %w", err)
@@ -239,7 +248,7 @@ func (uc *UseCase) Logout(ctx context.Context, userID string, jti string, ip str
 		}
 	}
 
-	uc.recordAuditLog(ctx, &userID, "LOGOUT", "pengguna", userID, "BERHASIL", &ip, nil)
+	uc.recordAudit(ctx, userID, "LOGOUT", userID)
 	uc.log.Info("logout success", map[string]interface{}{"user_id": userID})
 	return nil
 }
@@ -293,13 +302,13 @@ func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newP
 		return "", "", err
 	}
 
-	uc.recordAuditLog(ctx, &userID, "CHANGE_PASSWORD", "pengguna", userID, "BERHASIL", &ip, nil)
+	uc.recordAudit(ctx, userID, "CHANGE_PASSWORD", userID)
 	uc.log.Info("password changed", map[string]interface{}{"user_id": userID, "ip": ip})
 	return accessToken, refreshToken, nil
 }
 
 // ForgotPassword creates a password reset token and stores it.
-func (uc *UseCase) ForgotPassword(ctx context.Context, email, ip string) error {
+func (uc *UseCase) ForgotPassword(ctx context.Context, email string) error {
 	user, err := uc.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		// Don't reveal whether email exists
@@ -320,7 +329,7 @@ func (uc *UseCase) ForgotPassword(ctx context.Context, email, ip string) error {
 		return fmt.Errorf("save reset token: %w", err)
 	}
 
-	uc.recordAuditLog(ctx, &user.ID, "FORGOT_PASSWORD", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	uc.recordAudit(ctx, user.ID, "FORGOT_PASSWORD", user.ID)
 	uc.log.Info("forgot password: token created", map[string]interface{}{"user_id": user.ID, "email": email})
 
 	// Send email with reset link
@@ -333,7 +342,7 @@ func (uc *UseCase) ForgotPassword(ctx context.Context, email, ip string) error {
 }
 
 // ResetPassword resets the password using a reset token.
-func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword, ip string) error {
+func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword string) error {
 	tokenHash := sha256Hex(resetTokenStr)
 
 	stored, err := uc.repo.GetResetToken(ctx, tokenHash)
@@ -376,8 +385,8 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 	// Revoke all sessions
 	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, stored.UserID)
 
-	uc.recordAuditLog(ctx, &stored.UserID, "RESET_PASSWORD", "pengguna", stored.UserID, "BERHASIL", &ip, nil)
-	uc.log.Info("password reset success", map[string]interface{}{"user_id": stored.UserID, "ip": ip})
+	uc.recordAudit(ctx, stored.UserID, "RESET_PASSWORD", stored.UserID)
+	uc.log.Info("password reset success", map[string]interface{}{"user_id": stored.UserID})
 	return nil
 }
 
@@ -402,7 +411,7 @@ type RoleInfo struct {
 }
 
 // CreateUser creates a new user.
-func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, password string) error {
+func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, password, actorID string) error {
 	if err := ValidatePassword(password); err != nil {
 		return err
 	}
@@ -423,8 +432,10 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 		return fmt.Errorf("create user: %w", err)
 	}
 
-	ip := ""
-	uc.recordAuditLog(ctx, nil, "CREATE_USER", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	uc.writeAudit(ctx, audit.Entry{
+		AktorID: actorID, Aksi: "CREATE_USER", Entitas: "pengguna", EntitasID: user.ID,
+		Hasil: audit.HasilBerhasil, Sesudah: userSnapshot(user),
+	})
 	return nil
 }
 
@@ -443,11 +454,13 @@ func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, er
 }
 
 // UpdateUser applies a partial update to an existing user.
-func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, actorID, ip string) (*domain.Pengguna, error) {
+func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, actorID string) (*domain.Pengguna, error) {
 	user, err := uc.repo.GetUserByID(ctx, id)
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
+
+	sebelum := userSnapshot(user)
 
 	if patch.Email != nil && *patch.Email != user.Email {
 		if existing, _ := uc.repo.GetUserByEmail(ctx, *patch.Email); existing != nil && existing.ID != id {
@@ -492,12 +505,15 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 		_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
 	}
 
-	uc.recordAuditLog(ctx, &actorID, "UPDATE_USER", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	uc.writeAudit(ctx, audit.Entry{
+		AktorID: actorID, Aksi: "UPDATE_USER", Entitas: "pengguna", EntitasID: user.ID,
+		Hasil: audit.HasilBerhasil, Sebelum: sebelum, Sesudah: userSnapshot(user),
+	})
 	return user, nil
 }
 
 // DeleteUser removes a user and terminates all of its sessions.
-func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID, ip string) error {
+func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID string) error {
 	if id == actorID {
 		return ErrCannotDeleteSelf
 	}
@@ -517,12 +533,12 @@ func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID, ip string) error
 		return fmt.Errorf("delete user: %w", err)
 	}
 
-	uc.recordAuditLog(ctx, &actorID, "DELETE_USER", "pengguna", id, "BERHASIL", &ip, nil)
+	uc.recordAudit(ctx, actorID, "DELETE_USER", id)
 	return nil
 }
 
 // ResetPasswordAdmin sets a new password for a user without knowing the old one.
-func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, actorID, ip string) error {
+func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, actorID string) error {
 	if err := ValidatePassword(newPassword); err != nil {
 		return err
 	}
@@ -539,13 +555,13 @@ func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, acto
 	// Force re-authentication everywhere after an administrative reset.
 	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
 
-	uc.recordAuditLog(ctx, &actorID, "RESET_PASSWORD_ADMIN", "pengguna", user.ID, "BERHASIL", &ip, nil)
+	uc.recordAudit(ctx, actorID, "RESET_PASSWORD_ADMIN", user.ID)
 	return nil
 }
 
 // AssignRole changes a user's role and revokes existing sessions so the new
 // permission set takes effect on the next login.
-func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID, ip string) (*domain.Pengguna, error) {
+func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID string) (*domain.Pengguna, error) {
 	if _, ok := rolePermissions[role]; !ok {
 		return nil, ErrRoleNotFound
 	}
@@ -555,6 +571,7 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID, ip string)
 		return nil, ErrUserNotFound
 	}
 
+	sebelum := userSnapshot(user)
 	user.Peran = role
 	if lapis, ok := roleLapis[role]; ok {
 		user.Lapis = lapis
@@ -565,7 +582,10 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID, ip string)
 
 	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
 
-	uc.recordAuditLog(ctx, &actorID, "ASSIGN_ROLE", "pengguna", user.ID, "BERHASIL", &ip, map[string]interface{}{"peran": role})
+	uc.writeAudit(ctx, audit.Entry{
+		AktorID: actorID, Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: user.ID,
+		Hasil: audit.HasilBerhasil, Sebelum: sebelum, Sesudah: userSnapshot(user),
+	})
 	return user, nil
 }
 
@@ -599,7 +619,7 @@ func (uc *UseCase) ListPermissions() []string {
 }
 
 // BulkUserAction processes a bulk action on users.
-func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action string, ip string) (int64, error) {
+func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action, actorID string) (int64, error) {
 	domainAction := domain.BulkUserAction(action)
 	switch domainAction {
 	case domain.BulkAktifkan, domain.BulkNonaktifkan, domain.BulkWajibkanMFA, domain.BulkAkhiriSesi:
@@ -618,8 +638,10 @@ func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action stri
 		return 0, fmt.Errorf("bulk user action: %w", err)
 	}
 
-	// Audit log for bulk action
-	uc.recordAuditLog(ctx, nil, "BULK_"+string(domainAction), "pengguna", fmt.Sprintf("%d users", len(ids)), "BERHASIL", &ip, nil)
+	uc.writeAudit(ctx, audit.Entry{
+		AktorID: actorID, Aksi: "BULK_" + string(domainAction), Entitas: "pengguna", EntitasID: fmt.Sprintf("%d pengguna", count),
+		Hasil: audit.HasilBerhasil, Metadata: map[string]any{"ids": ids},
+	})
 	uc.log.Info("bulk user action completed", map[string]interface{}{
 		"action": action,
 		"count":  count,
@@ -649,26 +671,37 @@ func (uc *UseCase) recordLoginAttempt(ctx context.Context, userID *string, ip st
 	_ = uc.repo.CreateLoginAttempt(ctx, attempt)
 }
 
-func (uc *UseCase) recordAuditLog(ctx context.Context, aktorID *string, aksi, entitas, entitasID, hasil string, ip *string, metadata map[string]interface{}) {
-	var metaStr *string
-	if len(metadata) > 0 {
-		b, _ := json.Marshal(metadata)
-		s := string(b)
-		metaStr = &s
-	}
+// recordAudit mencatat aksi berhasil atas satu pengguna tanpa perubahan data.
+func (uc *UseCase) recordAudit(ctx context.Context, aktorID, aksi, penggunaID string) {
+	uc.writeAudit(ctx, audit.Entry{AktorID: aktorID, Aksi: aksi, Entitas: "pengguna", EntitasID: penggunaID, Hasil: audit.HasilBerhasil})
+}
 
-	log := &domain.AuditLog{
-		ID:        uuid.New().String(),
-		Waktu:     time.Now(),
-		AktorID:   aktorID,
-		Aksi:      aksi,
-		Entitas:   entitas,
-		EntitasID: entitasID,
-		Hasil:     hasil,
-		IP:        ip,
-		Metadata:  metaStr,
+// recordFailedLogin mencatat percobaan masuk yang gagal. aktorID kosong bila email tak dikenal.
+func (uc *UseCase) recordFailedLogin(ctx context.Context, aktorID, email, alasan string) {
+	entitasID := aktorID
+	if entitasID == "" {
+		entitasID = email
 	}
-	_ = uc.repo.CreateAuditLog(ctx, log)
+	uc.writeAudit(ctx, audit.Entry{
+		AktorID: aktorID, Aksi: "LOGIN", Entitas: "pengguna", EntitasID: entitasID,
+		Hasil: audit.HasilGagal, Metadata: map[string]any{"alasan": alasan, "email": email},
+	})
+}
+
+// writeAudit mencatat entri audit. Kegagalan mencatat tidak menggagalkan aksinya,
+// tetapi dilaporkan di log supaya tidak senyap.
+func (uc *UseCase) writeAudit(ctx context.Context, entry audit.Entry) {
+	if err := uc.audit.Write(ctx, entry); err != nil {
+		uc.log.Warn("auth: gagal mencatat audit", map[string]interface{}{"aksi": entry.Aksi, "error": err.Error()})
+	}
+}
+
+// userSnapshot adalah keadaan pengguna yang aman disimpan di audit (tanpa rahasia).
+func userSnapshot(u *domain.Pengguna) map[string]any {
+	return map[string]any{
+		"nama": u.Nama, "email": u.Email, "peran": u.Peran, "lapis": u.Lapis,
+		"lembaga": u.Lembaga, "kabupaten_kode": u.KabupatenKode, "status": u.Status,
+	}
 }
 
 // issueSession menerbitkan access token (membawa penanda wajib ganti kata sandi
@@ -747,7 +780,7 @@ func (uc *UseCase) SetupMFA(ctx context.Context, userID string) (string, string,
 		return "", "", nil, fmt.Errorf("update user: %w", err)
 	}
 
-	uc.recordAuditLog(ctx, &userID, "MFA_SETUP", "pengguna", userID, "BERHASIL", nil, nil)
+	uc.recordAudit(ctx, userID, "MFA_SETUP", userID)
 	return secret, uri, backupCodes, nil
 }
 
@@ -771,7 +804,7 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code string) error {
 		return fmt.Errorf("update user: %w", err)
 	}
 
-	uc.recordAuditLog(ctx, &userID, "MFA_VERIFY", "pengguna", userID, "BERHASIL", nil, nil)
+	uc.recordAudit(ctx, userID, "MFA_VERIFY", userID)
 	return nil
 }
 
@@ -803,7 +836,7 @@ func (uc *UseCase) ValidateMFACode(ctx context.Context, userID, code string) (bo
 					s := string(newJSON)
 					user.MfaBackupCodes = &s
 					_ = uc.repo.UpdateUser(ctx, user)
-					uc.recordAuditLog(ctx, &userID, "MFA_VALIDATE_BACKUP", "pengguna", userID, "BERHASIL", nil, nil)
+					uc.recordAudit(ctx, userID, "MFA_VALIDATE_BACKUP", userID)
 					return true, nil
 				}
 			}
@@ -832,6 +865,6 @@ func (uc *UseCase) DisableMFA(ctx context.Context, userID, password string) erro
 		return fmt.Errorf("update user: %w", err)
 	}
 
-	uc.recordAuditLog(ctx, &userID, "MFA_DISABLE", "pengguna", userID, "BERHASIL", nil, nil)
+	uc.recordAudit(ctx, userID, "MFA_DISABLE", userID)
 	return nil
 }

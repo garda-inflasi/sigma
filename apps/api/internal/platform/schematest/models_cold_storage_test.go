@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("cold-storage", &coldstoragedomain.FasilitasColdStorage{}, &coldstoragedomain.StokColdStorage{}, &coldstoragedomain.AuditLog{})
+	registerModels("cold-storage", &coldstoragedomain.FasilitasColdStorage{}, &coldstoragedomain.StokColdStorage{})
 }

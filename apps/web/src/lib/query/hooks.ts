@@ -1,9 +1,10 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
+import type { AuditFilter } from "@/lib/api/audit";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { StokColdStorage } from "@/lib/data/types";
@@ -52,7 +53,15 @@ export const usePengguna = (search?: string) =>
     queryFn: () => (MODE_MOCK ? api.pengguna.list() : penggunaApi.list({ search })),
   });
 export const useKatalogAkses = () => useQuery({ queryKey: qk.rbac.katalog(), queryFn: api.rbac.katalog, staleTime: 5 * 60_000 });
-export const useAudit = () => useQuery({ queryKey: qk.audit.list(), queryFn: api.audit.list });
+/** Audit trail dengan filter dan paginasi cursor di server; `fetchNextPage` memuat halaman berikutnya. */
+export const useAudit = (filter: AuditFilter) =>
+  useInfiniteQuery({
+    queryKey: qk.audit.list(filter),
+    queryFn: ({ pageParam }) => api.audit.page(filter, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor,
+    placeholderData: keepPreviousData,
+  });
 export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
 export const useTugasSaya = () => useQuery({ queryKey: qk.tugas.saya(), queryFn: api.tugas.saya });
 export const useMasterKomoditas = () => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas });

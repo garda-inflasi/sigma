@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	"github.com/garda-inflasi/api/internal/cold-storage/dto"
 	"github.com/garda-inflasi/api/internal/cold-storage/usecase"
@@ -117,11 +118,10 @@ func (h *Handler) Bulk(c *gin.Context) {
 		return
 	}
 
-	out, err := h.uc.BulkAction(c.Request.Context(), usecase.BulkInput{
+	out, err := h.uc.BulkAction(audit.RequestContext(c), usecase.BulkInput{
 		Action:  req.Action,
 		IDs:     req.IDs,
 		ActorID: c.GetString("user_id"),
-		IP:      c.ClientIP(),
 	})
 	if err != nil {
 		switch {

@@ -24,6 +24,5 @@ type Repository interface {
 	SaveResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
 	GetResetToken(ctx context.Context, tokenHash string) (*ResetToken, error)
 	MarkResetTokenUsed(ctx context.Context, id int64, usedAt time.Time) error
-	CreateAuditLog(ctx context.Context, log *AuditLog) error
 	BulkUpdateUsers(ctx context.Context, ids []string, action BulkUserAction) (int64, error)
 }

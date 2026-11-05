@@ -2,16 +2,15 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	"github.com/garda-inflasi/api/pkg/logger"
-	"github.com/google/uuid"
 )
 
 var (
@@ -29,13 +28,14 @@ const (
 )
 
 type UseCase struct {
-	repo domain.Repository
-	log  *logger.Logger
-	now  func() time.Time
+	repo  domain.Repository
+	log   *logger.Logger
+	audit audit.Writer
+	now   func() time.Time
 }
 
-func New(repo domain.Repository, log *logger.Logger) *UseCase {
-	return &UseCase{repo: repo, log: log, now: time.Now}
+func New(repo domain.Repository, log *logger.Logger, auditWriter audit.Writer) *UseCase {
+	return &UseCase{repo: repo, log: log, audit: auditWriter, now: time.Now}
 }
 
 // WithClock mengganti sumber waktu; dipakai pengujian agar sisa masa simpan deterministik.
@@ -117,7 +117,6 @@ type BulkInput struct {
 	Action  string
 	IDs     []string
 	ActorID string
-	IP      string
 }
 
 // BulkOutcome adalah hasil aksi massal.
@@ -163,35 +162,20 @@ func (uc *UseCase) BulkAction(ctx context.Context, in BulkInput) (BulkOutcome, e
 // recordAudit mencatat aksi massal. Kegagalan mencatat tidak membatalkan aksi:
 // aksi ini bersifat advisori dan sudah diproses.
 func (uc *UseCase) recordAudit(ctx context.Context, in BulkInput, ids []string, out BulkOutcome) {
-	meta, _ := json.Marshal(map[string]interface{}{
-		"ids":        ids,
-		"gagal":      out.Gagal,
-		"volume_ton": out.VolumeTon,
-	})
-	metaStr := string(meta)
-
-	hasil := "BERHASIL"
+	hasil := audit.HasilBerhasil
 	if out.Berhasil == 0 {
-		hasil = "GAGAL"
+		hasil = audit.HasilGagal
 	}
 
-	entry := &domain.AuditLog{
-		ID:        uuid.New().String(),
-		Waktu:     uc.now(),
+	err := uc.audit.Write(ctx, audit.Entry{
+		AktorID:   in.ActorID,
 		Aksi:      "BULK_" + in.Action,
 		Entitas:   "stok_cold_storage",
 		EntitasID: fmt.Sprintf("%d lot", out.Berhasil),
 		Hasil:     hasil,
-		Metadata:  &metaStr,
-	}
-	if in.ActorID != "" {
-		entry.AktorID = &in.ActorID
-	}
-	if in.IP != "" {
-		entry.IP = &in.IP
-	}
-
-	if err := uc.repo.CreateAuditLog(ctx, entry); err != nil {
+		Metadata:  map[string]any{"ids": ids, "gagal": out.Gagal, "volume_ton": out.VolumeTon},
+	})
+	if err != nil {
 		uc.log.Warn("cold-storage: failed to record audit log", map[string]interface{}{"error": err.Error()})
 	}
 }

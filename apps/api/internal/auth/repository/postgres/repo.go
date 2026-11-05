@@ -165,12 +165,6 @@ func (r *Repository) RevokeAllUserRefreshTokens(ctx context.Context, userID stri
 		Update("revoked_at", now).Error
 }
 
-// ── Audit Log ─────────────────────────────────────────────────────────
-
-func (r *Repository) CreateAuditLog(ctx context.Context, log *domain.AuditLog) error {
-	return r.db.WithContext(ctx).Create(log).Error
-}
-
 // ── Bulk User Actions ─────────────────────────────────────────────────
 
 func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {

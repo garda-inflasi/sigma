@@ -1,5 +1,5 @@
 import { apiFetch, mockDelay, MODE_MOCK } from "./client";
-import { toAuditRow, type AuditLogResponse } from "./audit";
+import { toAuditPage, toAuditQuery, queryMockAudit, type AuditFilter, type AuditPage, type AuditPageResponse } from "./audit";
 import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
@@ -65,7 +65,13 @@ export const api = {
   sumber: { list: () => get<SumberData[]>("/v1/sumber-data", m.mockSumber) },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
   rbac: { katalog: (): Promise<KatalogAkses> => (MODE_MOCK ? mockDelay(m.mockKatalogAkses) : penggunaApi.katalog()) },
-  audit: { list: () => (MODE_MOCK ? mockDelay(m.mockAudit) : apiFetch<AuditLogResponse[]>("/v1/audit?limit=500").then((rows) => rows.map(toAuditRow))) },
+  audit: {
+    /** Satu halaman audit; filter dan paginasi cursor dijalankan server. */
+    page: (filter: AuditFilter, cursor?: string): Promise<AuditPage> =>
+      MODE_MOCK
+        ? mockDelay(() => queryMockAudit(m.mockAudit(), filter, cursor))
+        : apiFetch<AuditPageResponse>(`/v1/audit${toAuditQuery(filter, cursor)}`).then(toAuditPage),
+  },
   brief: {
     list: () => get<PolicyBrief[]>("/v1/policy-brief", m.mockBriefs),
     susun: (periode: string) =>

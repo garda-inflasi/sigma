@@ -126,10 +126,6 @@ func (r *Repository) BulkAction(ctx context.Context, ids []string, action domain
 	}
 }
 
-func (r *Repository) CreateAuditLog(ctx context.Context, log *domain.AuditLog) error {
-	return r.db.WithContext(ctx).Create(log).Error
-}
-
 // orderClause membangun ORDER BY dari kriteria yang sudah divalidasi. `s.id`
 // menjadi pemutus seri agar urutan stabil antar-halaman.
 func orderClause(q domain.StokQuery) string {

@@ -918,6 +918,85 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/audit:
+    get:
+      summary: Daftar jejak audit (terbaru lebih dulu)
+      description: |
+        Filter dijalankan di server dan hasilnya dipaginasi dengan cursor. Butuh izin `audit.lihat`.
+        Tabel `audit_log` bersifat append-only.
+      operationId: auditList
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: dari
+          in: query
+          description: Batas bawah waktu (inklusif), RFC 3339 atau YYYY-MM-DD
+          schema:
+            type: string
+        - name: sampai
+          in: query
+          description: Batas atas waktu (eksklusif); bila bertanggal YYYY-MM-DD mencakup seluruh hari itu
+          schema:
+            type: string
+        - name: aktor
+          in: query
+          description: ID akun persis, atau potongan nama/email aktor
+          schema:
+            type: string
+        - name: aksi
+          in: query
+          schema:
+            type: string
+            example: ASSIGN_ROLE
+        - name: entitas
+          in: query
+          schema:
+            type: string
+            example: pengguna
+        - name: hasil
+          in: query
+          schema:
+            type: string
+            enum: [BERHASIL, GAGAL, DITOLAK]
+        - name: limit
+          in: query
+          description: Ukuran halaman (bawaan 50, maksimum 200)
+          schema:
+            type: integer
+            minimum: 1
+        - name: cursor
+          in: query
+          description: Nilai `next_cursor` dari halaman sebelumnya
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satu halaman jejak audit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPageResponse"
+        "400":
+          description: Filter atau cursor tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `audit.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/master/wilayah:
     get:
       summary: Mendaftar wilayah (kabupaten/kota)
@@ -1660,6 +1739,70 @@ components:
           example: "1171"
 
     # ── Cold Storage ───────────────────────────────────────────────────
+    AuditRow:
+      type: object
+      properties:
+        id:
+          type: string
+        waktu:
+          type: string
+          format: date-time
+        aktor_id:
+          type: string
+          description: Kosong bila tanpa pelaku terautentikasi atau akunnya sudah dihapus
+        aktor_nama:
+          type: string
+          description: Snapshot nama aktor saat aksi
+        aktor_email:
+          type: string
+        aktor_peran:
+          type: string
+        aksi:
+          type: string
+          example: ASSIGN_ROLE
+        entitas:
+          type: string
+          example: pengguna
+        entitas_id:
+          type: string
+        hasil:
+          type: string
+          enum: [BERHASIL, GAGAL, DITOLAK]
+        ip:
+          type: string
+        user_agent:
+          type: string
+        correlation_id:
+          type: string
+        sebelum:
+          type: object
+          description: Keadaan objek sebelum aksi (bila mengubah data)
+        sesudah:
+          type: object
+          description: Keadaan objek sesudah aksi
+        metadata:
+          type: object
+
+    AuditPageResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuditRow"
+            next_cursor:
+              type: string
+              description: Kosong pada halaman terakhir
+
     ColdStorageResponse:
       type: object
       properties:

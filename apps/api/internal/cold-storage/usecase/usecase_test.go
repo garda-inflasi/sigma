@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
@@ -39,17 +41,18 @@ func (m *mockRepository) BulkAction(ctx context.Context, ids []string, action do
 	return args.Get(0).(domain.BulkResult), args.Error(1)
 }
 
-func (m *mockRepository) CreateAuditLog(ctx context.Context, log *domain.AuditLog) error {
-	args := m.Called(ctx, log)
-	return args.Error(0)
-}
-
 // ── Test Helpers ──────────────────────────────────────────────────────
 
 var fixedNow = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 
 func newTestUseCase(repo *mockRepository) *UseCase {
-	return New(repo, logger.NewDefault()).WithClock(func() time.Time { return fixedNow })
+	uc, _ := newTestUseCaseWithAudit(repo)
+	return uc
+}
+
+func newTestUseCaseWithAudit(repo *mockRepository) (*UseCase, *audittest.Recorder) {
+	recorder := &audittest.Recorder{}
+	return New(repo, logger.NewDefault(), recorder).WithClock(func() time.Time { return fixedNow }), recorder
 }
 
 // defaultQuery adalah kriteria setelah normalisasi bila pemanggil tidak mengisi apa pun.
@@ -252,7 +255,6 @@ func TestBulkAction_RencanakanDistribusi(t *testing.T) {
 
 	ids := []string{"S1", "S2"}
 	repo.On("BulkAction", mock.Anything, ids, domain.BulkRencanakanDistribusi).Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.89999999999999}, nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.Anything).Return(nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rencanakan_distribusi", IDs: ids})
 
@@ -267,7 +269,6 @@ func TestBulkAction_RekomendasiOlahan(t *testing.T) {
 
 	ids := []string{"S1"}
 	repo.On("BulkAction", mock.Anything, ids, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{Berhasil: 1, VolumeTon: 12.9}, nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.Anything).Return(nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: ids})
 
@@ -313,7 +314,6 @@ func TestBulkAction_DeduplicatesAndCountsMissingAsFailed(t *testing.T) {
 	// Hanya id unik, tak kosong, yang diteruskan ke repository.
 	repo.On("BulkAction", mock.Anything, []string{"S1", "S2", "S3"}, domain.BulkRekomendasiOlahan).
 		Return(domain.BulkResult{Berhasil: 2, VolumeTon: 40}, nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.Anything).Return(nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"S1", "S2", "S1", " ", "S3"}})
 
@@ -325,63 +325,49 @@ func TestBulkAction_DeduplicatesAndCountsMissingAsFailed(t *testing.T) {
 
 func TestBulkAction_RecordsAudit(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, recorder := newTestUseCaseWithAudit(repo)
 
 	repo.On("BulkAction", mock.Anything, []string{"S1", "S2"}, domain.BulkRencanakanDistribusi).
 		Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.9}, nil)
 
-	var logged *domain.AuditLog
-	repo.On("CreateAuditLog", mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) { logged = args.Get(1).(*domain.AuditLog) }).
-		Return(nil)
-
 	_, err := uc.BulkAction(context.Background(), BulkInput{
-		Action: "rencanakan_distribusi", IDs: []string{"S1", "S2"}, ActorID: "manajer_program", IP: "10.0.0.7",
+		Action: "rencanakan_distribusi", IDs: []string{"S1", "S2"}, ActorID: "manajer_program",
 	})
 
 	require.NoError(t, err)
-	require.NotNil(t, logged)
-	assert.NotEmpty(t, logged.ID)
+	entries := recorder.Entries()
+	require.Len(t, entries, 1, "tepat satu baris audit per aksi massal")
+	logged := entries[0]
 	assert.Equal(t, "BULK_rencanakan_distribusi", logged.Aksi)
 	assert.Equal(t, "stok_cold_storage", logged.Entitas)
 	assert.Equal(t, "2 lot", logged.EntitasID)
-	assert.Equal(t, "BERHASIL", logged.Hasil)
-	assert.Equal(t, fixedNow, logged.Waktu)
-	require.NotNil(t, logged.AktorID)
-	assert.Equal(t, "manajer_program", *logged.AktorID)
-	require.NotNil(t, logged.IP)
-	assert.Equal(t, "10.0.0.7", *logged.IP)
-	require.NotNil(t, logged.Metadata)
-	assert.JSONEq(t, `{"ids":["S1","S2"],"gagal":0,"volume_ton":65.9}`, *logged.Metadata)
+	assert.Equal(t, audit.HasilBerhasil, logged.Hasil)
+	assert.Equal(t, "manajer_program", logged.AktorID)
+	assert.Equal(t, map[string]any{"ids": []string{"S1", "S2"}, "gagal": 0, "volume_ton": 65.9}, logged.Metadata)
 }
 
 func TestBulkAction_AuditWithoutActorAndAllMissing(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, recorder := newTestUseCaseWithAudit(repo)
 
 	repo.On("BulkAction", mock.Anything, []string{"X"}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{}, nil)
-
-	var logged *domain.AuditLog
-	repo.On("CreateAuditLog", mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) { logged = args.Get(1).(*domain.AuditLog) }).
-		Return(nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"X"}})
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkOutcome{Berhasil: 0, Gagal: 1}, out)
-	require.NotNil(t, logged)
-	assert.Equal(t, "GAGAL", logged.Hasil)
-	assert.Nil(t, logged.AktorID)
-	assert.Nil(t, logged.IP)
+	logged, ok := recorder.Last()
+	require.True(t, ok)
+	assert.Equal(t, audit.HasilGagal, logged.Hasil)
+	assert.Empty(t, logged.AktorID)
 }
 
 func TestBulkAction_AuditFailureDoesNotFailAction(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, recorder := newTestUseCaseWithAudit(repo)
+	recorder.Err = assert.AnError
 
 	repo.On("BulkAction", mock.Anything, []string{"S1"}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{Berhasil: 1, VolumeTon: 5}, nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.Anything).Return(assert.AnError)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"S1"}})
 
@@ -391,12 +377,12 @@ func TestBulkAction_AuditFailureDoesNotFailAction(t *testing.T) {
 
 func TestBulkAction_RepoError(t *testing.T) {
 	repo := new(mockRepository)
-	uc := newTestUseCase(repo)
+	uc, recorder := newTestUseCaseWithAudit(repo)
 
 	repo.On("BulkAction", mock.Anything, []string{"S1"}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{}, assert.AnError)
 
 	_, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"S1"}})
 
 	assert.ErrorIs(t, err, assert.AnError)
-	repo.AssertNotCalled(t, "CreateAuditLog", mock.Anything, mock.Anything)
+	assert.Empty(t, recorder.Entries(), "aksi yang gagal diproses tidak dicatat sebagai selesai")
 }

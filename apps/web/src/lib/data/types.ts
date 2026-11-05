@@ -177,7 +177,7 @@ export interface AuditRow {
   aksi: string;
   entitas: string;
   entitasId: string;
-  hasil: "BERHASIL" | "DITOLAK";
+  hasil: "BERHASIL" | "GAGAL" | "DITOLAK";
   ip: string;
 }
 

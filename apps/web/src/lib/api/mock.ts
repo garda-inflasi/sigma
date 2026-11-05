@@ -300,8 +300,8 @@ export function mockAudit(): AuditRow[] {
   const rng = mulberry32(hashSeed("audit"));
   const aksi = [
     ["VALIDASI_HARGA", "EntriHarga"], ["PUBLIKASI_HARGA", "EntriHarga"], ["AKUI_EWS", "EwsAlert"], ["PINDAH_TAHAP", "Intervensi"],
-    ["SETUJUI_INTERVENSI", "Intervensi"], ["UBAH_AMBANG_EWS", "AturanEws"], ["MASUK", "Sesi"], ["EKSPOR_DATA", "EntriHarga"],
-    ["AJUKAN_MASTER", "Komoditas"], ["NONAKTIFKAN_PENGGUNA", "Pengguna"],
+    ["SETUJUI_INTERVENSI", "Intervensi"], ["UBAH_AMBANG_EWS", "AturanEws"], ["LOGIN", "pengguna"], ["EKSPOR_DATA", "EntriHarga"],
+    ["AJUKAN_MASTER", "Komoditas"], ["BULK_nonaktifkan", "pengguna"],
   ] as const;
   return Array.from({ length: 120 }, (_, i) => {
     const u = pick(rng, USERS);

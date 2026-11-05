@@ -14,6 +14,4 @@ type Repository interface {
 	RingkasanStok(ctx context.Context, ambang float64) (RingkasanStok, error)
 	// BulkAction memproses aksi massal; id yang tidak ditemukan tidak dihitung.
 	BulkAction(ctx context.Context, ids []string, action BulkAction) (BulkResult, error)
-	// CreateAuditLog mencatat jejak audit.
-	CreateAuditLog(ctx context.Context, log *AuditLog) error
 }

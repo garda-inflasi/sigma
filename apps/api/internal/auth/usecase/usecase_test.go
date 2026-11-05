@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/email"
@@ -127,11 +128,6 @@ func (m *mockRepository) MarkResetTokenUsed(ctx context.Context, id int64, usedA
 	return args.Error(0)
 }
 
-func (m *mockRepository) CreateAuditLog(ctx context.Context, log *domain.AuditLog) error {
-	args := m.Called(ctx, log)
-	return args.Error(0)
-}
-
 func (m *mockRepository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {
 	args := m.Called(ctx, ids, action)
 	return args.Get(0).(int64), args.Error(1)
@@ -140,6 +136,11 @@ func (m *mockRepository) BulkUpdateUsers(ctx context.Context, ids []string, acti
 // ── Test Helpers ──────────────────────────────────────────────────────
 
 func newTestUseCase(repo *mockRepository) *UseCase {
+	uc, _ := newTestUseCaseWithAudit(repo)
+	return uc
+}
+
+func newTestUseCaseWithAudit(repo *mockRepository) (*UseCase, *audittest.Recorder) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!",
 		token.WithAccessTTL(15*time.Minute),
 		token.WithRefreshTTL(7*24*time.Hour),
@@ -147,7 +148,8 @@ func newTestUseCase(repo *mockRepository) *UseCase {
 	cfg := DefaultConfig()
 	log := logger.NewDefault()
 	emailSender := email.New(email.Config{}) // SMTP not configured — no-op sender
-	return New(repo, tokenMgr, cfg, log, emailSender)
+	recorder := &audittest.Recorder{}
+	return New(repo, tokenMgr, cfg, log, emailSender, recorder), recorder
 }
 
 func activeUser() *domain.Pengguna {
@@ -175,7 +177,6 @@ func TestLogin_Success(t *testing.T) {
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	result, accessToken, refreshToken, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -333,7 +334,6 @@ func TestRefresh_RevokedToken(t *testing.T) {
 
 	repo.On("GetRefreshTokenByHash", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 	repo.On("RevokeRefreshTokenFamily", mock.Anything, "family-uuid").Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	_, _, err := uc.Refresh(context.Background(), "revoked-token", "10.0.0.1")
 
@@ -370,9 +370,8 @@ func TestLogout_Success(t *testing.T) {
 
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	repo.On("BlacklistJWT", mock.Anything, "jti-123", mock.Anything).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
-	err := uc.Logout(context.Background(), "user-123", "jti-123", "10.0.0.1")
+	err := uc.Logout(context.Background(), "user-123", "jti-123")
 
 	require.NoError(t, err)
 
@@ -384,9 +383,8 @@ func TestLogout_NoJTI(t *testing.T) {
 	uc := newTestUseCase(repo)
 
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
-	err := uc.Logout(context.Background(), "user-123", "", "10.0.0.1")
+	err := uc.Logout(context.Background(), "user-123", "")
 
 	require.NoError(t, err)
 
@@ -437,7 +435,6 @@ func TestChangePassword_Success(t *testing.T) {
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	accessToken, refreshToken, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
 
@@ -459,7 +456,6 @@ func TestChangePassword_ClearsMandatoryChangeFlagAndIssuesCleanToken(t *testing.
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	accessToken, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
 
@@ -481,7 +477,6 @@ func TestLogin_MandatoryChangeFlagIsCarriedByToken(t *testing.T) {
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	result, accessToken, _, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -544,9 +539,8 @@ func TestForgotPassword_Success(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 	repo.On("SaveResetToken", mock.Anything, "user-123", mock.AnythingOfType("string"), mock.Anything).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
-	err := uc.ForgotPassword(context.Background(), "test@example.com", "10.0.0.1")
+	err := uc.ForgotPassword(context.Background(), "test@example.com")
 
 	require.NoError(t, err)
 
@@ -560,7 +554,7 @@ func TestForgotPassword_EmailNotFound(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "unknown@example.com").Return(nil, errors.New("not found"))
 
 	// Should not return error to prevent email enumeration
-	err := uc.ForgotPassword(context.Background(), "unknown@example.com", "10.0.0.1")
+	err := uc.ForgotPassword(context.Background(), "unknown@example.com")
 
 	require.NoError(t, err)
 
@@ -576,7 +570,7 @@ func TestForgotPassword_InactiveAccount(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "inactive@example.com").Return(user, nil)
 
 	// Should not return error to prevent email enumeration
-	err := uc.ForgotPassword(context.Background(), "inactive@example.com", "10.0.0.1")
+	err := uc.ForgotPassword(context.Background(), "inactive@example.com")
 
 	require.NoError(t, err)
 
@@ -602,9 +596,8 @@ func TestResetPassword_Success(t *testing.T) {
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 	repo.On("MarkResetTokenUsed", mock.Anything, int64(1), mock.Anything).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
-	err := uc.ResetPassword(context.Background(), "valid-token-hash", "NewPass1@", "10.0.0.1")
+	err := uc.ResetPassword(context.Background(), "valid-token-hash", "NewPass1@")
 
 	require.NoError(t, err)
 
@@ -617,7 +610,7 @@ func TestResetPassword_InvalidToken(t *testing.T) {
 
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(nil, errors.New("not found"))
 
-	err := uc.ResetPassword(context.Background(), "invalid-hash", "NewPass1@", "10.0.0.1")
+	err := uc.ResetPassword(context.Background(), "invalid-hash", "NewPass1@")
 
 	assert.ErrorIs(t, err, ErrResetTokenInvalid)
 
@@ -637,7 +630,7 @@ func TestResetPassword_ExpiredToken(t *testing.T) {
 
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 
-	err := uc.ResetPassword(context.Background(), "expired-token", "NewPass1@", "10.0.0.1")
+	err := uc.ResetPassword(context.Background(), "expired-token", "NewPass1@")
 
 	assert.ErrorIs(t, err, ErrResetTokenExpired)
 
@@ -659,7 +652,7 @@ func TestResetPassword_UsedToken(t *testing.T) {
 
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 
-	err := uc.ResetPassword(context.Background(), "used-token", "NewPass1@", "10.0.0.1")
+	err := uc.ResetPassword(context.Background(), "used-token", "NewPass1@")
 
 	assert.ErrorIs(t, err, ErrResetTokenInvalid)
 
@@ -719,9 +712,8 @@ func TestCreateUser_Success(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, "new@example.com").Return(nil, errors.New("not found"))
 	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
-	err := uc.CreateUser(context.Background(), user, "NewUser1!")
+	err := uc.CreateUser(context.Background(), user, "NewUser1!", "admin-1")
 
 	require.NoError(t, err)
 	assert.NotNil(t, user.PasswordHash)
@@ -741,7 +733,7 @@ func TestCreateUser_EmailExists(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, "existing@example.com").Return(activeUser(), nil)
 
-	err := uc.CreateUser(context.Background(), user, "NewUser1!")
+	err := uc.CreateUser(context.Background(), user, "NewUser1!", "admin-1")
 
 	assert.ErrorIs(t, err, ErrEmailExists)
 
@@ -757,7 +749,7 @@ func TestCreateUser_WeakPassword(t *testing.T) {
 		Email: "new@example.com",
 	}
 
-	err := uc.CreateUser(context.Background(), user, "weak")
+	err := uc.CreateUser(context.Background(), user, "weak", "admin-1")
 
 	assert.ErrorIs(t, err, ErrWeakPassword)
 
@@ -801,7 +793,6 @@ func TestSetupMFA_Success(t *testing.T) {
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	secret, uri, backupCodes, err := uc.SetupMFA(context.Background(), "user-123")
 
@@ -851,7 +842,6 @@ func TestVerifyMFA_Success(t *testing.T) {
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	// Generate a valid TOTP code
 	code, err := totp.GenerateTOTP(secret, time.Now())
@@ -926,7 +916,6 @@ func TestValidateMFACode_BackupCode(t *testing.T) {
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil).Once()
 
 	valid, err := uc.ValidateMFACode(context.Background(), "user-123", "CODE0001")
 	require.NoError(t, err)
@@ -956,7 +945,6 @@ func TestDisableMFA_Success(t *testing.T) {
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
-	repo.On("CreateAuditLog", mock.Anything, mock.AnythingOfType("*domain.AuditLog")).Return(nil)
 
 	err := uc.DisableMFA(context.Background(), "user-123", "Test1234!")
 	require.NoError(t, err)

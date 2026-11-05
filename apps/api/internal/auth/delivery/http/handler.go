@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
@@ -29,7 +30,7 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 
 	ip := c.ClientIP()
-	user, accessToken, refreshToken, err := h.uc.Login(c.Request.Context(), req.Email, req.Password, ip)
+	user, accessToken, refreshToken, err := h.uc.Login(audit.RequestContext(c), req.Email, req.Password, ip)
 	if err != nil {
 		switch err {
 		case usecase.ErrInvalidCredentials:
@@ -61,7 +62,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 	}
 
 	ip := c.ClientIP()
-	accessToken, refreshToken, err := h.uc.Refresh(c.Request.Context(), req.RefreshToken, ip)
+	accessToken, refreshToken, err := h.uc.Refresh(audit.RequestContext(c), req.RefreshToken, ip)
 	if err != nil {
 		switch err {
 		case usecase.ErrInvalidToken:
@@ -85,8 +86,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 func (h *Handler) Logout(c *gin.Context) {
 	userID := c.GetString("user_id")
 	jti := c.GetString("jti")
-	ip := c.ClientIP()
-	if err := h.uc.Logout(c.Request.Context(), userID, jti, ip); err != nil {
+	if err := h.uc.Logout(audit.RequestContext(c), userID, jti); err != nil {
 		response.InternalError(c, "Gagal logout")
 		return
 	}
@@ -116,7 +116,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 	ip := c.ClientIP()
 
-	accessToken, refreshToken, err := h.uc.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword, ip)
+	accessToken, refreshToken, err := h.uc.ChangePassword(audit.RequestContext(c), userID, req.OldPassword, req.NewPassword, ip)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrWrongPassword):
@@ -142,8 +142,7 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	ip := c.ClientIP()
-	if err := h.uc.ForgotPassword(c.Request.Context(), req.Email, ip); err != nil {
+	if err := h.uc.ForgotPassword(audit.RequestContext(c), req.Email); err != nil {
 		// Always return success to prevent email enumeration
 		response.Success(c, nil)
 		return
@@ -160,8 +159,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	ip := c.ClientIP()
-	if err := h.uc.ResetPassword(c.Request.Context(), req.Token, req.Password, ip); err != nil {
+	if err := h.uc.ResetPassword(audit.RequestContext(c), req.Token, req.Password); err != nil {
 		switch err {
 		case usecase.ErrResetTokenInvalid, usecase.ErrResetTokenExpired:
 			response.Unauthorized(c, "Token reset tidak valid atau sudah kedaluwarsa")
@@ -193,7 +191,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		Lembaga: req.Lembaga,
 	}
 
-	if err := h.uc.CreateUser(c.Request.Context(), user, req.Password); err != nil {
+	if err := h.uc.CreateUser(audit.RequestContext(c), user, req.Password, c.GetString("user_id")); err != nil {
 		switch err {
 		case usecase.ErrEmailExists:
 			response.Conflict(c, "Email sudah terdaftar")
@@ -258,9 +256,8 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	actorID := c.GetString("user_id")
-	ip := c.ClientIP()
 
-	user, err := h.uc.UpdateUser(c.Request.Context(), id, usecase.UserPatch{
+	user, err := h.uc.UpdateUser(audit.RequestContext(c), id, usecase.UserPatch{
 		Nama:          req.Nama,
 		Email:         req.Email,
 		Peran:         req.Peran,
@@ -268,7 +265,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		Lembaga:       req.Lembaga,
 		KabupatenKode: req.KabupatenKode,
 		Status:        req.Status,
-	}, actorID, ip)
+	}, actorID)
 	if err != nil {
 		switch err {
 		case usecase.ErrUserNotFound:
@@ -290,9 +287,8 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 func (h *Handler) DeleteUser(c *gin.Context) {
 	id := c.Param("id")
 	actorID := c.GetString("user_id")
-	ip := c.ClientIP()
 
-	if err := h.uc.DeleteUser(c.Request.Context(), id, actorID, ip); err != nil {
+	if err := h.uc.DeleteUser(audit.RequestContext(c), id, actorID); err != nil {
 		switch err {
 		case usecase.ErrUserNotFound:
 			response.NotFound(c, "Pengguna tidak ditemukan")
@@ -320,9 +316,8 @@ func (h *Handler) ResetPasswordAdmin(c *gin.Context) {
 	}
 
 	actorID := c.GetString("user_id")
-	ip := c.ClientIP()
 
-	if err := h.uc.ResetPasswordAdmin(c.Request.Context(), id, req.NewPassword, actorID, ip); err != nil {
+	if err := h.uc.ResetPasswordAdmin(audit.RequestContext(c), id, req.NewPassword, actorID); err != nil {
 		switch err {
 		case usecase.ErrUserNotFound:
 			response.NotFound(c, "Pengguna tidak ditemukan")
@@ -352,9 +347,8 @@ func (h *Handler) AssignRole(c *gin.Context) {
 	}
 
 	actorID := c.GetString("user_id")
-	ip := c.ClientIP()
 
-	user, err := h.uc.AssignRole(c.Request.Context(), id, req.Peran, actorID, ip)
+	user, err := h.uc.AssignRole(audit.RequestContext(c), id, req.Peran, actorID)
 	if err != nil {
 		switch err {
 		case usecase.ErrUserNotFound:
@@ -398,8 +392,7 @@ func (h *Handler) BulkUser(c *gin.Context) {
 		return
 	}
 
-	ip := c.ClientIP()
-	count, err := h.uc.BulkUserAction(c.Request.Context(), req.IDs, req.Action, ip)
+	count, err := h.uc.BulkUserAction(audit.RequestContext(c), req.IDs, req.Action, c.GetString("user_id"))
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -416,7 +409,7 @@ func (h *Handler) BulkUser(c *gin.Context) {
 func (h *Handler) SetupMFA(c *gin.Context) {
 	userID := c.GetString("user_id")
 
-	secret, uri, backupCodes, err := h.uc.SetupMFA(c.Request.Context(), userID)
+	secret, uri, backupCodes, err := h.uc.SetupMFA(audit.RequestContext(c), userID)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -438,7 +431,7 @@ func (h *Handler) VerifyMFA(c *gin.Context) {
 	}
 
 	userID := c.GetString("user_id")
-	if err := h.uc.VerifyMFA(c.Request.Context(), userID, req.Code); err != nil {
+	if err := h.uc.VerifyMFA(audit.RequestContext(c), userID, req.Code); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
@@ -455,7 +448,7 @@ func (h *Handler) ValidateMFA(c *gin.Context) {
 	}
 
 	userID := c.GetString("user_id")
-	valid, err := h.uc.ValidateMFACode(c.Request.Context(), userID, req.Code)
+	valid, err := h.uc.ValidateMFACode(audit.RequestContext(c), userID, req.Code)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -478,7 +471,7 @@ func (h *Handler) DisableMFA(c *gin.Context) {
 	}
 
 	userID := c.GetString("user_id")
-	if err := h.uc.DisableMFA(c.Request.Context(), userID, req.Password); err != nil {
+	if err := h.uc.DisableMFA(audit.RequestContext(c), userID, req.Password); err != nil {
 		switch err {
 		case usecase.ErrWrongPassword:
 			response.Unauthorized(c, "Password salah")

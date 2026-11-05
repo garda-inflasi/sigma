@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/cold-storage/delivery/http"
 	"github.com/garda-inflasi/api/internal/cold-storage/repository/postgres"
 	"github.com/garda-inflasi/api/internal/cold-storage/usecase"
@@ -23,7 +24,7 @@ type Options struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, deps.Logger)
+	uc := usecase.New(repo, deps.Logger, audit.NewWriter(deps.DB))
 	handler := http.New(uc)
 
 	engine.GET("/cold-storage", middleware.JWTAuth(deps.Token), middleware.RequirePermission("coldstorage.lihat"), handler.GetAll)

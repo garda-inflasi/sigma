@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/delivery/http"
 	"github.com/garda-inflasi/api/internal/auth/repository/postgres"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
@@ -50,7 +51,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 	emailSender := email.New(emailCfg)
 
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, deps.Token, cfg, deps.Logger, emailSender)
+	uc := usecase.New(repo, deps.Token, cfg, deps.Logger, emailSender, audit.NewWriter(deps.DB))
 	handler := http.New(uc)
 
 	// Public routes — no auth middleware

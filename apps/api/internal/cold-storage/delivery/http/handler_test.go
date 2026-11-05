@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	"github.com/garda-inflasi/api/internal/cold-storage/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -31,7 +32,7 @@ type fakeRepo struct {
 	gotQuery  domain.StokQuery
 	gotIDs    []string
 	gotAction domain.BulkAction
-	gotAudit  *domain.AuditLog
+	audit     audittest.Recorder
 }
 
 func (f *fakeRepo) ListFasilitas(context.Context) ([]domain.FasilitasView, error) {
@@ -52,11 +53,6 @@ func (f *fakeRepo) BulkAction(_ context.Context, ids []string, a domain.BulkActi
 	return f.bulk, f.err
 }
 
-func (f *fakeRepo) CreateAuditLog(_ context.Context, l *domain.AuditLog) error {
-	f.gotAudit = l
-	return nil
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────
 
 var now = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
@@ -64,7 +60,7 @@ var now = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 // newRouter memasang handler dengan identitas dan izin seperti yang diisi JWTAuth.
 func newRouter(repo *fakeRepo, userID string, perms ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	uc := usecase.New(repo, logger.NewDefault()).WithClock(func() time.Time { return now })
+	uc := usecase.New(repo, logger.NewDefault(), &repo.audit).WithClock(func() time.Time { return now })
 	h := New(uc)
 
 	r := gin.New()
@@ -279,9 +275,10 @@ func TestBulk_Success(t *testing.T) {
 
 	assert.Equal(t, []string{"S1", "S2", "S3"}, repo.gotIDs)
 	assert.Equal(t, domain.BulkRencanakanDistribusi, repo.gotAction)
-	require.NotNil(t, repo.gotAudit, "aksi massal tercatat di audit")
-	require.NotNil(t, repo.gotAudit.AktorID)
-	assert.Equal(t, "manajer_program", *repo.gotAudit.AktorID)
+	entry, ok := repo.audit.Last()
+	require.True(t, ok, "aksi massal tercatat di audit")
+	assert.Equal(t, "manajer_program", entry.AktorID)
+	assert.Equal(t, "BULK_rencanakan_distribusi", entry.Aksi)
 }
 
 func TestBulk_PermissionPerAction(t *testing.T) {
@@ -306,7 +303,7 @@ func TestBulk_PermissionPerAction(t *testing.T) {
 			assert.Equal(t, tc.want, w.Code, w.Body.String())
 			if tc.want == http.StatusForbidden {
 				assert.Nil(t, repo.gotIDs, "aksi yang ditolak tidak boleh diproses")
-				assert.Nil(t, repo.gotAudit)
+				assert.Empty(t, repo.audit.Entries())
 			}
 		})
 	}

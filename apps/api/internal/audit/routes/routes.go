@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/audit/delivery/http"
 	"github.com/garda-inflasi/api/internal/audit/repository/postgres"
 	"github.com/garda-inflasi/api/internal/audit/usecase"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 

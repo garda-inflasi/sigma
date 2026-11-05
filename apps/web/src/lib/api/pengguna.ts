@@ -92,6 +92,17 @@ export function toPenggunaRow(u: UserResponse): PenggunaRow {
   };
 }
 
+/** Pengguna lengkap dari GET /v1/users/{id}: baris daftar ditambah kolom yang tidak ditampilkan di tabel. */
+export interface PenggunaDetail extends PenggunaRow {
+  /** Kode kabupaten; kosong bila cakupannya seluruh Aceh. */
+  kabupatenKode?: string;
+  dibuatPada: string;
+}
+
+export function toPenggunaDetail(u: UserResponse): PenggunaDetail {
+  return { ...toPenggunaRow(u), kabupatenKode: u.kabupaten_kode, dibuatPada: u.dibuat_pada };
+}
+
 export interface CreatePenggunaInput {
   id: string;
   nama: string;
@@ -127,6 +138,12 @@ export const penggunaApi = {
       `/api/pengguna${query ? `?${query}` : ""}`
     );
     return res.items.map(toPenggunaRow);
+  },
+
+  /** Satu pengguna dengan data segar dari server (GET /v1/users/{id}); 404 (ApiError) bila tidak ada. */
+  get: async (id: string) => {
+    const res = await bffFetch<UserResponse>(`/api/pengguna/${encodeURIComponent(id)}`);
+    return toPenggunaDetail(res);
   },
 
   create: (input: CreatePenggunaInput) =>

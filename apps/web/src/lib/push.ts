@@ -38,3 +38,21 @@ export async function aktifkanPush(vapidPublicKey: string): Promise<HasilPush> {
   await api.ews.daftarPush(body);
   return "aktif";
 }
+
+export type HasilLepasPush = "dilepas" | "tidak-ada" | "tidak-didukung";
+
+/**
+ * Melepas langganan Web Push perangkat ini: server dibatalkan lebih dulu, baru langganan browser
+ * dihapus, sehingga bila server gagal pengguna masih bisa mengulang. Tanpa langganan di
+ * perangkat ini tidak ada yang dibatalkan ("tidak-ada").
+ */
+export async function nonaktifkanPush(): Promise<HasilLepasPush> {
+  if (!pushDidukung()) return "tidak-didukung";
+  const registrasi = await navigator.serviceWorker.getRegistration("/");
+  const langganan = await registrasi?.pushManager.getSubscription();
+  if (!langganan) return "tidak-ada";
+
+  await api.ews.batalPush(langganan.endpoint);
+  await langganan.unsubscribe();
+  return "dilepas";
+}

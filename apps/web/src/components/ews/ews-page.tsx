@@ -3,7 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, ChevronsUp, CircleCheckBig, Download, Pencil, Play } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import { EwsSummary } from "@/components/eksekutif/exec-side";
@@ -22,6 +22,7 @@ import { useBulkAction, useEvaluasiEws, useEwsAturan, useEwsList } from "@/lib/q
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { AturanDialog } from "./aturan-dialog";
+import { EwsDetailSheet } from "./ews-detail-sheet";
 import { NotifikasiPreferensi } from "./notifikasi-preferensi";
 import { JENIS_EWS, JenisIcon, formatNilaiEws } from "./ews-meta";
 
@@ -75,7 +76,10 @@ export function EwsPage() {
   const sorot = params.get("id");
   const { data, isLoading } = useEwsList();
   const patch = (aksi: string) => (aksi === "akui" ? "DIAKUI" : aksi === "eskalasi" ? "DIESKALASI" : "SELESAI") as StatusEws;
-  const mut = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), patch: (r, a) => ({ ...r, status: patch(a) }) });
+  const mut = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), invalidate: qk.ews.all(), patch: (r, a) => ({ ...r, status: patch(a) }) });
+  // Detail yang terbuka ikut tersegarkan setelah aksi (invalidate di atas); ?id= dari feed langsung membukanya.
+  const [detailId, setDetailId] = useState<string | null>(sorot);
+  useEffect(() => { if (sorot) setDetailId(sorot); }, [sorot]);
   const ringkas = useMemo(() => {
     const aktif = (data ?? []).filter((a) => a.status !== "SELESAI");
     return { INFO: 0, WASPADA: 0, SIAGA: 0, KRITIS: 0, ...Object.fromEntries((["INFO", "WASPADA", "SIAGA", "KRITIS"] as Severity[]).map((s) => [s, aktif.filter((a) => a.severity === s).length])) } as Record<Severity, number>;
@@ -145,10 +149,12 @@ export function EwsPage() {
             initialSorting={[{ id: "skorDampak", desc: true }]}
             searchPlaceholder="Cari peringatan atau wilayah"
             rowTone={(a) => (a.id === sorot ? "data" : undefined)}
+            onRowClick={(a) => setDetailId(a.id)}
           />
         </div>
         <div className="space-y-6 xl:col-span-4"><AturanAmbang /><NotifikasiPreferensi /></div>
       </div>
+      <EwsDetailSheet id={detailId} onClose={() => setDetailId(null)} />
     </div>
   );
 }

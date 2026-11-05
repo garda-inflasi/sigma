@@ -35,7 +35,7 @@ export function EwsLiveFeed({ limit = 7, className }: { limit?: number; classNam
   const status = useEwsStore((s) => s.status);
   const [sel, setSel] = useState<string[]>([]);
   const patch = (aksi: string) => (r: EwsAlert): EwsAlert => ({ ...r, status: aksi === "akui" ? "DIAKUI" : "DIESKALASI" });
-  const mutate = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), patch: (r, a) => patch(a)(r) });
+  const mutate = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), invalidate: qk.ews.all(), patch: (r, a) => patch(a)(r) });
 
   const items = (data ?? []).filter((a) => a.status === "BARU" || a.status === "DIESKALASI" || baru.includes(a.id)).slice(0, limit);
   const selectedRows = items.filter((i) => sel.includes(i.id));

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatJadwal, toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type SumberDataResponse } from "./sumber";
+import { formatJadwal, toEksekusi, toPipeline, toSampel, toSumberData, toSumberDetail, type EksekusiResponse, type SumberDataResponse } from "./sumber";
 
 describe("formatJadwal", () => {
   it("menerjemahkan pola cron katalog ke teks Indonesia", () => {
@@ -130,5 +130,22 @@ describe("toPipeline", () => {
       toPipeline({ bronze: 3, silver: 20, gold: 5, demo: true, mutu: { kelengkapan: 97.5, akurasi: null, ketepatan_waktu: 66.7, konsistensi: 88 } }),
       { bronze: 3, silver: 20, gold: 5, demo: true, mutu: { kelengkapan: 97.5, akurasi: null, ketepatanWaktu: 66.7, konsistensi: 88 } },
     );
+  });
+});
+
+describe("toSumberDetail", () => {
+  it("memuat kolom daftar ditambah cron mentah, robots.txt, atribusi, dan URL dasar", () => {
+    const d = toSumberDetail({ ...dasar, url_dasar: "https://pihps.example", robots_txt_patuh: false });
+    assert.equal(d.nama, toSumberData(dasar).nama);
+    assert.equal(d.keberhasilan7h, 98.6);
+    assert.equal(d.jadwalCron, "0 10 * * *");
+    assert.equal(d.jadwal, "Harian 10.00");
+    assert.equal(d.robotsTxtPatuh, false);
+    assert.equal(d.atribusi, "Sumber: BI");
+    assert.equal(d.urlDasar, "https://pihps.example");
+  });
+
+  it("URL dasar kosong tetap null", () => {
+    assert.equal(toSumberDetail(dasar).urlDasar, null);
   });
 });

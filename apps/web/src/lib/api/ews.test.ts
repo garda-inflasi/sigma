@@ -5,6 +5,9 @@ import {
   toEwsAlert,
   kunciVapidKeBytes,
   toEwsAturan,
+  toBatalPushBody,
+  toEwsDetail,
+  toEwsRiwayat,
   toLanggananPushBody,
   toPreferensiBody,
   toPreferensiView,
@@ -159,5 +162,45 @@ describe("langganan push", () => {
   it("mengubah kunci VAPID base64url menjadi bytes", () => {
     // "AQID_w" = bytes 01 02 03 ff (base64url tanpa padding, memakai '_' )
     assert.deepEqual([...kunciVapidKeBytes("AQID_w")], [1, 2, 3, 255]);
+  });
+});
+
+describe("detail dan riwayat alert", () => {
+  it("toEwsDetail membawa jejak pengakuan, eskalasi, dan penutupan", () => {
+    const d = toEwsDetail({
+      ...alert,
+      aturan_id: "ATR-LH-CBM",
+      diakui_pada: "2026-10-16T09:00:00Z",
+      dieskalasi_pada: "2026-10-16T10:00:00Z",
+      selesai_pada: null,
+    });
+    assert.equal(d.judul, "Lonjakan harga cabai merah keriting");
+    assert.equal(d.aturanId, "ATR-LH-CBM");
+    assert.equal(d.diakuiPada, "2026-10-16T09:00:00Z");
+    assert.equal(d.dieskalasiPada, "2026-10-16T10:00:00Z");
+    assert.equal(d.selesaiPada, undefined);
+  });
+
+  it("toEwsDetail tetap sah untuk alert tanpa jejak (kolom opsional hilang)", () => {
+    const d = toEwsDetail(alert);
+    assert.equal(d.diakuiPada, undefined);
+    assert.equal(d.aturanId, undefined);
+  });
+
+  it("toEwsRiwayat: perubahan oleh mesin tidak punya pelaku dan status asal", () => {
+    assert.deepEqual(
+      toEwsRiwayat({ id: "r1", dari: null, ke: "BARU", oleh_id: null, oleh_nama: null, waktu: "2026-10-16T08:56:00Z", catatan: "Dibuat oleh rule engine" }),
+      { id: "r1", dari: undefined, ke: "BARU", olehNama: undefined, waktu: "2026-10-16T08:56:00Z", catatan: "Dibuat oleh rule engine" },
+    );
+  });
+
+  it("toEwsRiwayat: perubahan oleh pengguna memuat nama dan status asal", () => {
+    const r = toEwsRiwayat({ id: "r2", dari: "BARU", ke: "DIAKUI", oleh_id: "u1", oleh_nama: "Manajer Data", waktu: "2026-10-16T09:00:00Z", catatan: "" });
+    assert.equal(r.dari, "BARU");
+    assert.equal(r.olehNama, "Manajer Data");
+  });
+
+  it("toBatalPushBody hanya mengirim endpoint", () => {
+    assert.deepEqual(toBatalPushBody("https://push.example/a"), { endpoint: "https://push.example/a" });
   });
 });

@@ -18,6 +18,8 @@ import { ease, fadeUp, stagger } from "@/lib/motion/presets";
 import { useBulkAction, useTugasSaya } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
+import { hrefIsiTugas } from "@/lib/api/lapangan";
+import { TugasDetailSheet } from "./tugas-detail-sheet";
 
 const STATUS = {
   BELUM: { label: "Belum mulai", tone: "netral" },
@@ -42,6 +44,7 @@ export function TugasList() {
   const { data, isLoading } = useTugasSaya();
   const tugas = useMemo(() => data ?? [], [data]);
   const [sel, setSel] = useState<string[]>([]);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const tandaiSelesai = useBulkAction<TugasLapangan>({
     sumber: "lapangan/tugas",
     queryKey: qk.tugas.saya(),
@@ -99,7 +102,7 @@ export function TugasList() {
                 <Checkbox checked={checked} onCheckedChange={() => setSel((x) => (checked ? x.filter((i) => i !== t.id) : [...x, t.id]))} aria-label={`Pilih ${t.judul}`} className="mt-1 rounded-md" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{t.judul}</p>
+                    <button type="button" onClick={() => setDetailId(t.id)} aria-label={`Detail tugas ${t.judul}, ${t.pasarNama}, ${s.label}`} className="min-h-6 text-left font-medium underline-offset-4 hover:underline">{t.judul}</button>
                     <StatusBadge tone={s.tone}>{s.label}</StatusBadge>
                   </div>
                   <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="size-3.5" />{t.pasarNama}, harga {t.tipe === "KONSUMEN" ? "konsumen" : "produsen"}</p>
@@ -115,7 +118,7 @@ export function TugasList() {
                   <div className="mt-3 flex items-center justify-between">
                     <span className={cn("text-xs", t.status === "TERLAMBAT" ? "text-defisit-ink" : "text-muted-foreground")}>Tenggat {formatRelatif(t.tenggat)}</span>
                     {t.status !== "SELESAI" && (
-                      <SpringLink size="sm" href={`/lapangan/input?pasar=${t.pasarId}&komoditas=${t.komoditas.join(",")}&tipe=${t.tipe}&tugas=${t.id}`}>
+                      <SpringLink size="sm" href={hrefIsiTugas(t)}>
                         <Play /> {t.terisi ? "Lanjutkan" : "Mulai survei"}
                       </SpringLink>
                     )}
@@ -126,6 +129,7 @@ export function TugasList() {
           );
         })}
       </motion.ul>
+      <TugasDetailSheet id={detailId} daftar={tugas.find((t) => t.id === detailId)} onClose={() => setDetailId(null)} />
       <BulkActionBar rows={tugas.filter((t) => sel.includes(t.id))} actions={actions} entityLabel="tugas" onClear={() => setSel([])} placement="inline" className="fixed bottom-[96px] left-1/2 -translate-x-1/2" />
     </div>
   );

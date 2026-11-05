@@ -1,6 +1,6 @@
 /**
  * Pemetaan tugas lapangan dari representasi API Go (snake_case) ke model UI.
- * Endpoint: GET /v1/lapangan/tugas/saya, POST /v1/lapangan/tugas/bulk.
+ * Endpoint: GET /v1/lapangan/tugas/saya, GET /v1/lapangan/tugas/{id}, POST /v1/lapangan/tugas/bulk.
  */
 
 import type { TipeHarga, TugasLapangan } from "@/lib/data/types";
@@ -20,6 +20,31 @@ export interface TugasLapanganResponse {
   /** Jumlah komoditas yang sudah tercatat terhadap target. */
   terisi: number;
   tipe: TipeHarga;
+}
+
+/** GET /v1/lapangan/tugas/{id}: tugas ditambah nama dan status terisi tiap komoditas. */
+export interface TugasDetailResponse extends TugasLapanganResponse {
+  rincian_komoditas: { kode: string; nama: string; terisi: boolean }[];
+}
+
+export interface RincianKomoditasTugas {
+  kode: string;
+  nama: string;
+  /** Benar bila sudah ada entri harga tertaut ke tugas untuk komoditas ini. */
+  terisi: boolean;
+}
+
+export interface TugasDetail extends TugasLapangan {
+  rincian: RincianKomoditasTugas[];
+}
+
+export function toTugasDetail(t: TugasDetailResponse): TugasDetail {
+  return { ...toTugasLapangan(t), rincian: t.rincian_komoditas.map((r) => ({ kode: r.kode, nama: r.nama, terisi: r.terisi })) };
+}
+
+/** Tautan ke form input untuk mengisi tugas; dipakai daftar dan detail agar parameternya selalu sama. */
+export function hrefIsiTugas(t: Pick<TugasLapangan, "id" | "pasarId" | "komoditas" | "tipe">): string {
+  return `/lapangan/input?pasar=${t.pasarId}&komoditas=${t.komoditas.join(",")}&tipe=${t.tipe}&tugas=${t.id}`;
 }
 
 export function toTugasLapangan(t: TugasLapanganResponse): TugasLapangan {

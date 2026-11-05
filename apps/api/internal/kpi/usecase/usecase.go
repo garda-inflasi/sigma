@@ -183,3 +183,16 @@ func minWaktu(a, b time.Time) time.Time {
 	}
 	return a
 }
+
+// CatatEkspor mencatat bahwa laporan KPI periode tertentu diekspor. Ekspor adalah
+// keluarnya data, jadi pemanggil menyerahkan berkas hanya bila pencatatan berhasil.
+func (uc *UseCase) CatatEkspor(ctx context.Context, aktorID string, periode time.Time, wilayah *string, baris int) error {
+	meta := map[string]any{"periode": AwalBulan(periode).Format("2006-01"), "baris": baris}
+	if wilayah != nil {
+		meta["wilayah"] = *wilayah
+	}
+	return uc.audit.Write(ctx, audit.Entry{
+		AktorID: aktorID, Aksi: "EKSPOR_DATA", Entitas: "kpi_nilai", EntitasID: "laporan",
+		Hasil: audit.HasilBerhasil, Metadata: meta,
+	})
+}

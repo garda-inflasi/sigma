@@ -158,6 +158,15 @@ function Hasil({ hasil }: { hasil: RencanaOptimasi }) {
           {formatRupiah(hasil.totalBiaya, { compact: true })}
         </span>
         .
+        {hasil.penghematanPersen !== null && (
+          <span className="ml-2 text-muted-foreground">
+            Hemat{" "}
+            <span className="num font-medium text-foreground">
+              {formatAngka(hasil.penghematanPersen, 1)}%
+            </span>{" "}
+            dibanding rencana serakah (pasangan terdekat dulu).
+          </span>
+        )}
         {hasil.optimasiId && (
           <span className="ml-2 text-muted-foreground">
             Disimpan sebagai {hasil.optimasiId}.

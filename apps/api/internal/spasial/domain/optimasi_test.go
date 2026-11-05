@@ -238,3 +238,63 @@ func TestOptimalkan_PlanRespectsCapacities(t *testing.T) {
 		assert.InDelta(t, totalDem, h.TotalVolumeTon+sisa, 1e-6, "volume tersalur + belum terpenuhi = kebutuhan")
 	}
 }
+
+func TestSerakah_PicksNearestPairFirstAndLosesToOptimum(t *testing.T) {
+	jarak := tabel(map[[2]string]float64{
+		{"S1", "D1"}: 1, {"S1", "D2"}: 2, {"S2", "D1"}: 2, {"S2", "D2"}: 100,
+	})
+	sup := []SisaWilayah{{"S1", 10}, {"S2", 10}}
+	dem := []SisaWilayah{{"D1", 10}, {"D2", 10}}
+
+	serakah, err := Serakah(sup, dem, jarak, ParamOptimasi{TarifTonKm: 1000})
+	require.NoError(t, err)
+	optimum, err := Optimalkan(sup, dem, jarak, ParamOptimasi{TarifTonKm: 1000})
+	require.NoError(t, err)
+
+	assert.Equal(t, map[[2]string]float64{{"S1", "D1"}: 10, {"S2", "D2"}: 10}, alokasiMap(serakah))
+	assert.EqualValues(t, 1010*1000, serakah.TotalBiaya, "10x1 + 10x100 ton-km")
+	assert.EqualValues(t, 40*1000, optimum.TotalBiaya)
+	assert.Equal(t, optimum.TotalVolumeTon, serakah.TotalVolumeTon)
+}
+
+func TestSerakah_RespectsTravelTimeAndRejectsInvalidInput(t *testing.T) {
+	jarak := tabel(map[[2]string]float64{{"S", "D"}: 400})
+
+	h, err := Serakah([]SisaWilayah{{"S", 5}}, []SisaWilayah{{"D", 5}}, jarak, ParamOptimasi{TarifTonKm: 1, MaksJamTempuh: 4})
+
+	require.NoError(t, err)
+	assert.Empty(t, h.Alokasi, "400 km = 8 jam melebihi batas 4 jam")
+
+	_, err = Serakah([]SisaWilayah{{"A", 1}}, []SisaWilayah{{"A", 1}}, jarak, ParamOptimasi{})
+	assert.ErrorIs(t, err, ErrOptimasiTidakValid)
+	_, err = Serakah([]SisaWilayah{{"S", 1}}, []SisaWilayah{{"D", 1}}, func(string, string) Jalur { return Jalur{JarakKm: -1} }, ParamOptimasi{})
+	assert.ErrorIs(t, err, ErrOptimasiTidakValid)
+}
+
+func TestSerakah_NeverBeatsOptimumWhenSameVolumeIsShipped(t *testing.T) {
+	rng := rand.New(rand.NewPCG(13, 17))
+	for range 200 {
+		var sup, dem []SisaWilayah
+		for i := range 1 + rng.IntN(4) {
+			sup = append(sup, SisaWilayah{Kode: string(rune('A' + i)), Ton: float64(1+rng.IntN(300)) / 10})
+		}
+		for j := range 1 + rng.IntN(4) {
+			dem = append(dem, SisaWilayah{Kode: string(rune('a' + j)), Ton: float64(1+rng.IntN(300)) / 10})
+		}
+		km := map[[2]string]float64{}
+		for _, s := range sup {
+			for _, d := range dem {
+				km[[2]string{s.Kode, d.Kode}] = float64(1 + rng.IntN(200))
+			}
+		}
+		p := ParamOptimasi{TarifTonKm: 1}
+
+		optimum, err := Optimalkan(sup, dem, tabel(km), p)
+		require.NoError(t, err)
+		serakah, err := Serakah(sup, dem, tabel(km), p)
+		require.NoError(t, err)
+
+		require.Equal(t, optimum.TotalVolumeTon, serakah.TotalVolumeTon, "tanpa batas waktu keduanya menyalurkan volume maksimum")
+		require.LessOrEqual(t, optimum.TotalBiaya, serakah.TotalBiaya+int64(len(serakah.Alokasi)+len(optimum.Alokasi)), "optimum tidak boleh lebih mahal (toleransi pembulatan per rute)")
+	}
+}

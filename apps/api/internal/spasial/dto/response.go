@@ -198,6 +198,10 @@ type OptimasiResponse struct {
 	// BelumTerpenuhi adalah defisit yang tidak tertutup; SurplusSisa surplus yang tidak tersalurkan.
 	BelumTerpenuhi []SisaResponse `json:"belum_terpenuhi"`
 	SurplusSisa    []SisaResponse `json:"surplus_sisa"`
+	// BiayaPembanding adalah biaya rencana serakah (pasangan terdekat dulu) untuk
+	// volume yang sama; null bila volumenya berbeda. PenghematanPersen: penghematan rencana optimal terhadapnya.
+	BiayaPembanding   *int64   `json:"biaya_pembanding"`
+	PenghematanPersen *float64 `json:"penghematan_persen"`
 	// OptimasiID terisi (bukan null) bila rencana disimpan.
 	OptimasiID *string `json:"optimasi_id"`
 }
@@ -235,6 +239,7 @@ func ToOptimasiResponse(o usecase.OptimasiOutput) OptimasiResponse {
 		KomoditasKode: o.KomoditasKode, KomoditasNama: o.KomoditasNama, Periode: o.Periode.Format("2006-01-02"),
 		Rute: rute, TotalVolumeTon: o.TotalVolumeTon, TotalBiaya: o.TotalBiaya,
 		BelumTerpenuhi: sisaResponses(o.BelumTerpenuhi), SurplusSisa: sisaResponses(o.SurplusSisa),
+		BiayaPembanding: o.BiayaPembanding, PenghematanPersen: o.PenghematanPersen,
 	}
 	if o.OptimasiID != "" {
 		res.OptimasiID = &o.OptimasiID

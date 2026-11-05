@@ -1,7 +1,14 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Building2, ChartNoAxesCombined, Database, Truck } from "lucide-react";
+import {
+  Building2,
+  ChartNoAxesCombined,
+  Database,
+  Download,
+  Loader2,
+  Truck,
+} from "lucide-react";
 import { PageHeader } from "@/components/garda/page-header";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
@@ -18,7 +25,7 @@ import {
 import { garda } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
 import { ease, fadeUp, stagger } from "@/lib/motion/presets";
-import { useKpi } from "@/lib/query/hooks";
+import { useEksporKpi, useKpi } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
 const KELOMPOK: Record<KpiKelompok, { judul: string; icon: typeof Database }> =
@@ -133,12 +140,28 @@ function KpiBaris({ k }: { k: KpiIndikator }) {
 /** Ekosistem KPI sesuai blueprint: capaian terhadap target dari hulu ke hilir. */
 export function KpiPage() {
   const { data, isLoading, isError } = useKpi();
+  const ekspor = useEksporKpi();
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
         title="Indikator kinerja"
         description="Capaian terhadap target PRD. Untuk indikator bertanda makin rendah makin baik, nilai lebih rendah berarti lebih baik. Indikator yang butuh model atau data yang belum ada tampil sebagai menunggu data."
+        actions={
+          <button
+            type="button"
+            onClick={() => ekspor.mutate()}
+            disabled={ekspor.isPending}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-4 text-sm font-medium shadow-ambient-sm hover:bg-white disabled:opacity-60 dark:bg-white/[0.06]"
+          >
+            {ekspor.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            Unduh laporan CSV
+          </button>
+        }
       />
       {isLoading ? (
         <div className="grid gap-6 lg:grid-cols-2">

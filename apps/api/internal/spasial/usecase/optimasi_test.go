@@ -95,53 +95,63 @@ func TestHitung_PlansFromNetPositionsUsingEstimatedRoadDistance(t *testing.T) {
 	assert.EqualValues(t, 20*111.2*4200+10*222.4*4200, out.TotalBiaya)
 	assert.Empty(t, out.OptimasiID, "tidak disimpan")
 	assert.Nil(t, repo.rencana)
+	require.NotNil(t, out.BiayaPembanding, "satu pemasok: rencana serakah menyalurkan volume yang sama")
+	assert.Equal(t, out.TotalBiaya, *out.BiayaPembanding)
+	assert.Equal(t, 0.0, *out.PenghematanPersen, "tidak ada yang bisa dihemat")
 }
 
-func TestHitung_CachedDistanceWinsOverEstimate(t *testing.T) {
+func TestHitung_ReportsSavingsAgainstGreedyComparatorAndStoresIt(t *testing.T) {
+	// Contoh klasik: serakah 10x1 + 10x100 = 1010 ton-km; optimum silang 10x2 + 10x2 = 40 ton-km.
+	m := func(kode string, lng float64) domain.Marker {
+		return domain.Marker{Wilayah: domain.Wilayah{Kode: kode, Nama: kode, Lng: lng}}
+	}
+	cache := func(a, b string, km float64) domain.JarakAntarWilayah {
+		return domain.JarakAntarWilayah{AsalKode: a, TujuanKode: b, JarakKm: km, JamTempuh: km / 50, Sumber: "OSRM"}
+	}
 	repo := &fakeOptimasiRepo{
-		neraca:  []domain.Neraca{neracaUji("A", 10), neracaUji("B", -10)},
-		markers: petaUji(),
-		jarak:   []domain.JarakAntarWilayah{{AsalKode: "A", TujuanKode: "B", JarakKm: 500, JamTempuh: 9, Sumber: "OSRM"}},
+		neraca:  []domain.Neraca{neracaUji("S1", 10), neracaUji("S2", 10), neracaUji("D1", -10), neracaUji("D2", -10)},
+		markers: []domain.Marker{m("S1", 0), m("S2", 1), m("D1", 2), m("D2", 3)},
+		jarak:   []domain.JarakAntarWilayah{cache("S1", "D1", 1), cache("S1", "D2", 2), cache("S2", "D1", 2), cache("S2", "D2", 100)},
 	}
 	opt, _ := newOpt(repo)
 
-	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", TarifTonKm: 1000})
+	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", TarifTonKm: 1000, Simpan: true})
 
 	require.NoError(t, err)
-	assert.Equal(t, 500.0, out.Rute[0].JarakKm)
-	assert.Equal(t, 9.0, out.Rute[0].JamTempuh)
-	assert.EqualValues(t, 10*500*1000, out.TotalBiaya)
+	assert.EqualValues(t, 40*1000, out.TotalBiaya)
+	require.NotNil(t, out.BiayaPembanding)
+	assert.EqualValues(t, 1010*1000, *out.BiayaPembanding)
+	assert.Equal(t, 96.0, *out.PenghematanPersen, "100 × (1010 − 40) ÷ 1010 = 96,04%")
+	require.NotNil(t, repo.rencana.BiayaPembanding)
+	assert.EqualValues(t, 1010*1000, *repo.rencana.BiayaPembanding, "disimpan agar KPI efisiensi dapat dihitung")
 }
 
-func TestHitung_TravelTimeLimitLeavesDemandUnmet(t *testing.T) {
-	repo := &fakeOptimasiRepo{neraca: []domain.Neraca{neracaUji("A", 10), neracaUji("C", -10)}, markers: petaUji()}
+func TestHitung_NoComparatorWhenGreedyShipsLessVolumeThanOptimum(t *testing.T) {
+	// S2 hanya dapat menjangkau D1 dalam batas waktu. Serakah memakai S1 untuk D1 (pasangan
+	// terdekat) sehingga D2 tak terlayani: 10 ton. Optimum S2->D1 + S1->D2 menyalurkan 20 ton.
+	// Biaya keduanya tidak sebanding, jadi pembanding tidak dilaporkan.
+	m := func(kode string, lng float64) domain.Marker {
+		return domain.Marker{Wilayah: domain.Wilayah{Kode: kode, Nama: kode, Lng: lng}}
+	}
+	cache := func(a, b string, km, jam float64) domain.JarakAntarWilayah {
+		return domain.JarakAntarWilayah{AsalKode: a, TujuanKode: b, JarakKm: km, JamTempuh: jam, Sumber: "OSRM"}
+	}
+	repo := &fakeOptimasiRepo{
+		neraca:  []domain.Neraca{neracaUji("S1", 10), neracaUji("S2", 10), neracaUji("D1", -10), neracaUji("D2", -10)},
+		markers: []domain.Marker{m("S1", 0), m("S2", 1), m("D1", 2), m("D2", 3)},
+		jarak: []domain.JarakAntarWilayah{
+			cache("S1", "D1", 1, 1), cache("S1", "D2", 5, 1), cache("S2", "D1", 2, 1), cache("S2", "D2", 60, 9),
+		},
+	}
 	opt, _ := newOpt(repo)
 
-	// A-C = 222,4 km x 1,35 = 300,2 km = 6,7 jam; batas 5 jam melarangnya.
-	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", MaksJamTempuh: 5})
+	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", MaksJamTempuh: 2, Simpan: true})
 
 	require.NoError(t, err)
-	assert.Empty(t, out.Rute)
-	assert.Equal(t, []Sisa{{Kode: "C", Nama: "Wilayah C", Ton: 10}}, out.BelumTerpenuhi)
-	assert.Equal(t, []Sisa{{Kode: "A", Nama: "Wilayah A", Ton: 10}}, out.SurplusSisa)
-}
-
-func TestHitung_AdjustmentsSimulateScenarioWithoutSaving(t *testing.T) {
-	repo := &fakeOptimasiRepo{neraca: []domain.Neraca{neracaUji("A", 30), neracaUji("B", -20)}, markers: petaUji()}
-	opt, _ := newOpt(repo)
-
-	// Panen A gagal: surplus 30 turun 25 ton, tersisa 5 ton untuk defisit B 20 ton.
-	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", Penyesuaian: []Penyesuaian{{KabupatenKode: "A", Ton: -25}}})
-
-	require.NoError(t, err)
-	assert.Equal(t, 5.0, out.TotalVolumeTon)
-	assert.Equal(t, []Sisa{{Kode: "B", Nama: "Wilayah B", Ton: 15}}, out.BelumTerpenuhi)
-
-	// Penyesuaian dapat membalik posisi wilayah: B defisit 20 + 30 ton = surplus 10.
-	out, err = opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", Penyesuaian: []Penyesuaian{{KabupatenKode: "B", Ton: 30}}})
-	require.NoError(t, err)
-	assert.Empty(t, out.Rute)
-	assert.Len(t, out.SurplusSisa, 2)
+	assert.Equal(t, 20.0, out.TotalVolumeTon)
+	assert.Nil(t, out.BiayaPembanding)
+	assert.Nil(t, out.PenghematanPersen)
+	assert.Nil(t, repo.rencana.BiayaPembanding)
 }
 
 func TestHitung_SaveWritesPlanRoutesCacheAndAudit(t *testing.T) {

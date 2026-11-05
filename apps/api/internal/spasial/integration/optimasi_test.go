@@ -36,7 +36,10 @@ type optimasiResp struct {
 	TotalVolumeTon float64 `json:"total_volume_ton"`
 	TotalBiaya     int64   `json:"total_biaya"`
 	OptimasiID     *string `json:"optimasi_id"`
-	Rute           []struct {
+	// Pembanding: rencana serakah untuk volume yang sama.
+	BiayaPembanding   *int64   `json:"biaya_pembanding"`
+	PenghematanPersen *float64 `json:"penghematan_persen"`
+	Rute              []struct {
 		AsalKode   string  `json:"asal_kode"`
 		TujuanKode string  `json:"tujuan_kode"`
 		VolumeTon  float64 `json:"volume_ton"`
@@ -282,8 +285,14 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 			TotalBiaya        int64
 			DibuatOleh        string
 			BelumTerpenuhiTon float64
+			BiayaPembanding   *int64
 		}
-		require.NoError(t, db.Raw(`SELECT parameter::text, total_volume_ton, total_biaya, dibuat_oleh, belum_terpenuhi_ton FROM optimasi_rute WHERE id = ?`, *first.OptimasiID).Scan(&rencana).Error)
+		require.NoError(t, db.Raw(`SELECT parameter::text, total_volume_ton, total_biaya, dibuat_oleh, belum_terpenuhi_ton, biaya_pembanding FROM optimasi_rute WHERE id = ?`, *first.OptimasiID).Scan(&rencana).Error)
+		require.NotNil(t, rencana.BiayaPembanding, "semua wilayah terhubung: rencana serakah menyalurkan volume yang sama")
+		assert.GreaterOrEqual(t, *rencana.BiayaPembanding+int64(len(first.Rute)), rencana.TotalBiaya, "optimum tidak lebih mahal dari serakah")
+		require.NotNil(t, first.PenghematanPersen)
+		assert.GreaterOrEqual(t, *first.PenghematanPersen, 0.0)
+		assert.Equal(t, rencana.BiayaPembanding, first.BiayaPembanding)
 		assert.JSONEq(t, `{"tarif_ton_km":4200,"faktor_jalan":1.35,"kecepatan_km":45,"maks_jam_tempuh":0}`, rencana.Parameter)
 		assert.Equal(t, first.TotalVolumeTon, rencana.TotalVolumeTon)
 		assert.Equal(t, first.TotalBiaya, rencana.TotalBiaya)

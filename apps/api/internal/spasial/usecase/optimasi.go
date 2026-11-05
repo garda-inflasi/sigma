@@ -106,6 +106,10 @@ type OptimasiOutput struct {
 	TotalVolumeTon               float64
 	TotalBiaya                   int64
 	BelumTerpenuhi, SurplusSisa  []Sisa
+	// BiayaPembanding adalah biaya rencana serakah untuk volume yang sama (nil bila
+	// volumenya berbeda); PenghematanPersen = 100 × (pembanding − biaya) ÷ pembanding.
+	BiayaPembanding   *int64
+	PenghematanPersen *float64
 	// OptimasiID terisi bila rencana disimpan.
 	OptimasiID string
 }
@@ -165,10 +169,21 @@ func (o *Optimasi) Hitung(ctx context.Context, in OptimasiInput) (OptimasiOutput
 		return OptimasiOutput{}, err
 	}
 
+	pembanding, err := domain.Serakah(pasokan, kebutuhan, peta.jalur, domain.ParamOptimasi{TarifTonKm: p.TarifTonKm, MaksJamTempuh: p.MaksJamTempuh})
+	if err != nil {
+		return OptimasiOutput{}, err
+	}
+
 	out := OptimasiOutput{
 		KomoditasKode: in.KomoditasKode, KomoditasNama: neraca[0].KomoditasNama, Periode: periode,
 		TotalVolumeTon: hasil.TotalVolumeTon, TotalBiaya: hasil.TotalBiaya,
 		BelumTerpenuhi: bernama(hasil.BelumTerpenuhi, nama), SurplusSisa: bernama(hasil.SurplusSisa, nama),
+	}
+	// Pembanding hanya berarti bila volumenya sama (jika tidak, biayanya tidak sebanding).
+	if math.Abs(pembanding.TotalVolumeTon-hasil.TotalVolumeTon) < 0.05 && pembanding.TotalBiaya > 0 {
+		out.BiayaPembanding = &pembanding.TotalBiaya
+		hemat := math.Round(100*float64(pembanding.TotalBiaya-hasil.TotalBiaya)/float64(pembanding.TotalBiaya)*10) / 10
+		out.PenghematanPersen = &hemat
 	}
 	for _, a := range hasil.Alokasi {
 		out.Rute = append(out.Rute, Rute{Alokasi: a, AsalNama: nama[a.AsalKode], TujuanNama: nama[a.TujuanKode]})
@@ -297,7 +312,8 @@ func (o *Optimasi) simpan(ctx context.Context, in OptimasiInput, p parameterTers
 	}
 	rencana := domain.OptimasiRute{
 		ID: id, KomoditasKode: in.KomoditasKode, Periode: out.Periode, Parameter: string(parameter),
-		TotalVolumeTon: hasil.TotalVolumeTon, TotalBiaya: hasil.TotalBiaya, BelumTerpenuhiTon: math.Round(belum*10) / 10, DibuatPada: now,
+		TotalVolumeTon: hasil.TotalVolumeTon, TotalBiaya: hasil.TotalBiaya, BelumTerpenuhiTon: math.Round(belum*10) / 10,
+		BiayaPembanding: out.BiayaPembanding, DibuatPada: now,
 	}
 	if in.ActorID != "" {
 		rencana.DibuatOleh = &in.ActorID

@@ -1366,6 +1366,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/kpi/export:
+    get:
+      summary: Laporan KPI satu periode (CSV)
+      description: |
+        Isi sama dengan `/v1/kpi` untuk `periode` dan `wilayah` yang sama: satu baris per KPI,
+        kolom `kelompok, kode, nama, satuan, arah_baik, otomatis, periode_nilai, nilai, target,
+        ambang_waspada, baseline, status`. KPI tanpa nilai memiliki `nilai` kosong (bukan 0) dan
+        status `MENUNGGU_DATA`. CSV bertitik koma dengan BOM UTF-8. Ekspor dicatat sebagai
+        `EKSPOR_DATA` di audit trail. Butuh izin `kpi.lihat`.
+
+        KPI otomatis 16-B: MAPE prediksi harga (proyeksi bertanggal target lewat vs harga konsumen
+        tervalidasi), volatilitas (CV harga produsen), margin produsen-konsumen, volume masuk cold
+        storage, dan efisiensi biaya rute (rencana optimal vs pembanding serakah). Utilisasi dan
+        risiko food loss memakai buku besar transaksi stok. F1/AUC EWS, RMSE shelf-life, akurasi
+        produksi, penurunan food loss, dan indeks koordinasi belum punya dasar data.
+      operationId: exportKpi
+      tags:
+        - KPI
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: periode
+          in: query
+          description: Bulan acuan `YYYY-MM` (bawaan bulan berjalan)
+          schema:
+            type: string
+            example: "2026-10"
+        - name: wilayah
+          in: query
+          description: Kode kabupaten/kota 4 digit (bawaan seluruh provinsi)
+          schema:
+            type: string
+            example: "1171"
+      responses:
+        "200":
+          description: Berkas CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Periode atau wilayah tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `kpi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/kpi/{kode}/riwayat:
     get:
       summary: Riwayat satu KPI
@@ -5139,6 +5198,16 @@ components:
               description: Surplus yang tidak tersalurkan
               items:
                 $ref: "#/components/schemas/SisaWilayah"
+            biaya_pembanding:
+              type: integer
+              format: int64
+              nullable: true
+              description: Biaya rencana serakah (pasangan terdekat dulu) untuk volume yang sama; null bila volumenya berbeda
+            penghematan_persen:
+              type: number
+              format: double
+              nullable: true
+              description: 100 × (biaya_pembanding − total_biaya) ÷ biaya_pembanding; dasar KPI efisiensi biaya logistik
             optimasi_id:
               type: string
               nullable: true

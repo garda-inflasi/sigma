@@ -30,7 +30,9 @@ const (
 )
 
 // Penghitung otomatis (kolom sumber_query). KPI tanpa penghitung bernilai
-// kosong sampai datanya tersedia (KPI berbasis model dan dampak: 16-B).
+// kosong sampai datanya tersedia: F1/AUC EWS (butuh label kejadian), RMSE
+// shelf-life, akurasi produksi, penurunan food loss (butuh baseline), dan
+// indeks koordinasi (butuh survei) belum punya dasar data (16-B).
 const (
 	QProdusenTerverifikasi = "produsen_terverifikasi"
 	QKetepatanData         = "ketepatan_data"
@@ -38,6 +40,12 @@ const (
 	QUtilisasiColdStorage  = "utilisasi_cold_storage"
 	QRisikoFoodLoss        = "risiko_food_loss"
 	QRekomendasiAI         = "rekomendasi_ai_dieksekusi"
+	// 16-B: model dan dampak.
+	QMapeHarga        = "mape_harga"
+	QVolatilitasHarga = "volatilitas_harga"
+	QMarginHarga      = "margin_produsen_konsumen"
+	QVolumeAgregasi   = "volume_agregasi"
+	QEfisiensiBiaya   = "efisiensi_biaya_logistik"
 )
 
 // Definisi memetakan tabel kpi_definisi.

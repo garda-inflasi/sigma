@@ -11,6 +11,7 @@ import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { TransaksiPayload } from "@/lib/api/cold-storage";
 import type { OptimasiParams } from "@/lib/api/spasial";
+import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
 import type { StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
@@ -101,6 +102,16 @@ export function useSumberBulk() {
   });
 }
 
+/** Mengunduh laporan KPI (CSV) bulan berjalan. */
+export function useEksporKpi() {
+  return useMutation({
+    mutationFn: unduhLaporanKpi,
+    onSuccess: () => toast.success("Laporan KPI diunduh", { description: "Ekspor tercatat di audit trail." }),
+    onError: (err) => {
+      toast.error("Ekspor laporan gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 export const useKpi = () => useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
 export const usePengguna = (search?: string) =>
   useQuery({

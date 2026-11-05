@@ -66,6 +66,8 @@ describe("toRencanaOptimasi", () => {
     total_biaya: 34_482_000,
     belum_terpenuhi: [{ kode: "1108", nama: "KABUPATEN ACEH BESAR", ton: 5.5 }],
     surplus_sisa: [],
+    biaya_pembanding: 40_000_000,
+    penghematan_persen: 13.8,
     optimasi_id: null,
   };
 
@@ -80,6 +82,7 @@ describe("toRencanaOptimasi", () => {
       { kode: "1108", nama: "Kab. Aceh Besar", ton: 5.5 },
     ]);
     assert.equal(r.optimasiId, null);
+    assert.equal(r.penghematanPersen, 13.8);
   });
 
   it("meneruskan id rencana yang disimpan", () => {

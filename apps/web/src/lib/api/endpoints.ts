@@ -96,7 +96,7 @@ export const api = {
     /** Rencana distribusi optimal surplus → defisit; `simpan` menulisnya sebagai usulan rute. */
     optimasi: (p: OptimasiParams): Promise<RencanaOptimasi> =>
       MODE_MOCK
-        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], optimasiId: null }), 400, 800)
+        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], penghematanPersen: null, optimasiId: null }), 400, 800)
         : apiFetch<OptimasiResponse>("/v1/spasial/optimasi-rute", { method: "POST", body: JSON.stringify(toOptimasiBody(p)) }).then(toRencanaOptimasi),
     /** Poligon wilayah (perkiraan pada data demo); mode mock tidak punya geometri. */
     geometri: (zoom: number): Promise<GeometriWilayah[]> =>

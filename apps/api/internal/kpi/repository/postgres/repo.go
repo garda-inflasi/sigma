@@ -170,33 +170,124 @@ var penghitung = map[string]string{
 		                 / ((SELECT COUNT(*) FROM hari) * (SELECT n FROM pasangan))
 		       END AS nilai`,
 
-	// Lot dianggap tersimpan dari masuk_pada sampai kedaluwarsa_pada: belum ada
-	// catatan stok keluar, jadi ini pendekatan; kapasitas memakai fasilitas operasional saat ini.
+	// Stok per fasilitas pada @asof dihitung dari buku besar transaksi_stok (13-B):
+	// masuk menambah tujuan, keluar mengurangi asal, pindah memindahkan keduanya.
+	// Sebelum ada satu pun transaksi (instalasi lama) dipakai pendekatan lama: lot
+	// dianggap tersimpan dari masuk_pada sampai kedaluwarsa_pada.
+	// Kapasitas memakai fasilitas operasional saat ini.
 	domain.QUtilisasiColdStorage: `
 		WITH kapasitas AS (
 			SELECT COALESCE(SUM(kapasitas_ton), 0) AS total FROM cold_storage WHERE status = 'OPERASIONAL'
-		), stok AS (
-			SELECT s.volume_ton
+		), gerak AS (
+			SELECT fasilitas_tujuan_id AS fasilitas, volume_ton AS delta FROM transaksi_stok
+			 WHERE waktu <= @asof AND fasilitas_tujuan_id IS NOT NULL
+			UNION ALL
+			SELECT fasilitas_asal_id, -volume_ton FROM transaksi_stok
+			 WHERE waktu <= @asof AND fasilitas_asal_id IS NOT NULL
+		), buku AS (
+			SELECT SUM(g.delta) AS volume
+			  FROM gerak g JOIN cold_storage c ON c.id = g.fasilitas AND c.status = 'OPERASIONAL'
+		), lama AS (
+			SELECT SUM(s.volume_ton) AS volume
 			  FROM stok_cold_storage s JOIN cold_storage c ON c.id = s.cold_storage_id
 			 WHERE c.status = 'OPERASIONAL' AND s.masuk_pada <= @asof AND s.kedaluwarsa_pada > @asof
 		)
-		SELECT CASE WHEN EXISTS (SELECT 1 FROM stok) AND (SELECT total FROM kapasitas) > 0
-		            THEN 100.0 * (SELECT SUM(volume_ton) FROM stok) / (SELECT total FROM kapasitas)
+		SELECT CASE
+		         WHEN (SELECT total FROM kapasitas) = 0 THEN NULL
+		         WHEN EXISTS (SELECT 1 FROM transaksi_stok) THEN
+		              CASE WHEN EXISTS (SELECT 1 FROM transaksi_stok WHERE waktu <= @asof)
+		                   THEN 100.0 * (SELECT volume FROM buku) / (SELECT total FROM kapasitas) END
+		         ELSE 100.0 * (SELECT volume FROM lama) / (SELECT total FROM kapasitas)
 		       END AS nilai`,
 
+	// Volume tiap lot pada @asof dari buku besar: masuk + terima pindah sebagian - keluar
+	// - kirim pindah sebagian. Risiko memakai nilai risiko lot saat ini.
 	domain.QRisikoFoodLoss: `
-		WITH stok AS (
-			SELECT volume_ton, risiko_food_loss
+		WITH lot AS (
+			SELECT s.risiko_food_loss AS risiko,
+			       COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_id = s.id AND t.jenis = 'MASUK' AND t.waktu <= @asof), 0)
+			     + COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_baru_id = s.id AND t.waktu <= @asof), 0)
+			     - COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_id = s.id AND t.jenis = 'KELUAR' AND t.waktu <= @asof), 0)
+			     - COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_id = s.id AND t.jenis = 'PINDAH' AND t.lot_baru_id IS NOT NULL AND t.waktu <= @asof), 0)
+			       AS volume
+			  FROM stok_cold_storage s
+		), buku AS (
+			SELECT volume, risiko FROM lot WHERE volume > 0.000001
+		), lama AS (
+			SELECT volume_ton AS volume, risiko_food_loss AS risiko
 			  FROM stok_cold_storage WHERE masuk_pada <= @asof AND kedaluwarsa_pada > @asof
+		), dasar AS (
+			SELECT volume, risiko FROM buku WHERE EXISTS (SELECT 1 FROM transaksi_stok)
+			UNION ALL
+			SELECT volume, risiko FROM lama WHERE NOT EXISTS (SELECT 1 FROM transaksi_stok)
 		)
-		SELECT CASE WHEN (SELECT COALESCE(SUM(volume_ton), 0) FROM stok) > 0
-		            THEN 100.0 * (SELECT SUM(volume_ton * risiko_food_loss) FROM stok) / (SELECT SUM(volume_ton) FROM stok)
-		       END AS nilai`,
+		SELECT 100.0 * SUM(volume * risiko) / NULLIF(SUM(volume), 0) AS nilai FROM dasar`,
 
 	domain.QRekomendasiAI: `
 		SELECT 100.0 * COUNT(*) FILTER (WHERE tahap LIKE '%-selesai') / NULLIF(COUNT(*), 0) AS nilai
 		  FROM intervensi
 		 WHERE rekomendasi_ai AND dibuat_pada >= @mulai AND dibuat_pada < @akhir`,
+
+	// ── 16-B: model dan dampak. Hanya entri harga yang lolos validasi dianggap kenyataan.
+
+	// MAPE prediksi harga: proyeksi yang tanggal targetnya jatuh pada bulan itu dibandingkan
+	// dengan rata-rata harga konsumen tervalidasi pada hari dan kabupaten yang sama.
+	// Proyeksi tanpa kenyataan pembanding diabaikan; tanpa satu pun pasangan hasilnya NULL.
+	domain.QMapeHarga: `
+		WITH aktual AS (
+			SELECT (e.dicatat_pada AT TIME ZONE 'Asia/Jakarta')::date AS tgl, p.kabupaten_kode, e.komoditas_kode, AVG(e.harga) AS harga
+			  FROM entri_harga e JOIN pasar p ON p.id = e.pasar_id
+			 WHERE e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
+			 GROUP BY 1, 2, 3
+		)
+		SELECT 100.0 * AVG(ABS(pr.nilai - a.harga) / a.harga) AS nilai
+		  FROM prediksi_harga pr
+		  JOIN aktual a ON a.tgl = pr.tanggal_target AND a.kabupaten_kode = pr.kabupaten_kode AND a.komoditas_kode = pr.komoditas_kode
+		 WHERE a.harga > 0
+		   AND pr.tanggal_target >= (@mulai AT TIME ZONE 'Asia/Jakarta')::date
+		   AND pr.tanggal_target < (@akhir AT TIME ZONE 'Asia/Jakarta')::date`,
+
+	// Koefisien variasi harga produsen, dirata-rata atas kelompok (komoditas, kabupaten)
+	// dengan minimal 5 entri tervalidasi pada bulan itu.
+	domain.QVolatilitasHarga: `
+		SELECT AVG(100.0 * sd / NULLIF(rata, 0)) AS nilai FROM (
+			SELECT STDDEV_SAMP(e.harga) AS sd, AVG(e.harga) AS rata
+			  FROM entri_harga e JOIN pasar p ON p.id = e.pasar_id
+			 WHERE e.tipe = 'PRODUSEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
+			 GROUP BY e.komoditas_kode, p.kabupaten_kode
+			HAVING COUNT(*) >= 5) g`,
+
+	// Margin = (konsumen - produsen) / konsumen, dirata-rata atas kelompok (komoditas,
+	// kabupaten) yang punya kedua jenis harga tervalidasi pada bulan itu.
+	domain.QMarginHarga: `
+		WITH rata AS (
+			SELECT e.komoditas_kode, p.kabupaten_kode, e.tipe, AVG(e.harga) AS harga
+			  FROM entri_harga e JOIN pasar p ON p.id = e.pasar_id
+			 WHERE e.tipe IN ('PRODUSEN', 'KONSUMEN') AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
+			 GROUP BY 1, 2, 3
+		)
+		SELECT AVG(100.0 * (k.harga - pr.harga) / NULLIF(k.harga, 0)) AS nilai
+		  FROM rata k JOIN rata pr ON pr.komoditas_kode = k.komoditas_kode AND pr.kabupaten_kode = k.kabupaten_kode
+		 WHERE k.tipe = 'KONSUMEN' AND pr.tipe = 'PRODUSEN'`,
+
+	// Volume yang masuk cold storage pada bulan itu (buku besar transaksi_stok).
+	domain.QVolumeAgregasi: `
+		SELECT SUM(volume_ton) AS nilai FROM transaksi_stok
+		 WHERE jenis = 'MASUK' AND waktu >= @mulai AND waktu < @akhir`,
+
+	// Penghematan rencana optimal terhadap rencana pembanding serakah pada rencana yang
+	// disimpan di bulan itu (hanya rencana terbaru per komoditas dan periode neraca).
+	domain.QEfisiensiBiaya: `
+		SELECT 100.0 * (SUM(biaya_pembanding) - SUM(total_biaya)) / NULLIF(SUM(biaya_pembanding), 0) AS nilai
+		  FROM optimasi_rute o
+		 WHERE o.biaya_pembanding IS NOT NULL AND o.dibuat_pada >= @mulai AND o.dibuat_pada < @akhir
+		   AND NOT EXISTS (SELECT 1 FROM optimasi_rute baru
+		                    WHERE baru.komoditas_kode = o.komoditas_kode AND baru.periode = o.periode
+		                      AND baru.dibuat_pada < @akhir
+		                      AND (baru.dibuat_pada, baru.id) > (o.dibuat_pada, o.id))`,
 }
 
 func (r *Repository) Hitung(ctx context.Context, sumberQuery string, w domain.Jendela) (*float64, error) {

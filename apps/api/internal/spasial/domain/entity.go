@@ -192,8 +192,11 @@ type OptimasiRute struct {
 	TotalVolumeTon    float64   `gorm:"column:total_volume_ton"`
 	TotalBiaya        int64     `gorm:"column:total_biaya"`
 	BelumTerpenuhiTon float64   `gorm:"column:belum_terpenuhi_ton"`
-	DibuatOleh        *string   `gorm:"column:dibuat_oleh"`
-	DibuatPada        time.Time `gorm:"column:dibuat_pada;default:now()"`
+	// BiayaPembanding adalah biaya rencana serakah (pasangan terdekat dulu) untuk
+	// volume yang sama; kosong bila volumenya berbeda sehingga tidak sebanding.
+	BiayaPembanding *int64    `gorm:"column:biaya_pembanding"`
+	DibuatOleh      *string   `gorm:"column:dibuat_oleh"`
+	DibuatPada      time.Time `gorm:"column:dibuat_pada;default:now()"`
 }
 
 func (OptimasiRute) TableName() string { return "optimasi_rute" }

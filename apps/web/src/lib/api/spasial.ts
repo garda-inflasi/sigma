@@ -152,6 +152,9 @@ export interface OptimasiResponse {
   total_biaya: number;
   belum_terpenuhi: { kode: string; nama: string; ton: number }[];
   surplus_sisa: { kode: string; nama: string; ton: number }[];
+  /** Biaya rencana serakah (pasangan terdekat dulu) untuk volume yang sama; null bila tak sebanding. */
+  biaya_pembanding: number | null;
+  penghematan_persen: number | null;
   optimasi_id: string | null;
 }
 
@@ -164,6 +167,8 @@ export interface RencanaOptimasi {
   /** Defisit yang tidak tertutup: nama wilayah dan ton. */
   belumTerpenuhi: { kode: string; nama: string; ton: number }[];
   surplusSisa: { kode: string; nama: string; ton: number }[];
+  /** Penghematan terhadap rencana serakah (persen); null bila tidak sebanding. */
+  penghematanPersen: number | null;
   /** Terisi bila rencana disimpan sebagai usulan rute. */
   optimasiId: string | null;
 }
@@ -198,6 +203,7 @@ export function toRencanaOptimasi(r: OptimasiResponse): RencanaOptimasi {
     totalBiaya: r.total_biaya,
     belumTerpenuhi: r.belum_terpenuhi.map((s) => ({ ...s, nama: formatWilayah(s.nama) })),
     surplusSisa: r.surplus_sisa.map((s) => ({ ...s, nama: formatWilayah(s.nama) })),
+    penghematanPersen: r.penghematan_persen,
     optimasiId: r.optimasi_id,
   };
 }

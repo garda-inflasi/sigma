@@ -60,6 +60,8 @@ func TestDefinisi_Shape(t *testing.T) {
 	assert.Equal(t, map[string]bool{
 		domain.QProdusenTerverifikasi: true, domain.QKetepatanData: true, domain.QKelengkapanHarian: true,
 		domain.QUtilisasiColdStorage: true, domain.QRisikoFoodLoss: true, domain.QRekomendasiAI: true,
+		domain.QMapeHarga: true, domain.QVolatilitasHarga: true, domain.QMarginHarga: true,
+		domain.QVolumeAgregasi: true, domain.QEfisiensiBiaya: true,
 	}, query, "hanya KPI yang datanya sudah ada yang punya penghitung")
 }
 
@@ -158,7 +160,7 @@ func TestSeedDemo_ComputesFromColdStorageDemoAndIsIdempotent(t *testing.T) {
 	// Hanya KPI yang punya data sumber dan penghitung yang terisi.
 	var kodeBernilai []string
 	require.NoError(t, db.Model(&domain.Nilai{}).Distinct().Pluck("kpi_kode", &kodeBernilai).Error)
-	assert.ElementsMatch(t, []string{"LOG-UTILISASI-CS", "LOG-RISIKO-FOODLOSS"}, kodeBernilai)
+	assert.ElementsMatch(t, []string{"LOG-UTILISASI-CS", "LOG-RISIKO-FOODLOSS", "LOG-VOLUME-AGREGASI"}, kodeBernilai)
 
 	// Bulan berjalan: lot demo 347+240+193 ton (fasilitas operasional) dari kapasitas 400+300+250.
 	var utilisasi domain.Nilai

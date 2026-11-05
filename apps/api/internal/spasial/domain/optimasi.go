@@ -79,23 +79,9 @@ func (g *graf) tambah(dari, ke int, kap int, biaya int64) int {
 // berisi volume positif per wilayah (ton, resolusi 0,1); kode yang sama tidak boleh
 // muncul di keduanya. Rute dengan waktu tempuh melebihi p.MaksJamTempuh dilarang.
 func Optimalkan(pasokan, kebutuhan []SisaWilayah, jarak JarakFunc, p ParamOptimasi) (HasilOptimasi, error) {
-	if p.TarifTonKm < 0 || p.MaksJamTempuh < 0 {
-		return HasilOptimasi{}, fmt.Errorf("%w: tarif dan batas waktu tidak boleh negatif", ErrOptimasiTidakValid)
-	}
-	sup, err := normalisasi(pasokan, "pasokan")
+	sup, dem, err := periksaMasukan(pasokan, kebutuhan, p)
 	if err != nil {
 		return HasilOptimasi{}, err
-	}
-	dem, err := normalisasi(kebutuhan, "kebutuhan")
-	if err != nil {
-		return HasilOptimasi{}, err
-	}
-	for _, d := range dem {
-		for _, s := range sup {
-			if s.Kode == d.Kode {
-				return HasilOptimasi{}, fmt.Errorf("%w: wilayah %s tidak boleh surplus dan defisit sekaligus", ErrOptimasiTidakValid, s.Kode)
-			}
-		}
 	}
 
 	m, n := len(sup), len(dem)
@@ -172,6 +158,84 @@ func Optimalkan(pasokan, kebutuhan []SisaWilayah, jarak JarakFunc, p ParamOptima
 			hasil.BelumTerpenuhi = append(hasil.BelumTerpenuhi, SisaWilayah{dem[j].Kode, float64(d) / satuanTon})
 		}
 	}
+	return hasil, nil
+}
+
+// periksaMasukan memeriksa dan menormalkan pasokan dan kebutuhan.
+func periksaMasukan(pasokan, kebutuhan []SisaWilayah, p ParamOptimasi) (sup, dem []SisaWilayah, err error) {
+	if p.TarifTonKm < 0 || p.MaksJamTempuh < 0 {
+		return nil, nil, fmt.Errorf("%w: tarif dan batas waktu tidak boleh negatif", ErrOptimasiTidakValid)
+	}
+	if sup, err = normalisasi(pasokan, "pasokan"); err != nil {
+		return nil, nil, err
+	}
+	if dem, err = normalisasi(kebutuhan, "kebutuhan"); err != nil {
+		return nil, nil, err
+	}
+	for _, d := range dem {
+		for _, s := range sup {
+			if s.Kode == d.Kode {
+				return nil, nil, fmt.Errorf("%w: wilayah %s tidak boleh surplus dan defisit sekaligus", ErrOptimasiTidakValid, s.Kode)
+			}
+		}
+	}
+	return sup, dem, nil
+}
+
+// Serakah menghitung rencana pembanding: berulang kali pasangan pemasok-peminta
+// dengan jarak terdekat yang masih bisa mengirim dipenuhi sebanyak mungkin. Cepat
+// dan masuk akal bagi perencana manual, tetapi tidak optimal; dipakai sebagai
+// pembanding penghematan biaya Optimalkan (KPI efisiensi biaya logistik).
+func Serakah(pasokan, kebutuhan []SisaWilayah, jarak JarakFunc, p ParamOptimasi) (HasilOptimasi, error) {
+	sup, dem, err := periksaMasukan(pasokan, kebutuhan, p)
+	if err != nil {
+		return HasilOptimasi{}, err
+	}
+	sisaSup, sisaDem := make([]int, len(sup)), make([]int, len(dem))
+	for i, s := range sup {
+		sisaSup[i] = satuan(s.Ton)
+	}
+	for j, d := range dem {
+		sisaDem[j] = satuan(d.Ton)
+	}
+
+	var hasil HasilOptimasi
+	for {
+		bi, bj, terdekat := -1, -1, math.Inf(1)
+		var jalur Jalur
+		for i, s := range sup {
+			for j, d := range dem {
+				if sisaSup[i] == 0 || sisaDem[j] == 0 {
+					continue
+				}
+				t := jarak(s.Kode, d.Kode)
+				if t.JarakKm < 0 || t.JamTempuh < 0 || math.IsNaN(t.JarakKm) {
+					return HasilOptimasi{}, fmt.Errorf("%w: jarak %s-%s tidak valid", ErrOptimasiTidakValid, s.Kode, d.Kode)
+				}
+				if p.MaksJamTempuh > 0 && t.JamTempuh > p.MaksJamTempuh {
+					continue
+				}
+				if t.JarakKm < terdekat {
+					bi, bj, terdekat, jalur = i, j, t.JarakKm, t
+				}
+			}
+		}
+		if bi < 0 {
+			break
+		}
+		kirim := min(sisaSup[bi], sisaDem[bj])
+		sisaSup[bi] -= kirim
+		sisaDem[bj] -= kirim
+		vol := float64(kirim) / satuanTon
+		biaya := int64(math.Round(vol * jalur.JarakKm * p.TarifTonKm))
+		hasil.Alokasi = append(hasil.Alokasi, Alokasi{
+			AsalKode: sup[bi].Kode, TujuanKode: dem[bj].Kode, VolumeTon: vol,
+			JarakKm: jalur.JarakKm, JamTempuh: jalur.JamTempuh, Biaya: biaya,
+		})
+		hasil.TotalVolumeTon += vol
+		hasil.TotalBiaya += biaya
+	}
+	hasil.TotalVolumeTon = math.Round(hasil.TotalVolumeTon*satuanTon) / satuanTon
 	return hasil, nil
 }
 

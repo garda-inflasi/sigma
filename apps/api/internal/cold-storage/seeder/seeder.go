@@ -1,4 +1,5 @@
-// Package seeder mengisi data contoh cold storage untuk pengembangan dan demo.
+// Package seeder mengisi data cold storage dalam dua lapis: fasilitas
+// (referensi, aman di produksi) dan lot stok (demo, bergeser mengikuti waktu).
 package seeder
 
 import (
@@ -11,11 +12,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// Summary melaporkan jumlah baris yang ditulis.
-type Summary struct {
-	Komoditas int
+// ReferenceSummary melaporkan baris yang ditulis oleh SeedReference.
+type ReferenceSummary struct {
+	Komoditas int // hanya komoditas yang baru ditambahkan
 	Fasilitas int
-	Stok      int
+}
+
+// DemoSummary melaporkan baris yang ditulis oleh SeedDemo.
+type DemoSummary struct {
+	Stok int
 }
 
 type fasilitasSeed struct {
@@ -107,38 +112,23 @@ var stokSeeds = []stokSeed{
 
 const day = 24 * time.Hour
 
-// Seed mengisi lima fasilitas dan 23 lot stok contoh. Idempoten: baris
-// di-upsert menurut ID, jadi menjalankannya ulang menyegarkan tanggal masuk dan
-// kedaluwarsa relatif terhadap now tanpa menggandakan data.
+// SeedReference mengisi lima fasilitas dan komoditas pelengkapnya. Idempoten:
+// baris di-upsert menurut ID. Aman dijalankan di produksi.
 //
 // Prasyarat: migrasi telah dijalankan (master kabupaten dan komoditas ada).
-func Seed(ctx context.Context, db *gorm.DB, now time.Time) (Summary, error) {
-	var sum Summary
+func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
+	var sum ReferenceSummary
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, k := range komoditasPelengkap {
-			res := tx.Exec(`
-				INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, pilot, shelf_life_hari)
-				VALUES (?, ?, ?, ?, ?, false, ?)
-				ON CONFLICT (kode) DO NOTHING`,
-				k.Kode, k.Nama, k.Satuan, k.Kategori, k.HargaAcuan, k.ShelfLifeHari)
-			if res.Error != nil {
-				return fmt.Errorf("seed komoditas %s: %w", k.Kode, res.Error)
-			}
-			sum.Komoditas += int(res.RowsAffected)
+		added, err := insertKomoditasPelengkap(tx)
+		if err != nil {
+			return err
 		}
+		sum.Komoditas = added
 
-		kode := make(map[string]string, len(fasilitasSeeds))
-		for _, f := range fasilitasSeeds {
-			var k string
-			if err := tx.Raw("SELECT kode FROM kabupaten WHERE UPPER(nama) = UPPER(?) LIMIT 1", f.Wilayah).Scan(&k).Error; err != nil {
-				return fmt.Errorf("cari kabupaten %q: %w", f.Wilayah, err)
-			}
-			if k == "" {
-				return fmt.Errorf("kabupaten %q tidak ditemukan; jalankan migrasi lebih dulu (make db/migrate)", f.Wilayah)
-			}
-			kode[f.Wilayah] = k
+		kode, err := kodeKabupaten(tx)
+		if err != nil {
+			return err
 		}
-
 		fasilitas := BuildFasilitas(kode)
 		if err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
@@ -147,18 +137,58 @@ func Seed(ctx context.Context, db *gorm.DB, now time.Time) (Summary, error) {
 			return fmt.Errorf("seed fasilitas: %w", err)
 		}
 		sum.Fasilitas = len(fasilitas)
-
-		stok := BuildStok(now)
-		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"cold_storage_id", "komoditas_kode", "volume_ton", "masuk_pada", "kedaluwarsa_pada", "pemilik", "risiko_food_loss"}),
-		}).Create(&stok).Error; err != nil {
-			return fmt.Errorf("seed stok: %w", err)
-		}
-		sum.Stok = len(stok)
 		return nil
 	})
 	return sum, err
+}
+
+// SeedDemo mengisi 23 lot stok contoh. Idempoten: baris di-upsert menurut ID,
+// jadi menjalankannya ulang menyegarkan tanggal masuk dan kedaluwarsa relatif
+// terhadap now tanpa menggandakan data. Hanya untuk demo, bukan produksi.
+//
+// Prasyarat: SeedReference sudah dijalankan.
+func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
+	stok := BuildStok(now)
+	err := db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"cold_storage_id", "komoditas_kode", "volume_ton", "masuk_pada", "kedaluwarsa_pada", "pemilik", "risiko_food_loss"}),
+	}).Create(&stok).Error
+	if err != nil {
+		return DemoSummary{}, fmt.Errorf("seed stok: %w", err)
+	}
+	return DemoSummary{Stok: len(stok)}, nil
+}
+
+func insertKomoditasPelengkap(tx *gorm.DB) (int, error) {
+	added := 0
+	for _, k := range komoditasPelengkap {
+		res := tx.Exec(`
+			INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, pilot, shelf_life_hari)
+			VALUES (?, ?, ?, ?, ?, false, ?)
+			ON CONFLICT (kode) DO NOTHING`,
+			k.Kode, k.Nama, k.Satuan, k.Kategori, k.HargaAcuan, k.ShelfLifeHari)
+		if res.Error != nil {
+			return 0, fmt.Errorf("seed komoditas %s: %w", k.Kode, res.Error)
+		}
+		added += int(res.RowsAffected)
+	}
+	return added, nil
+}
+
+// kodeKabupaten memetakan nama wilayah tiap fasilitas ke kode kabupaten di master.
+func kodeKabupaten(tx *gorm.DB) (map[string]string, error) {
+	kode := make(map[string]string, len(fasilitasSeeds))
+	for _, f := range fasilitasSeeds {
+		var k string
+		if err := tx.Raw("SELECT kode FROM kabupaten WHERE UPPER(nama) = UPPER(?) LIMIT 1", f.Wilayah).Scan(&k).Error; err != nil {
+			return nil, fmt.Errorf("cari kabupaten %q: %w", f.Wilayah, err)
+		}
+		if k == "" {
+			return nil, fmt.Errorf("kabupaten %q tidak ditemukan; jalankan migrasi lebih dulu (make db/migrate)", f.Wilayah)
+		}
+		kode[f.Wilayah] = k
+	}
+	return kode, nil
 }
 
 // BuildFasilitas menyusun baris cold_storage; kodeByWilayah memetakan nama

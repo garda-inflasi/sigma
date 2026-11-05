@@ -12,7 +12,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 587, cfg.Port)
 	assert.Equal(t, "", cfg.Username)
 	assert.Equal(t, "", cfg.Password)
-	assert.Equal(t, "noreply@garda-inflasi.id", cfg.From)
+	assert.Equal(t, "noreply@gardainflasi.id", cfg.From)
 	assert.Equal(t, "Garda Inflasi", cfg.FromName)
 }
 

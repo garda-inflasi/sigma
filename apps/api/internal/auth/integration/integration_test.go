@@ -8,21 +8,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/modules"
+	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/pkg/crypto"
-	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/token"
-	"github.com/ory/dockertest/v3"
-	"github.com/ory/dockertest/v3/docker"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -34,67 +31,23 @@ type Suite struct {
 	db       *gorm.DB
 	tokenMgr *token.Manager
 	router   *gin.Engine
-	pool     *dockertest.Pool
-	resource *dockertest.Resource
 }
 
 var jwtSecret = "integration-test-secret-key-32chars!!"
 
+var pg *pgtest.Server
+
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
-	os.Exit(m.Run())
+	os.Exit(pgtest.Main(m, &pg))
 }
 
+// setupSuite menyiapkan basis data khusus tes ini (migrasi + akun uji) dan router.
 func setupSuite(t *testing.T) *Suite {
 	t.Helper()
 
-	pool, err := dockertest.NewPool("")
-	require.NoError(t, err, "could not connect to Docker")
-
-	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
-		Repository: "postgres",
-		Tag:        "16-alpine",
-		Env: []string{
-			"POSTGRES_USER=garda",
-			"POSTGRES_PASSWORD=garda_secret",
-			"POSTGRES_DB=garda_inflasi_test",
-			"listen_addresses = '*'",
-		},
-	}, func(config *docker.HostConfig) {
-		config.AutoRemove = true
-		config.RestartPolicy = docker.RestartPolicy{Name: "no"}
-	})
-	require.NoError(t, err, "could not start PostgreSQL container")
-
-	t.Cleanup(func() {
-		if err := pool.Purge(resource); err != nil {
-			t.Logf("could not purge resource: %v", err)
-		}
-	})
-
-	hostPort := resource.GetHostPort("5432/tcp")
-	parts := strings.Split(hostPort, ":")
-	host := parts[0]
-	port := parts[1]
-
-	os.Setenv("DB_HOST", host)
-	os.Setenv("DB_PORT", port)
-	os.Setenv("DB_USER", "garda")
-	os.Setenv("DB_PASSWORD", "garda_secret")
-	os.Setenv("DB_NAME", "garda_inflasi_test")
-	os.Setenv("DB_SSLMODE", "disable")
-
-	var db *gorm.DB
-	if err := pool.Retry(func() error {
-		cfg := database.DefaultConfig()
-		var connErr error
-		db, connErr = database.New(cfg)
-		return connErr
-	}); err != nil {
-		t.Fatalf("could not connect to database: %v", err)
-	}
-
-	runMigrations(t, db)
+	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
+	pgtest.MigrateUp(t, db)
 	seedData(t, db)
 
 	tokenMgr := token.NewManager(jwtSecret)
@@ -123,73 +76,13 @@ func setupSuite(t *testing.T) *Suite {
 		Logger: log,
 	})
 
-	modules.RegisterAll(v1, db, log, tokenMgr, nil)
+	modules.RegisterAll(v1, db, log, tokenMgr)
 
 	return &Suite{
 		db:       db,
 		tokenMgr: tokenMgr,
 		router:   router,
-		pool:     pool,
-		resource: resource,
 	}
-}
-
-func runMigrations(t *testing.T, db *gorm.DB) {
-	t.Helper()
-
-	migrationFiles := []string{
-		"../../../../../db/migrations/000001_init.sql",
-		"../../../../../db/migrations/000002_tables.sql",
-		"../../../../../db/migrations/000003_auth_tables.sql",
-		"../../../../../db/migrations/000004_mfa_tables.sql",
-		"../../../../../db/migrations/000005_analytics_tables.sql",
-		"../../../../../db/migrations/000006_seed_data.sql",
-	}
-
-	sqlDB, err := db.DB()
-	require.NoError(t, err, "could not get underlying sql.DB")
-
-	for _, f := range migrationFiles {
-		absPath, err := filepath.Abs(f)
-		require.NoError(t, err, "could not resolve migration path: %s", f)
-
-		content, err := os.ReadFile(absPath)
-		require.NoError(t, err, "could not read migration file: %s", f)
-
-		sql := extractUpSQL(string(content))
-		if sql == "" {
-			sql = string(content)
-		}
-
-		_, err = sqlDB.Exec(sql)
-		require.NoError(t, err, "could not execute migration: %s", f)
-		t.Logf("executed migration: %s", f)
-	}
-}
-
-func extractUpSQL(content string) string {
-	lines := strings.Split(content, "\n")
-	var inUp bool
-	var sql []string
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, "+goose Up") {
-			inUp = true
-			continue
-		}
-		if strings.Contains(trimmed, "+goose Down") {
-			break
-		}
-		if strings.Contains(trimmed, "+goose StatementBegin") || strings.Contains(trimmed, "+goose StatementEnd") {
-			continue
-		}
-		if inUp {
-			sql = append(sql, line)
-		}
-	}
-
-	return strings.Join(sql, "\n")
 }
 
 func seedData(t *testing.T, db *gorm.DB) {
@@ -203,29 +96,29 @@ func seedData(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Exec(`INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode) VALUES ('1171', 'KOTA BANDA ACEH', 'Kota', 'Banda Aceh', 5.55, 95.32, '11') ON CONFLICT (kode) DO NOTHING`).Error)
 
 	var count int64
-	db.Table("pengguna").Where("email = ?", "test@garda-inflasi.id").Count(&count)
+	db.Table("pengguna").Where("email = ?", "test@gardainflasi.id").Count(&count)
 	if count == 0 {
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, kabupaten_kode, status)
-			VALUES ('test-user-001', 'Test User', 'test@garda-inflasi.id', ?, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', '1171', 'AKTIF')
+			VALUES ('test-user-001', 'Test User', 'test@gardainflasi.id', ?, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', '1171', 'AKTIF')
 		`, passwordHash).Error)
 	}
 
-	db.Table("pengguna").Where("email = ?", "inactive@garda-inflasi.id").Count(&count)
+	db.Table("pengguna").Where("email = ?", "inactive@gardainflasi.id").Count(&count)
 	if count == 0 {
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status)
-			VALUES ('test-user-002', 'Inactive User', 'inactive@garda-inflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'NONAKTIF')
+			VALUES ('test-user-002', 'Inactive User', 'inactive@gardainflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'NONAKTIF')
 		`, passwordHash).Error)
 	}
 
-	db.Table("pengguna").Where("email = ?", "mfa@garda-inflasi.id").Count(&count)
+	db.Table("pengguna").Where("email = ?", "uji.mfa@gardainflasi.id").Count(&count)
 	if count == 0 {
 		mfaSecret := "JBSWY3DPEHPK3PXP"
 		backupCodes := `["BACKUP01", "BACKUP02", "BACKUP03"]`
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret, mfa_backup_codes)
-			VALUES ('test-user-mfa', 'MFA User', 'mfa@garda-inflasi.id', ?, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, ?, ?::jsonb)
+			VALUES ('test-user-mfa', 'MFA User', 'uji.mfa@gardainflasi.id', ?, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, ?, ?::jsonb)
 		`, passwordHash, mfaSecret, backupCodes).Error)
 	}
 
@@ -306,14 +199,14 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 
 	t.Run("Login Success", func(t *testing.T) {
-		accessToken, refreshToken := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, refreshToken := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 		assert.NotEmpty(t, accessToken)
 		assert.NotEmpty(t, refreshToken)
 	})
 
 	t.Run("Login Invalid Credentials", func(t *testing.T) {
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/login", map[string]interface{}{
-			"email":    "test@garda-inflasi.id",
+			"email":    "test@gardainflasi.id",
 			"password": "wrongpassword",
 		}, nil)
 
@@ -324,7 +217,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 
 	t.Run("Login Inactive Account", func(t *testing.T) {
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/login", map[string]interface{}{
-			"email":    "inactive@garda-inflasi.id",
+			"email":    "inactive@gardainflasi.id",
 			"password": "Test1234!",
 		}, nil)
 
@@ -335,7 +228,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 
 	t.Run("Login Nonexistent Email", func(t *testing.T) {
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/login", map[string]interface{}{
-			"email":    "nonexistent@garda-inflasi.id",
+			"email":    "nonexistent@gardainflasi.id",
 			"password": "Test1234!",
 		}, nil)
 
@@ -343,7 +236,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 
 	t.Run("Get Me", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodGet, "/v1/auth/me", nil, s.authHeader(accessToken))
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -353,7 +246,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "test-user-001", data["id"])
 		assert.Equal(t, "Test User", data["nama"])
-		assert.Equal(t, "test@garda-inflasi.id", data["email"])
+		assert.Equal(t, "test@gardainflasi.id", data["email"])
 	})
 
 	t.Run("Get Me Unauthorized", func(t *testing.T) {
@@ -362,7 +255,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 
 	t.Run("Refresh Token", func(t *testing.T) {
-		_, refreshToken := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		_, refreshToken := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/refresh", map[string]interface{}{
 			"refresh_token": refreshToken,
@@ -377,7 +270,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 
 	t.Run("Refresh Token Reuse Detection", func(t *testing.T) {
-		_, refreshToken := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		_, refreshToken := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w1 := s.serveRequest(t, http.MethodPost, "/v1/auth/refresh", map[string]interface{}{
 			"refresh_token": refreshToken,
@@ -391,14 +284,14 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 
 	t.Run("Logout", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/logout", nil, s.authHeader(accessToken))
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
 	t.Run("Change Password", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/change-password", map[string]interface{}{
 			"old_password": "Test1234!",
@@ -407,7 +300,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		newAccessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "NewTest5678@")
+		newAccessToken, _ := s.loginAs(t, "test@gardainflasi.id", "NewTest5678@")
 		assert.NotEmpty(t, newAccessToken)
 
 		w2 := s.serveRequest(t, http.MethodPost, "/v1/auth/change-password", map[string]interface{}{
@@ -418,7 +311,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 	})
 
 	t.Run("Change Password Wrong Old Password", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/change-password", map[string]interface{}{
 			"old_password": "WrongPassword1!",
@@ -430,7 +323,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 
 	t.Run("Forgot Password", func(t *testing.T) {
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/forgot-password", map[string]interface{}{
-			"email": "test@garda-inflasi.id",
+			"email": "test@gardainflasi.id",
 		}, nil)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -438,7 +331,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 
 	t.Run("Forgot Password Nonexistent Email", func(t *testing.T) {
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/forgot-password", map[string]interface{}{
-			"email": "nonexistent@garda-inflasi.id",
+			"email": "nonexistent@gardainflasi.id",
 		}, nil)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -467,7 +360,7 @@ func TestIntegration_MFAFlow(t *testing.T) {
 	s := setupSuite(t)
 
 	t.Run("MFA Setup", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/setup", nil, s.authHeader(accessToken))
 		t.Logf("MFA Setup status: %d, body: %s", w.Code, w.Body.String())
@@ -483,14 +376,14 @@ func TestIntegration_MFAFlow(t *testing.T) {
 	})
 
 	t.Run("MFA Setup Already Active", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/setup", nil, s.authHeader(accessToken))
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("MFA Verify Invalid Code", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/setup", nil, s.authHeader(accessToken))
 
@@ -502,7 +395,7 @@ func TestIntegration_MFAFlow(t *testing.T) {
 	})
 
 	t.Run("MFA Disable", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/disable", map[string]interface{}{
 			"password": "Test1234!",
@@ -512,7 +405,7 @@ func TestIntegration_MFAFlow(t *testing.T) {
 	})
 
 	t.Run("MFA Disable Wrong Password", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/disable", map[string]interface{}{
 			"password": "WrongPassword1!",
@@ -526,18 +419,18 @@ func TestIntegration_UserManagement(t *testing.T) {
 	s := setupSuite(t)
 
 	t.Run("List Users Requires Permission", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodGet, "/v1/users", nil, s.authHeader(accessToken))
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
 
 	t.Run("Create User Requires Permission", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/users", map[string]interface{}{
 			"nama":    "New User",
-			"email":   "newuser@garda-inflasi.id",
+			"email":   "newuser@gardainflasi.id",
 			"peran":   "OPS_MAHASISWA",
 			"lapis":   "OPERASIONAL",
 			"lembaga": "BPPSDMP",
@@ -588,14 +481,14 @@ func TestIntegration_AccountLockout(t *testing.T) {
 	t.Run("Account Locked After Multiple Failed Attempts", func(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			w := s.serveRequest(t, http.MethodPost, "/v1/auth/login", map[string]interface{}{
-				"email":    "test@garda-inflasi.id",
+				"email":    "test@gardainflasi.id",
 				"password": fmt.Sprintf("WrongPass%d!", i),
 			}, nil)
 			assert.Equal(t, http.StatusUnauthorized, w.Code)
 		}
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/login", map[string]interface{}{
-			"email":    "test@garda-inflasi.id",
+			"email":    "test@gardainflasi.id",
 			"password": "Test1234!",
 		}, nil)
 		assert.Equal(t, http.StatusTooManyRequests, w.Code)
@@ -630,7 +523,7 @@ func TestIntegration_WeakPassword(t *testing.T) {
 	s := setupSuite(t)
 
 	t.Run("Change Password Weak Password", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "test@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/change-password", map[string]interface{}{
 			"old_password": "Test1234!",
@@ -645,7 +538,7 @@ func TestIntegration_BackupCode(t *testing.T) {
 	s := setupSuite(t)
 
 	t.Run("Validate Backup Code", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate", map[string]interface{}{
 			"code": "BACKUP01",
@@ -655,7 +548,7 @@ func TestIntegration_BackupCode(t *testing.T) {
 	})
 
 	t.Run("Validate Invalid Backup Code", func(t *testing.T) {
-		accessToken, _ := s.loginAs(t, "mfa@garda-inflasi.id", "Test1234!")
+		accessToken, _ := s.loginAs(t, "uji.mfa@gardainflasi.id", "Test1234!")
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate", map[string]interface{}{
 			"code": "INVALID99",

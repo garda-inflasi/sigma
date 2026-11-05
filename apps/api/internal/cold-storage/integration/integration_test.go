@@ -7,13 +7,11 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -23,12 +21,10 @@ import (
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	coldRoutes "github.com/garda-inflasi/api/internal/cold-storage/routes"
 	"github.com/garda-inflasi/api/internal/cold-storage/seeder"
-	"github.com/garda-inflasi/api/pkg/database"
+	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
-	"github.com/ory/dockertest/v3"
-	"github.com/ory/dockertest/v3/docker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -40,178 +36,14 @@ const (
 	// Kata sandi akun contoh dari migrasi 000006.
 	seedPassword = "Garda2024!"
 
-	migrationsDir = "../../../../../db/migrations"
-	contractPath  = "../../../../../packages/contracts/openapi.yaml"
+	contractPath = "../../../../../packages/contracts/openapi.yaml"
 )
 
-// ── Container PostgreSQL bersama ──────────────────────────────────────
-
-type pgServer struct {
-	pool       *dockertest.Pool
-	resource   *dockertest.Resource
-	host, port string
-}
-
-var pg *pgServer
+var pg *pgtest.Server
 
 func TestMain(m *testing.M) {
-	flag.Parse()
 	gin.SetMode(gin.TestMode)
-
-	if !testing.Short() {
-		srv, err := startPostgres()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "integration: %v\n", err)
-			os.Exit(1)
-		}
-		pg = srv
-	}
-
-	code := m.Run()
-
-	if pg != nil {
-		if err := pg.pool.Purge(pg.resource); err != nil {
-			fmt.Fprintf(os.Stderr, "integration: could not purge container: %v\n", err)
-		}
-	}
-	os.Exit(code)
-}
-
-func startPostgres() (*pgServer, error) {
-	pool, err := dockertest.NewPool("")
-	if err != nil {
-		return nil, fmt.Errorf("could not connect to Docker (gunakan -short untuk melewati): %w", err)
-	}
-
-	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
-		Repository: "postgres",
-		Tag:        "16-alpine",
-		Env: []string{
-			"POSTGRES_USER=garda",
-			"POSTGRES_PASSWORD=garda_secret",
-			"POSTGRES_DB=postgres",
-		},
-	}, func(hc *docker.HostConfig) {
-		hc.AutoRemove = true
-		hc.RestartPolicy = docker.RestartPolicy{Name: "no"}
-	})
-	if err != nil {
-		return nil, fmt.Errorf("could not start PostgreSQL container: %w", err)
-	}
-	// Jaring pengaman bila proses uji mati sebelum Purge.
-	_ = resource.Expire(600)
-
-	parts := strings.Split(resource.GetHostPort("5432/tcp"), ":")
-	srv := &pgServer{pool: pool, resource: resource, host: parts[0], port: parts[1]}
-
-	pool.MaxWait = 90 * time.Second
-	if err := pool.Retry(func() error {
-		db, err := srv.open("postgres")
-		if err != nil {
-			return err
-		}
-		defer closeDB(db)
-		sqlDB, err := db.DB()
-		if err != nil {
-			return err
-		}
-		return sqlDB.Ping()
-	}); err != nil {
-		_ = pool.Purge(resource)
-		return nil, fmt.Errorf("could not connect to database: %w", err)
-	}
-	return srv, nil
-}
-
-func (s *pgServer) open(dbName string) (*gorm.DB, error) {
-	return database.New(database.Config{
-		Host: s.host, Port: s.port, User: "garda", Password: "garda_secret", DBName: dbName, SSLMode: "disable",
-	})
-}
-
-func closeDB(db *gorm.DB) {
-	if sqlDB, err := db.DB(); err == nil {
-		_ = sqlDB.Close()
-	}
-}
-
-// newDatabase membuat basis data kosong di container bersama; koneksinya
-// ditutup saat uji yang membuatnya selesai.
-func newDatabase(t *testing.T, name string) *gorm.DB {
-	t.Helper()
-	db := createDatabase(t, name)
-	t.Cleanup(func() { closeDB(db) })
-	return db
-}
-
-// createDatabase membuat basis data tanpa mengikat masa hidup koneksinya pada uji.
-func createDatabase(t *testing.T, name string) *gorm.DB {
-	t.Helper()
-	if pg == nil {
-		t.Skip("integration test dilewati (-short)")
-	}
-
-	admin, err := pg.open("postgres")
-	require.NoError(t, err)
-	require.NoError(t, admin.Exec(`CREATE DATABASE "`+name+`"`).Error)
-	closeDB(admin)
-
-	db, err := pg.open(name)
-	require.NoError(t, err)
-	return db
-}
-
-// ── Migrasi ───────────────────────────────────────────────────────────
-
-type migration struct {
-	version  int
-	name     string
-	up, down string
-}
-
-// loadMigrations membaca db/migrations/*.sql terurut menurut nama, sehingga
-// migrasi baru otomatis ikut diuji.
-func loadMigrations(t *testing.T) []migration {
-	t.Helper()
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
-	require.NoError(t, err)
-	require.NotEmpty(t, files, "tidak ada migrasi di %s", migrationsDir)
-	sort.Strings(files)
-
-	out := make([]migration, 0, len(files))
-	for _, f := range files {
-		raw, err := os.ReadFile(f)
-		require.NoError(t, err)
-
-		var version int
-		_, err = fmt.Sscanf(filepath.Base(f), "%d_", &version)
-		require.NoError(t, err, "nama migrasi harus diawali nomor: %s", f)
-
-		up, down := splitGoose(string(raw))
-		out = append(out, migration{version: version, name: filepath.Base(f), up: up, down: down})
-	}
-	return out
-}
-
-// splitGoose memisahkan bagian Up/Down dan membuang penanda goose.
-func splitGoose(content string) (up, down string) {
-	var upLines, downLines []string
-	section := ""
-	for _, line := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case strings.Contains(trimmed, "+goose Up"):
-			section = "up"
-		case strings.Contains(trimmed, "+goose Down"):
-			section = "down"
-		case strings.Contains(trimmed, "+goose StatementBegin"), strings.Contains(trimmed, "+goose StatementEnd"):
-		case section == "up":
-			upLines = append(upLines, line)
-		case section == "down":
-			downLines = append(downLines, line)
-		}
-	}
-	return strings.Join(upLines, "\n"), strings.Join(downLines, "\n")
+	os.Exit(pgtest.Main(m, &pg))
 }
 
 func execSQL(t *testing.T, db *gorm.DB, sqlText, what string) {
@@ -221,27 +53,6 @@ func execSQL(t *testing.T, db *gorm.DB, sqlText, what string) {
 	// database/sql tanpa argumen memakai simple protocol sehingga skrip multi-statement dapat dijalankan.
 	_, err = sqlDB.Exec(sqlText)
 	require.NoError(t, err, what)
-}
-
-// migrateUp menjalankan migrasi Up yang lolos filter, berurutan.
-func migrateUp(t *testing.T, db *gorm.DB, include func(version int) bool) {
-	t.Helper()
-	for _, m := range loadMigrations(t) {
-		if include == nil || include(m.version) {
-			execSQL(t, db, m.up, "migrate up "+m.name)
-		}
-	}
-}
-
-func findMigration(t *testing.T, version int) migration {
-	t.Helper()
-	for _, m := range loadMigrations(t) {
-		if m.version == version {
-			return m
-		}
-	}
-	require.FailNow(t, "migrasi tidak ditemukan", "versi %d", version)
-	return migration{}
 }
 
 // ── Suite HTTP ────────────────────────────────────────────────────────
@@ -255,20 +66,22 @@ type suite struct {
 // Akun contoh dari migrasi 000006 dan izin cold storage yang dibawa perannya
 // (rolePermissions di modul auth).
 const (
-	userLihatSaja   = "manajer.risiko@garda-inflasi.id"       // MANAJER_RISIKO: coldstorage.lihat
-	userKelola      = "manajer.mutu@garda-inflasi.id"         // MANAJER_MUTU: lihat + coldstorage.kelola
-	userLogistik    = "manajer.program@garda-inflasi.id"      // MANAJER_PROGRAM: lihat + logistik.kelola
-	userAgregator   = "agregator.data@garda-inflasi.id"       // OPS_AGREGATOR: lihat + kelola + logistik
-	userTanpaIzin   = "mahasiswa.1@garda-inflasi.id"          // OPS_MAHASISWA: tidak ada izin cold storage
-	userKoordinator = "koordinator.lapangan@garda-inflasi.id" // OPS_KOORDINATOR: tidak ada izin cold storage
+	userLihatSaja   = "manajer.risiko@gardainflasi.id"       // MANAJER_RISIKO: coldstorage.lihat
+	userKelola      = "manajer.mutu@gardainflasi.id"         // MANAJER_MUTU: lihat + coldstorage.kelola
+	userLogistik    = "manajer.program@gardainflasi.id"      // MANAJER_PROGRAM: lihat + logistik.kelola
+	userAgregator   = "agregator.data@gardainflasi.id"       // OPS_AGREGATOR: lihat + kelola + logistik
+	userTanpaIzin   = "mahasiswa.1@gardainflasi.id"          // OPS_MAHASISWA: tidak ada izin cold storage
+	userKoordinator = "koordinator.lapangan@gardainflasi.id" // OPS_KOORDINATOR: tidak ada izin cold storage
 )
 
 // newSuite menyiapkan basis data (migrasi + seed), router, dan token login.
 func newSuite(t *testing.T, db *gorm.DB) *suite {
 	t.Helper()
-	migrateUp(t, db, nil)
-	_, err := seeder.Seed(t.Context(), db, time.Now())
-	require.NoError(t, err, "seed cold storage")
+	pgtest.MigrateUp(t, db)
+	_, err := seeder.SeedReference(t.Context(), db)
+	require.NoError(t, err, "seed fasilitas")
+	_, err = seeder.SeedDemo(t.Context(), db, time.Now())
+	require.NoError(t, err, "seed lot stok")
 
 	tokenMgr := token.NewManager(jwtSecret)
 	log := logger.NewDefault()
@@ -297,7 +110,7 @@ var (
 func sharedSuite(t *testing.T) *suite {
 	t.Helper()
 	sharedOnce.Do(func() {
-		shared = newSuite(t, createDatabase(t, "garda_shared"))
+		shared = newSuite(t, pg.CreateDatabase(t, "garda_shared"))
 	})
 	require.NotNil(t, shared, "suite bersama gagal dibuat pada uji pertama yang memakainya")
 	return shared
@@ -391,8 +204,9 @@ func getCold(t *testing.T, s *suite, email string, params url.Values) (map[strin
 // ══════════════════════════════════════════════════════════════════════
 
 func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
-	db := newDatabase(t, "mig_000007")
-	migrateUp(t, db, func(v int) bool { return v <= 6 })
+	db := pg.NewDatabase(t, "mig_000007")
+	migrator := pgtest.Migrator(t, db)
+	require.NoError(t, migrator.UpTo(t.Context(), 6))
 
 	// Data yang sudah ada sebelum 000007 (tanpa kolom kedaluwarsa_pada).
 	execSQL(t, db, `
@@ -402,8 +216,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 		VALUES ('STK-LAMA', 'CS-LAMA', 'cabai_merah_keriting', 10, '2026-10-01T00:00:00Z', 'Pemilik Lama', 0.5);
 	`, "data pra-000007")
 
-	m := findMigration(t, 7)
-	execSQL(t, db, m.up, "000007 up")
+	require.NoError(t, migrator.UpTo(t.Context(), 7), "000007 up")
 
 	t.Run("lot lama diisi dari masa simpan komoditas", func(t *testing.T) {
 		var days float64
@@ -444,11 +257,13 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 	})
 
 	t.Run("Up dapat diulang tanpa galat", func(t *testing.T) {
-		execSQL(t, db, m.up, "000007 up (ulang)")
+		// Melupakan pencatatan versi membuat goose menjalankan lagi SQL Up di atas skema yang sudah ada.
+		require.NoError(t, db.Exec(`DELETE FROM goose_db_version WHERE version_id = 7`).Error)
+		require.NoError(t, migrator.UpTo(t.Context(), 7), "000007 up (ulang)")
 	})
 
 	t.Run("Down mengembalikan skema dan menyisakan data", func(t *testing.T) {
-		execSQL(t, db, m.down, "000007 down")
+		require.NoError(t, migrator.DownTo(t.Context(), 6), "000007 down")
 
 		var cols []string
 		require.NoError(t, db.Raw(`SELECT column_name FROM information_schema.columns
@@ -461,7 +276,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 		assert.Equal(t, int64(1), n, "data lot tidak boleh hilang saat Down")
 
 		// Up setelah Down harus kembali berhasil dan mengisi ulang kedaluwarsa_pada.
-		execSQL(t, db, m.up, "000007 up (setelah down)")
+		require.NoError(t, migrator.UpTo(t.Context(), 7), "000007 up (setelah down)")
 		var days float64
 		require.NoError(t, db.Raw(`SELECT EXTRACT(EPOCH FROM (kedaluwarsa_pada - masuk_pada)) / 86400 FROM stok_cold_storage WHERE id = 'STK-LAMA'`).Scan(&days).Error)
 		assert.Equal(t, 7.0, days)
@@ -473,28 +288,35 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 // ══════════════════════════════════════════════════════════════════════
 
 func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
-	db := newDatabase(t, "seed_idem")
-	migrateUp(t, db, nil)
-
-	now := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
-	first, err := seeder.Seed(t.Context(), db, now)
-	require.NoError(t, err)
-	assert.Equal(t, seeder.Summary{Komoditas: 2, Fasilitas: 5, Stok: 23}, first)
+	db := pg.NewDatabase(t, "seed_idem")
+	pgtest.MigrateUp(t, db)
 
 	count := func(table string) int64 {
 		var n int64
 		require.NoError(t, db.Table(table).Count(&n).Error)
 		return n
 	}
+
+	ref, err := seeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	assert.Equal(t, seeder.ReferenceSummary{Komoditas: 2, Fasilitas: 5}, ref)
+
+	now := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	demo, err := seeder.SeedDemo(t.Context(), db, now)
+	require.NoError(t, err)
+	assert.Equal(t, seeder.DemoSummary{Stok: 23}, demo)
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 
 	// Menjalankan ulang pada waktu lain: tidak menggandakan baris, komoditas
 	// sudah ada, tanggal bergeser mengikuti now.
 	later := now.Add(10 * 24 * time.Hour)
-	second, err := seeder.Seed(t.Context(), db, later)
+	ref, err = seeder.SeedReference(t.Context(), db)
 	require.NoError(t, err)
-	assert.Equal(t, seeder.Summary{Komoditas: 0, Fasilitas: 5, Stok: 23}, second)
+	assert.Equal(t, seeder.ReferenceSummary{Komoditas: 0, Fasilitas: 5}, ref)
+	demo, err = seeder.SeedDemo(t.Context(), db, later)
+	require.NoError(t, err)
+	assert.Equal(t, seeder.DemoSummary{Stok: 23}, demo)
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 
@@ -532,11 +354,13 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 }
 
 func TestSeeder_FailsAtomicallyWhenMasterDataMissing(t *testing.T) {
-	db := newDatabase(t, "seed_missing_master")
+	db := pg.NewDatabase(t, "seed_missing_master")
 	// Skema tanpa 000006: master kabupaten dan komoditas kosong.
-	migrateUp(t, db, func(v int) bool { return v <= 5 || v == 7 })
+	migrator := pgtest.Migrator(t, db)
+	require.NoError(t, migrator.UpTo(t.Context(), 5))
+	require.NoError(t, migrator.Apply(t.Context(), 7, true))
 
-	_, err := seeder.Seed(t.Context(), db, time.Now())
+	_, err := seeder.SeedReference(t.Context(), db)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tidak ditemukan")

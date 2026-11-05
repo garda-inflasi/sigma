@@ -45,7 +45,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		FromName: "Garda Inflasi",
 	}
 	if emailCfg.From == "" {
-		emailCfg.From = "noreply@garda-inflasi.id"
+		emailCfg.From = "noreply@gardainflasi.id"
 	}
 	emailSender := email.New(emailCfg)
 

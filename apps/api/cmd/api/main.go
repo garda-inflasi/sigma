@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
@@ -17,6 +16,7 @@ import (
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/swagger"
 	"github.com/garda-inflasi/api/pkg/token"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -43,15 +43,6 @@ func main() {
 	}
 	log.Info("database connected", map[string]interface{}{"host": dbCfg.Host, "db": dbCfg.DBName})
 
-	// MongoDB
-	mongoCfg := database.DefaultMongoConfig()
-	mongoClient, err := database.NewMongo(mongoCfg)
-	if err != nil {
-		log.Error("mongodb connection failed", map[string]interface{}{"error": err.Error()})
-		os.Exit(1)
-	}
-	log.Info("mongodb connected", map[string]interface{}{"uri": mongoCfg.URI, "db": mongoCfg.DBName})
-
 	// Token manager
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
@@ -70,6 +61,7 @@ func main() {
 		middleware.SecurityHeaders(ginMode == "release"),
 		middleware.CSP(),
 		middleware.CORSMiddleware(),
+		middleware.CSRFProtection(middleware.ParseOrigins(os.Getenv("APP_ALLOWED_ORIGINS"), "http://localhost:3000")),
 		middleware.AccessLog(log),
 		middleware.RateLimit(100, time.Minute),
 	)
@@ -96,10 +88,10 @@ func main() {
 	})
 
 	// Register all other modules
-	modules.RegisterAll(v1, db, log, tokenMgr, mongoClient)
+	modules.RegisterAll(v1, db, log, tokenMgr)
 
 	srv := &http.Server{
-		Addr:         addr,
+		Addr: addr,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Rewrite paths for Caddy reverse proxy compatibility
 			// Caddy strips /api prefix, so /api/auth/login becomes /auth/login

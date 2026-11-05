@@ -24,7 +24,7 @@ func DefaultConfig() Config {
 		Port:     587,
 		Username: "",
 		Password: "",
-		From:     "noreply@garda-inflasi.id",
+		From:     "noreply@gardainflasi.id",
 		FromName: "Garda Inflasi",
 	}
 }
@@ -52,8 +52,8 @@ func (s *Sender) SendResetPassword(to, resetToken string) error {
 	<h2>Reset Password</h2>
 	<p>Anda menerima email ini karena ada permintaan reset password untuk akun Garda Inflasi.</p>
 	<p>Klik tautan berikut untuk mereset password Anda:</p>
-	<p><a href="https://garda-inflasi.id/auth/reset-password?token=%s" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a></p>
-	<p>Atau salin tautan ini ke browser: https://garda-inflasi.id/auth/reset-password?token=%s</p>
+	<p><a href="https://gardainflasi.id/auth/reset-password?token=%s" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Reset Password</a></p>
+	<p>Atau salin tautan ini ke browser: https://gardainflasi.id/auth/reset-password?token=%s</p>
 	<p>Tautan ini berlaku selama 1 jam.</p>
 	<p>Jika Anda tidak meminta reset password, abaikan email ini.</p>
 	<hr>

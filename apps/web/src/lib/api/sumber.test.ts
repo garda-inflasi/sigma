@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatJadwal, toEksekusi, toSampel, toSumberData, type EksekusiResponse, type SumberDataResponse } from "./sumber";
+import { formatJadwal, toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type SumberDataResponse } from "./sumber";
 
 describe("formatJadwal", () => {
   it("menerjemahkan pola cron katalog ke teks Indonesia", () => {
@@ -121,5 +121,14 @@ describe("toSampel", () => {
       ukuran: 5231,
       cuplikan: '{"data":[',
     });
+  });
+});
+
+describe("toPipeline", () => {
+  it("memetakan hitungan lapisan dan mutu, mempertahankan null", () => {
+    assert.deepEqual(
+      toPipeline({ bronze: 3, silver: 20, gold: 5, demo: true, mutu: { kelengkapan: 97.5, akurasi: null, ketepatan_waktu: 66.7, konsistensi: 88 } }),
+      { bronze: 3, silver: 20, gold: 5, demo: true, mutu: { kelengkapan: 97.5, akurasi: null, ketepatanWaktu: 66.7, konsistensi: 88 } },
+    );
   });
 });

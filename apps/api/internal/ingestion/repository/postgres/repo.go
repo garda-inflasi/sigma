@@ -150,6 +150,21 @@ func (r *Repository) SimpanSilver(ctx context.Context, h domain.Hasil) error {
 			}
 		}
 
+		if rows := unik(h.Cuaca, func(x domain.CuacaHarian) string {
+			return fmt.Sprint(x.KabupatenKode, "|", x.Tanggal.Format(time.DateOnly), "|", x.Sumber)
+		}); len(rows) > 0 {
+			for i := range rows {
+				rows[i].ID = domain.IDCuaca(rows[i].KabupatenKode, rows[i].Tanggal, rows[i].Sumber)
+			}
+			err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "kabupaten_kode"}, {Name: "tanggal"}, {Name: "sumber"}},
+				DoUpdates: clause.AssignmentColumns([]string{"curah_hujan_mm", "suhu_c", "kelembapan", "anomali", "eksekusi_id", "data_mentah_id"}),
+			}).Create(&rows).Error
+			if err != nil {
+				return fmt.Errorf("upsert cuaca_harian: %w", err)
+			}
+		}
+
 		// Angka resmi menggantikan baris contoh (DEMO) dan memperbarui kiriman sumber yang sama,
 		// tetapi tidak menimpa angka resmi dari sumber lain.
 		if rows := unik(h.Inflasi, func(x eksekutif.InflasiBulanan) string {
@@ -267,4 +282,65 @@ func (r *Repository) SampelMentah(ctx context.Context, sumberID string, limit in
 		return nil, fmt.Errorf("baca sampel mentah %s: %w", sumberID, err)
 	}
 	return items, nil
+}
+
+func (r *Repository) Pipeline(ctx context.Context) (domain.Pipeline, error) {
+	var p domain.Pipeline
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT (SELECT COUNT(*) FROM data_mentah) AS bronze,
+		       (SELECT COUNT(*) FROM harga_eksternal)
+		       + (SELECT COUNT(*) FROM cuaca_harian WHERE eksekusi_id IS NOT NULL)
+		       + (SELECT COUNT(*) FROM inflasi_bulanan WHERE sumber = 'BPS')
+		       + (SELECT COUNT(*) FROM andil_inflasi WHERE sumber = 'BPS') AS silver,
+		       (SELECT COUNT(*) FROM gold_harga_harian) AS gold,
+		       EXISTS (SELECT 1 FROM eksekusi_sumber WHERE pemicu = 'DEMO') AS demo`).Scan(&p).Error
+	if err != nil {
+		return p, fmt.Errorf("hitung lapisan pipeline: %w", err)
+	}
+
+	var mutu struct {
+		Kelengkapan *float64
+		Konsistensi *float64
+		Akurasi     *float64
+	}
+	err = r.db.WithContext(ctx).Raw(`
+		WITH baris AS (
+		    SELECT COALESCE(SUM(baris_dibaca), 0) AS dibaca,
+		           COALESCE(SUM(baris_tak_terpetakan), 0) AS tak_terpetakan,
+		           COALESCE(SUM(baris_tidak_valid), 0) AS tidak_valid
+		      FROM eksekusi_sumber
+		     WHERE status <> 'BERJALAN' AND mulai >= now() - interval '7 days'
+		),
+		silang AS (
+		    SELECT COUNT(*) AS pasangan, COUNT(*) FILTER (WHERE abs(selisih_pct) <= ?) AS sepakat
+		      FROM gold_harga_harian
+		     WHERE selisih_pct IS NOT NULL AND tanggal >= (now() AT TIME ZONE 'Asia/Jakarta')::date - 14
+		)
+		SELECT ROUND(100.0 * (b.dibaca - b.tidak_valid) / NULLIF(b.dibaca, 0), 1)::float8 AS kelengkapan,
+		       ROUND(100.0 * (b.dibaca - b.tak_terpetakan) / NULLIF(b.dibaca, 0), 1)::float8 AS konsistensi,
+		       ROUND(100.0 * s.sepakat / NULLIF(s.pasangan, 0), 1)::float8 AS akurasi
+		  FROM baris b, silang s`, domain.BatasSelisihPct).Scan(&mutu).Error
+	if err != nil {
+		return p, fmt.Errorf("hitung mutu data: %w", err)
+	}
+	p.Kelengkapan, p.Konsistensi, p.Akurasi = mutu.Kelengkapan, mutu.Konsistensi, mutu.Akurasi
+	return p, nil
+}
+
+func (r *Repository) TerakhirSukses(ctx context.Context) (map[string]time.Time, error) {
+	var rows []struct {
+		SumberID string    `gorm:"column:sumber_id"`
+		Selesai  time.Time `gorm:"column:selesai"`
+	}
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT sumber_id, MAX(selesai) AS selesai FROM eksekusi_sumber
+		 WHERE status IN ('SUKSES', 'SEBAGIAN') GROUP BY sumber_id`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("baca eksekusi sukses terakhir: %w", err)
+	}
+	res := make(map[string]time.Time, len(rows))
+	for _, row := range rows {
+		res[row.SumberID] = row.Selesai
+	}
+	return res, nil
 }

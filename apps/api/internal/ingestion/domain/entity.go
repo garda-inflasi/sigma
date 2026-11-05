@@ -1,6 +1,6 @@
 // Package domain memuat model ingestion: run per sumber (eksekusi_sumber), lapisan
 // bronze (data_mentah), pemetaan alias sumber ke kode master, dan lapisan silver
-// (harga_eksternal).
+// (harga_eksternal, cuaca_harian). Gold adalah materialized view gold_harga_harian.
 package domain
 
 import "time"
@@ -97,3 +97,25 @@ type HargaEksternal struct {
 }
 
 func (HargaEksternal) TableName() string { return "harga_eksternal" }
+
+// CuacaHarian memetakan tabel cuaca_harian (silver cuaca). ID deterministik dari
+// kunci alaminya (lihat IDCuaca).
+type CuacaHarian struct {
+	ID            string    `gorm:"column:id;primaryKey"`
+	KabupatenKode string    `gorm:"column:kabupaten_kode"`
+	Tanggal       time.Time `gorm:"column:tanggal;type:date"`
+	CurahHujanMm  float64   `gorm:"column:curah_hujan_mm"`
+	SuhuC         float64   `gorm:"column:suhu_c"`
+	Kelembapan    int       `gorm:"column:kelembapan"`
+	Anomali       bool      `gorm:"column:anomali"`
+	Sumber        string    `gorm:"column:sumber"`
+	EksekusiID    *int64    `gorm:"column:eksekusi_id"`
+	DataMentahID  *int64    `gorm:"column:data_mentah_id"`
+}
+
+func (CuacaHarian) TableName() string { return "cuaca_harian" }
+
+// IDCuaca membentuk id baris cuaca dari kunci alaminya (kabupaten, tanggal, sumber).
+func IDCuaca(kabupaten string, tanggal time.Time, sumber string) string {
+	return "CUA-" + kabupaten + "-" + tanggal.Format("20060102") + "-" + sumber
+}

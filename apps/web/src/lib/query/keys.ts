@@ -33,6 +33,7 @@ export const qk = {
   },
   sumber: {
     list: () => ["sumber-data"] as const,
+    pipeline: () => ["sumber-data", "pipeline"] as const,
     eksekusi: (id: string) => ["sumber-data", "eksekusi", id] as const,
     sampel: (id: string) => ["sumber-data", "sampel", id] as const,
   },

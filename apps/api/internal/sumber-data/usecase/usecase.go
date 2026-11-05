@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
+	"github.com/garda-inflasi/api/internal/ingestion/cron"
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
@@ -36,6 +39,53 @@ type Ingestion interface {
 	Mulai(ctx context.Context, sumberID, pemicu string, aktorID *string) (Berjalan, error)
 	Eksekusi(ctx context.Context, sumberID string, limit int) ([]ingest.EksekusiSumber, error)
 	SampelMentah(ctx context.Context, sumberID string, limit int) ([]ingest.SampelMentah, error)
+	Pipeline(ctx context.Context) (ingest.Pipeline, error)
+	TerakhirSukses(ctx context.Context) (map[string]time.Time, error)
+}
+
+// Pipeline melengkapi hitungan lapisan dan mutu dari repository dengan ketepatan waktu.
+type Pipeline struct {
+	ingest.Pipeline
+	// KetepatanWaktu: persen sumber ber-konektor (tidak dijeda) yang eksekusi suksesnya terakhir
+	// tidak lebih tua dari dua kali selang jadwalnya. Nil bila tidak ada sumber yang dinilai.
+	KetepatanWaktu *float64
+}
+
+// Pipeline menghitung isi lapisan bronze/silver/gold dan mutu data dari eksekusi nyata.
+func (uc *UseCase) Pipeline(ctx context.Context, sekarang time.Time) (Pipeline, error) {
+	p, err := uc.ingest.Pipeline(ctx)
+	if err != nil {
+		return Pipeline{}, err
+	}
+	sumber, err := uc.repo.List(ctx)
+	if err != nil {
+		return Pipeline{}, fmt.Errorf("pipeline: baca katalog: %w", err)
+	}
+	sukses, err := uc.ingest.TerakhirSukses(ctx)
+	if err != nil {
+		return Pipeline{}, err
+	}
+
+	dinilai, tepat := 0, 0
+	for _, s := range sumber {
+		if !uc.ingest.Punya(s.ID) || s.Status == domain.StatusDijeda {
+			continue
+		}
+		jadwal, err := cron.Parse(s.JadwalCron)
+		if err != nil {
+			uc.log.Warn("sumber-data: jadwal tidak valid, dilewati dari ketepatan waktu", map[string]interface{}{"sumber": s.ID, "error": err.Error()})
+			continue
+		}
+		dinilai++
+		if terakhir, ada := sukses[s.ID]; ada && sekarang.Sub(terakhir) <= 2*jadwal.Selang(sekarang) {
+			tepat++
+		}
+	}
+	res := Pipeline{Pipeline: p}
+	if dinilai > 0 {
+		res.KetepatanWaktu = new(math.Round(1000*float64(tepat)/float64(dinilai)) / 10)
+	}
+	return res, nil
 }
 
 // BulkResult: Berhasil adalah jumlah sumber yang berubah; Gagal sisanya dari id yang diminta.

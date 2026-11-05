@@ -29,11 +29,11 @@ import {
 import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { USERS } from "@/lib/data/reference";
-import { toEksekusi, toSampel, toSumberData, type EksekusiResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
+import { toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
   ColdStorageView, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
-  PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
+  PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string };
@@ -139,6 +139,11 @@ export const api = {
     /** Jeda atau lanjutkan sumber; sumber dijeda tidak dijadwalkan dan tidak bisa dijalankan manual. */
     bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
       MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
+    /** Isi lapisan bronze/silver/gold dan mutu data dari eksekusi nyata. */
+    pipeline: (): Promise<PipelineSumber> =>
+      MODE_MOCK
+        ? mockDelay({ bronze: 0, silver: 0, gold: 0, demo: false, mutu: { kelengkapan: null, akurasi: null, ketepatanWaktu: null, konsistensi: null } })
+        : apiFetch<PipelineResponse>("/v1/sumber-data/pipeline").then(toPipeline),
     /** Riwayat eksekusi ingestion, terbaru lebih dulu. */
     eksekusi: (id: string): Promise<EksekusiSumber[]> =>
       MODE_MOCK ? mockDelay([]) : apiFetch<EksekusiResponse[]>(`/v1/sumber-data/${encodeURIComponent(id)}/eksekusi`).then((rows) => rows.map(toEksekusi)),

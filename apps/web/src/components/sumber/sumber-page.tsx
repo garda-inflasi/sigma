@@ -22,18 +22,17 @@ import { exportCsv } from "@/lib/csv";
 import type { SumberData } from "@/lib/data/types";
 import { formatAngka, formatPersen, formatRelatif } from "@/lib/format";
 import { ease, fadeUp, stagger } from "@/lib/motion/presets";
-import { useSumberBulk, useSumberData } from "@/lib/query/hooks";
+import { useSumberBulk, useSumberData, useSumberPipeline } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 import { SumberDetail } from "./sumber-detail";
 
-// Ilustrasi: pipeline medallion belum berjalan (ingestion menyusul di 05-B/05-C),
-// jadi angka di bawah belum berasal dari data nyata.
+// Mutu data dihitung server dari eksekusi ingestion nyata (kunci = bidang PipelineSumber["mutu"]).
 const MUTU = [
-  { label: "Kelengkapan", v: 97.2, d: "Field wajib terisi" },
-  { label: "Akurasi", v: 94.8, d: "Lolos validasi silang sumber" },
-  { label: "Ketepatan waktu", v: 91.5, d: "Tiba sebelum tenggat harian" },
-  { label: "Konsistensi", v: 96.1, d: "Satuan & kode seragam" },
-];
+  { key: "kelengkapan", label: "Kelengkapan", d: "Baris terisi dan valid, 7 hari" },
+  { key: "akurasi", label: "Akurasi", d: "Harga lapangan sepakat dengan eksternal (selisih ≤ 10%), 14 hari" },
+  { key: "ketepatanWaktu", label: "Ketepatan waktu", d: "Sumber yang sukses dalam 2× selang jadwal" },
+  { key: "konsistensi", label: "Konsistensi", d: "Kode wilayah dan komoditas terpetakan ke master" },
+] as const;
 const STATUS = {
   BELUM_AKTIF: { tone: "netral", label: "Belum aktif" },
   SEHAT: { tone: "normal", label: "Sehat" },
@@ -45,6 +44,7 @@ const STATUS = {
 export function SumberPage() {
   const { data, isLoading } = useSumberData();
   const bulk = useSumberBulk();
+  const { data: pipeline } = useSumberPipeline();
   const [detailId, setDetailId] = useState<string | null>(null);
   const rows = useMemo(() => data ?? [], [data]);
   const detail = rows.find((r) => r.id === detailId) ?? null;
@@ -149,7 +149,11 @@ export function SumberPage() {
       <section className="space-y-4">
         <PanelTitle
           title="Pipeline data"
-          description="Ilustrasi alur sumber ke gold layer; angka akan nyata setelah ingestion berjalan"
+          description={
+            pipeline?.demo
+              ? "Jumlah baris per lapisan dari eksekusi ingestion; termasuk eksekusi contoh (data demo)"
+              : "Jumlah baris per lapisan dari eksekusi ingestion"
+          }
         />
         <DiagramAlur
           aliran
@@ -165,28 +169,28 @@ export function SumberPage() {
               icon: Layers,
               tone: "waspada",
               deskripsi: "Mentah + lineage",
-              metrik: "48.312",
+              metrik: pipeline ? formatAngka(pipeline.bronze) : "—",
             },
             {
               judul: "Silver",
               icon: ScanSearch,
               tone: "data",
               deskripsi: "Bersih & ternormalisasi",
-              metrik: "46.980",
+              metrik: pipeline ? formatAngka(pipeline.silver) : "—",
             },
             {
               judul: "Gold",
               icon: BadgeCheck,
               tone: "normal",
-              deskripsi: "Terpublikasi",
-              metrik: "44.105",
+              deskripsi: "Agregat harian siap pakai",
+              metrik: pipeline ? formatAngka(pipeline.gold) : "—",
             },
             {
               judul: "Model & EWS",
               icon: Radar,
               tone: "surplus",
               deskripsi: "Fitur & deteksi",
-              metrik: "tiap 15 mnt",
+              metrik: "agregat tiap 5 mnt",
             },
           ]}
         />
@@ -197,34 +201,45 @@ export function SumberPage() {
         animate="show"
         className="grid grid-cols-2 gap-4 xl:grid-cols-4"
       >
-        {MUTU.map((m) => (
-          <motion.div
-            key={m.label}
-            variants={fadeUp}
-            className="glass rounded-xl p-4"
-          >
-            <p className="text-sm text-muted-foreground">
-              {m.label} <span className="text-xs">(ilustrasi)</span>
-            </p>
-            <CountUp
-              value={m.v}
-              format={(n) => formatPersen(n)}
-              className="mt-2 block text-2xl font-semibold"
-            />
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-mist-200 dark:bg-white/10">
-              <motion.div
-                className={cn(
-                  "h-full rounded-full",
-                  m.v >= 95 ? "bg-normal" : "bg-data-500",
+        {MUTU.map((m) => {
+          const v = pipeline?.mutu[m.key] ?? null;
+          return (
+            <motion.div
+              key={m.key}
+              variants={fadeUp}
+              className="glass rounded-xl p-4"
+            >
+              <p className="text-sm text-muted-foreground">{m.label}</p>
+              {v === null ? (
+                <span className="mt-2 block text-2xl font-semibold text-muted-foreground">
+                  —
+                </span>
+              ) : (
+                <CountUp
+                  value={v}
+                  format={(n) => formatPersen(n)}
+                  className="mt-2 block text-2xl font-semibold"
+                />
+              )}
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-mist-200 dark:bg-white/10">
+                {v !== null && (
+                  <motion.div
+                    className={cn(
+                      "h-full rounded-full",
+                      v >= 95 ? "bg-normal" : "bg-data-500",
+                    )}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${v}%` }}
+                    transition={{ duration: 1, ease: ease.garda }}
+                  />
                 )}
-                initial={{ width: 0 }}
-                animate={{ width: `${m.v}%` }}
-                transition={{ duration: 1, ease: ease.garda }}
-              />
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">{m.d}</p>
-          </motion.div>
-        ))}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {v === null ? "Belum ada eksekusi untuk dihitung" : m.d}
+              </p>
+            </motion.div>
+          );
+        })}
       </motion.div>
       <DataTable
         data={rows}

@@ -1251,6 +1251,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/sumber-data/pipeline:
+    get:
+      summary: Isi lapisan bronze/silver/gold dan mutu data
+      description: |
+        Jumlah baris per lapisan dan empat ukuran mutu (persen 0-100) yang dihitung dari
+        eksekusi ingestion nyata. `null` berarti belum ada bahan untuk menghitung (bukan 100%).
+
+        - `bronze`: payload mentah (`data_mentah`).
+        - `silver`: `harga_eksternal` + `cuaca_harian` hasil ingestion + `inflasi_bulanan` dan
+          `andil_inflasi` bersumber BPS.
+        - `gold`: baris `gold_harga_harian` (harga lapangan vs eksternal per hari).
+        - `kelengkapan`: baris valid dari seluruh baris dibaca, 7 hari. `konsistensi`: baris
+          yang kode wilayah/komoditasnya terpetakan ke master, 7 hari. `akurasi`: pasangan
+          harga lapangan vs eksternal dengan selisih paling banyak 10%, 14 hari.
+          `ketepatan_waktu`: sumber ber-konektor (tidak dijeda) yang eksekusi suksesnya terakhir
+          tidak lebih tua dari dua kali selang jadwal.
+        - `demo`: benar bila hitungan memuat eksekusi contoh (pemicu `DEMO`).
+
+        Butuh izin `sumber.lihat`.
+      operationId: getPipelineSumber
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Hitungan lapisan dan mutu data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineSumberResponse"
+        "403":
+          description: Tanpa izin `sumber.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/sumber-data/{id}/eksekusi:
     get:
       summary: Riwayat eksekusi ingestion sebuah sumber
@@ -3410,6 +3448,48 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EksekusiSumber"
+
+    PipelineSumber:
+      type: object
+      properties:
+        bronze:
+          type: integer
+          format: int64
+        silver:
+          type: integer
+          format: int64
+        gold:
+          type: integer
+          format: int64
+        demo:
+          type: boolean
+        mutu:
+          type: object
+          properties:
+            kelengkapan:
+              type: number
+              nullable: true
+            akurasi:
+              type: number
+              nullable: true
+            ketepatan_waktu:
+              type: number
+              nullable: true
+            konsistensi:
+              type: number
+              nullable: true
+
+    PipelineSumberResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/PipelineSumber"
 
     SampelSumber:
       type: object

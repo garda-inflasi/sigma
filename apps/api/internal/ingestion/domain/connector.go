@@ -20,6 +20,9 @@ type Permintaan struct {
 	URL   string
 	// Header tambahan; kunci API sebaiknya di URL/Header, bukan di Kunci.
 	Header http.Header
+	// Samarkan memuat potongan rahasia pada URL (mis. kunci API di jalur) yang harus
+	// disamarkan dari pesan galat dan log.
+	Samarkan []string
 	// SumberID dan PatuhRobots diisi engine.
 	SumberID    string
 	PatuhRobots bool
@@ -53,6 +56,7 @@ type Masukan struct {
 // dihitung, tidak dibuang diam-diam: lihat TakTerpetakan dan TidakValid.
 type Hasil struct {
 	Harga   []HargaEksternal
+	Cuaca   []CuacaHarian
 	Inflasi []eksekutif.InflasiBulanan
 	Andil   []eksekutif.AndilInflasi
 
@@ -81,6 +85,7 @@ func (h *Hasil) TambahTidakValid(alasan string) {
 // Gabung menambahkan isi o ke h.
 func (h *Hasil) Gabung(o Hasil) {
 	h.Harga = append(h.Harga, o.Harga...)
+	h.Cuaca = append(h.Cuaca, o.Cuaca...)
 	h.Inflasi = append(h.Inflasi, o.Inflasi...)
 	h.Andil = append(h.Andil, o.Andil...)
 	for k, n := range o.TakTerpetakan {
@@ -98,7 +103,7 @@ func (h *Hasil) Gabung(o Hasil) {
 }
 
 // Diambil adalah jumlah baris silver yang dihasilkan.
-func (h *Hasil) Diambil() int { return len(h.Harga) + len(h.Inflasi) + len(h.Andil) }
+func (h *Hasil) Diambil() int { return len(h.Harga) + len(h.Cuaca) + len(h.Inflasi) + len(h.Andil) }
 
 // JumlahTakTerpetakan dan JumlahTidakValid menjumlah baris yang ditolak per kategori.
 func (h *Hasil) JumlahTakTerpetakan() int { return jumlah(h.TakTerpetakan) }
@@ -122,6 +127,15 @@ type Konektor interface {
 	// Normalisasi mengubah satu respons menjadi baris silver. Galat hanya untuk
 	// respons yang tak bisa dibaca sama sekali; baris cacat dilaporkan di Hasil.
 	Normalisasi(in Masukan, dok Dokumen) (Hasil, error)
+}
+
+// Penggabung adalah Konektor yang barisnya baru lengkap setelah semua dokumen sebuah run
+// terkumpul (mis. beberapa variabel yang membentuk satu baris). Engine tetap menyimpan tiap
+// dokumen ke bronze dan memanggil Normalisasi per dokumen untuk memeriksanya; baris silver
+// dirakit sekali lewat Gabungkan dari dokumen yang lolos pemeriksaan.
+type Penggabung interface {
+	Konektor
+	Gabungkan(in Masukan, dok []Dokumen) (Hasil, error)
 }
 
 // Pencarian adalah hasil mencari alias di pemetaan.

@@ -63,6 +63,7 @@ export const useColdStorage = (params: ColdStorageParams) =>
     refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
   });
 export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+export const useSumberPipeline = () => useQuery({ queryKey: qk.sumber.pipeline(), queryFn: api.sumber.pipeline, refetchInterval: LIVE * 2 });
 /** Riwayat eksekusi; dimuat ulang tiap 2 detik selama masih ada run BERJALAN. */
 export const useSumberEksekusi = (id: string | null) =>
   useQuery({

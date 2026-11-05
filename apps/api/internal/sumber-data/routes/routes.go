@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/ingestion"
@@ -51,6 +52,14 @@ func (a ingestionAdapter) SampelMentah(ctx context.Context, id string, limit int
 	return a.repo.SampelMentah(ctx, id, limit)
 }
 
+func (a ingestionAdapter) Pipeline(ctx context.Context) (ingest.Pipeline, error) {
+	return a.repo.Pipeline(ctx)
+}
+
+func (a ingestionAdapter) TerakhirSukses(ctx context.Context) (map[string]time.Time, error) {
+	return a.repo.TerakhirSukses(ctx)
+}
+
 func Register(group *gin.RouterGroup, deps *Dependencies) {
 	runner := deps.Runner
 	if runner == nil {
@@ -64,6 +73,7 @@ func Register(group *gin.RouterGroup, deps *Dependencies) {
 	sumber.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("sumber.lihat"))
 	{
 		sumber.GET("", handler.List)
+		sumber.GET("/pipeline", handler.Pipeline)
 		sumber.GET("/:id", handler.Get)
 		sumber.GET("/:id/eksekusi", handler.Eksekusi)
 		sumber.GET("/:id/sampel", handler.Sampel)

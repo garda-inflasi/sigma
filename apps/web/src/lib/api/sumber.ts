@@ -3,7 +3,7 @@
  * Endpoint: GET /v1/sumber-data, POST /v1/sumber-data/bulk.
  */
 
-import type { EksekusiSumber, SampelSumber, SumberData } from "@/lib/data/types";
+import type { EksekusiSumber, PipelineSumber, SampelSumber, SumberData } from "@/lib/data/types";
 
 export interface SumberDataResponse {
   id: string;
@@ -37,6 +37,19 @@ export interface EksekusiResponse {
   ringkasan: {
     tak_terpetakan?: Record<string, number>;
     tidak_valid?: Record<string, number>;
+  };
+}
+
+export interface PipelineResponse {
+  bronze: number;
+  silver: number;
+  gold: number;
+  demo: boolean;
+  mutu: {
+    kelengkapan: number | null;
+    akurasi: number | null;
+    ketepatan_waktu: number | null;
+    konsistensi: number | null;
   };
 }
 
@@ -123,6 +136,21 @@ export function toEksekusi(e: EksekusiResponse): EksekusiSumber {
     galat: e.galat,
     takTerpetakan: hitungan(e.ringkasan?.tak_terpetakan).map(([alias, baris]) => ({ alias, baris })),
     tidakValid: hitungan(e.ringkasan?.tidak_valid).map(([alasan, baris]) => ({ alasan, baris })),
+  };
+}
+
+export function toPipeline(p: PipelineResponse): PipelineSumber {
+  return {
+    bronze: p.bronze,
+    silver: p.silver,
+    gold: p.gold,
+    demo: p.demo,
+    mutu: {
+      kelengkapan: p.mutu.kelengkapan,
+      akurasi: p.mutu.akurasi,
+      ketepatanWaktu: p.mutu.ketepatan_waktu,
+      konsistensi: p.mutu.konsistensi,
+    },
   };
 }
 

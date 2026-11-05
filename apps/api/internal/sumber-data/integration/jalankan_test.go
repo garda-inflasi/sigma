@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/garda-inflasi/api/internal/dashboard/refresher"
+	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,6 +38,7 @@ func (s *suite) jalankanBersih(t *testing.T) {
 		require.NoError(t, s.db.Exec(q).Error)
 	}
 	s.fetcher.Tahan = nil
+	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
 }
 
 // tunggu menunggu run terakhir sumber selesai (status bukan BERJALAN) lewat API riwayat.
@@ -188,4 +191,80 @@ func TestKatalog_MenandaiSumberYangBisaDijalankan(t *testing.T) {
 	}
 	assert.True(t, by["SRC-BI"])
 	assert.False(t, by["SRC-DJPB"])
+}
+
+type pipelineRow struct {
+	Bronze int64 `json:"bronze"`
+	Silver int64 `json:"silver"`
+	Gold   int64 `json:"gold"`
+	Demo   bool  `json:"demo"`
+	Mutu   struct {
+		Kelengkapan    *float64 `json:"kelengkapan"`
+		Akurasi        *float64 `json:"akurasi"`
+		KetepatanWaktu *float64 `json:"ketepatan_waktu"`
+		Konsistensi    *float64 `json:"konsistensi"`
+	} `json:"mutu"`
+}
+
+func TestPipeline_Otorisasi(t *testing.T) {
+	s := sharedSuite(t)
+
+	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", "", nil).Code)
+	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", emailTanpaIzn, nil).Code)
+	assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", emailLihat, nil).Code)
+}
+
+func TestPipeline_KosongLaluTerisiDariRunNyata(t *testing.T) {
+	s := sharedSuite(t)
+	s.jalankanBersih(t)
+
+	kosong := decode[pipelineRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", emailLihat, nil))
+	assert.Zero(t, kosong.Bronze+kosong.Silver+kosong.Gold)
+	assert.False(t, kosong.Demo)
+	assert.Nil(t, kosong.Mutu.Kelengkapan, "tanpa run tidak ada angka mutu, bukan 100%")
+	assert.Nil(t, kosong.Mutu.Konsistensi)
+	assert.Nil(t, kosong.Mutu.Akurasi)
+	require.NotNil(t, kosong.Mutu.KetepatanWaktu)
+	assert.Zero(t, *kosong.Mutu.KetepatanWaktu, "SRC-BI punya konektor tetapi belum pernah sukses")
+
+	require.Equal(t, http.StatusAccepted, s.call(t, http.MethodPost, "/v1/sumber-data/SRC-BI/jalankan", emailKelola, nil).Code)
+	s.tunggu(t, "SRC-BI")
+	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
+
+	p := decode[pipelineRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", emailLihat, nil))
+	assert.EqualValues(t, 1, p.Bronze)
+	assert.EqualValues(t, 14, p.Silver)
+	assert.EqualValues(t, 14, p.Gold)
+	assert.False(t, p.Demo)
+	require.NotNil(t, p.Mutu.Kelengkapan)
+	assert.InDelta(t, 81.0, *p.Mutu.Kelengkapan, 0.001, "(21 dibaca - 4 tidak valid) / 21")
+	require.NotNil(t, p.Mutu.Konsistensi)
+	assert.InDelta(t, 85.7, *p.Mutu.Konsistensi, 0.001, "(21 dibaca - 3 tak terpetakan) / 21")
+	assert.Nil(t, p.Mutu.Akurasi, "belum ada pasangan lapangan dan eksternal")
+	require.NotNil(t, p.Mutu.KetepatanWaktu)
+	assert.InDelta(t, 100, *p.Mutu.KetepatanWaktu, 0.001)
+}
+
+func TestPipeline_AkurasiDariSelisihLapanganVsEksternal(t *testing.T) {
+	s := sharedSuite(t)
+	s.jalankanBersih(t)
+	// Hari ini di Banda Aceh: beras sepakat (selisih 2,9%), cabai tidak (50%).
+	require.NoError(t, s.db.Exec(`
+		INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada) VALUES
+		('EH-PIPE-1', 'BRS-MED', 'PSR-1171-01', 'KONSUMEN', 14400, 'kg', 'DIVALIDASI', now()),
+		('EH-PIPE-2', 'CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 90000, 'kg', 'DIVALIDASI', now())`).Error)
+	require.NoError(t, s.db.Exec(`
+		INSERT INTO harga_eksternal (sumber_id, komoditas_kode, kabupaten_kode, tanggal, tipe, harga, satuan) VALUES
+		('SRC-BI', 'BRS-MED', '1171', (now() AT TIME ZONE 'Asia/Jakarta')::date, 'KONSUMEN', 14000, 'kg'),
+		('SRC-BI', 'CBM-KRT', '1171', (now() AT TIME ZONE 'Asia/Jakarta')::date, 'KONSUMEN', 60000, 'kg')`).Error)
+	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
+
+	p := decode[pipelineRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", emailLihat, nil))
+
+	require.NotNil(t, p.Mutu.Akurasi)
+	assert.InDelta(t, 50.0, *p.Mutu.Akurasi, 0.001)
+	assert.EqualValues(t, 2, p.Gold)
+
+	require.NoError(t, s.db.Exec(`DELETE FROM entri_harga WHERE id IN ('EH-PIPE-1', 'EH-PIPE-2')`).Error)
+	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
 }

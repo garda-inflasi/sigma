@@ -6,6 +6,7 @@ import (
 
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/internal/sumber-data/usecase"
 )
 
 type SumberDataResponse struct {
@@ -102,6 +103,31 @@ type SampelResponse struct {
 	DiambilPada     time.Time `json:"diambil_pada"`
 	Ukuran          int       `json:"ukuran"`
 	Cuplikan        string    `json:"cuplikan"`
+}
+
+// MutuResponse adalah persen 0-100; null bila belum ada bahan untuk menghitungnya.
+type MutuResponse struct {
+	Kelengkapan    *float64 `json:"kelengkapan"`
+	Akurasi        *float64 `json:"akurasi"`
+	KetepatanWaktu *float64 `json:"ketepatan_waktu"`
+	Konsistensi    *float64 `json:"konsistensi"`
+}
+
+// PipelineResponse merangkum lapisan medallion (jumlah baris) dan mutu data. Demo benar
+// bila hitungan memuat eksekusi contoh.
+type PipelineResponse struct {
+	Bronze int64        `json:"bronze"`
+	Silver int64        `json:"silver"`
+	Gold   int64        `json:"gold"`
+	Demo   bool         `json:"demo"`
+	Mutu   MutuResponse `json:"mutu"`
+}
+
+func ToPipelineResponse(p usecase.Pipeline) PipelineResponse {
+	return PipelineResponse{
+		Bronze: p.Bronze, Silver: p.Silver, Gold: p.Gold, Demo: p.Demo,
+		Mutu: MutuResponse{Kelengkapan: p.Kelengkapan, Akurasi: p.Akurasi, KetepatanWaktu: p.KetepatanWaktu, Konsistensi: p.Konsistensi},
+	}
 }
 
 func ToSampelResponses(items []ingest.SampelMentah) []SampelResponse {

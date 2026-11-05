@@ -173,6 +173,7 @@ func (run *Run) proses(ctx context.Context, a *akumulasi) {
 		return
 	}
 
+	var terkumpul []domain.Dokumen
 	for _, p := range reqs {
 		if ctx.Err() != nil {
 			a.fatal = fmt.Errorf("dihentikan: %w", ctx.Err())
@@ -207,13 +208,31 @@ func (run *Run) proses(ctx context.Context, a *akumulasi) {
 			a.catatGalat(fmt.Sprintf("%s: normalisasi: %v", p.Kunci, err))
 			continue
 		}
+		a.diproses++
+		if _, gabung := run.konektor.(domain.Penggabung); gabung {
+			// Baris silver dirakit sekali setelah semua dokumen terkumpul.
+			terkumpul = append(terkumpul, domain.Dokumen{Kunci: p.Kunci, Konten: body, DiambilPada: r.Sekarang()})
+			continue
+		}
 		lampirkanGaris(&hasil, mid, run.eksekusi.ID)
 		if err := r.repo.SimpanSilver(ctx, hasil); err != nil {
 			a.fatal = fmt.Errorf("simpan silver %s: %w", p.Kunci, err)
 			return
 		}
 		a.hasil.Gabung(hasil)
-		a.diproses++
+	}
+
+	if gab, ok := run.konektor.(domain.Penggabung); ok && len(terkumpul) > 0 {
+		hasil, err := gab.Gabungkan(in, terkumpul)
+		if err != nil {
+			a.fatal = fmt.Errorf("gabungkan dokumen: %w", err)
+			return
+		}
+		if err := r.repo.SimpanSilver(ctx, hasil); err != nil {
+			a.fatal = fmt.Errorf("simpan silver gabungan: %w", err)
+			return
+		}
+		a.hasil.Gabung(hasil)
 	}
 }
 
@@ -221,6 +240,9 @@ func (run *Run) proses(ctx context.Context, a *akumulasi) {
 func lampirkanGaris(h *domain.Hasil, dataMentahID, eksekusiID int64) {
 	for i := range h.Harga {
 		h.Harga[i].DataMentahID, h.Harga[i].EksekusiID = &dataMentahID, &eksekusiID
+	}
+	for i := range h.Cuaca {
+		h.Cuaca[i].DataMentahID, h.Cuaca[i].EksekusiID = &dataMentahID, &eksekusiID
 	}
 }
 

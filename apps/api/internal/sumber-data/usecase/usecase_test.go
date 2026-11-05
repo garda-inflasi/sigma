@@ -44,6 +44,14 @@ type fakeIngestion struct {
 	mulaiErr error
 	run      *fakeRun
 	dimulai  []string
+	pipeline ingest.Pipeline
+	sukses   map[string]time.Time
+}
+
+func (f *fakeIngestion) Pipeline(context.Context) (ingest.Pipeline, error) { return f.pipeline, nil }
+
+func (f *fakeIngestion) TerakhirSukses(context.Context) (map[string]time.Time, error) {
+	return f.sukses, nil
 }
 
 func (f *fakeIngestion) Punya(id string) bool { return f.konektor[id] }
@@ -263,4 +271,46 @@ func TestEksekusiDanSampel_MemeriksaSumberAda(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 	_, err = uc.Sampel(context.Background(), "SRC-X", 10)
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestPipeline_KetepatanWaktuDariSelangJadwal(t *testing.T) {
+	sekarang := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	repo := new(mockRepository)
+	uc, _, ing := newTestUseCaseIngestion(repo)
+	ing.konektor = map[string]bool{"SRC-BI": true, "SRC-BMKG": true, "SRC-BPS": true, "SRC-CS": true}
+	ing.pipeline = ingest.Pipeline{Bronze: 3, Silver: 20, Gold: 5, Demo: true, Kelengkapan: new(97.5)}
+	ing.sukses = map[string]time.Time{
+		"SRC-BI":   sekarang.Add(-20 * time.Hour), // harian: batas 48 jam, tepat
+		"SRC-BMKG": sekarang.Add(-10 * time.Hour), // tiap 3 jam: batas 6 jam, terlambat
+		// SRC-BPS belum pernah sukses: terlambat.
+		// SRC-CS dijeda: tidak dinilai.
+	}
+	repo.On("List", mock.Anything).Return([]domain.SumberData{
+		{ID: "SRC-BI", JadwalCron: "0 10 * * *", Status: domain.StatusSehat},
+		{ID: "SRC-BMKG", JadwalCron: "0 */3 * * *", Status: domain.StatusSehat},
+		{ID: "SRC-BPS", JadwalCron: "0 6 * * *", Status: domain.StatusBelumAktif},
+		{ID: "SRC-CS", JadwalCron: "*/5 * * * *", Status: domain.StatusDijeda},
+		{ID: "SRC-DJPB", JadwalCron: "0 7 * * 1", Status: domain.StatusSehat}, // tanpa konektor
+	}, nil)
+
+	p, err := uc.Pipeline(context.Background(), sekarang)
+
+	require.NoError(t, err)
+	assert.EqualValues(t, 20, p.Silver)
+	assert.True(t, p.Demo)
+	assert.Equal(t, 97.5, *p.Kelengkapan)
+	require.NotNil(t, p.KetepatanWaktu)
+	assert.InDelta(t, 33.3, *p.KetepatanWaktu, 0.001, "1 dari 3 sumber yang dinilai")
+}
+
+func TestPipeline_TanpaSumberYangDinilaiKetepatanNil(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _, ing := newTestUseCaseIngestion(repo)
+	ing.konektor = map[string]bool{}
+	repo.On("List", mock.Anything).Return([]domain.SumberData{{ID: "SRC-DJPB", JadwalCron: "0 7 * * 1"}}, nil)
+
+	p, err := uc.Pipeline(context.Background(), time.Now())
+
+	require.NoError(t, err)
+	assert.Nil(t, p.KetepatanWaktu)
 }

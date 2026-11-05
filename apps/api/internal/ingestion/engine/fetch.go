@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,17 @@ func (e *GalatHTTP) Error() string { return fmt.Sprintf("GET %s: status %d", e.L
 
 // redaksi menampilkan URL tanpa query/userinfo, karena kunci API biasanya ada di query.
 func redaksi(u *url.URL) string { return u.Scheme + "://" + u.Host + u.Path }
+
+// lokasiAman menampilkan URL tanpa query dan dengan potongan rahasia (mis. kunci API di jalur) disamarkan.
+func lokasiAman(u *url.URL, samarkan []string) string {
+	lokasi := redaksi(u)
+	for _, rahasia := range samarkan {
+		if rahasia != "" {
+			lokasi = strings.ReplaceAll(lokasi, rahasia, "***")
+		}
+	}
+	return lokasi
+}
 
 // HTTPFetcher mengambil URL lewat HTTP GET dengan pembatasan laju per host dan
 // (bila diminta Permintaan.PatuhRobots) kepatuhan robots.txt. Retry dan circuit
@@ -69,24 +81,25 @@ func (f *HTTPFetcher) Get(ctx context.Context, p domain.Permintaan) ([]byte, err
 			return nil, fmt.Errorf("robots.txt %s: %w", u.Host, err)
 		}
 		if !boleh {
-			return nil, fmt.Errorf("%s: %w", redaksi(u), ErrRobots)
+			return nil, fmt.Errorf("%s: %w", lokasiAman(u, p.Samarkan), ErrRobots)
 		}
 	}
-	return f.ambil(ctx, u, p.Header)
+	return f.ambil(ctx, u, p.Header, p.Samarkan)
 }
 
 // ambilTanpaRobots mengambil URL tanpa pemeriksaan robots (dipakai untuk robots.txt sendiri).
 func (f *HTTPFetcher) ambilTanpaRobots(ctx context.Context, u *url.URL) ([]byte, error) {
-	return f.ambil(ctx, u, nil)
+	return f.ambil(ctx, u, nil, nil)
 }
 
-func (f *HTTPFetcher) ambil(ctx context.Context, u *url.URL, header http.Header) ([]byte, error) {
+func (f *HTTPFetcher) ambil(ctx context.Context, u *url.URL, header http.Header, samarkan []string) ([]byte, error) {
+	lokasi := lokasiAman(u, samarkan)
 	if err := f.tunggu(ctx, u.Host); err != nil {
 		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", redaksi(u), err)
+		return nil, fmt.Errorf("GET %s: %w", lokasi, err)
 	}
 	req.Header.Set("User-Agent", f.UserAgent)
 	req.Header.Set("Accept", "application/json")
@@ -103,19 +116,19 @@ func (f *HTTPFetcher) ambil(ctx context.Context, u *url.URL, header http.Header)
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return nil, fmt.Errorf("GET %s: %w", redaksi(u), err)
+		return nil, fmt.Errorf("GET %s: %w", lokasi, err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, &GalatHTTP{Status: res.StatusCode, Lokasi: redaksi(u), Sementara: res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500}
+		return nil, &GalatHTTP{Status: res.StatusCode, Lokasi: lokasi, Sementara: res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500}
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, f.BatasBadan+1))
 	if err != nil {
-		return nil, fmt.Errorf("GET %s: baca badan: %w", redaksi(u), err)
+		return nil, fmt.Errorf("GET %s: baca badan: %w", lokasi, err)
 	}
 	if int64(len(body)) > f.BatasBadan {
-		return nil, fmt.Errorf("GET %s: respons melebihi %d byte", redaksi(u), f.BatasBadan)
+		return nil, fmt.Errorf("GET %s: respons melebihi %d byte", lokasi, f.BatasBadan)
 	}
 	return body, nil
 }

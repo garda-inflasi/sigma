@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
+	"github.com/garda-inflasi/api/internal/ingestion/connector/bmkg"
+	"github.com/garda-inflasi/api/internal/ingestion/connector/bps"
 	"github.com/garda-inflasi/api/internal/ingestion/connector/pihps"
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
@@ -43,7 +45,7 @@ const (
 
 // Konektor mengembalikan konektor yang dikenal engine. Kunci rahasia dibaca dari lingkungan.
 func Konektor() []domain.Konektor {
-	return []domain.Konektor{pihps.New()}
+	return []domain.Konektor{pihps.New(), bmkg.New(), bps.New(os.Getenv(bps.EnvKunci))}
 }
 
 // NewFetcher merakit Fetcher nyata: HTTP -> retry -> circuit breaker.

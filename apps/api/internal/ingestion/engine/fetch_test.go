@@ -59,6 +59,18 @@ func TestHTTPFetcher_MengambilBadanDanMenyuntingURLPadaGalat(t *testing.T) {
 	assert.True(t, Sementara(err))
 }
 
+func TestHTTPFetcher_MenyamarkanRahasiaDiJalur(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "x", http.StatusForbidden) }))
+	defer srv.Close()
+	f := NewHTTPFetcher("garda-test", 0, time.Second)
+
+	_, err := f.Get(t.Context(), domain.Permintaan{Kunci: "k", URL: srv.URL + "/data/key/RAHASIA", Samarkan: []string{"RAHASIA"}})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "/data/key/***")
+	assert.NotContains(t, err.Error(), "RAHASIA")
+}
+
 func TestHTTPFetcher_MenolakURLTakValidDanBadanBesar(t *testing.T) {
 	f := NewHTTPFetcher("garda-test", 0, time.Second)
 	_, err := f.Get(t.Context(), domain.Permintaan{Kunci: "k", URL: "bukan url"})

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
@@ -63,6 +64,16 @@ func (h *Handler) Bulk(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.BulkSumberDataResponse{Berhasil: res.Berhasil, Gagal: res.Gagal})
+}
+
+// GET /v1/sumber-data/pipeline
+func (h *Handler) Pipeline(c *gin.Context) {
+	p, err := h.uc.Pipeline(c.Request.Context(), time.Now())
+	if err != nil {
+		response.InternalError(c, "Gagal menghitung pipeline data")
+		return
+	}
+	response.Success(c, dto.ToPipelineResponse(p))
 }
 
 // Batas daftar riwayat eksekusi dan sampel.

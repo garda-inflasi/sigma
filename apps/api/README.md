@@ -122,5 +122,9 @@ Gold adalah materialized view `gold_harga_harian` (ikut `refresher.Views`).
   ubah lewat `cmd/ingest pemetaan`). Baris yang tidak terpetakan dilaporkan di `eksekusi_sumber.ringkasan`.
 - Parameter permintaan per sumber ada di `sumber_data.konfigurasi` (`cmd/ingest konfigurasi`); kunci API
   dibaca dari lingkungan (`BPS_API_KEY`), tidak disimpan di basis data.
+- Konektor yang tersedia: `SRC-BI` (PIHPS), `SRC-BMKG`, `SRC-BPS` (butuh `BPS_API_KEY` dan id variabel di
+  konfigurasi). Ketiganya belum diverifikasi terhadap layanan nyata; parser defensif dan dikunci fixture.
+- Seeder demo `ingestion.demo` menulis eksekusi, bronze, harga, dan cuaca bertanda DEMO (pemicu `DEMO`) dan
+  tidak pernah menimpa hasil ingestion nyata.
 - Penjadwal di `cmd/api` mati kecuali `INGEST_SCHEDULER=on`. Tombol "Jalankan sekarang" di `/sumber-data`
   (izin `sumber.kelola`) memanggil `POST /v1/sumber-data/:id/jalankan`.

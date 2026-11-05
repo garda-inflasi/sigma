@@ -160,6 +160,21 @@ export interface SumberData {
   bisaDijalankan: boolean;
 }
 
+/** Isi lapisan medallion dan mutu data (persen 0-100, null bila belum ada bahan untuk menghitung). */
+export interface PipelineSumber {
+  bronze: number;
+  silver: number;
+  gold: number;
+  /** Benar bila hitungan memuat eksekusi contoh (data demo). */
+  demo: boolean;
+  mutu: {
+    kelengkapan: number | null;
+    akurasi: number | null;
+    ketepatanWaktu: number | null;
+    konsistensi: number | null;
+  };
+}
+
 export type StatusEksekusi = "BERJALAN" | "SUKSES" | "SEBAGIAN" | "GAGAL";
 
 /** Satu run ingestion sebuah sumber (riwayat eksekusi). */

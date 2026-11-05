@@ -10,5 +10,6 @@ func init() {
 		&ingestiondomain.DataMentah{},
 		&ingestiondomain.PemetaanSumber{},
 		&ingestiondomain.HargaEksternal{},
+		&ingestiondomain.CuacaHarian{},
 	)
 }

@@ -29,6 +29,23 @@ type SampelMentah struct {
 	Cuplikan        string    `gorm:"column:cuplikan"`
 }
 
+// Pipeline merangkum isi lapisan medallion dan mutu data dari eksekusi nyata. Persentase
+// bernilai nil bila belum ada bahan untuk menghitungnya.
+type Pipeline struct {
+	Bronze, Silver, Gold int64
+	// Demo benar bila ada eksekusi contoh (pemicu DEMO) di dalam hitungan.
+	Demo bool
+	// Kelengkapan: baris diterima (bukan kosong/rusak) dari seluruh baris dibaca, 7 hari terakhir.
+	Kelengkapan *float64
+	// Konsistensi: baris yang kode wilayah/komoditasnya terpetakan ke master, 7 hari terakhir.
+	Konsistensi *float64
+	// Akurasi: pasangan harga lapangan vs eksternal yang selisihnya dalam BatasSelisihPct, 14 hari terakhir.
+	Akurasi *float64
+}
+
+// BatasSelisihPct adalah selisih harga lapangan vs eksternal yang masih dianggap sepakat.
+const BatasSelisihPct = 10.0
+
 // Repository adalah akses data engine ingestion.
 type Repository interface {
 	// Sumber membaca satu baris katalog; ErrSumberTidakAda bila tidak ada.
@@ -50,6 +67,11 @@ type Repository interface {
 	// SelesaikanEksekusi mengisi hasil akhir dan menyegarkan statistik sumber
 	// (terakhir_jalan, status, keberhasilan_7h, latensi_ms).
 	SelesaikanEksekusi(ctx context.Context, e *EksekusiSumber) error
+
+	// Pipeline menghitung isi lapisan dan mutu data.
+	Pipeline(ctx context.Context) (Pipeline, error)
+	// TerakhirSukses mengembalikan waktu selesai eksekusi SUKSES/SEBAGIAN terakhir per sumber.
+	TerakhirSukses(ctx context.Context) (map[string]time.Time, error)
 
 	// Eksekusi membaca riwayat eksekusi sebuah sumber, terbaru lebih dulu.
 	Eksekusi(ctx context.Context, sumberID string, limit int) ([]EksekusiSumber, error)

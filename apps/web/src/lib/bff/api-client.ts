@@ -416,6 +416,22 @@ export const coldStorageApi = {
       headers: bearer(accessToken),
     }),
 
+  /** PATCH /v1/cold-storage/fasilitas/:id — kapasitas, batas alarm suhu, atau status. */
+  ubahFasilitas: (accessToken: string, id: string, body: Record<string, unknown>) =>
+    apiFetch<unknown>(`/cold-storage/fasilitas/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: bearer(accessToken),
+      body: JSON.stringify(body),
+    }),
+
+  /** POST /v1/cold-storage/telemetri — catat pembacaan suhu (idempoten per fasilitas + waktu). */
+  telemetri: (accessToken: string, body: Record<string, unknown>) =>
+    apiFetch<unknown>("/cold-storage/telemetri", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(body),
+    }),
+
   /** POST /v1/cold-storage/transaksi — catat stok masuk, keluar, atau pindah. */
   transaksi: (accessToken: string, body: Record<string, unknown>) =>
     apiFetch<unknown>("/cold-storage/transaksi", {

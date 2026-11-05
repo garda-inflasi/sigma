@@ -28,3 +28,52 @@ export async function GET(
     return handleRouteError(error);
   }
 }
+
+/** Kolom yang diteruskan ke backend; selebihnya dibuang. */
+const KOLOM_UBAH = [
+  "kapasitas_ton",
+  "suhu_min_c",
+  "suhu_maks_c",
+  "status",
+] as const;
+
+/**
+ * PATCH /api/cold-storage/fasilitas/:id → Go PATCH /v1/cold-storage/fasilitas/:id
+ * Mengubah kapasitas, batas alarm suhu, atau status (tercatat di audit), jadi wajib lolos
+ * CSRF + origin. Izin dan aturan bisnis (min < maks, kapasitas >= stok) ditegakkan backend.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await requireSession(request, { csrf: true });
+  if (session.error) return session.error;
+
+  const { id } = await params;
+  if (!id || id.length > MAX_ID)
+    return errorResponse("ID fasilitas tidak valid.", 400);
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Error("bukan objek");
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return errorResponse("Isi permintaan bukan JSON yang valid.", 400);
+  }
+
+  const forwarded = Object.fromEntries(
+    KOLOM_UBAH.filter((k) => body[k] !== undefined).map((k) => [k, body[k]]),
+  );
+  if (Object.keys(forwarded).length === 0)
+    return errorResponse("Tidak ada perubahan yang dikirim.", 400);
+
+  try {
+    return privateJsonResponse(
+      await coldStorageApi.ubahFasilitas(session.accessToken, id, forwarded),
+    );
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}

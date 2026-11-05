@@ -13,7 +13,7 @@ import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
 import { MASTER_BULK_LABEL, ringkasDitolak, type MasterBulkAksi } from "@/lib/api/master";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
-import type { TransaksiPayload } from "@/lib/api/cold-storage";
+import type { PembacaanManualPayload, TransaksiPayload, UbahFasilitasPayload } from "@/lib/api/cold-storage";
 import type { OptimasiParams } from "@/lib/api/spasial";
 import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
 import type { StokColdStorage } from "@/lib/data/types";
@@ -539,6 +539,33 @@ export function useCatatTransaksi() {
     },
     onError: (err) => {
       toast.error("Transaksi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+
+/** Mengubah kapasitas/batas alarm/status fasilitas lalu menyegarkan kartu dan detail. */
+export function useUbahFasilitas(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: UbahFasilitasPayload) => api.coldStorage.ubahFasilitas(id, p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.coldStorage.all() });
+      toast.success("Fasilitas diperbarui", { description: "Tercatat di audit trail." });
+    },
+    onError: (err) => {
+      toast.error("Fasilitas tidak dapat diubah", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+
+/** Mencatat pembacaan suhu manual lalu menyegarkan detail dan kartu fasilitas. */
+export function useCatatTelemetri() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: PembacaanManualPayload) => api.coldStorage.catatTelemetri(p),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.coldStorage.all() }),
+    onError: (err) => {
+      toast.error("Suhu tidak dapat dicatat", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
     },
   });
 }

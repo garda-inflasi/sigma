@@ -29,8 +29,10 @@ function stubFetch(...responses: Response[]) {
   }) as typeof fetch;
 }
 
-const envelope = (data: unknown, code = "200") => Response.json({ code, message: "OK", data });
-const headerOf = (c: Call, name: string) => new Headers(c.init.headers).get(name);
+const envelope = (data: unknown, code = "200") =>
+  Response.json({ code, message: "OK", data });
+const headerOf = (c: Call, name: string) =>
+  new Headers(c.init.headers).get(name);
 
 beforeEach(() => {
   calls = [];
@@ -56,7 +58,14 @@ describe("coldStorageApi.list", () => {
   it("meneruskan kriteria sebagai query string kontrak API", async () => {
     stubFetch(envelope({}));
 
-    await coldStorageApi.list("t", { fasilitasId: "CS-03", q: "tomat", sort: "volume", desc: true, page: 2, limit: 25 });
+    await coldStorageApi.list("t", {
+      fasilitasId: "CS-03",
+      q: "tomat",
+      sort: "volume",
+      desc: true,
+      page: 2,
+      limit: 25,
+    });
 
     const url = new URL(calls[0].url);
     assert.equal(url.pathname, "/v1/cold-storage");
@@ -81,7 +90,9 @@ describe("coldStorageApi.list", () => {
   });
 
   it("memetakan galat backend ke BffApiError beserta status, pesan, dan kode", async () => {
-    stubFetch(Response.json({ code: "403", message: "Akses ditolak" }, { status: 403 }));
+    stubFetch(
+      Response.json({ code: "403", message: "Akses ditolak" }, { status: 403 }),
+    );
 
     await assert.rejects(
       () => coldStorageApi.list("t"),
@@ -98,13 +109,27 @@ describe("coldStorageApi.list", () => {
   it("galat tanpa badan JSON memakai pesan bawaan berisi status", async () => {
     stubFetch(new Response("Bad Gateway", { status: 502 }));
 
-    await assert.rejects(() => coldStorageApi.list("t"), (err: unknown) => err instanceof BffApiError && err.status === 502 && /502/.test(err.message));
+    await assert.rejects(
+      () => coldStorageApi.list("t"),
+      (err: unknown) =>
+        err instanceof BffApiError &&
+        err.status === 502 &&
+        /502/.test(err.message),
+    );
   });
 
   it("envelope dengan kode bukan 200/201 diperlakukan sebagai galat", async () => {
-    stubFetch(Response.json({ code: "500", message: "Gagal mengambil data cold storage" }));
+    stubFetch(
+      Response.json({
+        code: "500",
+        message: "Gagal mengambil data cold storage",
+      }),
+    );
 
-    await assert.rejects(() => coldStorageApi.list("t"), (err: unknown) => err instanceof BffApiError && err.code === "500");
+    await assert.rejects(
+      () => coldStorageApi.list("t"),
+      (err: unknown) => err instanceof BffApiError && err.code === "500",
+    );
   });
 });
 
@@ -112,21 +137,107 @@ describe("coldStorageApi.bulk", () => {
   it("memanggil POST /v1/cold-storage/bulk dengan badan JSON dan bearer token", async () => {
     stubFetch(envelope({ berhasil: 2, gagal: 0, volume_ton: 65.9 }));
 
-    const res = await coldStorageApi.bulk("tok", { action: "rencanakan_distribusi", ids: ["STK-1", "STK-2"] });
+    const res = await coldStorageApi.bulk("tok", {
+      action: "rencanakan_distribusi",
+      ids: ["STK-1", "STK-2"],
+    });
 
     assert.deepEqual(res, { berhasil: 2, gagal: 0, volume_ton: 65.9 });
     assert.equal(calls[0].url, "http://go.test/v1/cold-storage/bulk");
     assert.equal(calls[0].init.method, "POST");
     assert.equal(headerOf(calls[0], "authorization"), "Bearer tok");
     assert.equal(headerOf(calls[0], "content-type"), "application/json");
-    assert.deepEqual(JSON.parse(String(calls[0].init.body)), { action: "rencanakan_distribusi", ids: ["STK-1", "STK-2"] });
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)), {
+      action: "rencanakan_distribusi",
+      ids: ["STK-1", "STK-2"],
+    });
   });
 
   it("izin ditolak backend sampai ke pemanggil sebagai 403", async () => {
-    stubFetch(Response.json({ code: "403", message: "Akses ditolak" }, { status: 403 }));
+    stubFetch(
+      Response.json({ code: "403", message: "Akses ditolak" }, { status: 403 }),
+    );
 
     await assert.rejects(
-      () => coldStorageApi.bulk("t", { action: "rekomendasi_olahan", ids: ["S1"] }),
+      () =>
+        coldStorageApi.bulk("t", { action: "rekomendasi_olahan", ids: ["S1"] }),
+      (err: unknown) => err instanceof BffApiError && err.status === 403,
+    );
+  });
+});
+
+describe("coldStorageApi.ubahFasilitas", () => {
+  it("memanggil PATCH /v1/cold-storage/fasilitas/:id dengan id ter-encode dan bearer token", async () => {
+    stubFetch(envelope({ id: "CS 03", kapasitas_ton: 300 }));
+
+    const res = await coldStorageApi.ubahFasilitas("tok", "CS 03", {
+      kapasitas_ton: 300,
+    });
+
+    assert.deepEqual(res, { id: "CS 03", kapasitas_ton: 300 });
+    assert.equal(
+      calls[0].url,
+      "http://go.test/v1/cold-storage/fasilitas/CS%2003",
+    );
+    assert.equal(calls[0].init.method, "PATCH");
+    assert.equal(headerOf(calls[0], "authorization"), "Bearer tok");
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)), {
+      kapasitas_ton: 300,
+    });
+  });
+
+  it("penolakan bisnis 409 dan 400 sampai ke pemanggil", async () => {
+    stubFetch(
+      Response.json(
+        {
+          code: "409",
+          message: "Kapasitas baru lebih kecil dari stok yang tersimpan",
+        },
+        { status: 409 },
+      ),
+    );
+
+    await assert.rejects(
+      () => coldStorageApi.ubahFasilitas("t", "CS-01", { kapasitas_ton: 1 }),
+      (err: unknown) =>
+        err instanceof BffApiError &&
+        err.status === 409 &&
+        /stok/.test(err.message),
+    );
+  });
+});
+
+describe("coldStorageApi.telemetri", () => {
+  it("memanggil POST /v1/cold-storage/telemetri dan mengembalikan hasil duplikat serta alarm", async () => {
+    const hasil = { diterima: 0, duplikat: 1, di_luar_rentang: [] };
+    stubFetch(envelope(hasil));
+    const body = {
+      pembacaan: [
+        {
+          fasilitas_id: "CS-01",
+          waktu: "2026-11-05T01:02:03Z",
+          suhu_c: 4,
+          sumber: "MANUAL",
+        },
+      ],
+    };
+
+    const res = await coldStorageApi.telemetri("tok", body);
+
+    assert.deepEqual(res, hasil);
+    assert.equal(calls[0].url, "http://go.test/v1/cold-storage/telemetri");
+    assert.equal(calls[0].init.method, "POST");
+    assert.equal(headerOf(calls[0], "authorization"), "Bearer tok");
+    assert.deepEqual(JSON.parse(String(calls[0].init.body)), body);
+  });
+
+  it("izin ditolak backend sampai ke pemanggil sebagai 403", async () => {
+    stubFetch(
+      Response.json({ code: "403", message: "Akses ditolak" }, { status: 403 }),
+    );
+
+    await assert.rejects(
+      () => coldStorageApi.telemetri("t", { pembacaan: [] }),
       (err: unknown) => err instanceof BffApiError && err.status === 403,
     );
   });

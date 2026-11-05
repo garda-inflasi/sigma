@@ -4,7 +4,7 @@ import {
   type AuditDetailResponse, type AuditFilter, type AuditPage, type AuditPageResponse, type HasilEkspor,
 } from "./audit";
 import { exportCsv } from "@/lib/csv";
-import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult, type TransaksiHasil, type TransaksiPayload } from "./cold-storage";
+import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult, type HasilTelemetri, type PembacaanManualPayload, type TransaksiHasil, type TransaksiPayload, type UbahFasilitasPayload } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import {
   toMasterBulkHasil, toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
@@ -45,7 +45,7 @@ import { USERS } from "@/lib/data/reference";
 import { toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  AuditDetail, ColdStorageView, DetailFasilitas, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow,
+  AuditDetail, ColdStorageView, DetailFasilitas, FasilitasColdStorage, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow,
   MasterWilayahRow, PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -232,6 +232,12 @@ export const api = {
       MODE_MOCK
         ? mockDelay(() => ({ transaksiId: "TRX-MOCK", lotId: "lotId" in p ? p.lotId : "STK-MOCK", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
         : coldStorageClient.transaksi(p),
+    /** Ubah kapasitas, batas alarm suhu, atau status fasilitas (izin `coldstorage.kelola`, tercatat di audit). */
+    ubahFasilitas: (id: string, p: UbahFasilitasPayload): Promise<FasilitasColdStorage> =>
+      MODE_MOCK ? Promise.reject(new Error("Mengubah fasilitas memerlukan backend.")) : coldStorageClient.ubahFasilitas(id, p),
+    /** Catat satu pembacaan suhu manual; duplikat dan alarm di luar rentang dilaporkan di hasil. */
+    catatTelemetri: (p: PembacaanManualPayload): Promise<HasilTelemetri> =>
+      MODE_MOCK ? Promise.reject(new Error("Mencatat suhu memerlukan backend.")) : coldStorageClient.catatTelemetri(p),
     /** Seluruh lot yang cocok dengan filter (semua halaman), mis. untuk "pilih semua hasil". */
     semua: async (params: Omit<ColdStorageParams, "page" | "limit"> = {}): Promise<StokColdStorage[]> => {
       const rows: StokColdStorage[] = [];

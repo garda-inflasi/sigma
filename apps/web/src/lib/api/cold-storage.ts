@@ -114,6 +114,7 @@ export interface DetailFasilitasWire {
     waktu: string;
     suhu_c: number;
     kelembapan_pct: number | null;
+    sumber?: string;
     di_luar_rentang: boolean;
   }[];
   stok: StokWire[];
@@ -180,6 +181,130 @@ export function toTransaksiBody(p: TransaksiPayload): Record<string, unknown> {
         semua: p.semua,
       };
   }
+}
+
+/** Perubahan fasilitas (PATCH); hanya kolom yang diisi yang dikirim dan diubah. */
+export interface UbahFasilitasPayload {
+  kapasitasTon?: number;
+  suhuMinC?: number;
+  suhuMaksC?: number;
+  status?: FasilitasColdStorage["status"];
+}
+
+/** Badan PATCH /v1/cold-storage/fasilitas/:id dalam bentuk kontrak API. */
+export function toUbahFasilitasBody(p: UbahFasilitasPayload): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (p.kapasitasTon !== undefined) body.kapasitas_ton = p.kapasitasTon;
+  if (p.suhuMinC !== undefined) body.suhu_min_c = p.suhuMinC;
+  if (p.suhuMaksC !== undefined) body.suhu_maks_c = p.suhuMaksC;
+  if (p.status !== undefined) body.status = p.status;
+  return body;
+}
+
+const BATAS_SUHU_C = { min: -80, maks: 60 } as const;
+
+/**
+ * Memeriksa isian ubah fasilitas sebelum dikirim; null bila sah. `suhuMinC`/`suhuMaksC` adalah
+ * batas efektif setelah perubahan, jadi mengubah satu sisi tetap diuji terhadap sisi lainnya.
+ */
+export function galatUbahFasilitas(p: { kapasitasTon?: number; suhuMinC: number; suhuMaksC: number }): string | null {
+  if (p.kapasitasTon !== undefined && (!Number.isInteger(p.kapasitasTon) || p.kapasitasTon < 1))
+    return "Kapasitas harus bilangan bulat lebih dari 0 ton.";
+  for (const v of [p.suhuMinC, p.suhuMaksC])
+    if (!Number.isFinite(v) || v < BATAS_SUHU_C.min || v > BATAS_SUHU_C.maks)
+      return `Suhu harus antara ${BATAS_SUHU_C.min} dan ${BATAS_SUHU_C.maks} °C.`;
+  if (p.suhuMinC >= p.suhuMaksC) return "Suhu minimum harus lebih kecil dari suhu maksimum.";
+  return null;
+}
+
+/** Satu pembacaan suhu yang dicatat petugas (sumber selalu MANUAL). */
+export interface PembacaanManualPayload {
+  fasilitasId: string;
+  /** ISO 8601 (UTC). */
+  waktu: string;
+  suhuC: number;
+  kelembapanPct?: number;
+}
+
+/** Badan POST /v1/cold-storage/telemetri untuk satu pembacaan manual. */
+export function toTelemetriBody(p: PembacaanManualPayload): Record<string, unknown> {
+  return {
+    pembacaan: [
+      {
+        fasilitas_id: p.fasilitasId,
+        waktu: p.waktu,
+        suhu_c: p.suhuC,
+        ...(p.kelembapanPct !== undefined ? { kelembapan_pct: p.kelembapanPct } : {}),
+        sumber: "MANUAL",
+      },
+    ],
+  };
+}
+
+export interface HasilTelemetriWire {
+  diterima: number;
+  duplikat: number;
+  di_luar_rentang: {
+    fasilitas_id: string;
+    waktu: string;
+    suhu_c: number;
+    batas_min_c: number;
+    batas_maks_c: number;
+  }[];
+}
+
+export interface HasilTelemetri {
+  diterima: number;
+  duplikat: number;
+  /** Pembacaan yang melewati batas alarm fasilitas. */
+  diLuarRentang: { waktu: string; suhuC: number; batasMinC: number; batasMaksC: number }[];
+}
+
+export function toHasilTelemetri(w: HasilTelemetriWire): HasilTelemetri {
+  return {
+    diterima: w.diterima,
+    duplikat: w.duplikat,
+    diLuarRentang: (w.di_luar_rentang ?? []).map((a) => ({
+      waktu: a.waktu,
+      suhuC: a.suhu_c,
+      batasMinC: a.batas_min_c,
+      batasMaksC: a.batas_maks_c,
+    })),
+  };
+}
+
+const dua = (n: number) => String(n).padStart(2, "0");
+
+/** Date → nilai `<input type="datetime-local">` (waktu setempat, sampai detik). */
+export function keDatetimeLocal(d: Date): string {
+  return `${d.getFullYear()}-${dua(d.getMonth() + 1)}-${dua(d.getDate())}T${dua(d.getHours())}:${dua(d.getMinutes())}:${dua(d.getSeconds())}`;
+}
+
+/** Nilai datetime-local (waktu setempat) → Date; null bila kosong atau tidak valid. */
+export function dariDatetimeLocal(v: string): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Selisih jam sensor yang masih ditoleransi backend terhadap waktu server. */
+const TOLERANSI_MASA_DEPAN_MS = 5 * 60_000;
+
+/** Memeriksa isian catat suhu manual; null bila sah. */
+export function galatPembacaan(p: { suhuC: number; kelembapanPct?: number; waktu: Date | null }, sekarang = new Date()): string | null {
+  if (!Number.isFinite(p.suhuC) || p.suhuC < BATAS_SUHU_C.min || p.suhuC > BATAS_SUHU_C.maks)
+    return `Suhu harus antara ${BATAS_SUHU_C.min} dan ${BATAS_SUHU_C.maks} °C.`;
+  if (p.kelembapanPct !== undefined && (!Number.isFinite(p.kelembapanPct) || p.kelembapanPct < 0 || p.kelembapanPct > 100))
+    return "Kelembapan harus antara 0 dan 100%.";
+  if (!p.waktu) return "Waktu pembacaan wajib diisi.";
+  if (p.waktu.getTime() > sekarang.getTime() + TOLERANSI_MASA_DEPAN_MS) return "Waktu pembacaan tidak boleh di masa depan.";
+  return null;
+}
+
+/** Angka isian (boleh berkoma desimal) → number; NaN bila kosong atau bukan angka. */
+export function angkaIsian(v: string): number {
+  const t = v.trim().replace(",", ".");
+  return t === "" ? Number.NaN : Number(t);
 }
 
 // ── Pemetaan backend → UI ─────────────────────────────────────────────
@@ -282,6 +407,7 @@ export function toDetailFasilitas(w: DetailFasilitasWire): DetailFasilitas {
       waktu: t.waktu,
       suhuC: t.suhu_c,
       kelembapanPct: t.kelembapan_pct,
+      sumber: t.sumber,
       diLuarRentang: t.di_luar_rentang,
     })),
     stok: w.stok.map(toStok),
@@ -476,6 +602,22 @@ export const coldStorageClient = {
       await bffFetch<DetailFasilitasWire>(
         `/api/cold-storage/fasilitas/${encodeURIComponent(id)}`,
       ),
+    ),
+
+  ubahFasilitas: async (id: string, p: UbahFasilitasPayload): Promise<FasilitasColdStorage> =>
+    toFasilitas(
+      await bffFetch<FasilitasWire>(`/api/cold-storage/fasilitas/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(toUbahFasilitasBody(p)),
+      }),
+    ),
+
+  catatTelemetri: async (p: PembacaanManualPayload): Promise<HasilTelemetri> =>
+    toHasilTelemetri(
+      await bffFetch<HasilTelemetriWire>("/api/cold-storage/telemetri", {
+        method: "POST",
+        body: JSON.stringify(toTelemetriBody(p)),
+      }),
     ),
 
   transaksi: async (p: TransaksiPayload): Promise<TransaksiHasil> => {

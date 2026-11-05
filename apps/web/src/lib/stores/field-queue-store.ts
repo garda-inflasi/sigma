@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { Kualitas, TipeHarga } from "@/lib/data/types";
 import { idbStorage } from "@/lib/offline/idb-storage";
+import { KUNCI_ANTREAN } from "@/lib/offline/kunci";
 
 export type StatusLokal = "DRAF" | "ANTRE" | "MENYINKRON" | "TERSINKRON" | "KONFLIK" | "GAGAL";
 
@@ -61,7 +62,7 @@ export const useFieldQueue = create<QueueState>()(
       tandaiSync: () => set({ lastSyncAt: new Date().toISOString() }),
     }),
     {
-      name: "garda-antrean-lapangan",
+      name: KUNCI_ANTREAN,
       storage: createJSONStorage(() => idbStorage),
       partialize: (s) => ({ items: s.items, lastSyncAt: s.lastSyncAt }),
       skipHydration: true,

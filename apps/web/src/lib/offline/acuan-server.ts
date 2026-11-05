@@ -4,8 +4,10 @@ import { del, get, set } from "idb-keyval";
 import { create } from "zustand";
 import { API_BASE, MODE_MOCK } from "@/lib/api/client";
 import type { DataAcuanResponse } from "@/lib/api/lapangan";
+import { KUNCI_ACUAN } from "./kunci";
+import { penulisanIdbTertutup } from "./penutup";
 
-const KUNCI_CACHE = "garda-data-acuan";
+const KUNCI_CACHE = KUNCI_ACUAN;
 
 interface CacheAcuan {
   etag: string;
@@ -50,7 +52,7 @@ export async function unduhAcuan(
     const body = (await res.json()) as { data?: DataAcuanResponse };
     if (!body.data || !etag) return false;
     useAcuanServer.setState({ data: body.data });
-    if (adaIdb())
+    if (adaIdb() && !penulisanIdbTertutup())
       await set(KUNCI_CACHE, { etag, data: body.data } satisfies CacheAcuan);
     return true;
   } catch {

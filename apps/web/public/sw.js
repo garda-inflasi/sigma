@@ -2,10 +2,30 @@
    Navigasi: network-first → cache → /offline. Aset statis: cache-first. API: tidak di-cache
    (antrean data ditangani IndexedDB + sync engine di klien). */
 const VERSI = "garda-v1";
-const SHELL = ["/lapangan/input", "/lapangan/riwayat", "/lapangan/tugas", "/offline", "/manifest.webmanifest"];
+// Halaman berpengguna: HTML dirender server bersama sesi (nama, peran, wilayah). Dihapus dari cache saat pengguna
+// keluar atau berganti (src/lib/offline/bersihkan.ts); harus tetap selaras dengan aturan di sana.
+const SHELL = ["/lapangan/input", "/lapangan/riwayat", "/lapangan/tugas"];
+// Halaman publik: diambil TANPA cookie karena layout akar menyisipkan sesi ke HTML, sehingga salinan yang diambil
+// saat masuk akan memuat data pengguna. Tanpa cookie salinannya anonim dan aman dipertahankan saat keluar.
+const SHELL_PUBLIK = ["/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(VERSI).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches
+      .open(VERSI)
+      .then(async (c) => {
+        await c.addAll(SHELL);
+        for (const u of SHELL_PUBLIK) {
+          try {
+            const res = await fetch(u, { credentials: "omit" });
+            if (res.ok && !res.redirected) await c.put(u, res);
+          } catch {
+            // Halaman publik gagal diambil tidak boleh menggagalkan pemasangan; dicoba lagi pada pembaruan berikutnya.
+          }
+        }
+      })
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -24,8 +44,11 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(request)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(VERSI).then((c) => c.put(request, copy));
+          // /offline hanya boleh berisi salinan anonim dari pemasangan; navigasi langsung membawa cookie sesi.
+          if (url.pathname !== "/offline") {
+            const copy = res.clone();
+            caches.open(VERSI).then((c) => c.put(request, copy));
+          }
           return res;
         })
         .catch(async () => (await caches.match(request)) || (await caches.match("/offline"))),

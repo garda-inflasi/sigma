@@ -4,12 +4,13 @@ import { motion } from "motion/react";
 import { ClipboardList, History, LayoutDashboard, PenLine } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { useSession } from "@/lib/auth/session-context";
 import { namaWilayah } from "@/lib/data/generators";
 import { spring } from "@/lib/motion/presets";
 import { unduhAcuan } from "@/lib/offline/acuan-server";
+import { pastikanPemilikOffline } from "@/lib/offline/bersihkan-klien";
 import { useSyncEngine } from "@/lib/offline/sync-engine";
 import { useOnline } from "@/lib/offline/use-online";
 import { can } from "@/lib/rbac/permissions";
@@ -35,12 +36,29 @@ export function FieldShell({ children }: { children: ReactNode }) {
   const online = useOnline();
   useSyncEngine();
 
-  useEffect(() => {
-    if (online) void unduhAcuan();
-  }, [online]);
+  // Data offline di perangkat hanya boleh dipulihkan bila milik pengguna ini; kalau milik pengguna lain
+  // (sesi sebelumnya berakhir tanpa Keluar), dihapus lebih dulu. Lihat lib/offline/pemilik.ts.
+  const [pemilikSiap, setPemilikSiap] = useState(false);
 
   useEffect(() => {
-    useFieldQueue.persist.rehydrate();
+    if (online && pemilikSiap) void unduhAcuan();
+  }, [online, pemilikSiap]);
+
+  useEffect(() => {
+    let batal = false;
+    void pastikanPemilikOffline(user.id).then((h) => {
+      if (batal) return;
+      // Pembersihan gagal: antrean lama tidak dipulihkan, aplikasi berjalan dengan antrean kosong.
+      if (h.aman) useFieldQueue.persist.rehydrate();
+      else useFieldQueue.setState({ hydrated: true });
+      setPemilikSiap(true);
+    });
+    return () => {
+      batal = true;
+    };
+  }, [user.id]);
+
+  useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
     }

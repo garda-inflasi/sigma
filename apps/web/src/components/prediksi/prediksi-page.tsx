@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Archive, ArrowRightLeft, Cpu, Download, Rocket } from "lucide-react";
+import { Archive, ArrowRightLeft, ClipboardCheck, Cpu, Download, RefreshCw, Rocket } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -12,11 +12,11 @@ import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { CountUp } from "@/components/motion/count-up";
-import { modelUsang, type BarisModel, type BarisProyeksi } from "@/lib/api/prediksi";
+import { alasanTakBisaSegarkan, modelUsang, ringkasEvaluasi, ringkasSegarkan, type BarisModel, type BarisProyeksi } from "@/lib/api/prediksi";
 import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import { formatPersen, formatRelatif, formatRupiah } from "@/lib/format";
-import { useAksiModel, useLatihModel, useModelPrediksi, useProyeksiRingkasan, useSimulasi, useStatusMl } from "@/lib/query/hooks";
+import { useAksiModel, useEvaluasiPrediksi, useLatihModel, useModelPrediksi, useProyeksiRingkasan, useSegarkanProyeksi, useSimulasi, useStatusMl } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
 function Slider({ label, v, set, min, max, unit }: { label: string; v: number; set: (n: number) => void; min: number; max: number; unit: string }) {
@@ -80,8 +80,14 @@ export function PrediksiPage() {
   const { data: statusMl } = useStatusMl();
   const latih = useLatihModel();
   const aksiModel = useAksiModel();
+  const segarkan = useSegarkanProyeksi();
+  const evaluasi = useEvaluasiPrediksi();
+  const resetSegarkan = segarkan.reset;
+  // Hasil penyegaran milik komoditas sebelumnya tidak boleh tampak berlaku untuk yang baru dipilih.
+  useEffect(() => { resetSegarkan(); }, [kode, resetSegarkan]);
   const namaTerpilih = proyeksi?.find((p) => p.id === kode)?.nama ?? kode;
   const demo = [...(proyeksi ?? []), ...(model ?? [])].some((r) => r.demo);
+  const alasanSegarkan = alasanTakBisaSegarkan(model, kode, !!statusMl?.tersedia);
 
   const kolomProyeksi = useMemo<ColumnDef<BarisProyeksi>[]>(() => [
     { accessorKey: "nama", header: "Komoditas", cell: ({ row: { original: r } }) => <button onClick={() => { setKode(r.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex items-center gap-2 font-medium hover:text-data-700"><KomoditasIcon kode={r.id} className="text-muted-foreground" />{r.nama}</button> },
@@ -133,6 +139,27 @@ export function PrediksiPage() {
               {statusMl?.tersedia ? `Layanan ML ${statusMl.versi} siap. ` : "Layanan ML tidak tersedia; proyeksi demo tetap tampil. "}
               Model baru berstatus kandidat sampai dipromosikan di tabel di bawah.
             </span>
+          </div>
+        )}
+        {bisaKelola && (
+          <div className="space-y-2 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <SpringButton variant="soft" disabled={segarkan.isPending || alasanSegarkan !== null} onClick={() => segarkan.mutate(kode)}>
+                <RefreshCw className={cn(segarkan.isPending && "animate-spin")} /> Segarkan proyeksi
+              </SpringButton>
+              <SpringButton variant="soft" disabled={evaluasi.isPending} onClick={() => evaluasi.mutate()}>
+                <ClipboardCheck /> Evaluasi akurasi
+              </SpringButton>
+              <span className="text-muted-foreground">
+                {alasanSegarkan
+                  ? `Segarkan proyeksi ${namaTerpilih} belum bisa: ${alasanSegarkan[0].toLowerCase()}${alasanSegarkan.slice(1)}`
+                  : "Segarkan meramal ulang dari harga terbaru dengan parameter model produksi, tanpa melatih ulang."}
+              </span>
+            </div>
+            {segarkan.data && <p role="status" className="rounded-xl bg-normal-soft/70 px-4 py-2 dark:bg-normal/15">Hasil penyegaran: {ringkasSegarkan(segarkan.data, namaTerpilih)}</p>}
+            {segarkan.isError && <p role="alert" className="rounded-xl bg-defisit-soft/70 px-4 py-2 text-defisit-ink dark:bg-defisit/15">Penyegaran gagal: {segarkan.error.message}</p>}
+            {evaluasi.data && <p role="status" className="rounded-xl bg-normal-soft/70 px-4 py-2 dark:bg-normal/15">Hasil evaluasi: {ringkasEvaluasi(evaluasi.data)}</p>}
+            {evaluasi.isError && <p role="alert" className="rounded-xl bg-defisit-soft/70 px-4 py-2 text-defisit-ink dark:bg-defisit/15">Evaluasi gagal: {evaluasi.error.message}</p>}
           </div>
         )}
         <DataTable data={model} isLoading={memuatModel} columns={kolomModel} getRowId={(r) => r.id} entityLabel="model" pageSize={10} searchPlaceholder="Cari model"

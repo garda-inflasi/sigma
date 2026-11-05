@@ -1,6 +1,6 @@
 /**
  * Pemetaan prediksi dari representasi API Go (snake_case) ke model UI.
- * Endpoint: GET /v1/prediksi, /v1/prediksi/{kode}, /v1/prediksi/registri.
+ * Endpoint: GET /v1/prediksi, /v1/prediksi/{kode}, /v1/prediksi/registri; POST /v1/prediksi/segarkan dan /evaluasi.
  */
 
 import type { FaktorXai, ProyeksiXai } from "@/lib/data/types";
@@ -70,6 +70,43 @@ export interface StatusMl {
   dikonfigurasi: boolean;
   tersedia: boolean;
   versi: string;
+}
+
+/** Jawaban POST /v1/prediksi/segarkan: jumlah proyeksi yang ditulis ulang. */
+export interface SegarkanResponse {
+  proyeksi: number;
+}
+
+/** Jawaban POST /v1/prediksi/evaluasi: jumlah proyeksi jatuh tempo yang baru dievaluasi. */
+export interface EvaluasiResponse {
+  dievaluasi: number;
+}
+
+const angkaId = (n: number): string => n.toLocaleString("id-ID");
+
+/** Kalimat hasil penyegaran proyeksi untuk ditampilkan di halaman. */
+export function ringkasSegarkan(res: SegarkanResponse, komoditas: string): string {
+  return `${angkaId(res.proyeksi)} proyeksi ditulis ulang untuk ${komoditas} dari harga terbaru dengan parameter model produksi.`;
+}
+
+/**
+ * Kalimat hasil evaluasi. Nol bukan galat: belum ada proyeksi jatuh tempo yang punya harga
+ * pembanding, atau semuanya sudah dievaluasi pada putaran sebelumnya (evaluasi idempoten).
+ */
+export function ringkasEvaluasi(res: EvaluasiResponse): string {
+  if (res.dievaluasi === 0) {
+    return "Tidak ada proyeksi baru yang bisa dievaluasi: belum ada proyeksi jatuh tempo dengan harga pembanding, atau semuanya sudah dievaluasi.";
+  }
+  return `${angkaId(res.dievaluasi)} proyeksi jatuh tempo dievaluasi terhadap harga realisasi. MAPE realisasi di registri diperbarui.`;
+}
+
+/** Alasan "Segarkan proyeksi" tidak bisa dijalankan untuk komoditas ini; null bila bisa. */
+export function alasanTakBisaSegarkan(model: BarisModel[] | undefined, komoditasKode: string, mlTersedia: boolean): string | null {
+  if (!mlTersedia) return "Layanan ML tidak tersedia.";
+  const produksi = model?.find((m) => m.komoditasKode === komoditasKode && m.status === "PRODUKSI");
+  if (!produksi) return "Komoditas ini belum punya model produksi.";
+  if (produksi.demo) return "Model produksi masih data demo; latih dan promosikan model dulu.";
+  return null;
 }
 
 /** Hasil aksi massal registri (POST /v1/prediksi/registri/bulk). */

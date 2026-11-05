@@ -15,6 +15,7 @@ import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-st
 import type { TransaksiPayload } from "@/lib/api/cold-storage";
 import type { OptimasiParams } from "@/lib/api/spasial";
 import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
+import { unduhProyeksiCsv } from "@/lib/api/prediksi-ekspor";
 import type { StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
@@ -74,6 +75,46 @@ export function useLatihModel() {
     },
     onError: (err) => {
       toast.error("Pelatihan model gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+/**
+ * Meramal ulang proyeksi satu komoditas dengan parameter model produksi. Galat (503 layanan ML mati,
+ * 409 model produksi masih demo, 422 data kurang) ditampilkan dengan pesan server; hasilnya dibaca dari `data`.
+ */
+export function useSegarkanProyeksi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (komoditasKode: string) => api.prediksi.segarkan(komoditasKode),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.prediksi.all() });
+      qc.invalidateQueries({ queryKey: qk.eksekutif.xaiAll() });
+    },
+    onError: (err) => {
+      toast.error("Proyeksi gagal disegarkan", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+/** Mengevaluasi proyeksi jatuh tempo; registri (MAPE realisasi) dimuat ulang. Hasilnya dibaca dari `data`. */
+export function useEvaluasiPrediksi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.prediksi.evaluasi(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.prediksi.model() });
+    },
+    onError: (err) => {
+      toast.error("Evaluasi akurasi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+/** Mengunduh proyeksi satu komoditas (CSV). */
+export function useUnduhProyeksi() {
+  return useMutation({
+    mutationFn: (komoditasKode: string) => unduhProyeksiCsv(komoditasKode),
+    onSuccess: () => toast.success("Proyeksi diunduh"),
+    onError: (err) => {
+      toast.error("Unduhan proyeksi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
     },
   });
 }
@@ -261,6 +302,9 @@ export function useEksporKpi() {
   });
 }
 export const useKpi = () => useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
+/** Riwayat satu indikator; baru diminta saat `kode` terisi (lembar detail terbuka). */
+export const useKpiRiwayat = (kode: string | undefined) =>
+  useQuery({ queryKey: qk.kpi.riwayat(kode ?? ""), queryFn: () => api.kpi.riwayat(kode as string), enabled: !!kode, staleTime: 60_000 });
 export const usePengguna = (search?: string) =>
   useQuery({
     queryKey: qk.pengguna.list(search),

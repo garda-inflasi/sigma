@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { ArrowRightLeft, BrainCircuit, CheckCircle2, MessageSquareWarning } from "lucide-react";
+import { ArrowRightLeft, BrainCircuit, CheckCircle2, Download, MessageSquareWarning } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ import { KOMODITAS } from "@/lib/data/reference";
 import { garda } from "@/lib/design/tokens";
 import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { ease } from "@/lib/motion/presets";
-import { useXai } from "@/lib/query/hooks";
+import { useUnduhProyeksi, useXai } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
 const komoditasPilot = KOMODITAS.filter((k) => k.pilot);
@@ -30,6 +30,8 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
   const router = useRouter();
   const bisaKelola = useCan("intervensi.kelola");
   const bisaSetujui = useCan("intervensi.setujui");
+  const bisaUnduh = useCan("prediksi.lihat");
+  const unduh = useUnduhProyeksi();
 
   if (isLoading || !data) return <PanelSkeleton className={className} />;
   const naik = data.perubahanPct >= 0;
@@ -136,6 +138,11 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
             {bisaSetujui && (
               <SpringButton size="sm" variant="data" onClick={() => toast.success("Rekomendasi disetujui", { description: "Keputusan tercatat di audit trail." })}>
                 <CheckCircle2 /> Setujui rekomendasi
+              </SpringButton>
+            )}
+            {bisaUnduh && (
+              <SpringButton size="sm" variant="soft" disabled={unduh.isPending} onClick={() => unduh.mutate(data.komoditasKode)}>
+                <Download /> Unduh CSV
               </SpringButton>
             )}
             <SpringButton size="sm" variant="soft" onClick={() => toast("Permintaan kajian dikirim ke Unit Data & Statistik")}>

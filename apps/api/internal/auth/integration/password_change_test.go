@@ -19,8 +19,6 @@ const (
 
 func seedAdminAwal(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	// Migrasi 000006 (sampai F1) masih menanam akun admin demo; admin awal hanya dibuat bila tak ada admin.
-	require.NoError(t, db.Exec("DELETE FROM pengguna WHERE peran = 'ADMIN_SISTEM'").Error)
 	sum, err := authseeder.SeedAdmin(t.Context(), db, authseeder.AdminConfig{Email: adminEmail, Password: adminTempSandi})
 	require.NoError(t, err)
 	require.Equal(t, 1, sum.Dibuat)

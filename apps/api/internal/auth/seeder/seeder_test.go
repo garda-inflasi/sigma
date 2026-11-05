@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/stretchr/testify/assert"
@@ -49,18 +50,11 @@ func TestAkunDemo_Shape(t *testing.T) {
 	assert.Equal(t, 1, mfa)
 }
 
-// seedWilayahDemo menyiapkan kabupaten yang dirujuk akun demo tanpa bergantung pada seeder master.
+// seedWilayahDemo mengisi master kabupaten yang dirujuk akun demo.
 func seedWilayahDemo(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	require.NoError(t, db.Exec(`INSERT INTO provinsi (kode, nama) VALUES ('11', 'ACEH') ON CONFLICT DO NOTHING`).Error)
-	for _, akun := range BuildDemoAkun() {
-		if akun.KabupatenKode == nil {
-			continue
-		}
-		require.NoError(t, db.Exec(`
-			INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode)
-			VALUES (?, ?, 'Kabupaten', 'x', 1, 1, '11') ON CONFLICT DO NOTHING`, *akun.KabupatenKode, "K"+*akun.KabupatenKode).Error)
-	}
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
 }
 
 func rowCount(t *testing.T, db *gorm.DB, table string) int64 {
@@ -73,7 +67,6 @@ func rowCount(t *testing.T, db *gorm.DB, table string) int64 {
 func TestSeedDemo_IsIdempotentAndLoginable(t *testing.T) {
 	db := pg.NewDatabase(t, "auth_seed_demo")
 	pgtest.MigrateUp(t, db)
-	require.NoError(t, db.Exec("DELETE FROM pengguna").Error) // buang akun migrasi lama (sampai F1)
 	seedWilayahDemo(t, db)
 
 	first, err := SeedDemo(t.Context(), db)
@@ -95,7 +88,6 @@ func TestSeedAdmin(t *testing.T) {
 	newDB := func(t *testing.T, name string) *gorm.DB {
 		db := pg.NewDatabase(t, name)
 		pgtest.MigrateUp(t, db)
-		require.NoError(t, db.Exec("DELETE FROM pengguna").Error) // buang akun migrasi lama (sampai F1)
 		return db
 	}
 
@@ -168,7 +160,6 @@ func TestSeedAdmin(t *testing.T) {
 func TestAdminSeed_LeavesNoAccountWithDefaultPassword(t *testing.T) {
 	db := pg.NewDatabase(t, "auth_seed_no_default")
 	pgtest.MigrateUp(t, db)
-	require.NoError(t, db.Exec("DELETE FROM pengguna").Error) // buang akun migrasi lama (sampai F1)
 
 	_, err := SeedAdmin(t.Context(), db, AdminConfig{Email: "admin@gardainflasi.id"})
 	require.NoError(t, err)

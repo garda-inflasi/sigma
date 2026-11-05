@@ -156,20 +156,20 @@ Urutan semua task (Fase P/F) ada di [00 §6](00-cara-kerja.md). Berikut rincian 
 
 ### F1 — Netralkan seed di migrasi 000006 (gerbang produksi)
 Dikerjakan **setelah** 01-A, 02-A, dan 04-A, karena isinya dipindah ke seeder oleh ketiganya:
-- [ ] Akun pengguna → seeder `demo` ([01-A](01-auth.md)); admin awal → seeder `admin`.
-- [ ] `role_permissions` dan `DELETE FROM role_permissions` → hilang sesuai keputusan D3 ([02-A](02-pengguna-rbac.md)).
-- [ ] provinsi, kabupaten, pasar, komoditas → seeder `reference` ([04-A](04-master-data.md)).
-- [ ] Ubah `000006_seed_data.sql` menjadi *no-op* (hanya komentar yang menunjuk ke seeder), supaya DB baru tidak lagi mendapat akun demo atau penghapusan izin. DB dev lama tidak terpengaruh; reset manual bila ingin bersih.
-- [ ] Jalankan ulang seluruh tes (auth, cold-storage) yang sebelumnya bergantung pada akun dari 000006: pastikan mereka memakai seeder/fixture.
+- [x] Akun pengguna → seeder `demo` ([01-A](01-auth.md)); admin awal → seeder `admin`.
+- [x] `role_permissions` dan `DELETE FROM role_permissions` → hilang sesuai keputusan D3 ([02-A](02-pengguna-rbac.md)).
+- [x] provinsi, kabupaten, pasar, komoditas → seeder `reference` ([04-A](04-master-data.md)).
+- [x] Ubah `000006_seed_data.sql` menjadi *no-op* (hanya komentar yang menunjuk ke seeder), supaya DB baru tidak lagi mendapat akun demo atau penghapusan izin. DB dev lama tidak terpengaruh; reset manual bila ingin bersih.
+- [x] Jalankan ulang seluruh tes (auth, cold-storage, schematest, smoketest) yang sebelumnya bergantung pada data 000006: kini memakai seeder `master.reference`/`auth.demo` atau fixture sendiri. `TestMigrationsLeaveEveryTableEmpty` menjaga agar migrasi tidak menanam data lagi.
 
 ## 6. Tes yang harus ada
 
 - [ ] Tes kontrak skema entity ↔ migrasi (F0-3).
 - [ ] Migrasi `up/down/up` pada DB kosong.
 - [ ] Seeder idempoten (dua kali → baris sama); `demo` menolak `APP_ENV=production`.
-- [ ] Seeder `reference` berjalan di atas DB berisi data produksi tanpa mengubah data non-referensi.
+- [x] Seeder `reference` berjalan di atas DB berisi data produksi tanpa mengubah data non-referensi.
 - [ ] Tes asap seed (F0-5).
-- [ ] Tidak ada akun ber-password default setelah `reference + admin`.
+- [x] Tidak ada akun ber-password default setelah `reference + admin`.
 
 ## 7. Operasional database (setelah Fase P, sebelum produksi)
 

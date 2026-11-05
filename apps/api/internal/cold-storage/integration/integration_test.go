@@ -365,7 +365,7 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 
 func TestSeeder_FailsAtomicallyWhenMasterDataMissing(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_missing_master")
-	// Skema tanpa 000006: master kabupaten dan komoditas kosong.
+	// Tanpa seeder master.reference: master kabupaten dan komoditas kosong.
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 5))
 	require.NoError(t, migrator.Apply(t.Context(), 7, true))

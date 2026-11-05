@@ -6,6 +6,7 @@ import (
 	"time"
 
 	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,15 +40,9 @@ func TestBuildEntri_IsDeterministicAndMarkedDemo(t *testing.T) {
 func TestSeedDemo_IsIdempotentAndUsesDemoAccounts(t *testing.T) {
 	db := pg.NewDatabase(t, "audit_seed_demo")
 	pgtest.MigrateUp(t, db)
-	require.NoError(t, db.Exec("DELETE FROM pengguna").Error) // buang akun migrasi lama (sampai F1)
-	require.NoError(t, db.Exec(`INSERT INTO provinsi (kode, nama) VALUES ('11', 'ACEH') ON CONFLICT DO NOTHING`).Error)
-	for _, akun := range authseeder.BuildDemoAkun() {
-		if akun.KabupatenKode != nil {
-			require.NoError(t, db.Exec(`INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode)
-				VALUES (?, ?, 'Kabupaten', 'x', 1, 1, '11') ON CONFLICT DO NOTHING`, *akun.KabupatenKode, "K"+*akun.KabupatenKode).Error)
-		}
-	}
-	_, err := authseeder.SeedDemo(t.Context(), db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	_, err = authseeder.SeedDemo(t.Context(), db)
 	require.NoError(t, err)
 
 	_, err = SeedDemo(t.Context(), db, seedNow)

@@ -12,6 +12,10 @@ ENV CI=true
 COPY pnpm-workspace.yaml turbo.json ./
 COPY pnpm-lock.yaml ./
 
+# Unduh paket hanya dari lockfile. Layer ini tetap di cache selama pnpm-lock.yaml tidak
+# berubah, sehingga perubahan kode tidak memicu unduh ulang seluruh paket npm.
+RUN pnpm fetch --frozen-lockfile
+
 # Copy all packages (needed for workspace dependencies)
 COPY packages/ ./packages/
 
@@ -28,8 +32,8 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Pasang dependensi dari store hasil `pnpm fetch` (tanpa jaringan)
+RUN pnpm install --offline --frozen-lockfile
 
 # Build the web app (package name is garda-inflasi-web, not web)
 RUN pnpm --filter garda-inflasi-web build

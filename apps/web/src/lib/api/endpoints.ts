@@ -21,7 +21,10 @@ import {
   toEwsAlert, toEwsAturan, toPreferensiBody, toPreferensiView, toUbahAturanBody,
   type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
 } from "./ews";
-import { toKartu, type AksiKartu, type BulkKartuResult, type KartuResponse } from "./intervensi";
+import {
+  toKartu, toPersetujuan,
+  type AksiKartu, type BulkKartuResult, type KartuResponse, type KeputusanPersetujuan, type Persetujuan, type PersetujuanResponse,
+} from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
@@ -143,6 +146,21 @@ export const api = {
       MODE_MOCK
         ? mockDelay({ versi: versi + 1 }, 200, 400)
         : apiFetch<{ versi: number }>(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan, versi }) }),
+    /** Antrean permintaan persetujuan (terbaru dahulu); status kosong = semua. */
+    persetujuan: (status?: Persetujuan["status"]): Promise<Persetujuan[]> =>
+      MODE_MOCK
+        ? mockDelay<Persetujuan[]>([])
+        : apiFetch<PersetujuanResponse[]>(`/v1/intervensi/persetujuan${status ? `?status=${status}` : ""}`).then((rows) => rows.map(toPersetujuan)),
+    /** Meminta persetujuan memindahkan kartu ke tahap persetujuan atau sesudahnya. */
+    ajukan: (id: string, tahapTujuan: string, catatan = ""): Promise<Persetujuan> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Persetujuan membutuhkan backend aktif."))
+        : apiFetch<PersetujuanResponse>(`/v1/intervensi/${id}/persetujuan`, { method: "POST", body: JSON.stringify({ tahap_tujuan: tahapTujuan, catatan }) }).then(toPersetujuan),
+    /** Memutuskan langkah yang menunggu; TOLAK wajib bercatatan. */
+    putus: (id: number, keputusan: KeputusanPersetujuan, catatan = ""): Promise<Persetujuan> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Persetujuan membutuhkan backend aktif."))
+        : apiFetch<PersetujuanResponse>(`/v1/intervensi/persetujuan/${id}/keputusan`, { method: "POST", body: JSON.stringify({ keputusan, catatan }) }).then(toPersetujuan),
     /** Menugaskan kartu ke pengguna yang masuk, atau mengeskalasinya ke Dewan Pengarah; hasil per kartu. */
     aksi: (aksi: AksiKartu, ids: string[]): Promise<BulkKartuResult> =>
       MODE_MOCK

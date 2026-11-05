@@ -37,6 +37,14 @@ func New(repo domain.EngineRepository, auditWriter audit.Writer, log *logger.Log
 	return &Engine{repo: repo, audit: auditWriter, log: log, observers: observers, now: time.Now}
 }
 
+// AddObserver menambah pengamat setelah Engine dibuat (dipakai modul lain yang bereaksi pada
+// alert, mis. workflow intervensi). Aman dipanggil sebelum atau di antara putaran evaluasi.
+func (e *Engine) AddObserver(o domain.Observer) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.observers = append(e.observers, o)
+}
+
 // Severity menentukan tingkat dari besaran pengukuran terhadap ambang aturan;
 // kosong bila di bawah ambang waspada.
 func Severity(besaran float64, a domain.AturanEws) string {

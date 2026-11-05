@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import type { UbahAturanInput } from "@/lib/api/ews";
-import { ringkasHasilKartu, type AksiKartu } from "@/lib/api/intervensi";
+import { ringkasHasilKartu, type AksiKartu, type KeputusanPersetujuan } from "@/lib/api/intervensi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
@@ -92,6 +92,40 @@ export function useEvaluasiEws() {
 /** Kartu kanban. Dengan backend aktif disegarkan berkala agar perpindahan oleh pengguna lain muncul. */
 export const useIntervensi = () =>
   useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity, refetchInterval: MODE_MOCK ? false : LIVE });
+/** Permintaan persetujuan yang menunggu; disegarkan berkala agar keputusan pengguna lain muncul. */
+export const usePersetujuan = (enabled = true) =>
+  useQuery({ queryKey: qk.intervensi.persetujuan(), queryFn: () => api.intervensi.persetujuan("MENUNGGU"), enabled, refetchInterval: MODE_MOCK ? false : LIVE });
+
+/** Mengajukan persetujuan pemindahan kartu; papan dan antrean dimuat ulang. */
+export function useAjukanPersetujuan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, tahap, catatan }: { id: string; tahap: string; catatan?: string }) => api.intervensi.ajukan(id, tahap, catatan),
+    onSuccess: (p) => toast.success("Persetujuan diajukan", { description: `${p.kartuJudul}: ${p.langkah.length} langkah persetujuan.` }),
+    onError: (err) => toast.error("Pengajuan gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.intervensi.persetujuan() }),
+  });
+}
+
+/** Memutuskan langkah persetujuan; kartu dapat berpindah tahap, jadi papan ikut dimuat ulang. */
+export function usePutusPersetujuan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, keputusan, catatan }: { id: number; keputusan: KeputusanPersetujuan; catatan?: string }) => api.intervensi.putus(id, keputusan, catatan),
+    onSuccess: (p, { keputusan }) => {
+      const selesai = p.status !== "MENUNGGU";
+      toast.success(keputusan === "SETUJU" ? (selesai ? "Persetujuan selesai" : "Langkah disetujui") : "Permintaan ditolak", {
+        description: selesai && keputusan === "SETUJU" && p.tahapTujuan ? "Kartu dipindahkan ke tahap tujuan." : `${p.kartuJudul}. Tercatat di audit trail.`,
+      });
+    },
+    onError: (err) => toast.error("Keputusan gagal disimpan", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.intervensi.persetujuan() });
+      qc.invalidateQueries({ queryKey: qk.intervensi.list() });
+    },
+  });
+}
+
 /**
  * Menugaskan kartu ke diri sendiri atau mengeskalasinya (aksi massal); toast merangkum hasil per kartu
  * dan papan dimuat ulang karena versi kartu berubah.

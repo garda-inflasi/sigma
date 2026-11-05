@@ -22,6 +22,9 @@ const (
 	AksiPindahTahap = "PINDAH_TAHAP"
 	AksiTugaskan    = "TUGASKAN"
 	AksiEskalasi    = "ESKALASI"
+	AksiAjukan      = "AJUKAN"
+	AksiSetuju      = "SETUJU"
+	AksiTolak       = "TOLAK"
 )
 
 var (
@@ -35,27 +38,30 @@ var (
 
 // Intervensi memetakan tabel intervensi (satu kartu kanban).
 type Intervensi struct {
-	ID               string     `gorm:"column:id;primaryKey"`
-	Siklus           string     `gorm:"column:siklus"`
-	Tahap            string     `gorm:"column:tahap"`
-	Urutan           int        `gorm:"column:urutan"`
-	Judul            string     `gorm:"column:judul"`
-	Deskripsi        string     `gorm:"column:deskripsi"`
-	KomoditasKode    string     `gorm:"column:komoditas_kode"`
-	KabupatenKode    string     `gorm:"column:kabupaten_kode"`
-	Prioritas        string     `gorm:"column:prioritas"`
-	Tenggat          time.Time  `gorm:"column:tenggat"`
-	RekomendasiAI    bool       `gorm:"column:rekomendasi_ai"`
-	ChecklistSelesai int        `gorm:"column:checklist_selesai"`
-	ChecklistTotal   int        `gorm:"column:checklist_total"`
-	EwsAlertID       *string    `gorm:"column:ews_alert_id"`
-	DibuatOlehID     string     `gorm:"column:dibuat_oleh_id"`
-	DibuatPada       time.Time  `gorm:"column:dibuat_pada;default:now()"`
-	SelesaiPada      *time.Time `gorm:"column:selesai_pada"`
+	ID               string    `gorm:"column:id;primaryKey"`
+	Siklus           string    `gorm:"column:siklus"`
+	Tahap            string    `gorm:"column:tahap"`
+	Urutan           int       `gorm:"column:urutan"`
+	Judul            string    `gorm:"column:judul"`
+	Deskripsi        string    `gorm:"column:deskripsi"`
+	KomoditasKode    string    `gorm:"column:komoditas_kode"`
+	KabupatenKode    string    `gorm:"column:kabupaten_kode"`
+	Prioritas        string    `gorm:"column:prioritas"`
+	Tenggat          time.Time `gorm:"column:tenggat"`
+	RekomendasiAI    bool      `gorm:"column:rekomendasi_ai"`
+	ChecklistSelesai int       `gorm:"column:checklist_selesai"`
+	ChecklistTotal   int       `gorm:"column:checklist_total"`
+	EwsAlertID       *string   `gorm:"column:ews_alert_id"`
+	// DibuatOlehID kosong untuk kartu yang dibuat sistem (workflow dari alert EWS).
+	DibuatOlehID *string    `gorm:"column:dibuat_oleh_id"`
+	DibuatPada   time.Time  `gorm:"column:dibuat_pada;default:now()"`
+	SelesaiPada  *time.Time `gorm:"column:selesai_pada"`
 	// Versi naik tiap perubahan kartu; dipakai untuk optimistic locking.
 	Versi            int        `gorm:"column:versi;default:1"`
 	DieskalasiPada   *time.Time `gorm:"column:dieskalasi_pada"`
 	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id"`
+	// TahapSejak adalah waktu kartu masuk ke tahapnya sekarang; dasar penghitungan SLA tahap.
+	TahapSejak time.Time `gorm:"column:tahap_sejak;default:now()"`
 }
 
 func (Intervensi) TableName() string { return "intervensi" }

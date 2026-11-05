@@ -105,7 +105,7 @@ func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap 
 		created = domain.Intervensi{
 			ID: fmt.Sprintf("INT-%d", seq), Siklus: in.Siklus, Tahap: tahap, Urutan: urutan, Judul: in.Judul,
 			Deskripsi: in.Deskripsi, KomoditasKode: in.KomoditasKode, KabupatenKode: in.KabupatenKode,
-			Prioritas: in.Prioritas, Tenggat: in.Tenggat, EwsAlertID: in.EwsAlertID, DibuatOlehID: in.DibuatOlehID,
+			Prioritas: in.Prioritas, Tenggat: in.Tenggat, EwsAlertID: in.EwsAlertID, DibuatOlehID: &in.DibuatOlehID,
 		}
 		if err := tx.Create(&created).Error; err != nil {
 			return err
@@ -135,58 +135,84 @@ func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap 
 func (r *Repository) Move(ctx context.Context, id, tahap string, index int, selesai bool, versi int, oleh string) (int, error) {
 	var versiBaru int
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var kini struct {
-			Siklus string
-			Tahap  string
-			Versi  int
-		}
-		res := tx.Raw("SELECT siklus, tahap, versi FROM intervensi WHERE id = ? FOR UPDATE", id).Scan(&kini)
-		if res.Error != nil {
-			return fmt.Errorf("kunci intervensi: %w", res.Error)
-		}
-		if res.RowsAffected == 0 {
-			return domain.ErrNotFound
+		kini, err := kunciKartu(tx, id)
+		if err != nil {
+			return err
 		}
 		if kini.Versi != versi {
 			return domain.ErrVersiUsang
 		}
-
-		var column []string
-		err := tx.Raw(`
-			SELECT id FROM intervensi
-			 WHERE siklus = ? AND tahap = ? AND id <> ?
-			 ORDER BY urutan, dibuat_pada, id
-			   FOR UPDATE`, kini.Siklus, tahap, id).Scan(&column).Error
-		if err != nil {
-			return fmt.Errorf("kolom tujuan: %w", err)
-		}
-		index = max(0, min(index, len(column)))
-		column = slices.Insert(column, index, id)
-
-		err = tx.Raw(`
-			UPDATE intervensi
-			   SET tahap = ?, urutan = ?, versi = versi + 1,
-			       selesai_pada = CASE WHEN ?::boolean THEN COALESCE(selesai_pada, NOW()) ELSE NULL END
-			 WHERE id = ?
-			RETURNING versi`, tahap, index, selesai, id).Scan(&versiBaru).Error
-		if err != nil {
-			return fmt.Errorf("pindahkan kartu: %w", err)
-		}
-		for pos, other := range column {
-			if other == id {
-				continue
-			}
-			if err := tx.Exec("UPDATE intervensi SET urutan = ? WHERE id = ? AND urutan <> ?", pos, other, pos).Error; err != nil {
-				return fmt.Errorf("nomori ulang kolom: %w", err)
-			}
-		}
-		if kini.Tahap != tahap {
-			return catatRiwayat(tx, id, domain.AksiPindahTahap, &kini.Tahap, &tahap, oleh, "")
-		}
-		return nil
+		versiBaru, err = pindahKartu(tx, id, kini, tahap, index, selesai, oleh, "")
+		return err
 	})
 	if err != nil {
 		return 0, err
+	}
+	return versiBaru, nil
+}
+
+// posisiKartu adalah keadaan kartu yang terkunci dalam transaksi.
+type posisiKartu struct {
+	Siklus     string
+	Tahap      string
+	Versi      int
+	Selesai    bool
+	Dieskalasi bool
+}
+
+// kunciKartu mengunci baris kartu (domain.ErrNotFound bila tidak ada).
+func kunciKartu(tx *gorm.DB, id string) (posisiKartu, error) {
+	var kini posisiKartu
+	res := tx.Raw(`SELECT siklus, tahap, versi, selesai_pada IS NOT NULL AS selesai,
+		       dieskalasi_pada IS NOT NULL AS dieskalasi
+		  FROM intervensi WHERE id = ? FOR UPDATE`, id).Scan(&kini)
+	if res.Error != nil {
+		return kini, fmt.Errorf("kunci intervensi: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return kini, domain.ErrNotFound
+	}
+	return kini, nil
+}
+
+// pindahKartu memindahkan kartu yang sudah terkunci ke tahap dan posisi baru, menomori ulang
+// kolom tujuan, menaikkan versi, dan mencatat riwayat bila tahap berganti. Mengembalikan versi baru.
+func pindahKartu(tx *gorm.DB, id string, kini posisiKartu, tahap string, index int, selesai bool, oleh, alasan string) (int, error) {
+	var column []string
+	err := tx.Raw(`
+		SELECT id FROM intervensi
+		 WHERE siklus = ? AND tahap = ? AND id <> ?
+		 ORDER BY urutan, dibuat_pada, id
+		   FOR UPDATE`, kini.Siklus, tahap, id).Scan(&column).Error
+	if err != nil {
+		return 0, fmt.Errorf("kolom tujuan: %w", err)
+	}
+	index = max(0, min(index, len(column)))
+	column = slices.Insert(column, index, id)
+
+	var versiBaru int
+	err = tx.Raw(`
+		UPDATE intervensi
+		   SET tahap_sejak = CASE WHEN tahap <> @tahap THEN NOW() ELSE tahap_sejak END,
+		       tahap = @tahap, urutan = @urutan, versi = versi + 1,
+		       selesai_pada = CASE WHEN CAST(@selesai AS boolean) THEN COALESCE(selesai_pada, NOW()) ELSE NULL END
+		 WHERE id = @id
+		RETURNING versi`, map[string]any{"tahap": tahap, "urutan": index, "selesai": selesai, "id": id}).Scan(&versiBaru).Error
+	if err != nil {
+		return 0, fmt.Errorf("pindahkan kartu: %w", err)
+	}
+	for pos, other := range column {
+		if other == id {
+			continue
+		}
+		if err := tx.Exec("UPDATE intervensi SET urutan = ? WHERE id = ? AND urutan <> ?", pos, other, pos).Error; err != nil {
+			return 0, fmt.Errorf("nomori ulang kolom: %w", err)
+		}
+	}
+	if kini.Tahap != tahap {
+		if err := catatRiwayat(tx, id, domain.AksiPindahTahap, &kini.Tahap, &tahap, oleh, alasan); err != nil {
+			return 0, err
+		}
 	}
 	return versiBaru, nil
 }
@@ -228,18 +254,12 @@ func (r *Repository) BulkAksi(ctx context.Context, aksi domain.BulkAksi, ids []s
 // terapkanAksi menerapkan aksi pada satu kartu. Alasan tidak kosong bila kartu tak dapat
 // diproses (bukan galat sistem); kartu seperti itu dibiarkan utuh.
 func terapkanAksi(tx *gorm.DB, aksi domain.BulkAksi, id, oleh string) (alasan string, err error) {
-	var kartu struct {
-		Selesai    bool
-		Dieskalasi bool
-	}
-	res := tx.Raw(`SELECT selesai_pada IS NOT NULL AS selesai, dieskalasi_pada IS NOT NULL AS dieskalasi
-		FROM intervensi WHERE id = ? FOR UPDATE`, id).Scan(&kartu)
-	if res.Error != nil {
-		return "", fmt.Errorf("kunci intervensi: %w", res.Error)
-	}
+	kartu, err := kunciKartu(tx, id)
 	switch {
-	case res.RowsAffected == 0:
+	case errors.Is(err, domain.ErrNotFound):
 		return "Kartu tidak ditemukan", nil
+	case err != nil:
+		return "", err
 	case kartu.Selesai:
 		return "Kartu sudah selesai", nil
 	}
@@ -261,15 +281,32 @@ func terapkanAksi(tx *gorm.DB, aksi domain.BulkAksi, id, oleh string) (alasan st
 		if kartu.Dieskalasi {
 			return "Kartu sudah dieskalasi", nil
 		}
-		err := tx.Exec(`UPDATE intervensi
-			   SET dieskalasi_pada = NOW(), dieskalasi_oleh_id = ?, prioritas = 'TINGGI', versi = versi + 1
-			 WHERE id = ?`, oleh, id).Error
-		if err != nil {
-			return "", fmt.Errorf("eskalasi: %w", err)
-		}
-		return "", catatRiwayat(tx, id, domain.AksiEskalasi, nil, nil, oleh, "Dieskalasi ke Dewan Pengarah")
+		return "", eskalasiKartu(tx, id, oleh, "Dieskalasi ke Dewan Pengarah")
 	}
 	return "", fmt.Errorf("aksi %q tidak dikenal", aksi)
+}
+
+// eskalasiKartu menandai kartu terkunci dieskalasi (prioritas TINGGI, versi naik), mencatat riwayat,
+// dan membuka permintaan persetujuan eskalasi bila ada alur aktifnya. oleh kosong = sistem.
+func eskalasiKartu(tx *gorm.DB, id, oleh, alasan string) error {
+	var pelaku *string
+	if oleh != "" {
+		pelaku = &oleh
+	}
+	err := tx.Exec(`UPDATE intervensi
+		   SET dieskalasi_pada = NOW(), dieskalasi_oleh_id = ?, prioritas = 'TINGGI', versi = versi + 1
+		 WHERE id = ?`, pelaku, id).Error
+	if err != nil {
+		return fmt.Errorf("eskalasi: %w", err)
+	}
+	if err := catatRiwayat(tx, id, domain.AksiEskalasi, nil, nil, oleh, alasan); err != nil {
+		return err
+	}
+	_, err = bukaPersetujuan(tx, domain.AjukanInput{KartuID: id, Jenis: domain.JenisEskalasi, Oleh: oleh, Catatan: alasan})
+	if errors.Is(err, domain.ErrTanpaAlur) || errors.Is(err, domain.ErrPersetujuanTerbuka) {
+		return nil // tanpa alur aktif, atau sudah ada permintaan terbuka: eskalasi tetap tercatat
+	}
+	return err
 }
 
 func (r *Repository) ListRiwayat(ctx context.Context, id string) ([]domain.Riwayat, error) {

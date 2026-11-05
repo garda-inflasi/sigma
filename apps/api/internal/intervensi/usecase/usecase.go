@@ -19,7 +19,7 @@ var (
 	ErrInvalidReference = domain.ErrInvalidReference
 	ErrVersiUsang       = domain.ErrVersiUsang
 	// ErrInvalidTahap: tahap tidak terdefinisi untuk siklus kartu.
-	ErrInvalidTahap = errors.New("tahap tidak valid untuk siklus ini")
+	ErrInvalidTahap = domain.ErrTahapTidakValid
 	// ErrInvalidAction: aksi massal tidak dikenal.
 	ErrInvalidAction = errors.New("aksi tidak valid")
 )
@@ -46,12 +46,13 @@ type BulkResult struct {
 
 type UseCase struct {
 	repo  domain.Repository
+	wf    domain.WorkflowRepository
 	audit audit.Writer
 	log   *logger.Logger
 }
 
-func New(repo domain.Repository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
-	return &UseCase{repo: repo, audit: auditWriter, log: log}
+func New(repo domain.Repository, wf domain.WorkflowRepository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
+	return &UseCase{repo: repo, wf: wf, audit: auditWriter, log: log}
 }
 
 func (uc *UseCase) List(ctx context.Context, q domain.ListQuery) ([]domain.Kartu, error) {

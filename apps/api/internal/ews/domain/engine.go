@@ -11,6 +11,7 @@ const (
 	JenisLonjakanHarga  = "LONJAKAN_HARGA"
 	JenisKelangkaanStok = "KELANGKAAN_STOK"
 	JenisAnomaliCuaca   = "ANOMALI_CUACA"
+	JenisOverSupply     = "OVER_SUPPLY"
 )
 
 // Tingkat keparahan (enum severity), dari rendah ke tinggi.

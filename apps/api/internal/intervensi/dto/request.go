@@ -36,3 +36,20 @@ type ListIntervensiRequest struct {
 	Tahap     string `form:"tahap" binding:"omitempty,max=100"`
 	Prioritas string `form:"prioritas" binding:"omitempty,oneof=TINGGI SEDANG RENDAH"`
 }
+
+// AjukanPersetujuanRequest meminta persetujuan memindahkan kartu ke tahap tujuan.
+type AjukanPersetujuanRequest struct {
+	TahapTujuan string `json:"tahap_tujuan" binding:"required,max=100"`
+	Catatan     string `json:"catatan" binding:"max=500"`
+}
+
+// PutusPersetujuanRequest memutuskan langkah persetujuan yang sedang menunggu. Penolakan wajib bercatatan.
+type PutusPersetujuanRequest struct {
+	Keputusan string `json:"keputusan" binding:"required,oneof=SETUJU TOLAK"`
+	Catatan   string `json:"catatan" binding:"max=500"`
+}
+
+// ListPersetujuanRequest menyaring permintaan menurut status (opsional).
+type ListPersetujuanRequest struct {
+	Status string `form:"status" binding:"omitempty,oneof=MENUNGGU DISETUJUI DITOLAK"`
+}

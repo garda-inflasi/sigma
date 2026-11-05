@@ -1492,12 +1492,192 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/intervensi/alur:
+    get:
+      summary: Definisi alur persetujuan berjenjang
+      description: |
+        Memerlukan izin `intervensi.lihat`. Alur disimpan sebagai data (dapat diubah tanpa deploy):
+        satu alur pemindahan per tahap persetujuan dan satu alur eskalasi, masing-masing dengan langkah
+        berurutan dan izin yang dibutuhkan tiap langkah.
+      operationId: listIntervensiAlur
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar alur beserta langkahnya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiAlurListResponse"
+        "403":
+          description: Tanpa izin `intervensi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi/persetujuan:
+    get:
+      summary: Mendaftar permintaan persetujuan (antrean Dewan Pengarah)
+      description: |
+        Memerlukan izin `intervensi.lihat`. Terbaru dahulu (maksimum 200). `izin_langkah_kini` adalah izin yang
+        dibutuhkan untuk memutuskan langkah yang sedang menunggu.
+      operationId: listIntervensiPersetujuan
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [MENUNGGU, DISETUJUI, DITOLAK]
+      responses:
+        "200":
+          description: Daftar permintaan beserta rantai langkahnya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiPersetujuanListResponse"
+        "400":
+          description: Status tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `intervensi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi/persetujuan/{pid}/keputusan:
+    post:
+      summary: Memutuskan langkah persetujuan yang sedang menunggu
+      description: |
+        Memerlukan `intervensi.setujui` atau `intervensi.setujui_fiskal`; izin yang tepat ditentukan oleh langkah
+        yang menunggu (`izin_langkah_kini`). Pemisahan tugas: pengaju dan pemutus langkah sebelumnya tidak boleh
+        memutus. `TOLAK` wajib bercatatan dan menutup permintaan (menolak eskalasi mencabut tanda eskalasi kartu).
+        `SETUJU` pada langkah terakhir menyelesaikan permintaan dan, untuk pemindahan, memindahkan kartu ke tahap
+        tujuan (akhir kolom). Keputusan dicatat di riwayat kartu dan audit trail.
+      operationId: decideIntervensiPersetujuan
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pid
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutusPersetujuanRequest"
+      responses:
+        "200":
+          description: Keputusan tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiPersetujuanResponse"
+        "400":
+          description: Masukan tidak valid, atau penolakan tanpa catatan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Izin langkah tidak dimiliki, atau melanggar pemisahan tugas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Permintaan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Permintaan sudah diputuskan atau langkahnya telah berpindah, atau kartu sudah selesai
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/intervensi/{id}/persetujuan:
+    post:
+      summary: Mengajukan persetujuan memindahkan kartu
+      description: |
+        Memerlukan izin `intervensi.kelola`. Untuk kartu yang hendak maju ke tahap persetujuan atau sesudahnya
+        dan pemanggil tidak berwenang memindahkannya langsung. Rantai persetujuan adalah gabungan langkah alur
+        tiap tahap persetujuan dari tahap kartu (tidak termasuk) sampai tahap tujuan (termasuk). Setelah semua
+        langkah disetujui kartu dipindahkan otomatis. Hanya satu permintaan terbuka per kartu.
+      operationId: ajukanIntervensiPersetujuan
+      tags:
+        - Intervensi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: INT-301
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AjukanPersetujuanRequest"
+      responses:
+        "201":
+          description: Permintaan dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntervensiPersetujuanResponse"
+        "400":
+          description: Tahap tidak valid, atau perpindahan tidak melewati tahap persetujuan (pindahkan langsung)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `intervensi.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kartu tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Kartu sudah selesai, atau masih ada permintaan yang menunggu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/intervensi/bulk:
     post:
       summary: Aksi massal pada kartu (tugaskan ke saya, eskalasi)
       description: |
         Memerlukan izin `intervensi.kelola`. `tugaskan` menambahkan pemanggil sebagai penanggung jawab;
-        `eskalasi` menandai kartu dieskalasi ke Dewan Pengarah dan menaikkan prioritasnya ke TINGGI.
+        `eskalasi` menandai kartu dieskalasi ke Dewan Pengarah, menaikkan prioritasnya ke TINGGI, dan membuka
+        permintaan telaah di antrean persetujuan (alur `eskalasi`).
         Hasil dikembalikan per kartu (urut sesuai `ids`, id ganda dibuang); kartu yang tidak ada, sudah
         selesai, sudah ditugaskan, atau sudah dieskalasi dilewati tanpa menggagalkan kartu lain. Kartu yang
         berubah naik versi, tercatat di riwayat kartu, dan aksinya di audit trail.
@@ -4203,6 +4383,162 @@ components:
               type: integer
               description: Versi baru kartu setelah dipindahkan
 
+    AjukanPersetujuanRequest:
+      type: object
+      required: [tahap_tujuan]
+      properties:
+        tahap_tujuan:
+          type: string
+          example: t-petakan
+        catatan:
+          type: string
+          maxLength: 500
+
+    PutusPersetujuanRequest:
+      type: object
+      required: [keputusan]
+      properties:
+        keputusan:
+          type: string
+          enum: [SETUJU, TOLAK]
+        catatan:
+          type: string
+          maxLength: 500
+          description: Wajib untuk TOLAK
+
+    IntervensiPersetujuan:
+      type: object
+      properties:
+        id:
+          type: integer
+        intervensi_id:
+          type: string
+        kartu_judul:
+          type: string
+        kartu_tahap:
+          type: string
+        jenis:
+          type: string
+          enum: [PINDAH_TAHAP, ESKALASI]
+        tahap_tujuan:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [MENUNGGU, DISETUJUI, DITOLAK]
+        langkah_kini:
+          type: integer
+        izin_langkah_kini:
+          type: string
+          example: intervensi.setujui
+        diajukan_oleh_id:
+          type: string
+          nullable: true
+          description: Kosong bila diajukan sistem (eskalasi SLA)
+        diajukan_oleh_nama:
+          type: string
+          nullable: true
+        diajukan_pada:
+          type: string
+          format: date-time
+        selesai_pada:
+          type: string
+          format: date-time
+          nullable: true
+        catatan:
+          type: string
+        langkah:
+          type: array
+          items:
+            type: object
+            properties:
+              urutan:
+                type: integer
+              label:
+                type: string
+              izin_dibutuhkan:
+                type: string
+              keputusan:
+                type: string
+                nullable: true
+                enum: [SETUJU, TOLAK]
+              oleh_id:
+                type: string
+                nullable: true
+              oleh_nama:
+                type: string
+                nullable: true
+              waktu:
+                type: string
+                format: date-time
+                nullable: true
+              catatan:
+                type: string
+
+    IntervensiPersetujuanResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/IntervensiPersetujuan"
+
+    IntervensiPersetujuanListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntervensiPersetujuan"
+
+    IntervensiAlurListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              kode:
+                type: string
+                example: pindah-tekanan-fiskal
+              nama:
+                type: string
+              jenis:
+                type: string
+                enum: [PINDAH_TAHAP, ESKALASI]
+              siklus:
+                type: string
+                nullable: true
+              tahap_tujuan:
+                type: string
+                nullable: true
+              aktif:
+                type: boolean
+              langkah:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    urutan:
+                      type: integer
+                    label:
+                      type: string
+                    izin_dibutuhkan:
+                      type: string
+
     BulkIntervensiRequest:
       type: object
       required: [action, ids]
@@ -4263,7 +4599,7 @@ components:
                 type: integer
               aksi:
                 type: string
-                enum: [BUAT, PINDAH_TAHAP, TUGASKAN, ESKALASI]
+                enum: [BUAT, PINDAH_TAHAP, TUGASKAN, ESKALASI, AJUKAN, SETUJU, TOLAK]
               dari:
                 type: string
                 nullable: true

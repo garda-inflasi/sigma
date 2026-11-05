@@ -82,3 +82,91 @@ export function toKartu(r: KartuResponse): KartuIntervensi {
     dieskalasi: r.dieskalasi_pada !== null,
   };
 }
+
+export type KeputusanPersetujuan = "SETUJU" | "TOLAK";
+
+export interface PersetujuanResponse {
+  id: number;
+  intervensi_id: string;
+  kartu_judul: string;
+  kartu_tahap: string;
+  jenis: "PINDAH_TAHAP" | "ESKALASI";
+  tahap_tujuan: string | null;
+  status: "MENUNGGU" | "DISETUJUI" | "DITOLAK";
+  langkah_kini: number;
+  izin_langkah_kini: string;
+  diajukan_oleh_id: string | null;
+  diajukan_oleh_nama: string | null;
+  diajukan_pada: string;
+  catatan: string;
+  langkah: {
+    urutan: number;
+    label: string;
+    izin_dibutuhkan: string;
+    keputusan: KeputusanPersetujuan | null;
+    oleh_id: string | null;
+    oleh_nama: string | null;
+    catatan: string;
+  }[];
+}
+
+export interface LangkahPersetujuan {
+  urutan: number;
+  label: string;
+  izin: string;
+  keputusan?: KeputusanPersetujuan;
+  olehId?: string;
+  olehNama?: string;
+  catatan: string;
+}
+
+export interface Persetujuan {
+  id: number;
+  kartuId: string;
+  kartuJudul: string;
+  jenis: PersetujuanResponse["jenis"];
+  tahapTujuan?: string;
+  status: PersetujuanResponse["status"];
+  langkahKini: number;
+  izinLangkahKini: string;
+  /** Kosong bila diajukan sistem (eskalasi SLA). */
+  diajukanOlehId?: string;
+  diajukanOleh?: string;
+  diajukanPada: string;
+  catatan: string;
+  langkah: LangkahPersetujuan[];
+}
+
+export function toPersetujuan(r: PersetujuanResponse): Persetujuan {
+  return {
+    id: r.id,
+    kartuId: r.intervensi_id,
+    kartuJudul: r.kartu_judul,
+    jenis: r.jenis,
+    tahapTujuan: r.tahap_tujuan ?? undefined,
+    status: r.status,
+    langkahKini: r.langkah_kini,
+    izinLangkahKini: r.izin_langkah_kini,
+    diajukanOlehId: r.diajukan_oleh_id ?? undefined,
+    diajukanOleh: r.diajukan_oleh_nama ?? undefined,
+    diajukanPada: r.diajukan_pada,
+    catatan: r.catatan,
+    langkah: r.langkah.map((l) => ({
+      urutan: l.urutan,
+      label: l.label,
+      izin: l.izin_dibutuhkan,
+      keputusan: l.keputusan ?? undefined,
+      olehId: l.oleh_id ?? undefined,
+      olehNama: l.oleh_nama ?? undefined,
+      catatan: l.catatan,
+    })),
+  };
+}
+
+/**
+ * Apakah pengguna boleh memutuskan langkah yang menunggu: permintaan masih terbuka, ia berizin untuk
+ * langkah itu, dan ia bukan pengaju atau pemutus langkah lain (pemisahan tugas, ditegakkan juga di server).
+ */
+export function bisaMemutus(p: Persetujuan, userId: string, berizin: boolean): boolean {
+  return p.status === "MENUNGGU" && berizin && p.diajukanOlehId !== userId && !p.langkah.some((l) => l.olehId === userId);
+}

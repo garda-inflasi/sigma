@@ -1,6 +1,6 @@
 # 14 — Intervensi (kanban 3 siklus) & workflow engine
 
-**Prioritas:** P0 (Fase 3, PRD Layer 4) · **Status:** UI ✅ · Backend 🟡 (daftar, buat, pindah tahap, riwayat, konkurensi, tugaskan/eskalasi; belum workflow engine) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
+**Prioritas:** P0 (Fase 3, PRD Layer 4) · **Status:** UI ✅ · Backend 🟡 (daftar, buat, pindah tahap, riwayat, konkurensi, tugaskan/eskalasi, persetujuan berjenjang, kartu otomatis; what-if/AI belum) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -55,14 +55,17 @@
 
 ---
 
-## 14-C — Workflow engine *(Fase F, gelombang F-5; PRD §4)*
+## 14-C — Workflow engine *(Fase F, gelombang F-5; PRD §4)* — ✅ persetujuan berjenjang, kartu otomatis, eskalasi SLA (sebagian)
 
 **Bergantung pada:** 10-B, 08-B.
 
-- [ ] **Pemicu otomatis siklus:** EWS tertentu → siklus Tekanan Harga; over-supply → Surplus; kembali Normal bila indikator pulih.
-- [ ] **Kartu otomatis** dari alert/rekomendasi AI dengan tautan ke sumbernya.
-- [ ] **Task management dan eskalasi:** penugasan otomatis ke unit, tenggat, pengingat, eskalasi bila lewat SLA (`tahap_intervensi_def.sla_hari`).
-- [ ] Definisi alur sebagai data agar bisa diubah tanpa deploy.
-- [ ] Simulasi what-if dan rekomendasi AI + validasi manusia + audit keputusan (PRD §4.3).
-- [ ] Integrasi ke perencanaan APBD/TPID **melalui policy brief** ([15](15-policy-brief.md)), bukan akun TPID/Pemda (mereka bukan pengguna sistem).
-- [ ] `checklist_item` bila checklist menjadi nyata (sekarang hanya dua counter).
+**MIG** (`000074_14c_workflow_persetujuan.sql`): `alur_persetujuan` + `alur_persetujuan_langkah` (definisi alur sebagai data), `intervensi_persetujuan` + `intervensi_persetujuan_langkah` (permintaan, rantai langkah yang disalin saat diajukan, keputusan per langkah), `intervensi.tahap_sejak` (jam SLA tahap), `dibuat_oleh_id` boleh NULL (kartu buatan sistem), UNIQUE satu kartu otomatis per alert. **SEED** `reference`: lima alur (petakan suplai, dukungan fiskal [Dewan Pengarah lalu Kanwil DJPb], dua penutupan, eskalasi), hanya ditambahkan bila belum ada sehingga perubahan lewat data bertahan; `demo`: satu permintaan terbuka (INT-304 ke Dukungan instrumen belanja).
+
+- [x] **Persetujuan berjenjang:** `POST /v1/intervensi/:id/persetujuan` (`intervensi.kelola`) membentuk rantai dari alur tiap tahap persetujuan yang dilalui; `POST /persetujuan/:pid/keputusan` (`intervensi.setujui` atau `setujui_fiskal` menurut langkah) dengan pemisahan tugas (pengaju dan pemutus langkah lain tidak boleh memutus), tolak wajib bercatatan, setuju di langkah akhir memindahkan kartu otomatis; `GET /persetujuan`, `GET /alur`. Semua tercatat di riwayat kartu dan audit. Satu permintaan terbuka per kartu.
+- [x] **Eskalasi nyata:** eskalasi (aksi massal 14-B atau SLA) membuka permintaan telaah Dewan Pengarah; menolaknya mencabut tanda eskalasi.
+- [x] **Kartu otomatis dari alert EWS:** alert >= `INTERVENSI_KARTU_OTOMATIS_MIN` (bawaan SIAGA; lonjakan harga, kelangkaan stok, dan cuaca memicu siklus Tekanan, over-supply memicu Surplus) menjadi kartu di tahap pertama dengan tautan `ews_alert_id`, tenggat dari SLA tahap pertama, ditugasi otomatis ke peran MANAJER_PROGRAM; idempoten, tidak menggandakan kartu yang sudah ada.
+- [x] **Eskalasi bila lewat SLA:** `INTERVENSI_SLA_INTERVAL` (bawaan mati) mengeskalasi kartu yang lebih lama di tahapnya daripada `sla_hari`.
+- [x] Definisi alur sebagai data (tabel, bukan kode). Antarmuka mengubah alur: belum (lewat basis data).
+- [x] FE: antrean "Menunggu persetujuan" di `/intervensi` (rantai langkah, setujui/tolak dengan catatan), tombol "Ajukan persetujuan" saat drop ditolak karena izin.
+- [ ] Pemicu siklus otomatis (siklus aktif berubah menurut indikator, kembali Normal bila pulih): siklus aktif dihitung modul 08, belum dipicu workflow.
+- [ ] Pengingat tenggat, simulasi what-if, rekomendasi AI + validasi manusia, integrasi ke APBD/TPID lewat policy brief, `checklist_item`.

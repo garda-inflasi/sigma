@@ -189,11 +189,12 @@ func TestHistory_CreateAssignEscalateAndMove(t *testing.T) {
 	for _, r := range rows {
 		aksi = append(aksi, r.Aksi)
 	}
-	assert.Equal(t, []string{"BUAT", "TUGASKAN", "ESKALASI", "PINDAH_TAHAP"}, aksi)
-	assert.Equal(t, "t-ews", *rows[3].Dari)
-	assert.Equal(t, "t-verifikasi", *rows[3].Ke)
-	require.NotNil(t, rows[3].OlehNama)
-	assert.Equal(t, "Rina Safitri, S.T., M.T.", *rows[3].OlehNama)
+	assert.Equal(t, []string{"BUAT", "TUGASKAN", "ESKALASI", "AJUKAN", "PINDAH_TAHAP"}, aksi, "eskalasi membuka permintaan telaah Dewan Pengarah (AJUKAN)")
+	last := rows[len(rows)-1]
+	assert.Equal(t, "t-ews", *last.Dari)
+	assert.Equal(t, "t-verifikasi", *last.Ke)
+	require.NotNil(t, last.OlehNama)
+	assert.Equal(t, "Rina Safitri, S.T., M.T.", *last.OlehNama)
 
 	var audited []string
 	require.NoError(t, s.db.Raw(`SELECT aksi FROM audit_log WHERE entitas = 'intervensi' AND aksi LIKE 'BULK_%' ORDER BY waktu`).Scan(&audited).Error)

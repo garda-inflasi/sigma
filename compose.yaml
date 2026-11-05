@@ -86,6 +86,8 @@ services:
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
       EWS_EVAL_INTERVAL: "${EWS_EVAL_INTERVAL:-15m}"
       EWS_NOTIF_INTERVAL: "${EWS_NOTIF_INTERVAL:-30s}"
+      INTERVENSI_KARTU_OTOMATIS_MIN: "${INTERVENSI_KARTU_OTOMATIS_MIN:-SIAGA}"
+      INTERVENSI_SLA_INTERVAL: "${INTERVENSI_SLA_INTERVAL:-0}"
       EWS_ESKALASI_MENIT: "${EWS_ESKALASI_MENIT:-0}"
       # Pengiriman nyata hanya bila diisi; kosong = notifikasi hanya dicatat di outbox.
       SMTP_HOST: "${SMTP_HOST:-}"

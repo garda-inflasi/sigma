@@ -26,12 +26,13 @@ import { SIKLUS_TAHAP, SIKLUS_URUTAN } from "@/lib/data/siklus";
 import type { KartuIntervensi } from "@/lib/data/types";
 import { siklusMeta, type Siklus } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
-import { useAksiKartu, useIntervensi } from "@/lib/query/hooks";
+import { useAjukanPersetujuan, useAksiKartu, useIntervensi } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { can, type Permission } from "@/lib/rbac/permissions";
 import { useKanban } from "@/lib/stores/kanban-store";
 import { KanbanCardView } from "./kanban-card";
 import { KanbanColumn } from "./kanban-column";
+import { PersetujuanPanel } from "./persetujuan-panel";
 import type { ColumnDef } from "@tanstack/react-table";
 
 const IZIN_LABEL: Partial<Record<Permission, string>> = {
@@ -53,6 +54,7 @@ export function KanbanBoard() {
   const { data, isLoading } = useIntervensi();
   const qc = useQueryClient();
   const aksiKartu = useAksiKartu();
+  const ajukan = useAjukanPersetujuan();
   const k = useKanban();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overTahap, setOverTahap] = useState<string | null>(null);
@@ -115,7 +117,11 @@ export function KanbanBoard() {
     const target = findTahap(String(over.id));
     if (target && !bolehMasuk(target)) {
       snap.current && k.restore(snap.current);
-      toast.error("Tidak dapat dipindahkan", { description: IZIN_LABEL[izinMasuk(target)] });
+      // Pemegang kelola dapat meminta persetujuan alih-alih memindahkan langsung (alur berjenjang di server).
+      toast.error("Tidak dapat dipindahkan", {
+        description: IZIN_LABEL[izinMasuk(target)],
+        action: can(role, "intervensi.kelola") ? { label: "Ajukan persetujuan", onClick: () => ajukan.mutate({ id, tahap: target }) } : undefined,
+      });
       return;
     }
     const tahapKini = k.cards[id]?.tahap;
@@ -263,6 +269,7 @@ export function KanbanBoard() {
           </DragOverlay>
         </DndContext>
       )}
+      <PersetujuanPanel />
       {view === "papan" && <BulkActionBar rows={terpilih} actions={bulkActions} entityLabel="kartu" onClear={k.clearSelection} />}
     </div>
   );

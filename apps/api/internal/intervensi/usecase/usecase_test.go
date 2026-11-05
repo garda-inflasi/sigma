@@ -65,7 +65,7 @@ func (m *mockRepository) ListRiwayat(ctx context.Context, id string) ([]domain.R
 
 func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
 	recorder := &audittest.Recorder{}
-	return New(repo, recorder, logger.NewDefault()), recorder
+	return New(repo, nil, recorder, logger.NewDefault()), recorder
 }
 
 func defs() []domain.TahapDef {

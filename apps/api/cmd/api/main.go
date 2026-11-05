@@ -12,6 +12,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
 	ewsjobs "github.com/garda-inflasi/api/internal/ews/jobs"
+	intervensiworkflow "github.com/garda-inflasi/api/internal/intervensi/workflow"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -103,7 +104,14 @@ func main() {
 	go refresher.Shared(db, log).Run(bgCtx, dashboardRefreshInterval)
 
 	// EWS: rule engine terjadwal, aliran SSE, notifikasi (konfigurasi dari env EWS_*).
-	go ewsjobs.Shared(db, log).Run(bgCtx)
+	ews := ewsjobs.Shared(db, log)
+	go ews.Run(bgCtx)
+
+	// Workflow intervensi: alert EWS menjadi kartu otomatis; kartu yang melewati SLA tahap dieskalasi
+	// (konfigurasi dari env INTERVENSI_*).
+	workflow := intervensiworkflow.Shared(db, log)
+	ews.Engine.AddObserver(workflow)
+	go workflow.Run(bgCtx)
 
 	srv := &http.Server{
 		Addr: addr,

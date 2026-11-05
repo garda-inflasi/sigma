@@ -7,8 +7,11 @@ import type { Tone } from "@/lib/design/tokens";
 import { komoditasByKode, type IkonKomoditas } from "@/lib/data/reference";
 import type {
   ColdStorageView,
+  DetailFasilitas,
   FasilitasColdStorage,
   StokColdStorage,
+  TitikSuhu,
+  TransaksiStok,
 } from "@/lib/data/types";
 import { bffFetch } from "./client";
 import {
@@ -35,6 +38,11 @@ export interface FasilitasWire {
   suhu_target_c: number;
   suhu_aktual_c: number | null;
   status: string;
+  batas_min_c?: number;
+  batas_maks_c?: number;
+  alarm_suhu?: boolean;
+  kelembapan_aktual_pct?: number | null;
+  telemetri_pada?: string | null;
 }
 
 export interface StokWire {
@@ -49,6 +57,7 @@ export interface StokWire {
   sisa_masa_simpan_hari: number;
   risiko_food_loss: number;
   pemilik: string;
+  status?: string;
 }
 
 export interface ColdStorageWire {
@@ -74,12 +83,103 @@ export interface BulkColdStorageWire {
   berhasil: number;
   gagal: number;
   volume_ton: number;
+  rincian?: { id: string; berhasil: boolean; pesan: string }[];
 }
 
 export interface BulkColdStorageResult {
   berhasil: number;
   gagal: number;
   volumeTon: number;
+  /** Hasil per lot menurut urutan permintaan. */
+  rincian: { id: string; berhasil: boolean; pesan: string }[];
+}
+
+export interface TransaksiStokWire {
+  id: string;
+  lot_id: string;
+  lot_baru_id: string | null;
+  jenis: TransaksiStok["jenis"];
+  volume_ton: number;
+  komoditas_nama: string;
+  fasilitas_asal_id: string | null;
+  fasilitas_tujuan_id: string | null;
+  oleh_nama: string | null;
+  waktu: string;
+  alasan: string;
+}
+
+export interface DetailFasilitasWire {
+  fasilitas: FasilitasWire;
+  telemetri: {
+    waktu: string;
+    suhu_c: number;
+    kelembapan_pct: number | null;
+    di_luar_rentang: boolean;
+  }[];
+  stok: StokWire[];
+  transaksi: TransaksiStokWire[];
+}
+
+/** Isian transaksi stok; kolom yang wajib bergantung pada jenis. */
+export type TransaksiPayload =
+  | {
+      jenis: "MASUK";
+      fasilitasId: string;
+      komoditasKode: string;
+      pemilik: string;
+      volumeTon: number;
+    }
+  | {
+      jenis: "KELUAR";
+      lotId: string;
+      volumeTon?: number;
+      semua?: boolean;
+      alasan: string;
+    }
+  | {
+      jenis: "PINDAH";
+      lotId: string;
+      fasilitasTujuanId: string;
+      volumeTon?: number;
+      semua?: boolean;
+    };
+
+export interface TransaksiHasil {
+  transaksiId: string;
+  lotId: string;
+  lotBaruId: string | null;
+  volumeSisaTon: number;
+  statusLot: string;
+}
+
+/** Badan permintaan transaksi dalam bentuk kontrak API (snake_case). */
+export function toTransaksiBody(p: TransaksiPayload): Record<string, unknown> {
+  switch (p.jenis) {
+    case "MASUK":
+      return {
+        jenis: p.jenis,
+        fasilitas_id: p.fasilitasId,
+        komoditas_kode: p.komoditasKode,
+        pemilik: p.pemilik,
+        volume_ton: p.volumeTon,
+      };
+    case "KELUAR":
+      return {
+        jenis: p.jenis,
+        lot_id: p.lotId,
+        volume_ton: p.volumeTon,
+        semua: p.semua,
+        alasan: p.alasan,
+      };
+    case "PINDAH":
+      return {
+        jenis: p.jenis,
+        lot_id: p.lotId,
+        fasilitas_tujuan_id: p.fasilitasTujuanId,
+        volume_ton: p.volumeTon,
+        semua: p.semua,
+      };
+  }
 }
 
 // ── Pemetaan backend → UI ─────────────────────────────────────────────
@@ -135,6 +235,10 @@ export function toFasilitas(w: FasilitasWire): FasilitasColdStorage {
     status: toStatus(w.status),
     lat: w.lat,
     lng: w.lng,
+    batasMinC: w.batas_min_c,
+    batasMaksC: w.batas_maks_c,
+    alarmSuhu: w.alarm_suhu,
+    telemetriPada: w.telemetri_pada,
   };
 }
 
@@ -151,6 +255,37 @@ export function toStok(w: StokWire): StokColdStorage {
     sisaShelfLifeHari: w.sisa_masa_simpan_hari,
     risikoFoodLoss: w.risiko_food_loss,
     pemilik: w.pemilik,
+    status: w.status === "PRIORITAS_JUAL" ? "PRIORITAS_JUAL" : "AKTIF",
+  };
+}
+
+export function toTransaksi(w: TransaksiStokWire): TransaksiStok {
+  return {
+    id: w.id,
+    lotId: w.lot_id,
+    lotBaruId: w.lot_baru_id,
+    jenis: w.jenis,
+    volumeTon: w.volume_ton,
+    komoditasNama: sentenceCase(w.komoditas_nama),
+    fasilitasAsalId: w.fasilitas_asal_id,
+    fasilitasTujuanId: w.fasilitas_tujuan_id,
+    olehNama: w.oleh_nama,
+    waktu: w.waktu,
+    alasan: w.alasan,
+  };
+}
+
+export function toDetailFasilitas(w: DetailFasilitasWire): DetailFasilitas {
+  return {
+    fasilitas: toFasilitas(w.fasilitas),
+    telemetri: w.telemetri.map<TitikSuhu>((t) => ({
+      waktu: t.waktu,
+      suhuC: t.suhu_c,
+      kelembapanPct: t.kelembapan_pct,
+      diLuarRentang: t.di_luar_rentang,
+    })),
+    stok: w.stok.map(toStok),
+    transaksi: w.transaksi.map(toTransaksi),
   };
 }
 
@@ -332,6 +467,34 @@ export const coldStorageClient = {
       berhasil: res.berhasil,
       gagal: res.gagal,
       volumeTon: res.volume_ton,
+      rincian: res.rincian ?? [],
+    };
+  },
+
+  detail: async (id: string): Promise<DetailFasilitas> =>
+    toDetailFasilitas(
+      await bffFetch<DetailFasilitasWire>(
+        `/api/cold-storage/fasilitas/${encodeURIComponent(id)}`,
+      ),
+    ),
+
+  transaksi: async (p: TransaksiPayload): Promise<TransaksiHasil> => {
+    const res = await bffFetch<{
+      transaksi_id: string;
+      lot_id: string;
+      lot_baru_id: string | null;
+      volume_sisa_ton: number;
+      status_lot: string;
+    }>("/api/cold-storage/transaksi", {
+      method: "POST",
+      body: JSON.stringify(toTransaksiBody(p)),
+    });
+    return {
+      transaksiId: res.transaksi_id,
+      lotId: res.lot_id,
+      lotBaruId: res.lot_baru_id,
+      volumeSisaTon: res.volume_sisa_ton,
+      statusLot: res.status_lot,
     };
   },
 };

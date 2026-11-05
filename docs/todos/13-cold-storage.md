@@ -35,14 +35,24 @@ Fitur paling matang: migrasi, backend, BFF, seeder, dan UI sudah terhubung.
 
 ## 13-B — Telemetri dan transaksi stok *(Fase F, gelombang F-5)*
 
-1. **MIG**
-   - [ ] `telemetri_suhu` (`fasilitas_id`, `waktu`, `suhu_c`, `kelembapan`, `sumber`), partisi bulanan dan retensi; `suhu_aktual_c` menjadi turunan baris terbaru.
-   - [ ] `transaksi_stok` (`id`, `lot_id`, `jenis` MASUK/KELUAR/PINDAH, `volume_ton`, `oleh`, `waktu`, `alasan`); `stok_cold_storage` mendapat `status` lot.
-   - [ ] `cold_storage`: batas alarm `suhu_min_c`/`suhu_maks_c`, `aktif`. `Down` tetap non-destruktif untuk kolom berisi data produksi.
-2. **SEED** (`demo`): telemetri sintetis dan transaksi untuk lot demo.
-3. **API**: ingest sensor (MQTT/HTTP) dengan alert bila suhu keluar rentang ([10-B](10-ews.md)); CRUD fasilitas dan lot (`coldstorage.kelola`); aksi `bulk` yang nyata (tandai prioritas jual, pindahkan, buang) dengan hasil per baris.
-4. **FE**: halaman detail fasilitas (riwayat suhu, kapasitas, lot); peringatan visual lot kedaluwarsa dan suhu abnormal; ekspor CSV hasil filter.
-5. **TES**: konkurensi aksi bulk (dua pengguna memindahkan lot yang sama); filter/sort/paginasi data besar.
+1. **MIG** (`000100_13b_cold_storage_telemetri_transaksi.sql`)
+   - [x] `telemetri_suhu` (`fasilitas_id`, `waktu`, `suhu_c`, `kelembapan_pct`, `sumber`; unik per fasilitas+waktu); `suhu_aktual_c`, `kelembapan_aktual_pct`, `telemetri_pada` pada `cold_storage` diturunkan dari baris terbaru oleh aplikasi.
+   - [ ] Partisi bulanan dan retensi `telemetri_suhu` (belum; tabel biasa, perlu sebelum volume sensor nyata).
+   - [x] `transaksi_stok` (`id`, `lot_id`, `lot_baru_id`, `jenis` MASUK/KELUAR/PINDAH, `volume_ton`, asal/tujuan, `oleh_id`, `waktu`, `alasan`); `stok_cold_storage.status` (AKTIF, PRIORITAS_JUAL, HABIS).
+   - [x] `cold_storage`: batas alarm `suhu_min_c`/`suhu_maks_c` (NULL = target ± 2 °C). Kolom `aktif` tidak ditambah: status fasilitas sudah ada (`OPERASIONAL`/`PERAWATAN`/`RENCANA`). `Down` menghapus tabel telemetri/transaksi; fasilitas dan lot tidak tersentuh.
+2. **SEED** (`coldstorage.demo`)
+   - [x] Telemetri sintetis 48 jam (96 titik per fasilitas beroperasi, grid 30 menit; CS-04 punya lonjakan suhu yang sudah pulih) dan satu transaksi MASUK per lot demo. Jumlah baris tetap pada pengulangan (baris demo di luar jendela dibuang). Seeder `reference` tidak lagi menimpa `suhu_aktual_c`.
+3. **API**
+   - [x] `POST /v1/cold-storage/telemetri` (HTTP, idempoten, `coldstorage.kelola`; pembacaan di luar batas dilaporkan di respons dan audit).
+   - [ ] Ingest MQTT dan alert otomatis ke EWS (menunggu rule engine [10-B](10-ews.md)).
+   - [x] `POST /v1/cold-storage/transaksi` (MASUK/KELUAR/PINDAH, atomik dengan penguncian baris; 409 bila stok/kapasitas tak cukup atau fasilitas tak beroperasi), `PATCH /v1/cold-storage/fasilitas/:id` (kapasitas, batas alarm, status), `GET /v1/cold-storage/fasilitas/:id` (detail).
+   - [ ] Membuat/menghapus fasilitas lewat API (hanya seeder/migrasi sejauh ini).
+   - [x] Aksi `bulk` nyata: `tandai_prioritas_jual`, `buang` (hasil per lot di `rincian`). `pindahkan` massal belum ada (butuh tujuan per lot); pindah dilakukan per lot lewat `/transaksi`.
+4. **FE**
+   - [x] Panel detail fasilitas (riwayat suhu terhadap batas alarm, lot dengan peringatan kedaluwarsa, transaksi terbaru, formulir transaksi), lencana alarm suhu di kartu, aksi massal baru di tabel stok. BFF: `app/api/cold-storage/fasilitas/[id]` dan `.../transaksi`.
+   - [x] Ekspor CSV hasil filter sudah ada di aksi massal tabel stok.
+5. **TES**
+   - [x] Konkurensi (keluar serentak dari satu lot, pindah sebagian serentak, masuk serentak melewati kapasitas, pindah silang tanpa deadlock); buku besar konsisten dengan volume lot; migrasi Up/Down dengan data; kontrak OpenAPI; otorisasi per jenis transaksi; unit validasi usecase.
 
 ---
 

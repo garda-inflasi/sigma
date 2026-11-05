@@ -24,10 +24,20 @@ type Options struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, deps.Logger, audit.NewWriter(deps.DB))
-	handler := http.New(uc)
+	auditWriter := audit.NewWriter(deps.DB)
+	uc := usecase.New(repo, deps.Logger, auditWriter)
+	ops := usecase.NewOperasi(repo, deps.Logger, auditWriter)
+	handler := http.New(uc, ops)
 
-	engine.GET("/cold-storage", middleware.JWTAuth(deps.Token), middleware.RequirePermission("coldstorage.lihat"), handler.GetAll)
+	auth := middleware.JWTAuth(deps.Token)
+
+	engine.GET("/cold-storage", auth, middleware.RequirePermission("coldstorage.lihat"), handler.GetAll)
 	// Izin per aksi (logistik.kelola / coldstorage.kelola) diperiksa di handler.
-	engine.POST("/cold-storage/bulk", middleware.JWTAuth(deps.Token), middleware.RequireAnyPermission("coldstorage.kelola", "logistik.kelola"), handler.Bulk)
+	engine.POST("/cold-storage/bulk", auth, middleware.RequireAnyPermission("coldstorage.kelola", "logistik.kelola"), handler.Bulk)
+
+	engine.GET("/cold-storage/fasilitas/:id", auth, middleware.RequirePermission("coldstorage.lihat"), handler.Detail)
+	engine.PATCH("/cold-storage/fasilitas/:id", auth, middleware.RequirePermission("coldstorage.kelola"), handler.UbahFasilitas)
+	engine.POST("/cold-storage/telemetri", auth, middleware.RequirePermission("coldstorage.kelola"), handler.IngestTelemetri)
+	// Pindah stok boleh dilakukan pemegang logistik.kelola; jenis lain diperiksa di handler.
+	engine.POST("/cold-storage/transaksi", auth, middleware.RequireAnyPermission("coldstorage.kelola", "logistik.kelola"), handler.Transaksi)
 }

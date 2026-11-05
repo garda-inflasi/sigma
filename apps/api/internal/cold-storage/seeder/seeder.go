@@ -20,7 +20,9 @@ type ReferenceSummary struct {
 
 // DemoSummary melaporkan baris yang ditulis oleh SeedDemo.
 type DemoSummary struct {
-	Stok int
+	Stok      int
+	Telemetri int
+	Transaksi int
 }
 
 type fasilitasSeed struct {
@@ -110,7 +112,7 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 		fasilitas := BuildFasilitas(kode)
 		if err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"nama", "kabupaten_kode", "lat", "lng", "kapasitas_ton", "suhu_target_c", "suhu_aktual_c", "status"}),
+			DoUpdates: clause.AssignmentColumns([]string{"nama", "kabupaten_kode", "lat", "lng", "kapasitas_ton", "suhu_target_c", "status"}),
 		}).Create(&fasilitas).Error; err != nil {
 			return fmt.Errorf("seed fasilitas: %w", err)
 		}
@@ -120,21 +122,81 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 	return sum, err
 }
 
-// SeedDemo mengisi 23 lot stok contoh. Idempoten: baris di-upsert menurut ID,
-// jadi menjalankannya ulang menyegarkan tanggal masuk dan kedaluwarsa relatif
-// terhadap now tanpa menggandakan data. Hanya untuk demo, bukan produksi.
+// SeedDemo mengisi 23 lot stok contoh, telemetri 48 jam terakhir, dan transaksi
+// masuk tiap lot. Idempoten: baris di-upsert menurut kunci, jadi menjalankannya
+// ulang menyegarkan tanggal relatif terhadap now tanpa menggandakan data
+// (telemetri demo di luar jendela 48 jam dibuang). Hanya untuk demo, bukan produksi.
 //
 // Prasyarat: SeedReference sudah dijalankan.
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
-	stok := BuildStok(now)
-	err := db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"cold_storage_id", "komoditas_kode", "volume_ton", "masuk_pada", "kedaluwarsa_pada", "pemilik", "risiko_food_loss"}),
-	}).Create(&stok).Error
-	if err != nil {
-		return DemoSummary{}, fmt.Errorf("seed stok: %w", err)
+	var sum DemoSummary
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		stok := BuildStok(now)
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"cold_storage_id", "komoditas_kode", "volume_ton", "masuk_pada", "kedaluwarsa_pada", "pemilik", "risiko_food_loss", "status"}),
+		}).Create(&stok).Error; err != nil {
+			return fmt.Errorf("seed stok: %w", err)
+		}
+		sum.Stok = len(stok)
+
+		n, err := seedTelemetri(tx, now)
+		if err != nil {
+			return err
+		}
+		sum.Telemetri = n
+
+		trx := BuildTransaksi(now)
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"lot_id", "jenis", "volume_ton", "fasilitas_tujuan_id", "waktu", "alasan", "sumber"}),
+		}).Create(&trx).Error; err != nil {
+			return fmt.Errorf("seed transaksi: %w", err)
+		}
+		sum.Transaksi = len(trx)
+		return nil
+	})
+	return sum, err
+}
+
+// seedTelemetri menulis pembacaan demo dan menurunkan suhu/kelembapan aktual
+// fasilitas dari pembacaan terbarunya.
+func seedTelemetri(tx *gorm.DB, now time.Time) (int, error) {
+	rows := BuildTelemetri(now)
+	if len(rows) == 0 {
+		return 0, nil
 	}
-	return DemoSummary{Stok: len(stok)}, nil
+	awal := rows[0].Waktu
+	for _, r := range rows {
+		if r.Waktu.Before(awal) {
+			awal = r.Waktu
+		}
+	}
+	// Jendela bergeser mengikuti now; baris demo yang tertinggal dibuang agar jumlahnya tetap.
+	if err := tx.Exec("DELETE FROM telemetri_suhu WHERE sumber = ? AND waktu < ?", domain.SumberDemo, awal).Error; err != nil {
+		return 0, fmt.Errorf("bersihkan telemetri demo lama: %w", err)
+	}
+	if err := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "fasilitas_id"}, {Name: "waktu"}},
+		DoUpdates: clause.AssignmentColumns([]string{"suhu_c", "kelembapan_pct", "sumber"}),
+	}).CreateInBatches(&rows, 200).Error; err != nil {
+		return 0, fmt.Errorf("seed telemetri: %w", err)
+	}
+
+	terbaru := map[string]domain.TelemetriSuhu{}
+	for _, r := range rows {
+		if cur, ok := terbaru[r.FasilitasID]; !ok || r.Waktu.After(cur.Waktu) {
+			terbaru[r.FasilitasID] = r
+		}
+	}
+	for id, r := range terbaru {
+		if err := tx.Model(&domain.FasilitasColdStorage{}).Where("id = ?", id).Updates(map[string]any{
+			"suhu_aktual_c": r.SuhuC, "kelembapan_aktual_pct": r.KelembapanPct, "telemetri_pada": r.Waktu,
+		}).Error; err != nil {
+			return 0, fmt.Errorf("perbarui suhu aktual %s: %w", id, err)
+		}
+	}
+	return len(rows), nil
 }
 
 // kodeKabupaten memetakan nama wilayah tiap fasilitas ke kode kabupaten di master.

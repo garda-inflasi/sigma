@@ -4,7 +4,7 @@ import {
   type AuditDetailResponse, type AuditFilter, type AuditPage, type AuditPageResponse, type HasilEkspor,
 } from "./audit";
 import { exportCsv } from "@/lib/csv";
-import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
+import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult, type TransaksiHasil, type TransaksiPayload } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import {
   toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
@@ -36,7 +36,7 @@ import { USERS } from "@/lib/data/reference";
 import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  AuditDetail, ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
+  AuditDetail, ColdStorageView, DetailFasilitas, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -122,6 +122,19 @@ export const api = {
   },
   coldStorage: {
     list: listColdStorage,
+    detail: (id: string): Promise<DetailFasilitas> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const { fasilitas, stok } = m.mockColdStorage();
+            const f = fasilitas.find((x) => x.id === id);
+            if (!f) throw new Error("Fasilitas tidak ditemukan");
+            return { fasilitas: f, telemetri: [], stok: stok.filter((s) => s.fasilitasId === id), transaksi: [] };
+          })
+        : coldStorageClient.detail(id),
+    transaksi: (p: TransaksiPayload): Promise<TransaksiHasil> =>
+      MODE_MOCK
+        ? mockDelay(() => ({ transaksiId: "TRX-MOCK", lotId: "lotId" in p ? p.lotId : "STK-MOCK", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
+        : coldStorageClient.transaksi(p),
     /** Seluruh lot yang cocok dengan filter (semua halaman), mis. untuk "pilih semua hasil". */
     semua: async (params: Omit<ColdStorageParams, "page" | "limit"> = {}): Promise<StokColdStorage[]> => {
       const rows: StokColdStorage[] = [];
@@ -134,7 +147,7 @@ export const api = {
     },
     bulk: (action: ColdStorageBulkAction, rows: StokColdStorage[]): Promise<BulkColdStorageResult> =>
       MODE_MOCK
-        ? mockDelay({ berhasil: rows.length, gagal: 0, volumeTon: Math.round(rows.reduce((a, r) => a + r.volumeTon, 0) * 10) / 10 }, 500, 1100)
+        ? mockDelay({ berhasil: rows.length, gagal: 0, volumeTon: Math.round(rows.reduce((a, r) => a + r.volumeTon, 0) * 10) / 10, rincian: rows.map((r) => ({ id: r.id, berhasil: true, pesan: "" })) }, 500, 1100)
         : coldStorageClient.bulk(action, rows.map((r) => r.id)),
   },
   sumber: {

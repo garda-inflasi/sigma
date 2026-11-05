@@ -9,6 +9,7 @@ import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
+import type { TransaksiPayload } from "@/lib/api/cold-storage";
 import type { StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
@@ -281,6 +282,30 @@ export function useAssignRolePengguna() {
 }
 
 // ── Mutasi cold storage ───────────────────────────────────────────────
+
+/** Detail satu fasilitas (riwayat suhu, lot, transaksi); kosong sampai `id` dipilih. */
+export const useFasilitasDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.coldStorage.detail(id ?? ""),
+    queryFn: () => api.coldStorage.detail(id as string),
+    enabled: !!id,
+    refetchInterval: LIVE,
+  });
+
+/** Mencatat transaksi stok lalu menyegarkan kartu, tabel, dan detail. */
+export function useCatatTransaksi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: TransaksiPayload) => api.coldStorage.transaksi(p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.coldStorage.all() });
+      toast.success("Transaksi stok tercatat", { description: "Tercatat di audit trail." });
+    },
+    onError: (err) => {
+      toast.error("Transaksi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 
 /** Aksi massal pada lot stok — memanggil BFF lalu menyegarkan data layar. */
 export function useColdStorageBulk() {

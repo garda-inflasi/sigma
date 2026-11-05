@@ -120,6 +120,8 @@ export function parseColdStorageQuery(sp: URLSearchParams): ParseResult {
 export const COLD_STORAGE_BULK_ACTIONS = [
   "rencanakan_distribusi",
   "rekomendasi_olahan",
+  "tandai_prioritas_jual",
+  "buang",
 ] as const;
 export type ColdStorageBulkAction = (typeof COLD_STORAGE_BULK_ACTIONS)[number];
 

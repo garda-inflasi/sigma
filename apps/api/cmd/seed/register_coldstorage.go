@@ -26,7 +26,7 @@ func init() {
 		DependsOn: []string{"coldstorage.reference"},
 		Run: func(ctx context.Context, db *gorm.DB, now time.Time) (seedkit.Result, error) {
 			sum, err := coldstorage.SeedDemo(ctx, db, now)
-			return seedkit.Result{"lot": sum.Stok}, err
+			return seedkit.Result{"lot": sum.Stok, "telemetri": sum.Telemetri, "transaksi": sum.Transaksi}, err
 		},
 	})
 }

@@ -2120,8 +2120,10 @@ paths:
     post:
       summary: Menjalankan aksi massal pada lot stok cold storage
       description: |
-        Aksi bersifat advisori: tidak mengubah stok, tetapi tercatat di audit trail
-        (`BULK_<aksi>`). Lot yang tidak ditemukan dihitung pada `gagal`.
+        `rencanakan_distribusi` dan `rekomendasi_olahan` bersifat advisori (tidak mengubah stok);
+        `tandai_prioritas_jual` mengubah status lot dan `buang` mengeluarkan seluruh sisa lot
+        (transaksi KELUAR per lot). Semua tercatat di audit trail (`BULK_<aksi>`). Lot yang tidak
+        ditemukan atau sudah habis dihitung pada `gagal`; `rincian` memuat hasil per lot.
 
         Izin yang diperlukan bergantung pada aksi:
 
@@ -2129,6 +2131,8 @@ paths:
         |---|---|
         | `rencanakan_distribusi` | `logistik.kelola` |
         | `rekomendasi_olahan` | `coldstorage.kelola` |
+        | `tandai_prioritas_jual` | `coldstorage.kelola` |
+        | `buang` | `coldstorage.kelola` |
       operationId: bulkColdStorage
       tags:
         - Cold Storage
@@ -2161,6 +2165,239 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Peran tidak memiliki izin untuk aksi ini
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/cold-storage/fasilitas/{id}:
+    get:
+      summary: Detail fasilitas cold storage (riwayat suhu, lot, transaksi)
+      description: Memerlukan izin `coldstorage.lihat`.
+      operationId: getColdStorageFasilitas
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: CS-01
+        - name: jam
+          in: query
+          description: Rentang riwayat suhu dalam jam (bawaan 48, maksimum 720; paling banyak 1000 titik terbaru)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 720
+            default: 48
+      responses:
+        "200":
+          description: Detail fasilitas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailFasilitasResponse"
+        "400":
+          description: Parameter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `coldstorage.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fasilitas tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Mengubah kapasitas, batas alarm suhu, atau status fasilitas
+      description: |
+        Memerlukan izin `coldstorage.kelola`. Perubahan tercatat di audit trail
+        (`UBAH_FASILITAS_COLD_STORAGE`, dengan keadaan sebelum/sesudah). Kapasitas tidak boleh
+        lebih kecil dari stok tersimpan (409); suhu minimum harus lebih kecil dari maksimum (400).
+      operationId: patchColdStorageFasilitas
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UbahFasilitasRequest"
+      responses:
+        "200":
+          description: Fasilitas setelah perubahan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FasilitasColdStorageResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `coldstorage.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fasilitas tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Kapasitas lebih kecil dari stok tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/cold-storage/telemetri:
+    post:
+      summary: Menerima pembacaan suhu/kelembapan dari sensor atau gateway
+      description: |
+        Memerlukan izin `coldstorage.kelola` (akun layanan untuk gateway sensor). Idempoten:
+        pembacaan dengan fasilitas dan waktu yang sama dilewati (`duplikat`). Suhu aktual fasilitas
+        diturunkan dari pembacaan terbaru. Pembacaan di luar batas alarm dilaporkan pada
+        `di_luar_rentang` (integrasi ke EWS menunggu rule engine 10-B). Fasilitas berstatus RENCANA
+        menolak telemetri (409). Tercatat di audit trail (`INGEST_TELEMETRI`).
+      operationId: ingestColdStorageTelemetri
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestTelemetriRequest"
+      responses:
+        "200":
+          description: Pembacaan diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestTelemetriResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `coldstorage.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Fasilitas tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Fasilitas belum beroperasi (RENCANA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/cold-storage/transaksi:
+    post:
+      summary: Mencatat transaksi stok (masuk, keluar, pindah)
+      description: |
+        Atomik dan terkunci per lot/fasilitas, sehingga dua permintaan serentak pada lot yang sama
+        tidak dapat melampaui stok. `MASUK` membuat lot baru (fasilitas harus OPERASIONAL dan muat);
+        `KELUAR` mengurangi lot (alasan wajib; lot menjadi HABIS bila kosong); `PINDAH` memindahkan
+        seluruh atau sebagian lot ke fasilitas tujuan OPERASIONAL yang muat (sebagian membentuk lot baru).
+        Izin: `coldstorage.kelola`; `PINDAH` juga boleh oleh `logistik.kelola`. Tercatat di audit trail
+        (`TRANSAKSI_STOK_<JENIS>`, dengan keadaan lot sebelum/sesudah).
+      operationId: createColdStorageTransaksi
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransaksiStokRequest"
+      responses:
+        "201":
+          description: Transaksi tercatat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransaksiStokResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin untuk jenis transaksi ini
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lot, fasilitas, atau komoditas tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Stok lot tidak cukup, lot sudah habis, fasilitas tidak beroperasi, atau kapasitas tidak cukup
           content:
             application/json:
               schema:
@@ -4620,11 +4857,34 @@ components:
           type: number
           format: double
           nullable: true
-          description: Pembacaan sensor terakhir; null bila belum ada telemetri
+          description: Pembacaan sensor terakhir (diturunkan dari telemetri terbaru); null bila belum ada telemetri
           example: 3.5
         status:
           type: string
           enum: [OPERASIONAL, PERAWATAN, RENCANA]
+        batas_min_c:
+          type: number
+          format: double
+          description: Batas alarm bawah efektif (suhu_min_c fasilitas, atau target − 2 °C)
+          example: 2
+        batas_maks_c:
+          type: number
+          format: double
+          description: Batas alarm atas efektif (suhu_maks_c fasilitas, atau target + 2 °C)
+          example: 6
+        alarm_suhu:
+          type: boolean
+          description: Benar bila suhu aktual berada di luar batas alarm
+        kelembapan_aktual_pct:
+          type: number
+          format: double
+          nullable: true
+          description: Kelembapan relatif pembacaan terakhir
+        telemetri_pada:
+          type: string
+          format: date-time
+          nullable: true
+          description: Waktu pembacaan terakhir
 
     StokColdStorage:
       type: object
@@ -4666,6 +4926,10 @@ components:
         pemilik:
           type: string
           example: KUD Pidie Jaya
+        status:
+          type: string
+          enum: [AKTIF, PRIORITAS_JUAL]
+          description: Lot yang sudah habis tidak ditampilkan
 
     ColdStoragePageMeta:
       type: object
@@ -4724,7 +4988,7 @@ components:
       properties:
         action:
           type: string
-          enum: [rencanakan_distribusi, rekomendasi_olahan]
+          enum: [rencanakan_distribusi, rekomendasi_olahan, tandai_prioritas_jual, buang]
         ids:
           type: array
           minItems: 1
@@ -4758,6 +5022,277 @@ components:
               format: double
               description: Total volume lot yang diproses
               example: 65.9
+            rincian:
+              type: array
+              description: Hasil per lot menurut urutan permintaan
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  berhasil:
+                    type: boolean
+                  pesan:
+                    type: string
+                    description: Alasan kegagalan; kosong bila berhasil
+
+    TitikSuhu:
+      type: object
+      properties:
+        waktu:
+          type: string
+          format: date-time
+        suhu_c:
+          type: number
+          format: double
+        kelembapan_pct:
+          type: number
+          format: double
+          nullable: true
+        sumber:
+          type: string
+          enum: [SENSOR, MANUAL, DEMO]
+        di_luar_rentang:
+          type: boolean
+
+    TransaksiStok:
+      type: object
+      properties:
+        id:
+          type: string
+        lot_id:
+          type: string
+        lot_baru_id:
+          type: string
+          nullable: true
+          description: Lot yang dibentuk di tujuan pada pindah sebagian
+        jenis:
+          type: string
+          enum: [MASUK, KELUAR, PINDAH]
+        volume_ton:
+          type: number
+          format: double
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        fasilitas_asal_id:
+          type: string
+          nullable: true
+        fasilitas_tujuan_id:
+          type: string
+          nullable: true
+        oleh_nama:
+          type: string
+          nullable: true
+        waktu:
+          type: string
+          format: date-time
+        alasan:
+          type: string
+
+    DetailFasilitasResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            fasilitas:
+              $ref: "#/components/schemas/FasilitasColdStorage"
+            telemetri:
+              type: array
+              description: Terlama ke terbaru
+              items:
+                $ref: "#/components/schemas/TitikSuhu"
+            stok:
+              type: array
+              items:
+                $ref: "#/components/schemas/StokColdStorage"
+            transaksi:
+              type: array
+              description: Transaksi terbaru yang menyentuh fasilitas
+              items:
+                $ref: "#/components/schemas/TransaksiStok"
+
+    FasilitasColdStorageResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/FasilitasColdStorage"
+
+    IngestTelemetriRequest:
+      type: object
+      required: [pembacaan]
+      properties:
+        pembacaan:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            required: [fasilitas_id, waktu, suhu_c]
+            properties:
+              fasilitas_id:
+                type: string
+                example: CS-01
+              waktu:
+                type: string
+                format: date-time
+                description: Tidak boleh lebih dari 5 menit di masa depan
+              suhu_c:
+                type: number
+                format: double
+                minimum: -80
+                maximum: 60
+              kelembapan_pct:
+                type: number
+                format: double
+                minimum: 0
+                maximum: 100
+              sumber:
+                type: string
+                enum: [SENSOR, MANUAL]
+                default: SENSOR
+
+    IngestTelemetriResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            diterima:
+              type: integer
+              description: Pembacaan baru yang tersimpan
+            duplikat:
+              type: integer
+              description: Pembacaan (fasilitas + waktu sama) yang sudah ada dan dilewati
+            di_luar_rentang:
+              type: array
+              description: Pembacaan yang melewati batas alarm fasilitas
+              items:
+                type: object
+                properties:
+                  fasilitas_id:
+                    type: string
+                  waktu:
+                    type: string
+                    format: date-time
+                  suhu_c:
+                    type: number
+                    format: double
+                  batas_min_c:
+                    type: number
+                    format: double
+                  batas_maks_c:
+                    type: number
+                    format: double
+
+    TransaksiStokRequest:
+      type: object
+      required: [jenis]
+      properties:
+        jenis:
+          type: string
+          enum: [MASUK, KELUAR, PINDAH]
+        lot_id:
+          type: string
+          description: Wajib untuk KELUAR dan PINDAH
+        fasilitas_id:
+          type: string
+          description: Wajib untuk MASUK
+        fasilitas_tujuan_id:
+          type: string
+          description: Wajib untuk PINDAH
+        komoditas_kode:
+          type: string
+          description: Wajib untuk MASUK
+        pemilik:
+          type: string
+          description: Wajib untuk MASUK
+        volume_ton:
+          type: number
+          format: double
+          description: Wajib untuk MASUK; untuk KELUAR/PINDAH boleh diganti `semua`
+        semua:
+          type: boolean
+          description: KELUAR/PINDAH seluruh sisa lot
+        kedaluwarsa_pada:
+          type: string
+          format: date-time
+          description: Opsional pada MASUK (bawaan masa simpan komoditas)
+        alasan:
+          type: string
+          maxLength: 500
+          description: Wajib untuk KELUAR
+
+    TransaksiStokResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+          example: "Created"
+        data:
+          type: object
+          properties:
+            transaksi_id:
+              type: string
+            jenis:
+              type: string
+              enum: [MASUK, KELUAR, PINDAH]
+            lot_id:
+              type: string
+            lot_baru_id:
+              type: string
+              nullable: true
+            volume_ton:
+              type: number
+              format: double
+              description: Volume yang bergerak
+            volume_sisa_ton:
+              type: number
+              format: double
+              description: Sisa pada lot sumber
+            status_lot:
+              type: string
+              enum: [AKTIF, PRIORITAS_JUAL, HABIS]
+
+    UbahFasilitasRequest:
+      type: object
+      description: Field yang tidak dikirim tidak diubah; minimal satu harus ada
+      properties:
+        kapasitas_ton:
+          type: integer
+          minimum: 1
+        suhu_min_c:
+          type: number
+          format: double
+        suhu_maks_c:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [OPERASIONAL, PERAWATAN, RENCANA]
 
     PolicyBrief:
       type: object

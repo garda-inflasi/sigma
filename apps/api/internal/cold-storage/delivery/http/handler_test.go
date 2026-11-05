@@ -61,7 +61,7 @@ var now = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 func newRouter(repo *fakeRepo, userID string, perms ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	uc := usecase.New(repo, logger.NewDefault(), &repo.audit).WithClock(func() time.Time { return now })
-	h := New(uc)
+	h := New(uc, nil)
 
 	r := gin.New()
 	r.Use(func(c *gin.Context) {

@@ -95,11 +95,15 @@ export async function masukSebagai(
   await page.context().addCookies(cookies);
 }
 
-/** Klien API Go (`/api/v1/…`) sebagai akun tertentu, untuk menyiapkan atau membersihkan data uji. */
+/**
+ * Klien API Go (`/api/v1/…`) sebagai akun tertentu, untuk menyiapkan atau membersihkan data uji.
+ * `sandi` hanya perlu diisi untuk akun uji sementara yang kata sandinya bukan `SANDI_DEMO`.
+ */
 export async function apiSebagai(
   akun: Akun | string,
+  sandi = SANDI_DEMO,
 ): Promise<APIRequestContext> {
-  const { accessToken } = await sesiApi(akun);
+  const { accessToken } = await sesiApi(akun, sandi);
   return request.newContext({
     baseURL: `${BASE_URL}/api/v1/`,
     extraHTTPHeaders: {

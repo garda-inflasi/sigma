@@ -27,9 +27,13 @@ import {
   type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
 } from "./ews";
 import {
-  toKartu, toPersetujuan,
-  type AksiKartu, type BulkKartuResult, type KartuResponse, type KeputusanPersetujuan, type Persetujuan, type PersetujuanResponse,
+  toAlur, toBuatBody, toKartu, toPersetujuan, toRiwayat, toTahapPerSiklus,
+  type AksiKartu, type Alur, type AlurResponse, type BuatIntervensiInput, type BulkKartuResult, type KartuBaru, type KartuResponse,
+  type KeputusanPersetujuan, type Persetujuan, type PersetujuanResponse, type RiwayatKartu, type RiwayatResponse, type TahapResponse,
 } from "./intervensi";
+import { alurMock, riwayatMock, tahapMock } from "./intervensi-mock";
+import type { Tahap } from "@/lib/data/siklus";
+import type { Siklus } from "@/lib/design/tokens";
 import { toGeometri, toKandidat, toMarker, toOptimasiBody, toRencanaOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
@@ -191,6 +195,24 @@ export const api = {
   intervensi: {
     list: (): Promise<KartuIntervensi[]> =>
       MODE_MOCK ? mockDelay(m.mockKanban) : apiFetch<KartuResponse[]>("/v1/intervensi").then((rows) => rows.map(toKartu)),
+    /** Definisi tahap per siklus (kolom papan, izin masuk, SLA). */
+    tahap: (): Promise<Record<Siklus, Tahap[]>> =>
+      MODE_MOCK
+        ? mockDelay(() => toTahapPerSiklus(tahapMock()), 120, 250)
+        : apiFetch<TahapResponse[]>("/v1/intervensi/tahap").then(toTahapPerSiklus),
+    /** Alur persetujuan berjenjang (rantai langkah dan izinnya) per tahap tujuan. */
+    alur: (): Promise<Alur[]> =>
+      MODE_MOCK ? mockDelay(() => alurMock.map(toAlur), 120, 250) : apiFetch<AlurResponse[]>("/v1/intervensi/alur").then((rows) => rows.map(toAlur)),
+    /** Riwayat satu kartu, terlama dahulu. 404 (ApiError) bila kartu tidak ada. */
+    riwayat: (id: string): Promise<RiwayatKartu[]> =>
+      MODE_MOCK
+        ? mockDelay(() => riwayatMock(m.mockKanban().find((k) => k.id === id) ?? m.mockKanban()[0]).map(toRiwayat), 150, 300)
+        : apiFetch<RiwayatResponse[]>(`/v1/intervensi/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toRiwayat)),
+    /** Membuat kartu di tahap pertama siklusnya; butuh backend. */
+    buat: (input: BuatIntervensiInput): Promise<KartuBaru> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Membuat intervensi membutuhkan backend aktif."))
+        : apiFetch<KartuBaru>("/v1/intervensi", { method: "POST", body: JSON.stringify(toBuatBody(input)) }),
     /** Memindahkan kartu; mengembalikan versi baru. 409 (ApiError) bila kartu sudah diubah pengguna lain. */
     pindah: (id: string, tahap: string, urutan: number, versi: number): Promise<{ versi: number }> =>
       MODE_MOCK

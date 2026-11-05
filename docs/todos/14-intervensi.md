@@ -6,8 +6,12 @@
 ## Yang sudah ada
 
 - **UI:** [kanban-board](../../apps/web/src/components/intervensi/kanban-board.tsx) (dnd-kit), kolom dan kartu, tampilan tabel, izin per tahap, [store kanban](../../apps/web/src/lib/stores/kanban-store.ts). Tiga siklus: Normal, Tekanan Harga/Defisit, Surplus.
-- **API Go:** `GET /v1/intervensi` (filter `siklus`/`tahap`/`prioritas`; kartu beserta penanggung jawab), `GET /v1/intervensi/tahap` (definisi tahap), `POST /v1/intervensi` (`intervensi.kelola`; masuk tahap pertama siklusnya), `PATCH /v1/intervensi/:id/tahap` (menomori ulang kolom; izin tahap tujuan dari `tahap_intervensi_def.izin_dibutuhkan` ditegakkan di usecase; dicatat di audit). Endpoint `POST /v1/intervensi/bulk` (arsip/hapus) dicabut: tidak pernah berjalan (tabel `kartu_intervensi` tak ada), tidak dipakai web, dan `hapus` merusak data.
-- **Web:** `api.intervensi.list` membaca API (`lib/api/intervensi.ts`) dan disegarkan tiap 30 detik; `SIKLUS_TAHAP` di `lib/data/siklus.ts` dipertahankan sebagai cache klien dan dijaga tes kesamaan terhadap `packages/contracts/intervensi-tahap.json` (cermin seed `intervensi.reference`).
+- **Uji:** Go (integrasi dockertest `internal/intervensi/integration`), web (`lib/api/intervensi.test.ts`, `lib/stores/kanban-store.test.ts`), e2e Playwright `apps/web/e2e/intervensi.spec.ts` (kolom = API tahap, tambah kartu lewat dialog, detail + riwayat, tombol tersembunyi untuk peran tanpa `intervensi.kelola`, 403/400/404 API). Kartu uji e2e dihapus lewat SQL berdasarkan judul `E2E <timestamp>` (riwayat, penanggung jawab, persetujuan ikut terhapus oleh `ON DELETE CASCADE`; baris `audit_log` append-only tetap ada).
+- **API Go:** `GET /v1/intervensi` (filter `siklus`/`tahap`/`prioritas`; kartu beserta penanggung jawab), `GET /v1/intervensi/tahap` (definisi tahap), `POST /v1/intervensi` (`intervensi.kelola`; masuk tahap pertama siklusnya; judul berisi spasi saja ditolak 400), `PATCH /v1/intervensi/:id/tahap` (menomori ulang kolom; izin tahap tujuan dari `tahap_intervensi_def.izin_dibutuhkan` ditegakkan di usecase; dicatat di audit). Endpoint `POST /v1/intervensi/bulk` (arsip/hapus) dicabut: tidak pernah berjalan (tabel `kartu_intervensi` tak ada), tidak dipakai web, dan `hapus` merusak data.
+- **Web:** `api.intervensi.list` membaca API (`lib/api/intervensi.ts`) dan disegarkan tiap 30 detik. Kolom papan kini berasal dari `GET /v1/intervensi/tahap` (`api.intervensi.tahap`, hook `useTahapIntervensi`); `SIKLUS_TAHAP` di `lib/data/siklus.ts` hanya cadangan klien (mode mock dan bila endpoint gagal, dengan peringatan di papan) dan dijaga tes terhadap `packages/contracts/intervensi-tahap.json`, begitu pula pemeta `toTahapPerSiklus` (respons yang dibangun dari fixture harus menghasilkan kolom yang sama).
+- **Detail kartu:** klik kartu (atau tombol "Buka detail …") membuka lembar detail ([kartu-detail-sheet](../../apps/web/src/components/intervensi/kartu-detail-sheet.tsx)) berisi rincian, persetujuan yang akan dilalui kartu (dari `GET /v1/intervensi/alur`), dan linimasa riwayat (`GET /v1/intervensi/:id/riwayat`: dibuat, pindah tahap, penugasan, eskalasi, ajuan/persetujuan/penolakan). Seret tetap berfungsi: tombol detail menghentikan `pointerdown`, dan dnd-kit (jarak aktivasi 6 px) menelan klik setelah seretan.
+- **Tambah intervensi:** tombol dan dialog [tambah-intervensi-dialog](../../apps/web/src/components/intervensi/tambah-intervensi-dialog.tsx) (`POST /v1/intervensi`, hanya untuk `intervensi.kelola`) dengan validasi sisi klien yang mencerminkan `CreateIntervensiRequest`; setelah tersimpan papan berpindah ke siklus kartu dan kartu muncul di tahap pertamanya. Alert EWS dan penanggung jawab selain pembuat belum bisa dipilih di dialog (daftar pengguna butuh `pengguna.kelola`).
+- **Alur persetujuan:** panel "Alur persetujuan" di bawah papan, label gembok kolom dan toast penolakan drop memakai rantai langkah dari `GET /v1/intervensi/alur`.
 - **Skema:** `intervensi` (+ `deskripsi`, `selesai_pada`), `intervensi_pj`, `tahap_intervensi_def` dengan FK komposit `(siklus, tahap)`; entity cocok (migrasi 000031). Seeder `intervensi.reference` (16 tahap) dan `intervensi.demo` (19 kartu meniru `mockKanban`, tertaut ke alert `ews.demo`).
 
 ---
@@ -28,6 +32,7 @@
    - [x] Endpoint `GET /v1/intervensi/tahap` untuk definisi tahap.
 4. **FE**
    - [x] `api.intervensi.*` sudah memanggil API; ganti sumber definisi tahap di `lib/data/siklus.ts` dengan data API (atau pertahankan sebagai cache dengan tes kesamaan).
+   - [x] Papan memakai definisi tahap dari `GET /v1/intervensi/tahap` (14-A, ganti sumber ke API; cadangan statis hanya bila gagal).
    - [x] `useIntervensi` memakai `staleTime: Infinity`: kartu yang digeser pengguna lain tidak muncul tanpa refresh; tambahkan polling ringan.
 5. **TES**: setiap `intervensi.tahap` ada di `tahap_intervensi_def` untuk siklusnya; hapus `intervensi` dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
@@ -50,7 +55,7 @@
    - [x] `PATCH /:id/tahap` wajib `versi`; versi usang 409; respons membawa versi baru; audit sukses dan penolakan.
    - [x] `POST /v1/intervensi/bulk` (`intervensi.kelola`, field `action`): `tugaskan` (jadikan pemanggil penanggung jawab) dan `eskalasi` (tandai ke Dewan Pengarah, prioritas TINGGI), hasil per kartu, audit. Row scope per peran/wilayah: belum.
    - [x] `GET /:id/riwayat` (`intervensi.lihat`).
-4. **FE**: "Tugaskan ke saya" dan "Eskalasi ke Dewan Pengarah" memanggil API (tidak lagi toast simulasi), papan memakai dan memperbarui `versi`, 409 memuat ulang papan dengan pesan jelas, pesan izin dari server saat drop ditolak, lencana Eskalasi pada kartu. Dialog buat/ubah kartu: belum.
+4. **FE**: "Tugaskan ke saya" dan "Eskalasi ke Dewan Pengarah" memanggil API (tidak lagi toast simulasi), papan memakai dan memperbarui `versi`, 409 memuat ulang papan dengan pesan jelas, pesan izin dari server saat drop ditolak, lencana Eskalasi pada kartu. Dialog buat kartu: ✅ (lihat di atas); dialog ubah kartu: belum.
 5. **TES**: unit usecase (versi, lompat tahap, bulk, riwayat), integrasi Postgres (versi usang 409, dua pemindahan bersamaan tepat satu menang, riwayat hanya saat tahap berganti, hasil bulk per kartu, 401/403/400), seeder, `kanban-store`.
 
 ---
@@ -66,6 +71,7 @@
 - [x] **Kartu otomatis dari alert EWS:** alert >= `INTERVENSI_KARTU_OTOMATIS_MIN` (bawaan SIAGA; lonjakan harga, kelangkaan stok, dan cuaca memicu siklus Tekanan, over-supply memicu Surplus) menjadi kartu di tahap pertama dengan tautan `ews_alert_id`, tenggat dari SLA tahap pertama, ditugasi otomatis ke peran MANAJER_PROGRAM; idempoten, tidak menggandakan kartu yang sudah ada.
 - [x] **Eskalasi bila lewat SLA:** `INTERVENSI_SLA_INTERVAL` (bawaan mati) mengeskalasi kartu yang lebih lama di tahapnya daripada `sla_hari`.
 - [x] Definisi alur sebagai data (tabel, bukan kode). Antarmuka mengubah alur: belum (lewat basis data).
+- [x] FE: referensi alur persetujuan (`GET /v1/intervensi/alur`) di panel "Alur persetujuan", lembar detail kartu, dan label gembok kolom.
 - [x] FE: antrean "Menunggu persetujuan" di `/intervensi` (rantai langkah, setujui/tolak dengan catatan), tombol "Ajukan persetujuan" saat drop ditolak karena izin.
 - [ ] Pemicu siklus otomatis (siklus aktif berubah menurut indikator, kembali Normal bila pulih): siklus aktif dihitung modul 08, belum dipicu workflow.
 - [ ] Pengingat tenggat, simulasi what-if, rekomendasi AI + validasi manusia, integrasi ke APBD/TPID lewat policy brief, `checklist_item`.

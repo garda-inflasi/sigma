@@ -45,6 +45,15 @@ describe("kanban-store", () => {
     assert.deepEqual(s.selected, ["a"]);
   });
 
+  it("sync membuat kolom kosong untuk setiap tahap dari server dan menjatuhkan kartu bertahap tak dikenal", () => {
+    useKanban.getState().sync([kartu("a", "t-ews"), kartu("z", "t-hilang")], ["t-ews", "t-verifikasi", "t-logistik"]);
+
+    const s = useKanban.getState();
+    assert.deepEqual(Object.keys(s.order).sort(), ["t-ews", "t-logistik", "t-verifikasi"]);
+    assert.deepEqual(s.order["t-logistik"], []);
+    assert.deepEqual(s.order["t-ews"], ["a"]);
+  });
+
   it("move memindahkan kartu antar kolom pada posisi yang diminta", () => {
     useKanban
       .getState()

@@ -6,7 +6,7 @@ import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import type { AksiModel, SimulasiInput } from "@/lib/api/prediksi";
 import type { UbahAturanInput } from "@/lib/api/ews";
-import { ringkasHasilKartu, type AksiKartu, type KeputusanPersetujuan } from "@/lib/api/intervensi";
+import { ringkasHasilKartu, type AksiKartu, type BuatIntervensiInput, type KeputusanPersetujuan } from "@/lib/api/intervensi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
@@ -141,6 +141,27 @@ export const useIntervensi = () =>
 /** Permintaan persetujuan yang menunggu; disegarkan berkala agar keputusan pengguna lain muncul. */
 export const usePersetujuan = (enabled = true) =>
   useQuery({ queryKey: qk.intervensi.persetujuan(), queryFn: () => api.intervensi.persetujuan("MENUNGGU"), enabled, refetchInterval: MODE_MOCK ? false : LIVE });
+
+/** Definisi tahap dari server (kolom papan); jarang berubah. */
+export const useTahapIntervensi = () =>
+  useQuery({ queryKey: qk.intervensi.tahap(), queryFn: api.intervensi.tahap, staleTime: 5 * 60_000 });
+/** Alur persetujuan berjenjang: rantai langkah dan izin tiap tahap persetujuan. */
+export const useAlurPersetujuan = (enabled = true) =>
+  useQuery({ queryKey: qk.intervensi.alur(), queryFn: api.intervensi.alur, enabled, staleTime: 5 * 60_000 });
+/** Riwayat satu kartu; selalu dimuat ulang saat lembar detail dibuka agar pemindahan terbaru tampil. */
+export const useRiwayatKartu = (id: string | undefined) =>
+  useQuery({ queryKey: qk.intervensi.riwayat(id ?? ""), queryFn: () => api.intervensi.riwayat(id!), enabled: !!id, staleTime: 0, refetchOnMount: "always" });
+
+/** Membuat kartu intervensi; papan dimuat ulang agar kartu baru muncul di tahap pertama siklusnya. */
+export function useBuatIntervensi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BuatIntervensiInput) => api.intervensi.buat(input),
+    onSuccess: (kartu) => toast.success("Intervensi ditambahkan", { description: `${kartu.id} masuk ke tahap pertama siklusnya. Tercatat di riwayat dan audit trail.` }),
+    onError: (err) => toast.error("Intervensi gagal ditambahkan", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.intervensi.list() }),
+  });
+}
 
 /** Mengajukan persetujuan pemindahan kartu; papan dan antrean dimuat ulang. */
 export function useAjukanPersetujuan() {

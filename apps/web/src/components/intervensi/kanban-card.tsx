@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion } from "motion/react";
-import { CalendarClock, MapPin, ShieldAlert, Sparkles } from "lucide-react";
+import { CalendarClock, MapPin, PanelRight, ShieldAlert, Sparkles } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { komoditasByKode } from "@/lib/data/reference";
@@ -26,7 +26,7 @@ function tenggatLabel(iso: string) {
   return { text: `${hari} hari lagi`, cls: "text-muted-foreground" };
 }
 
-export function KanbanCardView({ card, selected, onToggle, overlay, dimmed }: { card: KartuIntervensi; selected?: boolean; onToggle?: () => void; overlay?: boolean; dimmed?: boolean }) {
+export function KanbanCardView({ card, selected, onToggle, onBuka, overlay, dimmed }: { card: KartuIntervensi; selected?: boolean; onToggle?: () => void; onBuka?: () => void; overlay?: boolean; dimmed?: boolean }) {
   const t = tenggatLabel(card.tenggat);
   const p = PRIORITAS[card.prioritas];
   const pct = card.progres.total ? (card.progres.selesai / card.progres.total) * 100 : 0;
@@ -34,6 +34,7 @@ export function KanbanCardView({ card, selected, onToggle, overlay, dimmed }: { 
     <motion.div
       whileHover={overlay ? undefined : { y: -3 }}
       transition={spring.soft}
+      onClick={onBuka}
       animate={overlay ? { rotate: 2, scale: 1.03 } : { rotate: 0, scale: 1 }}
       className={cn(
         "glass relative rounded-xl p-3.5 text-left transition-shadow",
@@ -60,6 +61,20 @@ export function KanbanCardView({ card, selected, onToggle, overlay, dimmed }: { 
             <Sparkles className="size-3" /> AI
           </span>
         )}
+        {onBuka && (
+          // Target klik khusus: pointerdown dihentikan agar tidak memulai seretan dnd-kit. Klik pada badan kartu
+          // juga membuka detail; dnd-kit menelan klik setelah seretan sungguhan (jarak aktivasi 6 px).
+          <button
+            type="button"
+            aria-label={`Buka detail ${card.judul}`}
+            title="Buka detail dan riwayat"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onBuka(); }}
+            className={cn("grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground", !card.rekomendasiAi && "ml-auto")}
+          >
+            <PanelRight className="size-3.5" />
+          </button>
+        )}
       </div>
       <p className="mt-2.5 text-sm leading-snug font-medium">{card.judul}</p>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -84,11 +99,11 @@ export function KanbanCardView({ card, selected, onToggle, overlay, dimmed }: { 
   );
 }
 
-export function SortableKanbanCard({ card, selected, onToggle }: { card: KartuIntervensi; selected: boolean; onToggle: () => void }) {
+export function SortableKanbanCard({ card, selected, onToggle, onBuka }: { card: KartuIntervensi; selected: boolean; onToggle: () => void; onBuka: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id, data: { type: "card" } });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners} className="touch-none outline-none" aria-roledescription="Kartu intervensi yang dapat dipindahkan">
-      <KanbanCardView card={card} selected={selected} onToggle={onToggle} dimmed={isDragging} />
+      <KanbanCardView card={card} selected={selected} onToggle={onToggle} onBuka={onBuka} dimmed={isDragging} />
     </div>
   );
 }

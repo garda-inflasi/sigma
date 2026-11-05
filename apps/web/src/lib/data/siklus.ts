@@ -7,9 +7,15 @@ export interface Tahap {
   petunjuk: string;
   /** Izin untuk memindahkan kartu MASUK ke tahap ini (default: intervensi.kelola). */
   izinMasuk?: Permission;
+  /** Batas hari kartu boleh berada di tahap ini sebelum dieskalasi; kosong = tanpa SLA. */
+  slaHari?: number;
 }
 
-/** Tahapan alur kerja sesuai Layer 4: Smart Intervention & Workflow Engine. */
+/**
+ * Tahapan alur kerja sesuai Layer 4: Smart Intervention & Workflow Engine.
+ * Sumber sebenarnya adalah GET /v1/intervensi/tahap (tabel tahap_intervensi_def); konstanta ini hanya
+ * cadangan klien (mode mock dan bila endpoint gagal), dijaga tes terhadap packages/contracts/intervensi-tahap.json.
+ */
 export const SIKLUS_TAHAP: Record<Siklus, Tahap[]> = {
   normal: [
     { id: "n-pantau", judul: "Pantau rutin data produsen", petunjuk: "Agregasi harian dari agen lapangan" },

@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils";
 import { SortableKanbanCard } from "./kanban-card";
 
 export function KanbanColumn({
-  tahap, index, total, cards, selected, onToggle, canDrop, isTarget, izinLabel,
+  tahap, index, total, cards, selected, onToggle, onBuka, canDrop, isTarget, izinLabel,
 }: {
   tahap: Tahap; index: number; total: number; cards: KartuIntervensi[]; selected: string[]; onToggle: (id: string) => void;
-  canDrop: boolean; isTarget: boolean; izinLabel?: string;
+  onBuka: (id: string) => void; canDrop: boolean; isTarget: boolean; izinLabel?: string;
 }) {
   const { setNodeRef } = useDroppable({ id: tahap.id, data: { type: "column" } });
   const intensitas = 0.35 + 0.65 * (index / Math.max(1, total - 1));
@@ -23,6 +23,9 @@ export function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
+      role="group"
+      aria-label={`Tahap ${tahap.judul}`}
+      data-tahap-id={tahap.id}
       className={cn(
         "glass-subtle relative flex w-[296px] shrink-0 flex-col rounded-xl p-2.5 transition-[box-shadow,background-color] duration-200",
         isTarget && canDrop && "bg-siklus-soft/40 ring-2 ring-siklus/60 dark:bg-siklus/10",
@@ -44,7 +47,7 @@ export function KanbanColumn({
       <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
         <div className="scrollbar-thin flex min-h-28 flex-1 flex-col gap-2.5 overflow-y-auto px-0.5 pb-1">
           {cards.map((c) => (
-            <SortableKanbanCard key={c.id} card={c} selected={selected.includes(c.id)} onToggle={() => onToggle(c.id)} />
+            <SortableKanbanCard key={c.id} card={c} selected={selected.includes(c.id)} onToggle={() => onToggle(c.id)} onBuka={() => onBuka(c.id)} />
           ))}
           {cards.length === 0 && (
             <div className="grid min-h-24 place-items-center rounded-xl border border-dashed border-border text-xs text-muted-foreground">Tarik kartu ke sini</div>

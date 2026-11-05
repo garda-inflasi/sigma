@@ -5,7 +5,7 @@ import {
   type DragEndEvent, type DragOverEvent, type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ChevronsRight, Download, LayoutGrid, Rows3, ShieldAlert, UserPlus } from "lucide-react";
+import { ChevronsRight, Download, LayoutGrid, PanelRight, Plus, Rows3, ShieldAlert, TriangleAlert, UserPlus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,12 +13,14 @@ import { toast } from "sonner";
 import { BulkActionBar, type BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
+import { SpringButton } from "@/components/garda/spring-button";
 import { Segmented } from "@/components/garda/segmented";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { ApiError } from "@/lib/api/client";
 import { api } from "@/lib/api/endpoints";
-import { useSession } from "@/lib/auth/session-context";
+import { alurUntukTahap, ringkasRantai } from "@/lib/api/intervensi";
+import { Can, useSession } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import { komoditasByKode } from "@/lib/data/reference";
 import { namaWilayah } from "@/lib/data/generators";
@@ -26,13 +28,15 @@ import { SIKLUS_TAHAP, SIKLUS_URUTAN } from "@/lib/data/siklus";
 import type { KartuIntervensi } from "@/lib/data/types";
 import { siklusMeta, type Siklus } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
-import { useAjukanPersetujuan, useAksiKartu, useIntervensi } from "@/lib/query/hooks";
+import { useAjukanPersetujuan, useAksiKartu, useAlurPersetujuan, useIntervensi, useTahapIntervensi } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { can, type Permission } from "@/lib/rbac/permissions";
 import { useKanban } from "@/lib/stores/kanban-store";
 import { KanbanCardView } from "./kanban-card";
 import { KanbanColumn } from "./kanban-column";
-import { PersetujuanPanel } from "./persetujuan-panel";
+import { KartuDetailSheet } from "./kartu-detail-sheet";
+import { AlurPersetujuanPanel, PersetujuanPanel } from "./persetujuan-panel";
+import { TambahIntervensiDialog } from "./tambah-intervensi-dialog";
 import type { ColumnDef } from "@tanstack/react-table";
 
 const IZIN_LABEL: Partial<Record<Permission, string>> = {
@@ -52,6 +56,10 @@ export function KanbanBoard() {
   const [siklus, setSiklus] = useState<Siklus>((params.get("siklus") as Siklus) ?? "tekanan");
   const [view, setView] = useState<"papan" | "tabel">("papan");
   const { data, isLoading } = useIntervensi();
+  const tahapQ = useTahapIntervensi();
+  const alurQ = useAlurPersetujuan(can(role, "intervensi.lihat"));
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [tambahBuka, setTambahBuka] = useState(false);
   const qc = useQueryClient();
   const aksiKartu = useAksiKartu();
   const ajukan = useAjukanPersetujuan();
@@ -64,10 +72,21 @@ export function KanbanBoard() {
   // Data server menggantikan papan, kecuali saat kartu sedang diseret atau disimpan,
   // agar polling tidak mengembalikan kartu yang baru dipindahkan.
   const sibuk = useRef(false);
-  useEffect(() => { if (data && !sibuk.current) useKanban.getState().sync(data); }, [data]);
+  // Kolom berasal dari GET /v1/intervensi/tahap; SIKLUS_TAHAP hanya cadangan bila endpoint gagal.
+  const tahapPerSiklus = tahapQ.data ?? SIKLUS_TAHAP;
+  const semuaTahap = useMemo(() => Object.values(tahapPerSiklus).flat(), [tahapPerSiklus]);
+  const tahapSiap = !tahapQ.isLoading;
+  useEffect(() => {
+    if (data && tahapSiap && !sibuk.current) useKanban.getState().sync(data, semuaTahap.map((t) => t.id));
+  }, [data, tahapSiap, semuaTahap]);
 
-  const tahap = SIKLUS_TAHAP[siklus];
-  const izinMasuk = (tahapId: string): Permission => Object.values(SIKLUS_TAHAP).flat().find((t) => t.id === tahapId)?.izinMasuk ?? "intervensi.kelola";
+  const tahap = tahapPerSiklus[siklus] ?? [];
+  const izinMasuk = (tahapId: string): Permission => semuaTahap.find((t) => t.id === tahapId)?.izinMasuk ?? "intervensi.kelola";
+  /** Alasan kolom terkunci; memakai rantai persetujuan dari server bila tahap punya alur. */
+  const labelIzin = (tahapId: string) => {
+    const alur = alurQ.data ? alurUntukTahap(alurQ.data, tahapId) : undefined;
+    return alur ? `Butuh persetujuan berjenjang: ${ringkasRantai(alur)}` : IZIN_LABEL[izinMasuk(tahapId)];
+  };
   const bolehMasuk = (tahapId: string) => can(role, izinMasuk(tahapId));
   const bisaSeret = can(role, "intervensi.kelola") || can(role, "intervensi.setujui") || can(role, "intervensi.setujui_fiskal");
 
@@ -119,7 +138,7 @@ export function KanbanBoard() {
       snap.current && k.restore(snap.current);
       // Pemegang kelola dapat meminta persetujuan alih-alih memindahkan langsung (alur berjenjang di server).
       toast.error("Tidak dapat dipindahkan", {
-        description: IZIN_LABEL[izinMasuk(target)],
+        description: labelIzin(target),
         action: can(role, "intervensi.kelola") ? { label: "Ajukan persetujuan", onClick: () => ajukan.mutate({ id, tahap: target }) } : undefined,
       });
       return;
@@ -166,12 +185,12 @@ export function KanbanBoard() {
       enabled: (rows) => rows.every((r) => !r.tahap.endsWith("selesai")),
       run: async (rows) => {
         const rencana = rows.map((r) => {
-          const ts = SIKLUS_TAHAP[r.siklus];
+          const ts = tahapPerSiklus[r.siklus] ?? [];
           return { r, next: ts[ts.findIndex((t) => t.id === r.tahap) + 1] };
         });
         const ditolak = rencana.filter((p) => !p.next || !bolehMasuk(p.next.id));
         if (ditolak.length) {
-          toast.error(`${ditolak.length} kartu tidak dapat dimajukan`, { description: IZIN_LABEL[izinMasuk(ditolak[0].next?.id ?? "")] ?? "Tahap berikutnya di luar kewenangan peran Anda." });
+          toast.error(`${ditolak.length} kartu tidak dapat dimajukan`, { description: labelIzin(ditolak[0].next?.id ?? "") ?? "Tahap berikutnya di luar kewenangan peran Anda." });
           return;
         }
         const sebelum = k.snapshot();
@@ -217,6 +236,14 @@ export function KanbanBoard() {
     { id: "wilayah", accessorFn: (r) => namaWilayah(r.kabupatenKode), header: "Wilayah" },
     { accessorKey: "prioritas", header: "Prioritas", cell: ({ getValue }) => { const p = getValue<string>(); return <StatusBadge tone={p === "TINGGI" ? "defisit" : p === "SEDANG" ? "waspada" : "netral"}>{p.charAt(0) + p.slice(1).toLowerCase()}</StatusBadge>; } },
     { accessorKey: "tenggat", header: "Tenggat", cell: ({ getValue }) => <span className="whitespace-nowrap">{formatTanggal(getValue<string>())}</span> },
+    {
+      id: "detail", header: () => <span className="sr-only">Detail</span>, enableSorting: false,
+      cell: ({ row }) => (
+        <button type="button" aria-label={`Buka detail ${row.original.judul}`} onClick={(e) => { e.stopPropagation(); setDetailId(row.original.id); }} className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <PanelRight className="size-4" />
+        </button>
+      ),
+    },
   ], [tahap]);
 
   return (
@@ -226,6 +253,9 @@ export function KanbanBoard() {
         description={siklusMeta[siklus].deskripsi + ". Tarik kartu antartahap; tahap yang membutuhkan persetujuan ditandai gembok."}
         actions={
           <>
+            <Can perm="intervensi.kelola">
+              <SpringButton variant="primary" size="sm" onClick={() => setTambahBuka(true)}><Plus /> Tambah intervensi</SpringButton>
+            </Can>
             <Segmented layoutId="kanban-view" size="sm" value={view} onChange={setView} options={[{ value: "papan", label: <><LayoutGrid className="size-3.5" />Papan</> }, { value: "tabel", label: <><Rows3 className="size-3.5" />Tabel</> }]} />
           </>
         }
@@ -242,10 +272,15 @@ export function KanbanBoard() {
         }))}
       />
 
-      {isLoading || !k.ready ? (
+      {tahapQ.isError && (
+        <p role="alert" className="flex items-center gap-2 rounded-xl bg-waspada-soft/80 px-4 py-2.5 text-sm text-waspada-ink dark:bg-waspada/15 dark:text-amber-300">
+          <TriangleAlert className="size-4 shrink-0" /> Definisi tahap dari server belum dapat dimuat; papan memakai tahap bawaan. Muat ulang halaman bila perlu.
+        </p>
+      )}
+      {isLoading || !tahapSiap || !k.ready ? (
         <div className="flex gap-4 overflow-hidden">{Array.from({ length: 4 }).map((_, i) => <Shimmer key={i} className="h-[520px] w-[296px] shrink-0 rounded-xl" />)}</div>
       ) : view === "tabel" ? (
-        <DataTable data={semuaKartu} columns={kolomTabel} getRowId={(r) => r.id} entityLabel="intervensi" bulkActions={bulkActions} searchPlaceholder="Cari intervensi, komoditas, wilayah" />
+        <DataTable data={semuaKartu} columns={kolomTabel} getRowId={(r) => r.id} entityLabel="intervensi" bulkActions={bulkActions} onRowClick={(r) => setDetailId(r.id)} searchPlaceholder="Cari intervensi, komoditas, wilayah" />
       ) : (
         <DndContext sensors={bisaSeret ? sensors : []} collisionDetection={closestCorners} onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={() => { sibuk.current = false; setActiveId(null); setOverTahap(null); snap.current && k.restore(snap.current); }}>
           <div className="scrollbar-thin -mx-1 flex gap-4 overflow-x-auto px-1 pb-4" style={{ minHeight: 540 }}>
@@ -258,9 +293,10 @@ export function KanbanBoard() {
                 cards={cardsOf(t.id)}
                 selected={k.selected}
                 onToggle={k.toggleSelect}
+                onBuka={setDetailId}
                 canDrop={bolehMasuk(t.id)}
                 isTarget={!!activeId && overTahap === t.id && asal.current !== t.id}
-                izinLabel={IZIN_LABEL[izinMasuk(t.id)]}
+                izinLabel={labelIzin(t.id)}
               />
             ))}
           </div>
@@ -270,6 +306,17 @@ export function KanbanBoard() {
         </DndContext>
       )}
       <PersetujuanPanel />
+      <AlurPersetujuanPanel />
+      <KartuDetailSheet
+        kartu={detailId ? (k.cards[detailId] ?? null) : null}
+        tahapSiklus={detailId && k.cards[detailId] ? (tahapPerSiklus[k.cards[detailId].siklus] ?? []) : []}
+        semuaTahap={semuaTahap}
+        alur={alurQ.data}
+        onClose={() => setDetailId(null)}
+      />
+      {tambahBuka && (
+        <TambahIntervensiDialog open onOpenChange={setTambahBuka} siklusAwal={siklus} onDibuat={gantiSiklus} />
+      )}
       {view === "papan" && <BulkActionBar rows={terpilih} actions={bulkActions} entityLabel="kartu" onClear={k.clearSelection} />}
     </div>
   );

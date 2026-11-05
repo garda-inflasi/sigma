@@ -9,6 +9,7 @@
 - **API Go:** `GET /v1/sumber-data`, `GET /v1/sumber-data/:id`, `POST /v1/sumber-data/bulk`. Modul ini **hanya mencatat metadata sumber**.
 - **Skema:** `sumber_data` di migrasi punya `id` VARCHAR, `jenis`, `jadwal_cron`, `status`, `terakhir_jalan`, `keberhasilan_7h`, `latensi_ms`, `robots_txt_patuh`, `atribusi`. **Entity Go tidak cocok:** `id` `int64`, dan kolom `dibuat_pada`, `frekuensi_update`, `tipe`, `url` tidak ada di migrasi. Tabel kosong. `cuaca_harian` (UNIQUE `kabupaten_kode, tanggal, sumber`) ada tanpa rujukan kode.
 - **Yang tidak ada:** kode yang mengambil data. Tidak ada klien BPS/BI/BMKG/PIHPS/OpenWeather, scraper, scheduler, maupun ETL.
+- **Detail segar (✅, terhubung):** [sumber-detail.tsx](../../apps/web/src/components/sumber/sumber-detail.tsx) memuat `GET /v1/sumber-data/:id` saat panel dibuka (baris daftar hanya dipakai selama memuat atau bila gagal) dan menampilkan "Informasi sumber": jenis, cakupan, cron WIB mentah, terakhir dijalankan, keberhasilan 7 hari, latensi, kepatuhan robots.txt, URL dasar, atribusi. Setelah "Jalankan sekarang" atau selesainya run, cache `sumber-data` (daftar dan detail) disegarkan. `konfigurasi` sumber (bisa memuat kunci) sengaja tidak ada di respons API. Belum ada: waktu "terakhir sukses" per sumber di DTO (hanya dipakai pipeline).
 
 ---
 

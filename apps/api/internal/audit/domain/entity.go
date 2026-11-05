@@ -80,6 +80,15 @@ type Filter struct {
 	Aksi    string
 	Entitas string
 	Hasil   string
+	// EntitasID mencocokkan id objek persis (jejak satu objek).
+	EntitasID string
+	// Peran mencocokkan peran aktor persis (snapshot saat aksi).
+	Peran string
+	// CorrelationID mencocokkan semua baris dari satu permintaan.
+	CorrelationID string
+	// Q adalah pencarian bebas (tak peka huruf besar-kecil) pada aksi, entitas,
+	// id entitas, nama/email aktor, dan correlation id.
+	Q string
 }
 
 // Cursor menandai posisi halaman berikutnya pada urutan (waktu, id) menurun.

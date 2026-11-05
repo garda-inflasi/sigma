@@ -37,9 +37,15 @@
 
 ## 03-B — Lengkapi tampilan dan ekspor _(Fase F, gelombang F-2)_
 
-1. **API**: ekspor CSV; endpoint detail entri.
-2. **FE**: rentang tanggal, pencarian, tampilan detail dengan diff `sebelum`/`sesudah`, tautan ke objek terkait (detail harga/pengguna), tombol ekspor (utility `lib/csv.ts` sudah ada).
-3. **TES**: ekspor sesuai filter.
+1. **API**
+   - [x] `GET /v1/audit/export`: CSV (titik koma, BOM) mengikuti filter yang sama dengan daftar, maksimum 20.000 baris (`X-Export-Truncated`), sel anti-injeksi rumus, dan dicatat sebagai `EKSPOR_DATA`.
+   - [x] `GET /v1/audit/:id`: entri lengkap + `perubahan` (diff `sebelum`/`sesudah` per bidang, dihitung di `domain.DiffState`).
+   - [x] Filter lanjutan: `entitas_id`, `peran`, `correlation_id`, dan pencarian bebas `q`. Tanpa migrasi (index `audit_log` yang ada cukup untuk volume sekarang).
+2. **FE**
+   - [x] Pencarian `q`, rentang tanggal (sudah ada), panel detail dengan diff, filter "jejak objek ini" / "satu permintaan", tombol "Ekspor CSV sesuai filter".
+   - [x] Tautan ke halaman terkait objek (halaman daftar; belum ada deep-link ke satu baris karena halaman tujuan belum mendukungnya).
+3. **TES**
+   - [x] Ekspor sesuai filter, tercatat sebagai `EKSPOR_DATA`, anti-injeksi rumus, 401/403/400; detail + diff; filter lanjutan; unit `DiffState` dan paginasi ekspor.
 
 ---
 

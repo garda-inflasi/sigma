@@ -320,9 +320,11 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	now := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 	demo, err := seeder.SeedDemo(t.Context(), db, now)
 	require.NoError(t, err)
-	assert.Equal(t, seeder.DemoSummary{Stok: 23}, demo)
+	assert.Equal(t, seeder.DemoSummary{Stok: 23, Telemetri: 384, Transaksi: 23}, demo)
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
+	assert.Equal(t, int64(384), count("telemetri_suhu"), "96 titik x 4 fasilitas beroperasi")
+	assert.Equal(t, int64(23), count("transaksi_stok"))
 
 	// Menjalankan ulang pada waktu lain: tidak menggandakan baris, tanggal
 	// bergeser mengikuti now.
@@ -332,9 +334,11 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	assert.Equal(t, seeder.ReferenceSummary{Fasilitas: 5}, ref)
 	demo, err = seeder.SeedDemo(t.Context(), db, later)
 	require.NoError(t, err)
-	assert.Equal(t, seeder.DemoSummary{Stok: 23}, demo)
+	assert.Equal(t, seeder.DemoSummary{Stok: 23, Telemetri: 384, Transaksi: 23}, demo)
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
+	assert.Equal(t, int64(384), count("telemetri_suhu"), "jendela bergeser, jumlah baris tetap")
+	assert.Equal(t, int64(23), count("transaksi_stok"))
 
 	var masuk time.Time
 	require.NoError(t, db.Raw(`SELECT masuk_pada FROM stok_cold_storage WHERE id = 'STK-CS01-01'`).Scan(&masuk).Error)
@@ -991,8 +995,14 @@ func TestContract_BulkDocumentedActionsAreAccepted(t *testing.T) {
 	enum := dig(t, reqSchema, "properties", "action", "enum").([]any)
 	require.NotEmpty(t, enum)
 
+	// Aksi yang mengubah stok memakai basis data tersendiri agar suite bersama tetap utuh.
+	mutating := newSuite(t, pg.CreateDatabase(t, "garda_contract_bulk"))
 	for _, a := range enum {
-		w := bulk(t, s, userAgregator, a.(string), "STK-CS01-01")
+		suite := s
+		if a == "tandai_prioritas_jual" || a == "buang" {
+			suite = mutating
+		}
+		w := bulk(t, suite, userAgregator, a.(string), "STK-CS01-01")
 		assert.Equal(t, http.StatusOK, w.Code, "aksi terdokumentasi %v harus diterima", a)
 	}
 }

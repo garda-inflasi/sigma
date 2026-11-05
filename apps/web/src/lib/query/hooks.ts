@@ -10,6 +10,9 @@ import type { AuditFilter } from "@/lib/api/audit";
 import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
+import type { TransaksiPayload } from "@/lib/api/cold-storage";
+import type { OptimasiParams } from "@/lib/api/spasial";
+import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
 import type { StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
@@ -31,6 +34,24 @@ export const usePembandingHarga = () => useQuery({ queryKey: qk.operasional.pemb
 export const useCuacaTerbaru = () => useQuery({ queryKey: qk.operasional.cuaca(), queryFn: api.operasional.cuaca, refetchInterval: LIVE * 10 });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
 export const useRuteDistribusi = () => useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
+/** Menghitung rencana distribusi; bila disimpan, daftar rute disegarkan. */
+export function useOptimasiRute() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: OptimasiParams) => api.spasial.optimasi(p),
+    onSuccess: (res) => {
+      if (res.optimasiId) {
+        qc.invalidateQueries({ queryKey: qk.spasial.rute() });
+        toast.success("Rencana disimpan sebagai usulan rute", { description: "Tercatat di audit trail." });
+      }
+    },
+    onError: (err) => {
+      toast.error("Optimasi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+export const useGeometriWilayah = (zoom: number) =>
+  useQuery({ queryKey: qk.spasial.geometri(zoom), queryFn: () => api.spasial.geometri(zoom), staleTime: 60 * 60_000 });
 export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });
 export const useTrenHarga = (kode: string, kab: string) =>
   useQuery({ queryKey: qk.operasional.tren(kode, kab), queryFn: () => api.operasional.tren(kode, kab), placeholderData: (prev) => prev });
@@ -134,6 +155,16 @@ export function useSumberBulk() {
   });
 }
 
+/** Mengunduh laporan KPI (CSV) bulan berjalan. */
+export function useEksporKpi() {
+  return useMutation({
+    mutationFn: unduhLaporanKpi,
+    onSuccess: () => toast.success("Laporan KPI diunduh", { description: "Ekspor tercatat di audit trail." }),
+    onError: (err) => {
+      toast.error("Ekspor laporan gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 export const useKpi = () => useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
 export const usePengguna = (search?: string) =>
   useQuery({
@@ -150,6 +181,27 @@ export const useAudit = (filter: AuditFilter) =>
     getNextPageParam: (last) => last.nextCursor,
     placeholderData: keepPreviousData,
   });
+/** Detail satu entri audit (dengan diff); kosong sampai `id` dipilih. */
+export const useAuditDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.audit.detail(id ?? ""),
+    queryFn: () => api.audit.detail(id as string),
+    enabled: !!id,
+    staleTime: Infinity, // baris audit tidak pernah berubah
+  });
+/** Ekspor CSV sesuai filter yang sedang aktif. */
+export function useEksporAudit() {
+  return useMutation({
+    mutationFn: (filter: AuditFilter) => api.audit.ekspor(filter),
+    onSuccess: (res) =>
+      res.terpotong
+        ? toast.warning(`Ekspor dipotong pada ${res.baris.toLocaleString("id-ID")} baris`, { description: "Persempit filter (rentang tanggal, aksi) untuk mendapat sisanya." })
+        : toast.success(`${res.baris.toLocaleString("id-ID")} baris diekspor`, { description: "Ekspor tercatat di audit trail." }),
+    onError: (err) => {
+      toast.error("Ekspor gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 /** Daftar brief; dimuat ulang berkala selama ada brief yang masih disusun server (DIPROSES). */
 export const useBriefs = () =>
   useQuery({
@@ -356,6 +408,30 @@ export function useAssignRolePengguna() {
 }
 
 // ── Mutasi cold storage ───────────────────────────────────────────────
+
+/** Detail satu fasilitas (riwayat suhu, lot, transaksi); kosong sampai `id` dipilih. */
+export const useFasilitasDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.coldStorage.detail(id ?? ""),
+    queryFn: () => api.coldStorage.detail(id as string),
+    enabled: !!id,
+    refetchInterval: LIVE,
+  });
+
+/** Mencatat transaksi stok lalu menyegarkan kartu, tabel, dan detail. */
+export function useCatatTransaksi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (p: TransaksiPayload) => api.coldStorage.transaksi(p),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.coldStorage.all() });
+      toast.success("Transaksi stok tercatat", { description: "Tercatat di audit trail." });
+    },
+    onError: (err) => {
+      toast.error("Transaksi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 
 /** Aksi massal pada lot stok — memanggil BFF lalu menyegarkan data layar. */
 export function useColdStorageBulk() {

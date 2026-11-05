@@ -11,7 +11,8 @@ import type { AuditFilter } from "@/lib/api/audit";
 import { exportCsv } from "@/lib/csv";
 import type { AuditRow } from "@/lib/data/types";
 import { formatTanggal } from "@/lib/format";
-import { useAudit } from "@/lib/query/hooks";
+import { useAudit, useEksporAudit } from "@/lib/query/hooks";
+import { AuditDetailSheet } from "./audit-detail-sheet";
 import { AuditFilterBar } from "./audit-filter-bar";
 
 const HASIL_BADGE = {
@@ -25,6 +26,8 @@ export function AuditPage() {
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useAudit(filter);
   const rows = useMemo(() => data?.pages.flatMap((p) => p.rows), [data]);
+  const [detailId, setDetailId] = useState<string>();
+  const ekspor = useEksporAudit();
 
   const kolom = useMemo<ColumnDef<AuditRow>[]>(
     () => [
@@ -92,9 +95,30 @@ export function AuditPage() {
       <PageHeader
         title="Audit trail"
         description="Jejak tak terhapus atas setiap aksi: validasi, publikasi, persetujuan, perubahan ambang, dan akses. Mendukung kepatuhan UU PDP dan SPBE."
+        actions={
+          <button
+            type="button"
+            onClick={() => ekspor.mutate(filter)}
+            disabled={ekspor.isPending}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-4 text-sm font-medium shadow-ambient-sm hover:bg-white disabled:opacity-60 dark:bg-white/[0.06]"
+          >
+            {ekspor.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            Ekspor CSV sesuai filter
+          </button>
+        }
       />
       <AuditFilterBar filter={filter} onChange={setFilter} />
+      <AuditDetailSheet
+        id={detailId}
+        onClose={() => setDetailId(undefined)}
+        onFilter={(patch) => setFilter((f) => ({ ...f, ...patch }))}
+      />
       <DataTable
+        onRowClick={(r) => setDetailId(r.id)}
         data={rows}
         isLoading={isLoading}
         columns={kolom}
@@ -119,7 +143,7 @@ export function AuditPage() {
           },
           {
             id: "ekspor",
-            label: "Ekspor CSV",
+            label: "Ekspor terpilih (CSV)",
             icon: Download,
             run: (r) =>
               exportCsv(

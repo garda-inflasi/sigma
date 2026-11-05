@@ -19,14 +19,17 @@ import (
 var bulkPermission = map[domain.BulkAction]string{
 	domain.BulkRencanakanDistribusi: "logistik.kelola",
 	domain.BulkRekomendasiOlahan:    "coldstorage.kelola",
+	domain.BulkTandaiPrioritasJual:  "coldstorage.kelola",
+	domain.BulkBuang:                "coldstorage.kelola",
 }
 
 type Handler struct {
-	uc *usecase.UseCase
+	uc  *usecase.UseCase
+	ops *usecase.Operasi
 }
 
-func New(uc *usecase.UseCase) *Handler {
-	return &Handler{uc: uc}
+func New(uc *usecase.UseCase, ops *usecase.Operasi) *Handler {
+	return &Handler{uc: uc, ops: ops}
 }
 
 // GetAll handles GET /v1/cold-storage
@@ -52,37 +55,11 @@ func (h *Handler) GetAll(c *gin.Context) {
 
 	fasilitasResp := make([]dto.FasilitasColdStorageResponse, len(overview.Fasilitas))
 	for i, f := range overview.Fasilitas {
-		fasilitasResp[i] = dto.FasilitasColdStorageResponse{
-			ID:              f.ID,
-			Nama:            f.Nama,
-			KabupatenKode:   f.KabupatenKode,
-			KabupatenNama:   f.KabupatenNama,
-			Lat:             f.Lat,
-			Lng:             f.Lng,
-			KapasitasTon:    f.KapasitasTon,
-			TerisiTon:       f.TerisiTon,
-			UtilisasiPersen: f.UtilisasiPersen,
-			SuhuTargetC:     f.SuhuTargetC,
-			SuhuAktualC:     f.SuhuAktualC,
-			Status:          f.Status,
-		}
+		fasilitasResp[i] = dto.ToFasilitasResponse(f)
 	}
-
 	stokResp := make([]dto.StokColdStorageResponse, len(overview.Stok))
-	for i, s := range overview.Stok {
-		stokResp[i] = dto.StokColdStorageResponse{
-			ID:                 s.ID,
-			ColdStorageID:      s.ColdStorageID,
-			ColdStorageNama:    s.ColdStorageNama,
-			KomoditasKode:      s.KomoditasKode,
-			KomoditasNama:      s.KomoditasNama,
-			VolumeTon:          s.VolumeTon,
-			MasukPada:          s.MasukPada,
-			KedaluwarsaPada:    s.KedaluwarsaPada,
-			SisaMasaSimpanHari: s.SisaMasaSimpanHari,
-			RisikoFoodLoss:     s.RisikoFoodLoss,
-			Pemilik:            s.Pemilik,
-		}
+	for i, st := range overview.Stok {
+		stokResp[i] = dto.ToStokResponse(st)
 	}
 
 	response.Success(c, dto.ColdStorageResponse{
@@ -118,11 +95,16 @@ func (h *Handler) Bulk(c *gin.Context) {
 		return
 	}
 
-	out, err := h.uc.BulkAction(audit.RequestContext(c), usecase.BulkInput{
-		Action:  req.Action,
-		IDs:     req.IDs,
-		ActorID: c.GetString("user_id"),
-	})
+	in := usecase.BulkInput{Action: req.Action, IDs: req.IDs, ActorID: c.GetString("user_id")}
+	var (
+		out usecase.BulkOutcome
+		err error
+	)
+	if usecase.IsMutatingBulk(req.Action) {
+		out, err = h.ops.BulkMutasi(audit.RequestContext(c), in)
+	} else {
+		out, err = h.uc.BulkAction(audit.RequestContext(c), in)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidAction):
@@ -137,11 +119,7 @@ func (h *Handler) Bulk(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.BulkColdStorageResponse{
-		Berhasil:  out.Berhasil,
-		Gagal:     out.Gagal,
-		VolumeTon: out.VolumeTon,
-	})
+	response.Success(c, dto.ToBulkResponse(out.Berhasil, out.Gagal, out.VolumeTon, out.Baris))
 }
 
 // Health handles GET /v1/cold-storage/health

@@ -1,6 +1,10 @@
 import { apiFetch, mockDelay, MODE_MOCK } from "./client";
-import { toAuditPage, toAuditQuery, queryMockAudit, type AuditFilter, type AuditPage, type AuditPageResponse } from "./audit";
-import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult } from "./cold-storage";
+import {
+  queryMockAudit, toAuditDetail, toAuditPage, toAuditQuery, toMockAuditDetail, unduhEksporAudit,
+  type AuditDetailResponse, type AuditFilter, type AuditPage, type AuditPageResponse, type HasilEkspor,
+} from "./audit";
+import { exportCsv } from "@/lib/csv";
+import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult, type TransaksiHasil, type TransaksiPayload } from "./cold-storage";
 import { COLD_STORAGE_MAX_LIMIT, type ColdStorageBulkAction, type ColdStorageParams } from "./cold-storage-query";
 import {
   toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
@@ -20,7 +24,7 @@ import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekut
 import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
 import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
 import { toKartu, type KartuResponse } from "./intervensi";
-import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
+import { toGeometri, toKandidat, toMarker, toOptimasiBody, toRencanaOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
 import { mockBriefDetail } from "./brief-mock";
@@ -35,8 +39,8 @@ import { USERS } from "@/lib/data/reference";
 import { toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  ColdStorageView, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
-  PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
+  AuditDetail, ColdStorageView, DetailFasilitas, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow,
+  MasterWilayahRow, PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string; rincian?: RincianBulk[] };
@@ -121,6 +125,14 @@ export const api = {
           }).then(toHasilSimulasi),
   },
   spasial: {
+    /** Rencana distribusi optimal surplus → defisit; `simpan` menulisnya sebagai usulan rute. */
+    optimasi: (p: OptimasiParams): Promise<RencanaOptimasi> =>
+      MODE_MOCK
+        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], penghematanPersen: null, optimasiId: null }), 400, 800)
+        : apiFetch<OptimasiResponse>("/v1/spasial/optimasi-rute", { method: "POST", body: JSON.stringify(toOptimasiBody(p)) }).then(toRencanaOptimasi),
+    /** Poligon wilayah (perkiraan pada data demo); mode mock tidak punya geometri. */
+    geometri: (zoom: number): Promise<GeometriWilayah[]> =>
+      MODE_MOCK ? mockDelay(() => []) : apiFetch<GeometriResponse>(`/v1/spasial/geometri?zoom=${zoom}`).then(toGeometri),
     rute: (): Promise<Rute[]> =>
       MODE_MOCK ? mockDelay(m.mockRute) : apiFetch<RuteResponse[]>("/v1/spasial/rute").then((rows) => rows.map(toRute)),
     kandidatColdStorage: (): Promise<KandidatColdStorage[]> =>
@@ -156,6 +168,19 @@ export const api = {
   },
   coldStorage: {
     list: listColdStorage,
+    detail: (id: string): Promise<DetailFasilitas> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const { fasilitas, stok } = m.mockColdStorage();
+            const f = fasilitas.find((x) => x.id === id);
+            if (!f) throw new Error("Fasilitas tidak ditemukan");
+            return { fasilitas: f, telemetri: [], stok: stok.filter((s) => s.fasilitasId === id), transaksi: [] };
+          })
+        : coldStorageClient.detail(id),
+    transaksi: (p: TransaksiPayload): Promise<TransaksiHasil> =>
+      MODE_MOCK
+        ? mockDelay(() => ({ transaksiId: "TRX-MOCK", lotId: "lotId" in p ? p.lotId : "STK-MOCK", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
+        : coldStorageClient.transaksi(p),
     /** Seluruh lot yang cocok dengan filter (semua halaman), mis. untuk "pilih semua hasil". */
     semua: async (params: Omit<ColdStorageParams, "page" | "limit"> = {}): Promise<StokColdStorage[]> => {
       const rows: StokColdStorage[] = [];
@@ -168,7 +193,7 @@ export const api = {
     },
     bulk: (action: ColdStorageBulkAction, rows: StokColdStorage[]): Promise<BulkColdStorageResult> =>
       MODE_MOCK
-        ? mockDelay({ berhasil: rows.length, gagal: 0, volumeTon: Math.round(rows.reduce((a, r) => a + r.volumeTon, 0) * 10) / 10 }, 500, 1100)
+        ? mockDelay({ berhasil: rows.length, gagal: 0, volumeTon: Math.round(rows.reduce((a, r) => a + r.volumeTon, 0) * 10) / 10, rincian: rows.map((r) => ({ id: r.id, berhasil: true, pesan: "" })) }, 500, 1100)
         : coldStorageClient.bulk(action, rows.map((r) => r.id)),
   },
   sumber: {
@@ -206,6 +231,36 @@ export const api = {
       MODE_MOCK
         ? mockDelay(() => queryMockAudit(m.mockAudit(), filter, cursor))
         : apiFetch<AuditPageResponse>(`/v1/audit${toAuditQuery(filter, cursor)}`).then(toAuditPage),
+    /** Satu entri lengkap dengan diff sebelum/sesudah. */
+    detail: (id: string): Promise<AuditDetail> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const row = m.mockAudit().find((r) => r.id === id);
+            if (!row) throw new Error("Entri audit tidak ditemukan");
+            return toMockAuditDetail(row);
+          })
+        : apiFetch<AuditDetailResponse>(`/v1/audit/${encodeURIComponent(id)}`).then(toAuditDetail),
+    /** Mengunduh CSV sesuai filter (dibuat server; mode mock membuatnya di klien). */
+    ekspor: (filter: AuditFilter): Promise<HasilEkspor> =>
+      MODE_MOCK
+        ? mockDelay(() => {
+            const { rows } = queryMockAudit(m.mockAudit(), filter, undefined, Number.MAX_SAFE_INTEGER);
+            exportCsv(
+              rows,
+              [
+                { header: "Waktu", value: (a) => a.waktu },
+                { header: "Aktor", value: (a) => a.aktor },
+                { header: "Peran", value: (a) => a.peran },
+                { header: "Aksi", value: (a) => a.aksi },
+                { header: "Entitas", value: (a) => `${a.entitas} ${a.entitasId}` },
+                { header: "Hasil", value: (a) => a.hasil },
+                { header: "IP", value: (a) => a.ip },
+              ],
+              "audit-trail",
+            );
+            return { baris: rows.length, terpotong: false };
+          })
+        : unduhEksporAudit(filter),
   },
   brief: {
     list: (): Promise<PolicyBrief[]> =>

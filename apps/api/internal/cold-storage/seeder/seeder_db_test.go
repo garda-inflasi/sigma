@@ -68,7 +68,7 @@ func TestSeedDemo_RerunMovesDatesWithoutDuplicatingLots(t *testing.T) {
 	second, err := SeedDemo(t.Context(), db, later)
 	require.NoError(t, err)
 
-	assert.Equal(t, DemoSummary{Stok: 23}, first)
+	assert.Equal(t, DemoSummary{Stok: 23, Telemetri: 4 * titikTelemetri, Transaksi: 23}, first)
 	assert.Equal(t, first, second)
 	assert.EqualValues(t, 23, count(t, db, "stok_cold_storage"))
 

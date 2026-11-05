@@ -174,14 +174,28 @@ func TestKPI_ListShowsComputedAndWaitingIndicators(t *testing.T) {
 	assert.Nil(t, util.Target.Baseline, "baseline menunggu keputusan bisnis")
 	assert.NotEmpty(t, util.Tren)
 
-	// KPI berbasis model: ada definisi dan target, belum ada nilai.
-	for _, kode := range []string{"DATA-MAPE-HARGA", "DATA-F1-EWS", "DATA-AUC-EWS", "DATA-RMSE-SHELFLIFE"} {
+	// KPI berbasis model tanpa dasar data (label kejadian, evaluasi shelf-life, produksi): ada definisi dan target, belum ada penghitung.
+	for _, kode := range []string{"DATA-F1-EWS", "DATA-AUC-EWS", "DATA-RMSE-SHELFLIFE", "DATA-AKURASI-PRODUKSI"} {
 		model := kpi[kode]
 		assert.False(t, model.Otomatis, kode)
 		assert.Nil(t, model.Nilai, kode)
 		assert.Equal(t, "MENUNGGU_DATA", model.Status, kode)
 		assert.NotNil(t, model.Target, kode)
 	}
+
+	// 16-B: punya penghitung, tetapi demo tidak punya proyeksi yang tanggal targetnya sudah lewat
+	// (MAPE), harga demo (volatilitas, margin), maupun rencana optimasi tersimpan (efisiensi): menunggu, bukan 0.
+	for _, kode := range []string{"DATA-MAPE-HARGA", "EKO-VOLATILITAS", "EKO-MARGIN", "EKO-EFISIENSI-BIAYA"} {
+		assert.True(t, kpi[kode].Otomatis, kode)
+		assert.Nil(t, kpi[kode].Nilai, kode)
+		assert.Equal(t, "MENUNGGU_DATA", kpi[kode].Status, kode)
+	}
+
+	// Volume masuk cold storage dihitung dari buku besar transaksi demo.
+	agregasi := kpi["LOG-VOLUME-AGREGASI"]
+	assert.True(t, agregasi.Otomatis)
+	require.NotNil(t, agregasi.Nilai)
+	assert.Positive(t, agregasi.Nilai.Nilai)
 
 	// Punya penghitung tetapi sumbernya (harga, intervensi) kosong: menunggu, bukan 0.
 	assert.Equal(t, "MENUNGGU_DATA", kpi["DATA-KELENGKAPAN-HARIAN"].Status)

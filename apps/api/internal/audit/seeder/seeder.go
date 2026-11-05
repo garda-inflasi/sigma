@@ -84,9 +84,16 @@ func BuildEntri(now time.Time) []domain.AuditLog {
 		if !contoh.DiriSendiri {
 			row.EntitasID = fmt.Sprintf("%s-%04d", kodeEntitas(contoh.Entitas), 1000+rng.IntN(9000))
 		}
-		if contoh.Aksi == "ASSIGN_ROLE" {
+		switch contoh.Aksi {
+		case "ASSIGN_ROLE":
 			row.Sebelum = new(`{"peran":"OPS_MAHASISWA"}`)
 			row.Sesudah = new(`{"peran":"OPS_KOORDINATOR"}`)
+		case "VALIDASI_HARGA":
+			row.Sebelum = new(`{"status":"MENUNGGU_VALIDASI"}`)
+			row.Sesudah = new(`{"status":"TERVALIDASI"}`)
+		case "UBAH_AMBANG_EWS":
+			row.Sebelum = new(`{"ambang":{"waspada":5,"siaga":10}}`)
+			row.Sesudah = new(`{"ambang":{"waspada":4,"siaga":10,"kritis":15}}`)
 		}
 		rows[i] = row
 	}

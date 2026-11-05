@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { MapPin, Thermometer } from "lucide-react";
+import { ChevronRight, MapPin, Thermometer, TriangleAlert } from "lucide-react";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { CountUp } from "@/components/motion/count-up";
 import {
@@ -32,16 +32,20 @@ interface Props {
   active?: boolean;
   /** Bila diisi, kartu dapat diklik untuk menyaring tabel stok pada fasilitas ini. */
   onSelect?: () => void;
+  /** Bila diisi, tombol "Detail" membuka riwayat suhu, lot, dan transaksi fasilitas. */
+  onDetail?: () => void;
 }
 
 /** Ringkasan satu fasilitas: status, utilisasi, kapasitas terisi, dan suhu terhadap target. */
-export function FacilityCard({ f, active = false, onSelect }: Props) {
+export function FacilityCard({ f, active = false, onSelect, onDetail }: Props) {
   const status = STATUS[f.status];
   const rencana = f.status === "RENCANA";
   const persen = utilisasiPersen(f);
   const nada = nadaUtilisasi(persen);
   const deviasi = deviasiSuhu(f);
-  const menyimpang = deviasi !== null && deviasi > AMBANG_DEVIASI_SUHU_C;
+  // Backend menghitung alarm dari batas fasilitas; data mock memakai selisih terhadap target.
+  const menyimpang =
+    f.alarmSuhu ?? (deviasi !== null && deviasi > AMBANG_DEVIASI_SUHU_C);
   // Fasilitas rencana belum punya stok, jadi tidak ada yang dapat disaring.
   const dapatDipilih = Boolean(onSelect) && !rencana;
 
@@ -68,9 +72,27 @@ export function FacilityCard({ f, active = false, onSelect }: Props) {
         />
       )}
 
-      <StatusBadge tone={status.tone} className="self-start">
-        {status.label}
-      </StatusBadge>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+          {menyimpang && (
+            <StatusBadge tone="defisit">
+              <TriangleAlert className="mr-1 size-3" aria-hidden />
+              Suhu di luar batas
+            </StatusBadge>
+          )}
+        </div>
+        {onDetail && !rencana && (
+          <button
+            type="button"
+            onClick={onDetail}
+            aria-label={`Detail ${f.nama}`}
+            className="relative z-20 inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-medium text-data-700 hover:bg-secondary dark:text-data-300"
+          >
+            Detail <ChevronRight className="size-3.5" aria-hidden />
+          </button>
+        )}
+      </div>
 
       {/* Nama boleh dua baris agar tidak terpotong (judul penuh lewat title). Tinggi blok
           dikunci untuk dua baris + wilayah supaya angka utilisasi sejajar antar-kartu. */}

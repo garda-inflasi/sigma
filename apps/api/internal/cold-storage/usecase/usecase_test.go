@@ -254,12 +254,15 @@ func TestBulkAction_RencanakanDistribusi(t *testing.T) {
 	uc := newTestUseCase(repo)
 
 	ids := []string{"S1", "S2"}
-	repo.On("BulkAction", mock.Anything, ids, domain.BulkRencanakanDistribusi).Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.89999999999999}, nil)
+	repo.On("BulkAction", mock.Anything, ids, domain.BulkRencanakanDistribusi).Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.89999999999999, IDDitemukan: ids}, nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rencanakan_distribusi", IDs: ids})
 
 	require.NoError(t, err)
-	assert.Equal(t, BulkOutcome{Berhasil: 2, Gagal: 0, VolumeTon: 65.9}, out)
+	assert.Equal(t, BulkOutcome{
+		Berhasil: 2, Gagal: 0, VolumeTon: 65.9,
+		Baris: []domain.BarisBulk{{ID: "S1", Berhasil: true}, {ID: "S2", Berhasil: true}},
+	}, out)
 	repo.AssertExpectations(t)
 }
 
@@ -355,7 +358,10 @@ func TestBulkAction_AuditWithoutActorAndAllMissing(t *testing.T) {
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"X"}})
 
 	require.NoError(t, err)
-	assert.Equal(t, BulkOutcome{Berhasil: 0, Gagal: 1}, out)
+	assert.Equal(t, BulkOutcome{
+		Gagal: 1,
+		Baris: []domain.BarisBulk{{ID: "X", Pesan: "Lot tidak ditemukan atau sudah habis"}},
+	}, out)
 	logged, ok := recorder.Last()
 	require.True(t, ok)
 	assert.Equal(t, audit.HasilGagal, logged.Hasil)

@@ -12,6 +12,8 @@ import {
   Loader2,
   RotateCcw,
   Search,
+  Tag,
+  Trash2,
   Truck,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -227,6 +229,33 @@ export function StockTable({
             rows: r,
             label: "Rekomendasi olahan dicatat",
           }),
+      },
+      {
+        id: "prioritas-jual",
+        label: "Tandai prioritas jual",
+        icon: Tag,
+        perm: "coldstorage.kelola",
+        run: (r) =>
+          jalankanBulk({
+            action: "tandai_prioritas_jual",
+            rows: r,
+            label: "Ditandai prioritas jual",
+          }),
+      },
+      {
+        id: "buang",
+        label: "Buang lot",
+        icon: Trash2,
+        perm: "coldstorage.kelola",
+        tone: "danger",
+        confirm: {
+          title: "Buang lot terpilih?",
+          description: (n) =>
+            `${n} lot dikeluarkan seluruhnya dari stok sebagai food loss. Tindakan ini tercatat sebagai transaksi keluar dan tidak dapat dibatalkan.`,
+          actionLabel: "Buang lot",
+        },
+        run: (r) =>
+          jalankanBulk({ action: "buang", rows: r, label: "Lot dibuang" }),
       },
       {
         id: "ekspor",

@@ -99,6 +99,6 @@ describe("parseColdStorageQuery", () => {
 
 describe("aksi massal", () => {
   it("sama dengan aksi yang diterima backend", () => {
-    assert.deepEqual([...COLD_STORAGE_BULK_ACTIONS], ["rencanakan_distribusi", "rekomendasi_olahan"]);
+    assert.deepEqual([...COLD_STORAGE_BULK_ACTIONS], ["rencanakan_distribusi", "rekomendasi_olahan", "tandai_prioritas_jual", "buang"]);
   });
 });

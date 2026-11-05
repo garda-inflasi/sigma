@@ -36,15 +36,19 @@ type AuditPageResponse struct {
 func ToAuditPageResponse(page domain.Page) AuditPageResponse {
 	items := make([]AuditRowResponse, len(page.Items))
 	for i, row := range page.Items {
-		items[i] = AuditRowResponse{
-			ID: row.ID, Waktu: row.Waktu,
-			AktorID: row.AktorID, AktorNama: row.AktorNama, AktorEmail: row.AktorEmail, AktorPeran: row.AktorPeran,
-			Aksi: row.Aksi, Entitas: row.Entitas, EntitasID: row.EntitasID, Hasil: row.Hasil,
-			IP: row.IP, UserAgent: row.UserAgent, CorrelationID: row.CorrelationID,
-			Sebelum: rawJSON(row.Sebelum), Sesudah: rawJSON(row.Sesudah), Metadata: rawJSON(row.Metadata),
-		}
+		items[i] = toAuditRowResponse(row)
 	}
 	return AuditPageResponse{Items: items, NextCursor: page.NextCursor}
+}
+
+func toAuditRowResponse(row domain.AuditLog) AuditRowResponse {
+	return AuditRowResponse{
+		ID: row.ID, Waktu: row.Waktu,
+		AktorID: row.AktorID, AktorNama: row.AktorNama, AktorEmail: row.AktorEmail, AktorPeran: row.AktorPeran,
+		Aksi: row.Aksi, Entitas: row.Entitas, EntitasID: row.EntitasID, Hasil: row.Hasil,
+		IP: row.IP, UserAgent: row.UserAgent, CorrelationID: row.CorrelationID,
+		Sebelum: rawJSON(row.Sebelum), Sesudah: rawJSON(row.Sesudah), Metadata: rawJSON(row.Metadata),
+	}
 }
 
 func rawJSON(s *string) json.RawMessage {
@@ -52,4 +56,27 @@ func rawJSON(s *string) json.RawMessage {
 		return nil
 	}
 	return json.RawMessage(*s)
+}
+
+// PerubahanResponse adalah satu bidang yang berbeda antara sebelum dan sesudah.
+type PerubahanResponse struct {
+	Path    string          `json:"path"`
+	Jenis   string          `json:"jenis"`
+	Sebelum json.RawMessage `json:"sebelum,omitempty"`
+	Sesudah json.RawMessage `json:"sesudah,omitempty"`
+}
+
+// AuditDetailResponse adalah satu entri audit lengkap dengan diff sebelum/sesudah.
+type AuditDetailResponse struct {
+	AuditRowResponse
+	Perubahan []PerubahanResponse `json:"perubahan"`
+}
+
+// ToAuditDetailResponse memetakan entri dan perubahannya ke bentuk API.
+func ToAuditDetailResponse(row domain.AuditLog, changes []domain.Perubahan) AuditDetailResponse {
+	perubahan := make([]PerubahanResponse, len(changes))
+	for i, c := range changes {
+		perubahan[i] = PerubahanResponse{Path: c.Path, Jenis: c.Jenis, Sebelum: c.Sebelum, Sesudah: c.Sesudah}
+	}
+	return AuditDetailResponse{AuditRowResponse: toAuditRowResponse(row), Perubahan: perubahan}
 }

@@ -37,6 +37,11 @@
 
 **Bergantung pada:** 11-B, 10-B.
 
-- [ ] Hitung KPI akurasi dari `prediksi_evaluasi` (MAPE), kinerja EWS (F1, AUC), shelf-life (RMSE).
-- [ ] KPI dampak ekonomi: volatilitas harga, margin, efisiensi rute ([12-C](12-peta-spasial.md)).
-- [ ] Tetapkan baseline dan periode evaluasi bersama pemangku kepentingan; ekspor laporan KPI periodik.
+Penghitung baru terdaftar di `kpi_definisi.sumber_query` (diterapkan oleh `make db/seed/reference`, tanpa mengubah definisi lain), dijalankan oleh job yang sama (`cmd/kpi`, `kpi.demo`). Tanpa dasar data hasilnya NULL → "menunggu data", bukan 0.
+
+- [x] **MAPE prediksi harga** (`DATA-MAPE-HARGA`): proyeksi `prediksi_harga` yang tanggal targetnya jatuh pada bulan itu vs rata-rata harga konsumen tervalidasi pada hari dan kabupaten yang sama. Tabel `prediksi_evaluasi` tidak dibuat: evaluasi dihitung langsung dari proyeksi dan harga. Seed demo hanya punya proyeksi masa depan, jadi di demo KPI ini tetap "menunggu data" sampai tanggal targetnya lewat dan ada harga pembanding (sengaja tidak dibuatkan backtest palsu).
+- [ ] **F1/AUC EWS**: butuh label kejadian (apa yang dihitung sebagai lonjakan sebenarnya) dan skor per alert; belum ada, jadi tetap menunggu. **RMSE shelf-life** dan **akurasi proyeksi produksi**: belum ada data realisasi masa simpan/produksi. **Penurunan food loss**: butuh baseline (keputusan bisnis) dan catatan kerugian terealisasi. **Indeks koordinasi**: butuh data survei.
+- [x] **KPI dampak ekonomi**: `EKO-VOLATILITAS` (CV harga produsen, rata-rata atas komoditas × kabupaten dengan ≥ 5 entri tervalidasi), `EKO-MARGIN` ((konsumen − produsen) ÷ konsumen), `EKO-EFISIENSI-BIAYA` (penghematan rencana optimal 12-C terhadap rencana pembanding serakah untuk volume yang sama; kolom `optimasi_rute.biaya_pembanding`, migrasi `000103`). Efisiensi bukan penghematan terhadap biaya riil sebelum program: itu butuh baseline pemangku kepentingan.
+- [x] **Logistik**: `LOG-VOLUME-AGREGASI` = volume MASUK cold storage per bulan (buku besar 13-B; pembelian di luar cold storage belum tercatat). `LOG-UTILISASI-CS` dan `LOG-RISIKO-FOODLOSS` kini dihitung dari buku besar `transaksi_stok` (stok historis nyata, bukan "lot tersimpan sampai kedaluwarsa"); instalasi tanpa satu pun transaksi tetap memakai pendekatan lama.
+- [ ] Tetapkan baseline dan periode evaluasi bersama pemangku kepentingan (keputusan bisnis; kolom `baseline` tetap kosong).
+- [x] Ekspor laporan KPI: `GET /v1/kpi/export?periode=&wilayah=` (CSV, tercatat `EKSPOR_DATA`) dan tombol "Unduh laporan CSV" di `/kpi`. Penjadwalan pengiriman laporan periodik (email/penjadwal) belum ada; `cmd/kpi` menghitung nilainya secara berkala.

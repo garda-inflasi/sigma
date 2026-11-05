@@ -23,7 +23,7 @@ func init() {
 		Tier:      seedkit.TierDemo,
 		DependsOn: []string{"master.reference"},
 		// Job menghitung dari data seeder lain; yang belum terdaftar atau kosong dilewati.
-		After: []string{"kpi.reference", "harga.demo", "coldstorage.demo", "ews.demo", "intervensi.demo"},
+		After: []string{"kpi.reference", "harga.demo", "coldstorage.demo", "ews.demo", "intervensi.demo", "prediksi.demo"},
 		Run: func(ctx context.Context, db *gorm.DB, now time.Time) (seedkit.Result, error) {
 			sum, err := kpiseeder.SeedDemo(ctx, db, now)
 			return seedkit.Result{"baru": sum.Baru, "direvisi": sum.Direvisi, "tetap": sum.Tetap, "tanpa_dasar": sum.TanpaDasar}, err

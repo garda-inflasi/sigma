@@ -18,7 +18,24 @@ const HASIL = [
   { value: "DITOLAK", label: "Ditolak" },
 ] as const;
 
-/** Filter audit yang dijalankan server: aktor, aksi, hasil, dan rentang tanggal. */
+/** Filter terpasang dari panel detail (objek atau permintaan tertentu), bisa dilepas. */
+function Terpasang({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex h-10 items-center gap-1.5 rounded-md bg-secondary px-3 text-sm">
+      <span className="num max-w-56 truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`Lepas filter ${label}`}
+        className="text-muted-foreground hover:text-foreground"
+      >
+        <X className="size-3.5" />
+      </button>
+    </span>
+  );
+}
+
+/** Filter audit yang dijalankan server: pencarian, aktor, aksi, hasil, dan rentang tanggal. */
 export function AuditFilterBar({
   filter,
   onChange,
@@ -36,6 +53,17 @@ export function AuditFilterBar({
       role="search"
       aria-label="Filter audit"
     >
+      <label className="space-y-1 text-xs text-muted-foreground">
+        Cari
+        <Input
+          type="search"
+          value={filter.q ?? ""}
+          onChange={(e) => set({ q: e.target.value })}
+          placeholder="Aksi, objek, aktor, ID permintaan"
+          className="h-10 w-60"
+        />
+      </label>
+
       <label className="space-y-1 text-xs text-muted-foreground">
         Aktor
         <Input
@@ -112,6 +140,19 @@ export function AuditFilterBar({
           className="h-10"
         />
       </label>
+
+      {filter.entitas_id && (
+        <Terpasang
+          label={`Objek ${filter.entitas_id}`}
+          onClear={() => set({ entitas_id: undefined })}
+        />
+      )}
+      {filter.correlation_id && (
+        <Terpasang
+          label="Satu permintaan"
+          onClear={() => set({ correlation_id: undefined })}
+        />
+      )}
 
       {aktif && (
         <button

@@ -30,19 +30,23 @@ var sortExpr = map[domain.StokSort]string{
 	domain.SortPemilik:        "LOWER(s.pemilik)",
 }
 
+// fasilitasSelect memilih fasilitas beserta volume terisi (lot yang belum habis)
+// dan nama wilayah; kondisi tambahan disisipkan sebelum GROUP BY.
+const fasilitasSelect = `
+	SELECT c.id, c.nama, c.kabupaten_kode, kb.nama AS kabupaten_nama, c.lat, c.lng,
+	       c.kapasitas_ton, COALESCE(SUM(s.volume_ton), 0) AS terisi_ton,
+	       c.suhu_target_c, c.suhu_aktual_c, c.status,
+	       c.suhu_min_c, c.suhu_maks_c, c.kelembapan_aktual_pct, c.telemetri_pada
+	  FROM cold_storage c
+	  JOIN kabupaten kb ON kb.kode = c.kabupaten_kode
+	  LEFT JOIN stok_cold_storage s ON s.cold_storage_id = c.id AND s.status <> 'HABIS'
+	 %s
+	 GROUP BY c.id, kb.nama
+	 ORDER BY CASE c.status WHEN 'OPERASIONAL' THEN 0 WHEN 'PERAWATAN' THEN 1 ELSE 2 END, c.id`
+
 func (r *Repository) ListFasilitas(ctx context.Context) ([]domain.FasilitasView, error) {
 	var fasilitas []domain.FasilitasView
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT c.id, c.nama, c.kabupaten_kode, kb.nama AS kabupaten_nama, c.lat, c.lng,
-		       c.kapasitas_ton, COALESCE(SUM(s.volume_ton), 0) AS terisi_ton,
-		       c.suhu_target_c, c.suhu_aktual_c, c.status
-		  FROM cold_storage c
-		  JOIN kabupaten kb ON kb.kode = c.kabupaten_kode
-		  LEFT JOIN stok_cold_storage s ON s.cold_storage_id = c.id
-		 GROUP BY c.id, kb.nama
-		 ORDER BY CASE c.status WHEN 'OPERASIONAL' THEN 0 WHEN 'PERAWATAN' THEN 1 ELSE 2 END, c.id
-	`).Scan(&fasilitas).Error
-	if err != nil {
+	if err := r.db.WithContext(ctx).Raw(fmt.Sprintf(fasilitasSelect, "")).Scan(&fasilitas).Error; err != nil {
 		return nil, err
 	}
 	return fasilitas, nil
@@ -54,7 +58,8 @@ func (r *Repository) ListStok(ctx context.Context, q domain.StokQuery) (domain.S
 	filtered := func() *gorm.DB {
 		tx := r.db.WithContext(ctx).Table("stok_cold_storage AS s").
 			Joins("JOIN cold_storage c ON c.id = s.cold_storage_id").
-			Joins("JOIN komoditas k ON k.kode = s.komoditas_kode")
+			Joins("JOIN komoditas k ON k.kode = s.komoditas_kode").
+			Where("s.status <> ?", domain.StatusLotHabis)
 		if q.ColdStorageID != "" {
 			tx = tx.Where("s.cold_storage_id = ?", q.ColdStorageID)
 		}
@@ -80,7 +85,7 @@ func (r *Repository) ListStok(ctx context.Context, q domain.StokQuery) (domain.S
 		if err := filtered().
 			Select(`s.id, s.cold_storage_id, c.nama AS cold_storage_nama, s.komoditas_kode,
 				k.nama AS komoditas_nama, s.volume_ton, s.masuk_pada, s.kedaluwarsa_pada,
-				s.risiko_food_loss, s.pemilik`).
+				s.risiko_food_loss, s.pemilik, s.status`).
 			Order(orderClause(q)).
 			Limit(q.Limit).
 			Offset(q.Offset()).
@@ -100,6 +105,7 @@ func (r *Repository) RingkasanStok(ctx context.Context, ambang float64) (domain.
 			COUNT(*) FILTER (WHERE risiko_food_loss > ?) AS risiko_tinggi_lot,
 			COALESCE(SUM(volume_ton) FILTER (WHERE risiko_food_loss > ?), 0) AS risiko_tinggi_ton`,
 			ambang, ambang).
+		Where("status <> ?", domain.StatusLotHabis).
 		Scan(&out).Error
 	return out, err
 }
@@ -110,17 +116,22 @@ func (r *Repository) BulkAction(ctx context.Context, ids []string, action domain
 	// report how many of the requested lots exist and their combined volume.
 	switch action {
 	case domain.BulkRencanakanDistribusi, domain.BulkRekomendasiOlahan:
-		var res struct {
-			Berhasil  int64
+		var found []struct {
+			ID        string
 			VolumeTon float64
 		}
 		if err := r.db.WithContext(ctx).Model(&domain.StokColdStorage{}).
-			Select("COUNT(*) AS berhasil, COALESCE(SUM(volume_ton), 0) AS volume_ton").
-			Where("id IN ?", ids).
-			Scan(&res).Error; err != nil {
+			Select("id, volume_ton").
+			Where("id IN ? AND status <> ?", ids, domain.StatusLotHabis).
+			Scan(&found).Error; err != nil {
 			return domain.BulkResult{}, fmt.Errorf("bulk action %s: %w", action, err)
 		}
-		return domain.BulkResult{Berhasil: res.Berhasil, VolumeTon: res.VolumeTon}, nil
+		res := domain.BulkResult{Berhasil: int64(len(found))}
+		for _, f := range found {
+			res.VolumeTon += f.VolumeTon
+			res.IDDitemukan = append(res.IDDitemukan, f.ID)
+		}
+		return res, nil
 	default:
 		return domain.BulkResult{}, fmt.Errorf("unknown bulk action: %s", action)
 	}

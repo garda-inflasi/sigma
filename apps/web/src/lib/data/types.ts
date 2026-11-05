@@ -101,6 +101,8 @@ export interface StokColdStorage {
   /** Pecahan 0–1. */
   risikoFoodLoss: number;
   pemilik: string;
+  /** Lot yang ditandai untuk disalurkan lebih dulu; kosong pada data lama/mock. */
+  status?: "AKTIF" | "PRIORITAS_JUAL";
 }
 
 export interface FasilitasColdStorage {
@@ -116,6 +118,43 @@ export interface FasilitasColdStorage {
   status: "OPERASIONAL" | "PERAWATAN" | "RENCANA";
   lat: number;
   lng: number;
+  /** Batas alarm suhu efektif dan status alarm dari backend; kosong pada data mock. */
+  batasMinC?: number;
+  batasMaksC?: number;
+  alarmSuhu?: boolean;
+  /** Waktu pembacaan suhu terakhir. */
+  telemetriPada?: string | null;
+}
+
+/** Satu pembacaan pada riwayat suhu fasilitas. */
+export interface TitikSuhu {
+  waktu: string;
+  suhuC: number;
+  kelembapanPct: number | null;
+  diLuarRentang: boolean;
+}
+
+/** Satu baris buku besar stok. */
+export interface TransaksiStok {
+  id: string;
+  lotId: string;
+  lotBaruId: string | null;
+  jenis: "MASUK" | "KELUAR" | "PINDAH";
+  volumeTon: number;
+  komoditasNama: string;
+  fasilitasAsalId: string | null;
+  fasilitasTujuanId: string | null;
+  olehNama: string | null;
+  waktu: string;
+  alasan: string;
+}
+
+/** Data halaman detail satu fasilitas. */
+export interface DetailFasilitas {
+  fasilitas: FasilitasColdStorage;
+  telemetri: TitikSuhu[];
+  stok: StokColdStorage[];
+  transaksi: TransaksiStok[];
 }
 
 /** Halaman stok yang sedang ditampilkan. */
@@ -231,6 +270,23 @@ export interface AuditRow {
   entitasId: string;
   hasil: "BERHASIL" | "GAGAL" | "DITOLAK";
   ip: string;
+}
+
+/** Satu bidang yang berbeda antara keadaan sebelum dan sesudah aksi. */
+export interface AuditPerubahan {
+  path: string;
+  jenis: "DITAMBAH" | "DIUBAH" | "DIHAPUS";
+  sebelum?: unknown;
+  sesudah?: unknown;
+}
+
+/** Entri audit lengkap (`GET /v1/audit/:id`). */
+export interface AuditDetail extends AuditRow {
+  userAgent: string;
+  correlationId: string;
+  email: string;
+  metadata?: Record<string, unknown>;
+  perubahan: AuditPerubahan[];
 }
 
 export interface PolicyBrief {

@@ -20,7 +20,11 @@ export const qk = {
     xaiAll: () => ["eksekutif", "xai"] as const,
     xai: (kode: string) => ["eksekutif", "xai", kode] as const,
   },
-  spasial: { rute: () => ["spasial", "rute"] as const, kandidat: () => ["spasial", "kandidat"] as const },
+  spasial: {
+    rute: () => ["spasial", "rute"] as const,
+    kandidat: () => ["spasial", "kandidat"] as const,
+    geometri: (zoom: number) => ["spasial", "geometri", zoom] as const,
+  },
   prediksi: {
     all: () => ["prediksi"] as const,
     ringkasan: () => ["prediksi", "ringkasan"] as const,
@@ -40,6 +44,7 @@ export const qk = {
   coldStorage: {
     all: () => ["cold-storage"] as const,
     list: (params: ColdStorageParams) => ["cold-storage", "list", params] as const,
+    detail: (id: string) => ["cold-storage", "detail", id] as const,
   },
   sumber: {
     list: () => ["sumber-data"] as const,
@@ -53,7 +58,10 @@ export const qk = {
     list: (search?: string) => ["pengguna", "list", search ?? ""] as const,
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
-  audit: { list: (filter: AuditFilter) => ["audit", "list", filter] as const },
+  audit: {
+    list: (filter: AuditFilter) => ["audit", "list", filter] as const,
+    detail: (id: string) => ["audit", "detail", id] as const,
+  },
   brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
   tugas: { saya: () => ["tugas", "saya"] as const },
   master: {

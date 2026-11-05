@@ -5,7 +5,7 @@
 
 import "server-only";
 
-import type { BulkColdStorageWire, ColdStorageWire } from "@/lib/api/cold-storage";
+import type { BulkColdStorageWire, ColdStorageWire, DetailFasilitasWire } from "@/lib/api/cold-storage";
 import { toQueryString, type ColdStorageBulkAction, type ColdStorageParams } from "@/lib/api/cold-storage-query";
 
 const API_BASE = process.env.GO_API_BASE_URL || "http://localhost:8080/v1";
@@ -408,6 +408,21 @@ export const coldStorageApi = {
       headers: bearer(accessToken),
     });
   },
+
+  /** GET /v1/cold-storage/fasilitas/:id — riwayat suhu, lot, dan transaksi satu fasilitas. */
+  detail: (accessToken: string, id: string) =>
+    apiFetch<DetailFasilitasWire>(`/cold-storage/fasilitas/${encodeURIComponent(id)}`, {
+      method: "GET",
+      headers: bearer(accessToken),
+    }),
+
+  /** POST /v1/cold-storage/transaksi — catat stok masuk, keluar, atau pindah. */
+  transaksi: (accessToken: string, body: Record<string, unknown>) =>
+    apiFetch<unknown>("/cold-storage/transaksi", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(body),
+    }),
 
   /** POST /v1/cold-storage/bulk — aksi massal pada lot stok. */
   bulk: (accessToken: string, data: BulkColdStorageRequest) =>

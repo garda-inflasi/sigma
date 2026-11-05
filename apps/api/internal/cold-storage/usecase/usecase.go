@@ -83,11 +83,7 @@ func (uc *UseCase) GetAll(ctx context.Context, q domain.StokQuery) (*Overview, e
 	}
 
 	for i := range fasilitas {
-		f := &fasilitas[i]
-		f.TerisiTon = round1(f.TerisiTon)
-		if f.KapasitasTon > 0 {
-			f.UtilisasiPersen = round1(f.TerisiTon / float64(f.KapasitasTon) * 100)
-		}
+		isiTurunan(&fasilitas[i])
 	}
 
 	now := uc.now()
@@ -112,6 +108,17 @@ func (uc *UseCase) GetAll(ctx context.Context, q domain.StokQuery) (*Overview, e
 	}, nil
 }
 
+// isiTurunan mengisi nilai yang dihitung saat dibaca: volume terisi (dibulatkan),
+// utilisasi, batas alarm efektif, dan status alarm suhu.
+func isiTurunan(f *domain.FasilitasView) {
+	f.TerisiTon = round1(f.TerisiTon)
+	if f.KapasitasTon > 0 {
+		f.UtilisasiPersen = round1(f.TerisiTon / float64(f.KapasitasTon) * 100)
+	}
+	f.BatasMinC, f.BatasMaksC = domain.BatasSuhu(f.SuhuTargetC, f.SuhuMinC, f.SuhuMaksC)
+	f.Alarm = f.SuhuAktualC != nil && domain.DiLuarRentang(*f.SuhuAktualC, f.BatasMinC, f.BatasMaksC)
+}
+
 // BulkInput adalah permintaan aksi massal beserta identitas pelakunya.
 type BulkInput struct {
 	Action  string
@@ -124,6 +131,8 @@ type BulkOutcome struct {
 	Berhasil  int
 	Gagal     int
 	VolumeTon float64
+	// Baris adalah hasil per lot, urut seperti permintaan.
+	Baris []domain.BarisBulk
 }
 
 // BulkAction memproses aksi massal pada lot stok dan mencatatnya di audit trail.
@@ -154,9 +163,19 @@ func (uc *UseCase) BulkAction(ctx context.Context, in BulkInput) (BulkOutcome, e
 		Berhasil:  int(res.Berhasil),
 		Gagal:     len(ids) - int(res.Berhasil),
 		VolumeTon: round1(res.VolumeTon),
+		Baris:     gabungBaris(ids, barisDitemukan(res.IDDitemukan)),
 	}
 	uc.recordAudit(ctx, in, ids, out)
 	return out, nil
+}
+
+// barisDitemukan mengubah id lot yang diproses menjadi baris berhasil.
+func barisDitemukan(found []string) []domain.BarisBulk {
+	out := make([]domain.BarisBulk, len(found))
+	for i, id := range found {
+		out[i] = domain.BarisBulk{ID: id, Berhasil: true}
+	}
+	return out
 }
 
 // recordAudit mencatat aksi massal. Kegagalan mencatat tidak membatalkan aksi:

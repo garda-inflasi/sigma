@@ -20,6 +20,13 @@ const (
 	MaxLimit     = 200
 )
 
+const (
+	// ExportBatch adalah ukuran satu pembacaan saat mengekspor; MaxExportRows
+	// membatasi total baris satu ekspor agar tidak membebani basis data.
+	ExportBatch   = 500
+	MaxExportRows = 20000
+)
+
 // ErrInvalidCursor dikembalikan bila cursor bukan hasil halaman sebelumnya.
 var ErrInvalidCursor = errors.New("cursor tidak valid")
 
@@ -134,6 +141,57 @@ func (uc *UseCase) List(ctx context.Context, q Query) (domain.Page, error) {
 	items = items[:limit]
 	last := items[len(items)-1]
 	return domain.Page{Items: items, NextCursor: encodeCursor(domain.Cursor{Waktu: last.Waktu, ID: last.ID})}, nil
+}
+
+// Detail adalah satu entri audit lengkap dengan perubahan sebelum → sesudah.
+type Detail struct {
+	Row       domain.AuditLog
+	Perubahan []domain.Perubahan
+}
+
+// Get mengembalikan satu entri beserta diff sebelum/sesudah; domain.ErrNotFound
+// bila id tidak ada.
+func (uc *UseCase) Get(ctx context.Context, id string) (Detail, error) {
+	row, err := uc.repo.Get(ctx, id)
+	if err != nil {
+		return Detail{}, err
+	}
+	changes, err := domain.DiffState(row.Sebelum, row.Sesudah)
+	if err != nil {
+		return Detail{}, fmt.Errorf("diff audit %s: %w", id, err)
+	}
+	return Detail{Row: *row, Perubahan: changes}, nil
+}
+
+// Export menyerahkan baris yang cocok dengan filter ke emit, terbaru lebih dulu,
+// per ExportBatch baris sampai paling banyak MaxExportRows. Mengembalikan jumlah
+// baris yang diserahkan dan apakah ada baris lagi yang terpotong oleh batas.
+func (uc *UseCase) Export(ctx context.Context, filter domain.Filter, emit func(domain.AuditLog) error) (n int, truncated bool, err error) {
+	var after *domain.Cursor
+	for n < MaxExportRows {
+		batch := min(ExportBatch, MaxExportRows-n)
+		// Satu baris ekstra membedakan "tepat habis" dari "terpotong".
+		items, err := uc.repo.List(ctx, filter, after, batch+1)
+		if err != nil {
+			return n, false, err
+		}
+		more := len(items) > batch
+		if more {
+			items = items[:batch]
+		}
+		for _, row := range items {
+			if err := emit(row); err != nil {
+				return n, false, err
+			}
+			n++
+		}
+		if !more {
+			return n, false, nil
+		}
+		last := items[len(items)-1]
+		after = &domain.Cursor{Waktu: last.Waktu, ID: last.ID}
+	}
+	return n, true, nil
 }
 
 func encodeCursor(c domain.Cursor) string {

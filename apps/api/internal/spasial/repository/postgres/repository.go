@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm/clause"
+
 	"github.com/garda-inflasi/api/internal/spasial/domain"
 	"gorm.io/gorm"
 )
@@ -70,6 +72,7 @@ func (r *Repository) ListRute(ctx context.Context) ([]domain.Rute, error) {
 		Joins("JOIN kabupaten a ON a.kode = r.asal_kode").
 		Joins("JOIN kabupaten t ON t.kode = r.tujuan_kode").
 		Joins("JOIN komoditas k ON k.kode = r.komoditas_kode").
+		Where("r.status <> ?", domain.StatusRuteDigantikan).
 		Order("r.biaya DESC, r.id").
 		Scan(&items).Error
 	if err != nil {
@@ -87,6 +90,73 @@ func (r *Repository) ListKandidat(ctx context.Context) ([]domain.Kandidat, error
 		Scan(&items).Error
 	if err != nil {
 		return nil, fmt.Errorf("daftar kandidat cold storage: %w", err)
+	}
+	return items, nil
+}
+
+func (r *Repository) ListGeometri(ctx context.Context, bbox *domain.BBox) ([]domain.GeometriWilayah, error) {
+	query := r.db.WithContext(ctx).Table("wilayah_geometri AS g").
+		Select("g.*, w.nama, w.level").
+		Joins("JOIN wilayah w ON w.kode = g.kabupaten_kode")
+	if bbox != nil {
+		query = query.Where("g.min_lng <= ? AND g.max_lng >= ? AND g.min_lat <= ? AND g.max_lat >= ?",
+			bbox.MaxLng, bbox.MinLng, bbox.MaxLat, bbox.MinLat)
+	}
+	var items []domain.GeometriWilayah
+	if err := query.Order("g.kabupaten_kode").Scan(&items).Error; err != nil {
+		return nil, fmt.Errorf("daftar geometri wilayah: %w", err)
+	}
+	return items, nil
+}
+
+var _ domain.OptimasiRepository = (*Repository)(nil)
+
+func (r *Repository) ListJarak(ctx context.Context) ([]domain.JarakAntarWilayah, error) {
+	var items []domain.JarakAntarWilayah
+	if err := r.db.WithContext(ctx).Order("asal_kode, tujuan_kode").Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("daftar jarak antar wilayah: %w", err)
+	}
+	return items, nil
+}
+
+func (r *Repository) SimpanOptimasi(ctx context.Context, rencana domain.OptimasiRute, rute []domain.RuteDistribusi, jarak []domain.JarakAntarWilayah) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&rencana).Error; err != nil {
+			return fmt.Errorf("simpan rencana optimasi: %w", err)
+		}
+		// Rencana lama untuk komoditas dan periode yang sama tidak lagi berlaku.
+		err := tx.Exec(`
+			UPDATE rute_distribusi SET status = ?
+			 WHERE sumber = ? AND status = ? AND optimasi_id IN (
+			       SELECT id FROM optimasi_rute WHERE komoditas_kode = ? AND periode = ? AND id <> ?)`,
+			domain.StatusRuteDigantikan, domain.SumberRuteOptimasi, domain.StatusRuteUsulan,
+			rencana.KomoditasKode, rencana.Periode, rencana.ID).Error
+		if err != nil {
+			return fmt.Errorf("gantikan rute optimasi lama: %w", err)
+		}
+		if len(rute) > 0 {
+			if err := tx.Create(&rute).Error; err != nil {
+				return fmt.Errorf("simpan rute optimasi: %w", err)
+			}
+		}
+		if len(jarak) > 0 {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&jarak).Error; err != nil {
+				return fmt.Errorf("simpan cache jarak: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+func (r *Repository) ListOptimasi(ctx context.Context, limit int) ([]domain.RencanaOptimasi, error) {
+	var items []domain.RencanaOptimasi
+	err := r.db.WithContext(ctx).Table("optimasi_rute AS o").
+		Select("o.*, k.nama AS komoditas_nama, p.nama AS dibuat_oleh_nama").
+		Joins("JOIN komoditas k ON k.kode = o.komoditas_kode").
+		Joins("LEFT JOIN pengguna p ON p.id = o.dibuat_oleh").
+		Order("o.dibuat_pada DESC, o.id").Limit(limit).Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("daftar rencana optimasi: %w", err)
 	}
 	return items, nil
 }

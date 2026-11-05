@@ -11,6 +11,7 @@ import { stagger } from "@/lib/motion/presets";
 import { useColdStorage } from "@/lib/query/hooks";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { FacilityCard } from "./facility-card";
+import { FacilityDetailSheet } from "./facility-detail-sheet";
 import { StockTable } from "./stock-table";
 
 /** Sisa masa simpan terpendek lebih dulu: stok yang paling mendesak untuk disalurkan. */
@@ -36,6 +37,7 @@ function KartuSkeleton() {
 export function ColdStoragePage() {
   const [params, setParams] = useState<ColdStorageParams>(KRITERIA_AWAL);
   const [search, setSearch] = useState("");
+  const [detailId, setDetailId] = useState<string>();
   const q = useDebouncedValue(search, 300).trim();
 
   // Mengetik tidak boleh memicu satu permintaan per huruf: kata kunci masuk ke
@@ -112,6 +114,7 @@ export function ColdStoragePage() {
                 <FacilityCard
                   f={f}
                   active={params.fasilitasId === f.id}
+                  onDetail={() => setDetailId(f.id)}
                   onSelect={() =>
                     ubah({
                       fasilitasId:
@@ -155,6 +158,12 @@ export function ColdStoragePage() {
           onResetFilters={hapusFilter}
         />
       </section>
+
+      <FacilityDetailSheet
+        id={detailId}
+        fasilitas={data?.fasilitas ?? []}
+        onClose={() => setDetailId(undefined)}
+      />
     </div>
   );
 }

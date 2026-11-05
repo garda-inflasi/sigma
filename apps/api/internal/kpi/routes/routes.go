@@ -27,6 +27,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	kpi.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("kpi.lihat"))
 	{
 		kpi.GET("", handler.List)
+		kpi.GET("/export", handler.Export)
 		kpi.GET("/:kode/riwayat", handler.Riwayat)
 	}
 }

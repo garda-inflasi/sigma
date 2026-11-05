@@ -1,11 +1,15 @@
 package http
 
 import (
+	"bytes"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/domain"
 	"github.com/garda-inflasi/api/internal/audit/dto"
 	"github.com/garda-inflasi/api/internal/audit/usecase"
@@ -48,12 +52,112 @@ func (h *Handler) List(c *gin.Context) {
 	response.Success(c, dto.ToAuditPageResponse(page))
 }
 
+// GET /v1/audit/:id
+func (h *Handler) Get(c *gin.Context) {
+	detail, err := h.uc.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			response.NotFound(c, "Entri audit tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil entri audit")
+		return
+	}
+	response.Success(c, dto.ToAuditDetailResponse(detail.Row, detail.Perubahan))
+}
+
+// csvHeader adalah kolom berkas ekspor; urutannya sama dengan csvRecord.
+var csvHeader = []string{
+	"waktu", "aktor_nama", "aktor_email", "aktor_peran", "aksi", "entitas", "entitas_id", "hasil",
+	"ip", "user_agent", "correlation_id", "sebelum", "sesudah", "metadata",
+}
+
+// GET /v1/audit/export: CSV (titik koma, UTF-8 BOM, seperti ekspor sisi klien)
+// atas filter yang sama dengan daftar. Ekspor sendiri dicatat sebagai EKSPOR_DATA.
+func (h *Handler) Export(c *gin.Context) {
+	var req dto.ListAuditRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	filter, err := toFilter(req)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("\ufeff")
+	w := csv.NewWriter(&buf)
+	w.Comma = ';'
+	if err := w.Write(csvHeader); err != nil {
+		response.InternalError(c, "Gagal menyusun ekspor audit")
+		return
+	}
+	n, truncated, err := h.uc.Export(c.Request.Context(), filter, func(row domain.AuditLog) error {
+		return w.Write(csvRecord(row))
+	})
+	w.Flush()
+	if err == nil {
+		err = w.Error()
+	}
+	if err != nil {
+		response.InternalError(c, "Gagal mengekspor data audit")
+		return
+	}
+
+	// Ekspor adalah keluarnya data sensitif: bila tidak tercatat, tidak diserahkan.
+	err = h.uc.Write(audit.RequestContext(c), domain.Entry{
+		AktorID: c.GetString("user_id"), Aksi: "EKSPOR_DATA", Entitas: "audit_log", EntitasID: "export",
+		Hasil:    domain.HasilBerhasil,
+		Metadata: map[string]any{"baris": n, "terpotong": truncated, "query": c.Request.URL.RawQuery},
+	})
+	if err != nil {
+		response.InternalError(c, "Gagal mencatat ekspor audit")
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="audit-trail-%s.csv"`, time.Now().Format(time.DateOnly)))
+	c.Header("X-Export-Rows", fmt.Sprint(n))
+	if truncated {
+		c.Header("X-Export-Truncated", "true")
+	}
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
+}
+
+func csvRecord(row domain.AuditLog) []string {
+	return []string{
+		row.Waktu.UTC().Format(time.RFC3339), safeCell(row.AktorNama), safeCell(row.AktorEmail), safeCell(row.AktorPeran),
+		safeCell(&row.Aksi), safeCell(&row.Entitas), safeCell(&row.EntitasID), row.Hasil,
+		safeCell(row.IP), safeCell(row.UserAgent), safeCell(row.CorrelationID),
+		safeCell(row.Sebelum), safeCell(row.Sesudah), safeCell(row.Metadata),
+	}
+}
+
+// safeCell mencegah injeksi rumus spreadsheet: sel yang diawali = + - @ (atau
+// tab/CR) diberi awalan apostrof, karena nilai seperti entitas_id berasal dari input pengguna.
+func safeCell(s *string) string {
+	if s == nil || *s == "" {
+		return ""
+	}
+	switch (*s)[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + *s
+	}
+	return *s
+}
+
 func toFilter(req dto.ListAuditRequest) (domain.Filter, error) {
 	filter := domain.Filter{
 		Aktor:   strings.TrimSpace(req.Aktor),
 		Aksi:    strings.TrimSpace(req.Aksi),
 		Entitas: strings.TrimSpace(req.Entitas),
 		Hasil:   req.Hasil,
+
+		EntitasID:     strings.TrimSpace(req.EntitasID),
+		Peran:         strings.TrimSpace(req.Peran),
+		CorrelationID: strings.TrimSpace(req.CorrelationID),
+		Q:             strings.TrimSpace(req.Q),
 	}
 	var err error
 	if filter.Dari, err = parseBoundary(req.Dari, false); err != nil {

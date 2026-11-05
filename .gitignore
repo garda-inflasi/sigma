@@ -3,6 +3,11 @@
 Thumbs.db
 
 # === Go ===
+# Biner hasil `go build` di apps/api (cmd/api, cmd/worker, cmd/seed, …)
+/apps/api/api
+/apps/api/worker
+/apps/api/seed
+/apps/api/migrate
 *.exe
 *.exe~
 *.dll

@@ -90,3 +90,18 @@ func (r *Repository) ListKandidat(ctx context.Context) ([]domain.Kandidat, error
 	}
 	return items, nil
 }
+
+func (r *Repository) ListGeometri(ctx context.Context, bbox *domain.BBox) ([]domain.GeometriWilayah, error) {
+	query := r.db.WithContext(ctx).Table("wilayah_geometri AS g").
+		Select("g.*, w.nama, w.level").
+		Joins("JOIN wilayah w ON w.kode = g.kabupaten_kode")
+	if bbox != nil {
+		query = query.Where("g.min_lng <= ? AND g.max_lng >= ? AND g.min_lat <= ? AND g.max_lat >= ?",
+			bbox.MaxLng, bbox.MinLng, bbox.MaxLat, bbox.MinLat)
+	}
+	var items []domain.GeometriWilayah
+	if err := query.Order("g.kabupaten_kode").Scan(&items).Error; err != nil {
+		return nil, fmt.Errorf("daftar geometri wilayah: %w", err)
+	}
+	return items, nil
+}

@@ -2429,6 +2429,107 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/spasial/geometri:
+    get:
+      summary: Geometri wilayah (FeatureCollection GeoJSON)
+      description: |
+        Memerlukan izin `spasial.lihat`. Geometri disimpan sebagai GeoJSON tanpa PostGIS dan
+        disederhanakan (Douglas-Peucker) menurut `zoom`: toleransi 0,05° (zoom ≤ 6), 0,02° (≤ 8),
+        0,008° (≤ 10), tanpa penyederhanaan (≥ 11). Data demo berupa **poligon perkiraan**
+        (`properties.sumber = DEMO`, `perkiraan = true`), bukan batas administratif resmi.
+      operationId: listSpasialGeometri
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: zoom
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 22
+            default: 8
+        - name: bbox
+          in: query
+          description: "minLng,minLat,maxLng,maxLat; hanya wilayah yang kotak pembatasnya beririsan"
+          schema:
+            type: string
+          example: "95.30,5.53,95.34,5.57"
+      responses:
+        "200":
+          description: FeatureCollection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialGeometriResponse"
+        "400":
+          description: Parameter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/spasial/lokasi:
+    get:
+      summary: Wilayah untuk satu titik
+      description: |
+        Memerlukan izin `spasial.lihat`. Wilayah yang poligonnya memuat titik (bila tumpang tindih,
+        yang pusatnya terdekat); bila tidak ada, wilayah dengan pusat terdekat (`di_dalam = false`).
+      operationId: lokasiSpasial
+      tags:
+        - Spasial
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: Wilayah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpasialLokasiResponse"
+        "400":
+          description: Parameter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `spasial.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Belum ada data wilayah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/spasial/neraca:
     get:
       summary: Neraca surplus/defisit per komoditas dan wilayah
@@ -4811,6 +4912,76 @@ components:
           $ref: "#/components/schemas/ColdStoragePageMeta"
         ringkasan:
           $ref: "#/components/schemas/ColdStorageRingkasan"
+
+    SpasialGeometriResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [FeatureCollection]
+            features:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [Feature]
+                  id:
+                    type: string
+                    description: Kode kabupaten/kota
+                  properties:
+                    type: object
+                    properties:
+                      kode:
+                        type: string
+                      nama:
+                        type: string
+                      level:
+                        type: string
+                        enum: [kabupaten, kota]
+                      sumber:
+                        type: string
+                        enum: [DEMO, RESMI]
+                      perkiraan:
+                        type: boolean
+                        description: Benar bila geometri bukan batas administratif resmi
+                      keterangan:
+                        type: string
+                  geometry:
+                    type: object
+                    description: GeoJSON Polygon atau MultiPolygon
+
+    SpasialLokasiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            kode:
+              type: string
+            nama:
+              type: string
+            di_dalam:
+              type: boolean
+            jarak_pusat_km:
+              type: number
+              format: double
 
     FasilitasColdStorage:
       type: object

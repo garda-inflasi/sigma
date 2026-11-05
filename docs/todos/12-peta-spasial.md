@@ -33,12 +33,20 @@
 
 ## 12-B — Geometri wilayah (PostGIS) *(Fase F, gelombang F-5)*
 
-1. **MIG**
-   - [ ] Ganti image ke `postgis/postgis:16-*` di `compose.infra.yaml` / `compose.prod.yaml`; `CREATE EXTENSION postgis`.
-   - [ ] `wilayah_geometri` (`kode` PK, `level`, `geom geometry(MultiPolygon, 4326)`) + index GIST; simpan versi hasil `ST_SimplifyPreserveTopology` per tingkat zoom.
-2. **SEED**: skrip impor batas kabupaten Aceh dari sumber resmi (BPS/Geoportal), catat lisensi; unduh saat seed, jangan commit berkas besar.
-3. **API/FE**: layani geometri terkompresi; peta memakainya; klaster marker atau vector tile bila titik pasar ribuan.
-4. **TES**: setiap kabupaten punya geometri; titik fasilitas berada di dalam poligon kabupatennya.
+> **Keputusan (12-B): GeoJSON `jsonb`, bukan PostGIS.** Image bersama tetap `postgres:16-alpine`: demo Docker yang berjalan, `compose.infra.yaml`, dan `pgtest` memakai image itu; mengganti ke `postgis/postgis` menambah unduhan image, mengubah lingkungan bersama, dan hanya bernilai bila perlu query spasial berat (yang belum ada). Validitas dijaga CHECK basis data + validator Go (`domain.ParseGeoJSON`); jarak (haversine), titik-di-poligon, kotak pembatas, dan penyederhanaan (Douglas-Peucker) ada di `internal/spasial/domain/geo.go`. Bila nanti perlu `ST_*`, `wilayah_geometri.geojson` dapat dimigrasikan ke kolom `geometry` tanpa mengubah API.
+
+1. **MIG** (`000101_12b_wilayah_geometri.sql`)
+   - [x] `wilayah_geometri` (`kabupaten_kode` PK, `geojson` jsonb, kotak pembatas, `sumber` DEMO/RESMI, `keterangan`) + CHECK tipe/bbox/sumber.
+   - [ ] Versi geometri tersimpan per tingkat zoom: tidak dibuat; penyederhanaan dihitung saat dibaca (23 poligon, murah).
+2. **SEED** (`spasial.demo`)
+   - [x] Poligon **perkiraan** (selimut cembung di sekitar titik pusat, pasar, dan cold storage), berlabel `DEMO`; **bukan batas administratif**. Data batas resmi (BPS/Geoportal) tidak tersedia offline dan tidak diklaim.
+   - [ ] Impor batas resmi: seeder/impor `RESMI` belum ada (perlu sumber dan lisensi yang dicatat; unduh saat impor, jangan commit berkas besar).
+3. **API/FE**
+   - [x] `GET /v1/spasial/geometri?zoom=&bbox=` (FeatureCollection, disederhanakan menurut zoom, `perkiraan` per fitur) dan `GET /v1/spasial/lokasi?lat=&lng=` (wilayah untuk satu titik).
+   - [x] Peta skema SVG menggambar poligon berwarna menurut status marker; lapisan Mapbox (fill + line) bila token ada (lapisan Mapbox tidak teruji otomatis, tanpa token). Keterangan "perkiraan" tampil di peta.
+   - [ ] Klaster marker / vector tile (belum perlu: pasar puluhan titik).
+4. **TES**
+   - [x] Setiap kabupaten/kota punya geometri valid; semua pasar dan cold storage berada di dalam poligon kabupatennya; CHECK menolak GeoJSON rusak; unit geometri (valid/invalid, lubang, bbox, haversine, penyederhanaan, selimut cembung); integrasi izin, zoom, bbox, parameter salah.
 
 ---
 

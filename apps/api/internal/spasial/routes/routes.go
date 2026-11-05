@@ -29,5 +29,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		spasial.GET("/neraca", handler.ListNeraca)
 		spasial.GET("/rute", handler.ListRute)
 		spasial.GET("/kandidat-cold-storage", handler.ListKandidat)
+		spasial.GET("/geometri", handler.ListGeometri)
+		spasial.GET("/lokasi", handler.Lokasi)
 	}
 }

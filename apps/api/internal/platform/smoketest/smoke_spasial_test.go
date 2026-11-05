@@ -11,5 +11,6 @@ func init() {
 		smokeCase{Name: "spasial: neraca wilayah", Method: http.MethodGet, Path: "/v1/spasial/neraca", Email: berhak, MinItems: map[string]int{"": 184}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "spasial: rute distribusi", Method: http.MethodGet, Path: "/v1/spasial/rute", Email: berhak, MinItems: map[string]int{"": 5}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "spasial: kandidat cold storage", Method: http.MethodGet, Path: "/v1/spasial/kandidat-cold-storage", Email: berhak, MinItems: map[string]int{"": 3}, ForbiddenEmail: takBerhak},
+		smokeCase{Name: "spasial: geometri wilayah", Method: http.MethodGet, Path: "/v1/spasial/geometri", Email: berhak, MinItems: map[string]int{"features": 23}, ForbiddenEmail: takBerhak},
 	)
 }

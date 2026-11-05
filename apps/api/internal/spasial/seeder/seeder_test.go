@@ -140,11 +140,12 @@ func TestSeedDemo_IsIdempotentWithinAMonthAndKeepsPreviousPeriods(t *testing.T) 
 	for range 2 {
 		sum, err := SeedDemo(ctx, db, seedNow)
 		require.NoError(t, err)
-		assert.Equal(t, DemoSummary{Neraca: len(komoditasNeraca) * 23, Rute: 5, Kandidat: 3}, sum)
+		assert.Equal(t, DemoSummary{Neraca: len(komoditasNeraca) * 23, Rute: 5, Kandidat: 3, Geometri: 23}, sum)
 	}
 	assert.EqualValues(t, len(komoditasNeraca)*23, count(t, db, "neraca_wilayah"))
 	assert.EqualValues(t, 5, count(t, db, "rute_distribusi"))
 	assert.EqualValues(t, 3, count(t, db, "kandidat_cold_storage"))
+	assert.EqualValues(t, 23, count(t, db, "wilayah_geometri"))
 
 	_, err := SeedDemo(ctx, db, seedNow.AddDate(0, 1, 0))
 	require.NoError(t, err)

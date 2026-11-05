@@ -16,12 +16,19 @@ type fakeRepository struct {
 	neraca   []domain.Neraca
 	rute     []domain.Rute
 	kandidat []domain.Kandidat
+	geometri []domain.GeometriWilayah
+	bbox     *domain.BBox
 	query    domain.NeracaQuery
 	err      error
 }
 
 func (f *fakeRepository) ListMarker(context.Context) ([]domain.Marker, error) {
 	return f.markers, f.err
+}
+
+func (f *fakeRepository) ListGeometri(_ context.Context, bbox *domain.BBox) ([]domain.GeometriWilayah, error) {
+	f.bbox = bbox
+	return f.geometri, f.err
 }
 
 func (f *fakeRepository) ListNeraca(_ context.Context, q domain.NeracaQuery) ([]domain.Neraca, error) {

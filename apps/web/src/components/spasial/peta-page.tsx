@@ -11,14 +11,15 @@ import { StatusBadge } from "@/components/garda/status-badge";
 import { RegionMap } from "@/components/map/region-map";
 import { exportCsv } from "@/lib/csv";
 import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
-import { useKandidatColdStorage, useMarkerWilayah, useRuteDistribusi } from "@/lib/query/hooks";
-import type { Rute } from "@/lib/api/spasial";
+import { useGeometriWilayah, useKandidatColdStorage, useMarkerWilayah, useRuteDistribusi } from "@/lib/query/hooks";
+import { ZOOM_GEOMETRI, type Rute } from "@/lib/api/spasial";
 import { cn } from "@/lib/utils";
 
 export function PetaPage() {
   const params = useSearchParams();
   const [pilih, setPilih] = useState(params.get("wilayah") ?? undefined);
   const { data: markers, isLoading } = useMarkerWilayah();
+  const { data: geometri } = useGeometriWilayah(ZOOM_GEOMETRI);
   const urut = useMemo(() => [...(markers ?? [])].filter((m) => m.punyaPasar).sort((a, b) => b.delta - a.delta), [markers]);
 
   const { data: rute, isLoading: ruteMemuat } = useRuteDistribusi();
@@ -38,7 +39,7 @@ export function PetaPage() {
       <PageHeader title="Peta surplus–defisit" description="Status harga per wilayah, rekomendasi rute dari sentra surplus ke wilayah tertekan, dan kandidat lokasi cold storage." />
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="glass rounded-xl p-4 xl:col-span-8">
-          <RegionMap markers={markers} isLoading={isLoading} selected={pilih} onSelect={setPilih} className="h-[560px]" />
+          <RegionMap markers={markers} geometri={geometri} isLoading={isLoading} selected={pilih} onSelect={setPilih} className="h-[560px]" />
         </section>
         <section className="glass flex max-h-[600px] flex-col rounded-xl p-5 xl:col-span-4">
           <PanelTitle title="Wilayah" description="Diurutkan dari tekanan tertinggi" />

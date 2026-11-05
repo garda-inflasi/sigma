@@ -11,4 +11,7 @@ type Repository interface {
 	ListRute(ctx context.Context) ([]Rute, error)
 	// ListKandidat mengembalikan kandidat terurut dari skor tertinggi.
 	ListKandidat(ctx context.Context) ([]Kandidat, error)
+	// ListGeometri mengembalikan geometri wilayah terurut menurut kode; bila bbox
+	// diberikan, hanya yang kotak pembatasnya beririsan.
+	ListGeometri(ctx context.Context, bbox *BBox) ([]GeometriWilayah, error)
 }

@@ -33,7 +33,7 @@ const (
 
 // DemoSummary melaporkan baris yang ditulis oleh SeedDemo.
 type DemoSummary struct {
-	Neraca, Rute, Kandidat int
+	Neraca, Rute, Kandidat, Geometri int
 }
 
 type Koordinat struct{ Lat, Lng float64 }
@@ -67,6 +67,11 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 			return err
 		}
 
+		geometri, err := buildGeometriRows(tx, koordinat, now)
+		if err != nil {
+			return err
+		}
+
 		steps := []struct {
 			name string
 			rows any
@@ -76,6 +81,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 			{"neraca", &neraca, []string{"komoditas_kode", "kabupaten_kode", "periode"}, []string{"surplus_defisit_ton", "delta_harga_pct", "sumber"}},
 			{"rute", &rute, []string{"id"}, []string{"asal_kode", "tujuan_kode", "komoditas_kode", "volume_ton", "jarak_km", "jam_tempuh", "biaya", "status", "sumber", "dibuat_pada"}},
 			{"kandidat", &kandidat, []string{"id"}, []string{"kabupaten_kode", "lokasi", "skor", "komponen_skor", "alasan", "status", "sumber", "dibuat_pada"}},
+			{"geometri", &geometri, []string{"kabupaten_kode"}, []string{"geojson", "min_lat", "min_lng", "max_lat", "max_lng", "sumber", "keterangan", "diperbarui_pada"}},
 		}
 		for _, step := range steps {
 			keys := make([]clause.Column, len(step.key))
@@ -88,7 +94,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 				return fmt.Errorf("seed %s: %w", step.name, err)
 			}
 		}
-		sum = DemoSummary{Neraca: len(neraca), Rute: len(rute), Kandidat: len(kandidat)}
+		sum = DemoSummary{Neraca: len(neraca), Rute: len(rute), Kandidat: len(kandidat), Geometri: len(geometri)}
 		return nil
 	})
 	return sum, err
@@ -214,4 +220,43 @@ func jarakMeter(a, b Koordinat) float64 {
 	dLat, dLng := rad(b.Lat-a.Lat), rad(b.Lng-a.Lng)
 	h := math.Pow(math.Sin(dLat/2), 2) + math.Cos(rad(a.Lat))*math.Cos(rad(b.Lat))*math.Pow(math.Sin(dLng/2), 2)
 	return 2 * radiusBumi * math.Asin(math.Sqrt(h))
+}
+
+// buildGeometriRows menyusun baris wilayah_geometri. Pasar dan cold storage yang
+// sudah ada menjadi jangkar: titik-titik itu dijamin berada di dalam poligon
+// kabupatennya. Fasilitas cold storage baru ada setelah coldstorage.reference.
+func buildGeometriRows(tx *gorm.DB, pusat map[string]Koordinat, now time.Time) ([]domain.WilayahGeometri, error) {
+	var titik []struct {
+		Kabupaten string
+		Lat, Lng  float64
+	}
+	if err := tx.Raw(`
+		SELECT kabupaten_kode AS kabupaten, lat, lng FROM pasar
+		UNION ALL
+		SELECT kabupaten_kode AS kabupaten, lat, lng FROM cold_storage`).Scan(&titik).Error; err != nil {
+		return nil, fmt.Errorf("baca titik jangkar geometri: %w", err)
+	}
+	jangkar := map[string][]Koordinat{}
+	for _, t := range titik {
+		jangkar[t.Kabupaten] = append(jangkar[t.Kabupaten], Koordinat{t.Lat, t.Lng})
+	}
+
+	geometri, err := BuildGeometri(pusat, jangkar)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]domain.WilayahGeometri, 0, len(geometri))
+	for _, kode := range KodeWilayah(pusat) {
+		g := geometri[kode]
+		raw, err := g.GeoJSON()
+		if err != nil {
+			return nil, fmt.Errorf("geometri %s: %w", kode, err)
+		}
+		b := g.BBox()
+		rows = append(rows, domain.WilayahGeometri{
+			KabupatenKode: kode, GeoJSON: string(raw), MinLat: b.MinLat, MinLng: b.MinLng, MaxLat: b.MaxLat, MaxLng: b.MaxLng,
+			Sumber: SumberDemo, Keterangan: KeteranganGeometri, DiperbaruiPada: now.UTC(),
+		})
+	}
+	return rows, nil
 }

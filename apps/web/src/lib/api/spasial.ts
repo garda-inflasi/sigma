@@ -57,6 +57,74 @@ export interface KandidatColdStorage {
   rencana: boolean;
 }
 
+/** Geometri GeoJSON satu wilayah (Polygon atau MultiPolygon). */
+export type GeometriGeoJSON =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] };
+
+/** `GET /v1/spasial/geometri`: FeatureCollection; `perkiraan` benar bila bukan batas resmi. */
+export interface GeometriResponse {
+  type: "FeatureCollection";
+  features: {
+    id: string;
+    properties: {
+      kode: string;
+      nama: string;
+      level: string;
+      sumber: string;
+      perkiraan: boolean;
+      keterangan: string;
+    };
+    geometry: GeometriGeoJSON;
+  }[];
+}
+
+export interface GeometriWilayah {
+  kode: string;
+  nama: string;
+  /** Poligon perkiraan, bukan batas administratif resmi. */
+  perkiraan: boolean;
+  geometry: GeometriGeoJSON;
+  /** Cincin luar tiap poligon sebagai [bujur, lintang]; lubang diabaikan (dipakai peta skema SVG). */
+  cincinLuar: [number, number][][];
+}
+
+export function toGeometri(r: GeometriResponse): GeometriWilayah[] {
+  return r.features.map((f) => ({
+    kode: f.properties.kode,
+    nama: formatWilayah(f.properties.nama),
+    perkiraan: f.properties.perkiraan,
+    geometry: f.geometry,
+    cincinLuar: (f.geometry.type === "Polygon"
+      ? [f.geometry.coordinates]
+      : f.geometry.coordinates
+    ).map((poligon) => poligon[0].map(([lng, lat]) => [lng, lat] as [number, number])),
+  }));
+}
+
+/** Tingkat zoom bawaan untuk geometri peta (cukup rinci untuk satu provinsi). */
+export const ZOOM_GEOMETRI = 8;
+
+/**
+ * FeatureCollection untuk lapisan Mapbox: tiap wilayah membawa `status` marker-nya
+ * supaya warna isian ditentukan data, bukan kode komponen.
+ */
+export function geometriKeFeatureCollection(
+  geometri: GeometriWilayah[],
+  markers: MarkerWilayah[],
+) {
+  const status = new Map(markers.map((m) => [m.kode, m.status]));
+  return {
+    type: "FeatureCollection" as const,
+    features: geometri.map((g) => ({
+      type: "Feature" as const,
+      id: g.kode,
+      properties: { kode: g.kode, nama: g.nama, status: status.get(g.kode) ?? "normal", perkiraan: g.perkiraan },
+      geometry: g.geometry,
+    })),
+  };
+}
+
 export function toMarker(r: MarkerResponse): MarkerWilayah {
   return {
     kode: r.kode,

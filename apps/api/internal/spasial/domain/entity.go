@@ -122,3 +122,39 @@ type NeracaQuery struct {
 	KomoditasKode string
 	Periode       time.Time
 }
+
+// WilayahGeometri memetakan tabel wilayah_geometri: batas satu kabupaten/kota
+// sebagai GeoJSON. Sumber DEMO berarti poligon perkiraan, bukan batas resmi.
+type WilayahGeometri struct {
+	KabupatenKode  string    `gorm:"column:kabupaten_kode;primaryKey"`
+	GeoJSON        string    `gorm:"column:geojson;type:jsonb"`
+	MinLat         float64   `gorm:"column:min_lat"`
+	MinLng         float64   `gorm:"column:min_lng"`
+	MaxLat         float64   `gorm:"column:max_lat"`
+	MaxLng         float64   `gorm:"column:max_lng"`
+	Sumber         string    `gorm:"column:sumber"`
+	Keterangan     string    `gorm:"column:keterangan"`
+	DiperbaruiPada time.Time `gorm:"column:diperbarui_pada;default:now()"`
+}
+
+func (WilayahGeometri) TableName() string { return "wilayah_geometri" }
+
+// SumberResmi menandai geometri hasil impor batas administratif resmi.
+const SumberResmi = "RESMI"
+
+// GeometriWilayah adalah geometri beserta nama dan tingkat wilayahnya.
+type GeometriWilayah struct {
+	WilayahGeometri
+	Nama  string
+	Level string
+}
+
+// LokasiWilayah adalah hasil pencarian wilayah untuk satu titik.
+type LokasiWilayah struct {
+	Kode, Nama string
+	// DiDalam benar bila titik berada di dalam poligon wilayah; bila tidak,
+	// wilayah adalah yang pusatnya terdekat.
+	DiDalam bool
+	// JarakPusatKm adalah jarak garis lurus titik ke titik pusat wilayah.
+	JarakPusatKm float64
+}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/spasial/domain"
+	"github.com/garda-inflasi/api/internal/spasial/usecase"
 )
 
 // MarkerResponse adalah satu wilayah di peta. Status: defisit | waspada | normal | surplus.
@@ -118,4 +119,51 @@ func ToKandidatResponses(items []domain.Kandidat) ([]KandidatResponse, error) {
 		}
 	}
 	return out, nil
+}
+
+// FiturResponse adalah satu wilayah dalam FeatureCollection GeoJSON.
+type FiturResponse struct {
+	Type       string                  `json:"type"`
+	ID         string                  `json:"id"`
+	Properties FiturPropertiesResponse `json:"properties"`
+	Geometry   json.RawMessage         `json:"geometry"`
+}
+
+// FiturPropertiesResponse menjelaskan wilayah. Perkiraan benar bila geometri
+// bukan batas administratif resmi (sumber DEMO).
+type FiturPropertiesResponse struct {
+	Kode       string `json:"kode"`
+	Nama       string `json:"nama"`
+	Level      string `json:"level"`
+	Sumber     string `json:"sumber"`
+	Perkiraan  bool   `json:"perkiraan"`
+	Keterangan string `json:"keterangan"`
+}
+
+// GeometriResponse adalah FeatureCollection GeoJSON seluruh wilayah yang diminta.
+type GeometriResponse struct {
+	Type     string          `json:"type"`
+	Features []FiturResponse `json:"features"`
+}
+
+// LokasiResponse adalah wilayah untuk satu titik.
+type LokasiResponse struct {
+	Kode         string  `json:"kode"`
+	Nama         string  `json:"nama"`
+	DiDalam      bool    `json:"di_dalam"`
+	JarakPusatKm float64 `json:"jarak_pusat_km"`
+}
+
+func ToGeometriResponse(items []usecase.Fitur) GeometriResponse {
+	features := make([]FiturResponse, len(items))
+	for i, f := range items {
+		features[i] = FiturResponse{
+			Type: "Feature", ID: f.KabupatenKode, Geometry: f.Geometri,
+			Properties: FiturPropertiesResponse{
+				Kode: f.KabupatenKode, Nama: f.Nama, Level: f.Level, Sumber: f.Sumber,
+				Perkiraan: f.Sumber != domain.SumberResmi, Keterangan: f.Keterangan,
+			},
+		}
+	}
+	return GeometriResponse{Type: "FeatureCollection", Features: features}
 }

@@ -6,5 +6,5 @@ import (
 
 func init() {
 	registerModels("spasial",
-		&spasialdomain.Wilayah{}, &spasialdomain.NeracaWilayah{}, &spasialdomain.RuteDistribusi{}, &spasialdomain.KandidatColdStorage{})
+		&spasialdomain.Wilayah{}, &spasialdomain.NeracaWilayah{}, &spasialdomain.RuteDistribusi{}, &spasialdomain.KandidatColdStorage{}, &spasialdomain.WilayahGeometri{})
 }

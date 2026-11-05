@@ -22,6 +22,7 @@ var routePermissions = map[string]string{
 	"/v1/ews":                          "ews.lihat",
 	"/v1/prediksi":                     "prediksi.lihat",
 	"/v1/spasial/wilayah":              "spasial.lihat",
+	"/v1/spasial/geometri":             "spasial.lihat",
 	"/v1/cold-storage":                 "coldstorage.lihat",
 	"/v1/cold-storage/fasilitas/CS-01": "coldstorage.lihat",
 	"/v1/intervensi":                   "intervensi.lihat",

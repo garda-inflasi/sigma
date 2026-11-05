@@ -15,6 +15,8 @@ import {
   type EntriHargaResponse, type HargaParams, type RingkasanHarga,
 } from "./harga";
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
+import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
+import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
 import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
 import { toKartu, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
@@ -27,6 +29,7 @@ import {
 import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { USERS } from "@/lib/data/reference";
+import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
   ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
@@ -72,7 +75,8 @@ export const api = {
       get<ReturnType<typeof m.mockTrenHarga>>(`/v1/harga/tren?komoditas=${kode}&wilayah=${kab}`, () => m.mockTrenHarga(kode, kab)),
   },
   eksekutif: {
-    ringkasan: () => get<RingkasanEksekutif>("/v1/dashboard/eksekutif", m.mockEksekutif),
+    ringkasan: (): Promise<RingkasanEksekutif> =>
+      MODE_MOCK ? mockDelay(m.mockEksekutif) : apiFetch<RingkasanEksekutifResponse>("/v1/dashboard/eksekutif").then(toRingkasanEksekutif),
     xai: (kode: string): Promise<ProyeksiXai> =>
       MODE_MOCK ? mockDelay(() => m.mockXai(kode)) : apiFetch<ProyeksiResponse>(`/v1/prediksi/${encodeURIComponent(kode)}`).then(toProyeksiXai),
   },
@@ -129,7 +133,17 @@ export const api = {
         ? mockDelay({ berhasil: rows.length, gagal: 0, volumeTon: Math.round(rows.reduce((a, r) => a + r.volumeTon, 0) * 10) / 10 }, 500, 1100)
         : coldStorageClient.bulk(action, rows.map((r) => r.id)),
   },
-  sumber: { list: () => get<SumberData[]>("/v1/sumber-data", m.mockSumber) },
+  sumber: {
+    list: (): Promise<SumberData[]> =>
+      MODE_MOCK ? mockDelay(m.mockSumber) : apiFetch<SumberDataResponse[]>("/v1/sumber-data").then((rows) => rows.map(toSumberData)),
+    /** Jeda atau lanjutkan sumber; mengubah status katalog (penjadwal nyata menyusul di 05-B). */
+    bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
+      MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
+  },
+  kpi: {
+    list: (): Promise<KpiIndikator[]> =>
+      MODE_MOCK ? mockDelay(kpiMock) : apiFetch<KpiIndikatorResponse[]>("/v1/kpi").then((rows) => rows.map(toKpiIndikator)),
+  },
   pengguna: { list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()) },
   rbac: { katalog: (): Promise<KatalogAkses> => (MODE_MOCK ? mockDelay(m.mockKatalogAkses) : penggunaApi.katalog()) },
   audit: {

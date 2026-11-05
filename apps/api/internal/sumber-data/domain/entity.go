@@ -2,25 +2,52 @@ package domain
 
 import "time"
 
+// Jenis sumber.
+const (
+	JenisAPI     = "API"
+	JenisScraper = "SCRAPER"
+)
+
+// Status sumber (enum status_sumber). Sumber yang baru dikatalogkan berstatus
+// StatusBelumAktif sampai pernah dijalankan.
+const (
+	StatusBelumAktif = "BELUM_AKTIF"
+	StatusSehat      = "SEHAT"
+	StatusTertunda   = "TERTUNDA"
+	StatusGagal      = "GAGAL"
+	StatusDijeda     = "DIJEDA"
+)
+
+// SumberData memetakan tabel sumber_data: metadata sebuah sumber data eksternal
+// (API resmi atau scraper). Belum ada pengambilan data nyata (05-B), jadi
+// TerakhirJalan, Keberhasilan7h, dan LatensiMs kosong untuk sumber yang belum berjalan.
 type SumberData struct {
-	ID              int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	Nama            string    `gorm:"column:nama"`
-	Tipe            string    `gorm:"column:tipe"`
-	URL             string    `gorm:"column:url"`
-	Status          string    `gorm:"column:status;default:AKTIF"`
-	FrekuensiUpdate string    `gorm:"column:frekuensi_update"`
-	DibuatPada      time.Time `gorm:"column:dibuat_pada;default:now()"`
+	ID       string `gorm:"column:id;primaryKey"`
+	Nama     string `gorm:"column:nama"`
+	Penyedia string `gorm:"column:penyedia"`
+	Jenis    string `gorm:"column:jenis"`
+	Cakupan  string `gorm:"column:cakupan"`
+	// JadwalCron dibaca dalam zona waktu WIB (Asia/Jakarta).
+	JadwalCron    string     `gorm:"column:jadwal_cron"`
+	Status        string     `gorm:"column:status"`
+	TerakhirJalan *time.Time `gorm:"column:terakhir_jalan"`
+	// Keberhasilan7h dalam persen 0–100; nil bila belum ada eksekusi.
+	Keberhasilan7h *float64 `gorm:"column:keberhasilan_7h"`
+	LatensiMs      int      `gorm:"column:latensi_ms"`
+	RobotsTxtPatuh bool     `gorm:"column:robots_txt_patuh"`
+	Atribusi       string   `gorm:"column:atribusi"`
+	URLDasar       *string  `gorm:"column:url_dasar"`
 }
 
 func (SumberData) TableName() string {
 	return "sumber_data"
 }
 
-// BulkAction represents a bulk action on sumber data pipelines.
+// BulkAction adalah aksi massal pada katalog sumber. Baru mengubah metadata
+// status; efek nyata pada penjadwal ada di 05-B.
 type BulkAction string
 
 const (
-	BulkJalankan  BulkAction = "jalankan"
 	BulkJeda      BulkAction = "jeda"
 	BulkLanjutkan BulkAction = "lanjutkan"
 )

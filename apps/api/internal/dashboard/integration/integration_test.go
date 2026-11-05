@@ -334,9 +334,9 @@ func TestPublishingPricesRefreshesDashboardAggregates(t *testing.T) {
 	require.NoError(t, s.db.Raw("SELECT id FROM entri_harga WHERE status = 'DIAJUKAN' AND petugas_id <> 'koordinator_lapangan' LIMIT 400").Scan(&ids).Error)
 	require.NotEmpty(t, ids)
 
-	valid := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"aksi": "validasi", "ids": ids})
+	valid := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": ids})
 	require.Equal(t, http.StatusOK, valid.Code, valid.Body.String())
-	pub := s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"aksi": "publikasi", "ids": ids})
+	pub := s.call(t, http.MethodPost, "/v1/harga/bulk", emailManajerData, map[string]any{"action": "publikasi", "ids": ids})
 	require.Equal(t, http.StatusOK, pub.Code, pub.Body.String())
 
 	var sesudah int64

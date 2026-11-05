@@ -1193,6 +1193,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/sumber-data:
+    get:
+      summary: Mendaftar katalog sumber data
+      description: |
+        Metadata sumber (API resmi dan scraper). Pengambilan data nyata belum
+        berjalan (05-B), jadi sumber yang belum pernah dijalankan berstatus
+        `BELUM_AKTIF` dengan `terakhir_jalan` dan `keberhasilan_7h` null.
+        Butuh izin `sumber.lihat`.
+      operationId: listSumberData
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar sumber, terurut menurut id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SumberDataListResponse"
+        "403":
+          description: Tanpa izin `sumber.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/sumber-data/{id}:
     get:
       summary: Mendapatkan detail sumber data
@@ -1206,14 +1233,15 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
+          example: SRC-BPS
       responses:
         "200":
           description: Detail sumber data
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/SumberDataResponse"
         "404":
           description: Sumber data tidak ditemukan
           content:
@@ -1223,7 +1251,13 @@ paths:
 
   /v1/sumber-data/bulk:
     post:
-      summary: Menjalankan aksi massal pada pipeline sumber data
+      summary: Menjeda atau melanjutkan sumber data
+      description: |
+        Butuh izin `sumber.kelola`; tercatat di audit trail. Baru mengubah status
+        di katalog. `jeda` hanya berlaku untuk sumber yang belum dijeda;
+        `lanjutkan` hanya untuk yang sedang dijeda dan mengembalikannya ke
+        `TERTUNDA` (pernah berjalan) atau `BELUM_AKTIF` (belum pernah).
+        Respons memuat `berhasil` dan `gagal` (id yang tidak berubah).
       operationId: bulkSumberData
       tags:
         - Sumber Data
@@ -1244,6 +1278,129 @@ paths:
                 $ref: "#/components/schemas/BulkResultResponse"
         "400":
           description: Validasi gagal atau aksi tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/eksekutif:
+    get:
+      summary: Ringkasan dashboard eksekutif
+      description: |
+        Satu layar eksekutif untuk Aceh: inflasi bulanan terbaru dengan seri 12
+        bulan dan penyumbang, neraca pangan, ruang fiskal, serta hitungan
+        peringatan EWS dan kartu intervensi. Butuh izin `dashboard.eksekutif`.
+
+        **Setiap angka membawa `sumber`.** `DEMO` berarti data contoh, bukan angka
+        resmi; `demo` bernilai true bila ada blok ber-sumber DEMO dan UI wajib
+        menampilkan label demo. Angka resmi (BPS, BI, DJPB) hanya masuk lewat impor.
+
+        Blok yang datanya belum ada bernilai `null` (bukan galat). `fiskal` juga
+        `null` untuk peran tanpa izin `fiskal.lihat`.
+      operationId: getRingkasanEksekutif
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Ringkasan eksekutif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RingkasanEksekutifResponse"
+        "403":
+          description: Tanpa izin `dashboard.eksekutif`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/kpi:
+    get:
+      summary: Mendaftar indikator kinerja (KPI)
+      description: |
+        Semua KPI dengan target berlaku, nilai terbaru yang tidak melewati
+        `periode`, tren (paling banyak 6 periode), dan status capaian. Butuh izin
+        `kpi.lihat`.
+
+        Nilai dihitung job dari data yang ada (`otomatis`: true). KPI yang butuh
+        model atau data yang belum ada bernilai null dengan status
+        `MENUNGGU_DATA`, bukan 0. `baseline` kosong sampai ditetapkan pemangku
+        kepentingan.
+      operationId: listKpi
+      tags:
+        - KPI
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: periode
+          in: query
+          description: Bulan acuan `YYYY-MM` (bawaan bulan berjalan)
+          schema:
+            type: string
+            example: "2026-10"
+        - name: wilayah
+          in: query
+          description: Kode kabupaten/kota 4 digit (bawaan seluruh provinsi)
+          schema:
+            type: string
+            example: "1171"
+      responses:
+        "200":
+          description: Daftar KPI terurut menurut kelompok dan urutan baku
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiListResponse"
+        "400":
+          description: Periode atau wilayah tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `kpi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/kpi/{kode}/riwayat:
+    get:
+      summary: Riwayat satu KPI
+      description: Paling banyak 36 periode terakhir (versi berlaku tiap periode), urut naik.
+      operationId: getKpiRiwayat
+      tags:
+        - KPI
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          schema:
+            type: string
+          example: LOG-UTILISASI-CS
+        - name: periode
+          in: query
+          schema:
+            type: string
+            example: "2026-10"
+        - name: wilayah
+          in: query
+          schema:
+            type: string
+            example: "1171"
+      responses:
+        "200":
+          description: KPI beserta riwayat nilainya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiRiwayatResponse"
+        "404":
+          description: KPI tidak ditemukan
           content:
             application/json:
               schema:
@@ -2661,13 +2818,342 @@ components:
       properties:
         action:
           type: string
-          enum: [jalankan, jeda, lanjutkan]
+          enum: [jeda, lanjutkan]
         ids:
           type: array
           minItems: 1
+          maxItems: 100
           items:
+            type: string
+          example: ["SRC-BPS", "SRC-BI"]
+
+    KpiNilai:
+      type: object
+      properties:
+        periode:
+          type: string
+          format: date
+          description: Bulan (tanggal 1)
+        nilai:
+          type: number
+        versi:
+          type: integer
+          description: Revisi menambah versi; versi terbesar yang berlaku
+        dihitung_pada:
+          type: string
+          format: date-time
+
+    Kpi:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: LOG-UTILISASI-CS
+        kelompok:
+          type: string
+          enum: [DATA_SISTEM, LOGISTIK, DAMPAK_EKONOMI, TINDAK_LANJUT]
+        nama:
+          type: string
+        deskripsi:
+          type: string
+        rumus:
+          type: string
+        satuan:
+          type: string
+        arah_baik:
+          type: string
+          enum: [NAIK, TURUN]
+        frekuensi:
+          type: string
+          enum: [HARIAN, MINGGUAN, BULANAN, TRIWULAN]
+        otomatis:
+          type: boolean
+          description: Ada penghitung otomatis; false = menunggu model atau data lain
+        target:
+          type: object
+          nullable: true
+          properties:
+            nilai:
+              type: number
+            ambang_waspada:
+              type: number
+              nullable: true
+            baseline:
+              type: number
+              nullable: true
+              description: Kosong sampai ditetapkan pemangku kepentingan
+            periode_mulai:
+              type: string
+              format: date
+        nilai:
+          allOf:
+            - $ref: "#/components/schemas/KpiNilai"
+          nullable: true
+        tren:
+          type: array
+          items:
+            $ref: "#/components/schemas/KpiNilai"
+        status:
+          type: string
+          enum: [TERCAPAI, WASPADA, TIDAK_TERCAPAI, TANPA_TARGET, MENUNGGU_DATA]
+
+    KpiListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Kpi"
+
+    KpiRiwayatResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            kpi:
+              $ref: "#/components/schemas/Kpi"
+            riwayat:
+              type: array
+              items:
+                $ref: "#/components/schemas/KpiNilai"
+
+    SumberAngka:
+      type: string
+      enum: [BPS, BI, DJPB, BAPANAS, DEMO]
+      description: Asal angka; DEMO = data contoh, bukan angka resmi
+
+    RingkasanEksekutif:
+      type: object
+      properties:
+        demo:
+          type: boolean
+          description: Benar bila ada blok ber-sumber DEMO
+        inflasi:
+          type: object
+          nullable: true
+          properties:
+            periode:
+              type: string
+              format: date
+              description: Bulan data (tanggal 1)
+            sumber:
+              $ref: "#/components/schemas/SumberAngka"
+            diimpor_pada:
+              type: string
+              format: date-time
+            ihk:
+              type: number
+            yoy:
+              type: number
+            mtm:
+              type: number
+            ytd:
+              type: number
+            sasaran:
+              type: object
+              properties:
+                tahun:
+                  type: integer
+                bawah:
+                  type: number
+                atas:
+                  type: number
+            seri:
+              type: array
+              description: Paling banyak 12 bulan, urut naik
+              items:
+                type: object
+                properties:
+                  periode:
+                    type: string
+                    format: date
+                  yoy:
+                    type: number
+            penyumbang:
+              type: array
+              description: Paling banyak 6 komoditas, andil terbesar lebih dulu
+              items:
+                type: object
+                properties:
+                  kode:
+                    type: string
+                  nama:
+                    type: string
+                  andil:
+                    type: number
+                    description: Poin persen
+        neraca:
+          type: object
+          nullable: true
+          properties:
+            periode:
+              type: string
+              format: date
+            sumber:
+              $ref: "#/components/schemas/SumberAngka"
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  nama:
+                    type: string
+                  produksi_ton:
+                    type: number
+                  konsumsi_ton:
+                    type: number
+                  stok_ton:
+                    type: number
+                    nullable: true
+        fiskal:
+          type: object
+          nullable: true
+          description: Null bila belum ada data atau peran tanpa `fiskal.lihat`
+          properties:
+            sumber:
+              $ref: "#/components/schemas/SumberAngka"
+            per_tanggal:
+              type: string
+              format: date
+            pagu:
+              type: integer
+              format: int64
+            realisasi:
+              type: integer
+              format: int64
+            skor:
+              type: integer
+              description: Indikatif, dari porsi pagu yang belum terealisasi (0-100)
+            status:
+              type: string
+              enum: [MEMADAI, TERBATAS, KRITIS]
+            instrumen:
+              type: array
+              items:
+                type: object
+                properties:
+                  nama:
+                    type: string
+                  pagu:
+                    type: integer
+                    format: int64
+                  realisasi:
+                    type: integer
+                    format: int64
+        ews:
+          type: object
+          description: Peringatan belum selesai per severity
+          additionalProperties:
             type: integer
-          example: [1, 2]
+          example: { INFO: 0, WASPADA: 2, SIAGA: 1, KRITIS: 0 }
+        intervensi:
+          type: object
+          description: Kartu per siklus (normal, tekanan, surplus)
+          additionalProperties:
+            type: object
+            properties:
+              aktif:
+                type: integer
+              selesai:
+                type: integer
+        siklus_dominan:
+          type: string
+          enum: [normal, tekanan, surplus]
+
+    RingkasanEksekutifResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/RingkasanEksekutif"
+
+    SumberData:
+      type: object
+      properties:
+        id:
+          type: string
+          example: SRC-BPS
+        nama:
+          type: string
+        penyedia:
+          type: string
+        jenis:
+          type: string
+          enum: [API, SCRAPER]
+        cakupan:
+          type: string
+        jadwal_cron:
+          type: string
+          description: Cron lima kolom dalam zona waktu WIB (Asia/Jakarta)
+          example: "0 6 * * *"
+        status:
+          type: string
+          enum: [BELUM_AKTIF, SEHAT, TERTUNDA, GAGAL, DIJEDA]
+        terakhir_jalan:
+          type: string
+          format: date-time
+          nullable: true
+        keberhasilan_7h:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Persen; null bila belum ada eksekusi
+        latensi_ms:
+          type: integer
+        robots_txt_patuh:
+          type: boolean
+        atribusi:
+          type: string
+        url_dasar:
+          type: string
+          nullable: true
+
+    SumberDataResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/SumberData"
+
+    SumberDataListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SumberData"
 
     BulkKomoditasRequest:
       type: object

@@ -1,6 +1,6 @@
 # 16 — Indikator kinerja (KPI)
 
-**Prioritas:** P1 (PRD §3.4) · **Status:** UI ✅ · Backend ⬜ · Terhubung ⬜ · Skema & seed ⬜ · Tes ⬜
+**Prioritas:** P1 (PRD §3.4) · **Status:** UI ✅ · Backend 🟡 (KPI berbasis model di 16-B) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -16,18 +16,18 @@
 **Bergantung pada:** 06-A, 10-A, 13-A, 14-A.
 
 1. **MIG**
-   - [ ] `kpi_definisi` (`kode` PK, `kelompok` enum 4 nilai [Data & Sistem / Logistik / Dampak Ekonomi / Tindak Lanjut], `nama`, `deskripsi`, `rumus`, `satuan`, `arah_baik`, `frekuensi`, `sumber_query`).
-   - [ ] `kpi_target` (`kpi_kode` FK, `wilayah_kode` NULL = semua, `periode_mulai`, `target`, `ambang_waspada`, `baseline`).
-   - [ ] `kpi_nilai` (`kpi_kode`, `wilayah_kode`, `periode` DATE, `nilai`, `dihitung_pada`, UNIQUE `(kpi_kode, wilayah_kode, periode)`); revisi = versi baru, bukan menimpa. Index `(kpi_kode, periode DESC)`.
+   - [x] `kpi_definisi` (`kode` PK, `kelompok` enum 4 nilai [Data & Sistem / Logistik / Dampak Ekonomi / Tindak Lanjut], `nama`, `deskripsi`, `rumus`, `satuan`, `arah_baik`, `frekuensi`, `sumber_query`).
+   - [x] `kpi_target` (`kpi_kode` FK, `wilayah_kode` NULL = semua, `periode_mulai`, `target`, `ambang_waspada`, `baseline`).
+   - [x] `kpi_nilai` (`kpi_kode`, `wilayah_kode`, `periode` DATE, `nilai`, `dihitung_pada`, UNIQUE `(kpi_kode, wilayah_kode, periode)`); revisi = versi baru, bukan menimpa. Index `(kpi_kode, periode DESC)`.
 2. **SEED**
-   - [ ] `reference`: `kpi_definisi` dan `kpi_target` untuk empat kelompok dengan target PRD §12 (MAPE harga ≤ 5,4%, F1 EWS ≥ 0,88, AUC-ROC ≥ 0,94, RMSE shelf-life ≤ 1 hari). **Baseline perlu keputusan bisnis**, jangan diisi sembarang.
-   - [ ] `demo`: nilai historis 12 bulan **dihitung oleh job** dari data demo, bukan angka tulis tangan.
+   - [x] `reference`: `kpi_definisi` dan `kpi_target` untuk empat kelompok dengan target PRD §12 (MAPE harga ≤ 5,4%, F1 EWS ≥ 0,88, AUC-ROC ≥ 0,94, RMSE shelf-life ≤ 1 hari). **Baseline perlu keputusan bisnis**, jangan diisi sembarang.
+   - [x] `demo`: nilai historis 12 bulan **dihitung oleh job** dari data demo, bukan angka tulis tangan.
 3. **API**
-   - [ ] Modul `kpi` baru (`bash scripts/gen-module.sh kpi`): `GET /v1/kpi` dengan filter periode/wilayah dan riwayat per KPI.
-   - [ ] Job penghitung untuk KPI yang datanya sudah ada: kelengkapan produsen terverifikasi dan ketepatan data (dari harga), utilisasi cold storage, rasio rekomendasi AI yang dieksekusi (dari intervensi). KPI berbasis model (MAPE, F1, AUC, RMSE) ditandai "menunggu data" sampai 16-B.
-   - [ ] Satukan kartu "KPI operasional" dashboard dengan `kpi_definisi` (subset), jangan dua tabel berbeda.
+   - [x] Modul `kpi` baru (`bash scripts/gen-module.sh kpi`): `GET /v1/kpi` dengan filter periode/wilayah dan riwayat per KPI.
+   - [x] Job penghitung untuk KPI yang datanya sudah ada: kelengkapan produsen terverifikasi dan ketepatan data (dari harga), utilisasi cold storage, rasio rekomendasi AI yang dieksekusi (dari intervensi). KPI berbasis model (MAPE, F1, AUC, RMSE) ditandai "menunggu data" sampai 16-B. Dijalankan lewat `cmd/kpi` (cron) dan seeder `kpi.demo`.
+   - [ ] Satukan kartu "KPI operasional" dashboard dengan `kpi_definisi` (subset), jangan dua tabel berbeda. *(ditunda: kartu dashboard operasional dikerjakan di 08-A)*
 4. **FE**
-   - [ ] Tambah `api.kpi` di [endpoints.ts](../../apps/web/src/lib/api/endpoints.ts), key query, dan hook; ganti data statis di `kpi-page.tsx`; status capaian vs target dan tren beberapa periode.
+   - [x] Tambah `api.kpi` di [endpoints.ts](../../apps/web/src/lib/api/endpoints.ts), key query, dan hook; ganti data statis di `kpi-page.tsx`; status capaian vs target dan tren beberapa periode.
 5. **TES**: perhitungan tiap KPI pada data kecil yang hasilnya bisa dihitung tangan; izin dan kontrak respons.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).
 

@@ -1,9 +1,17 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrNotFound dikembalikan GetByID bila sumber tidak ada.
+var ErrNotFound = errors.New("sumber data tidak ditemukan")
 
 type Repository interface {
 	List(ctx context.Context) ([]SumberData, error)
-	GetByID(ctx context.Context, id int64) (*SumberData, error)
-	BulkAction(ctx context.Context, ids []int64, action BulkAction) (int64, error)
+	GetByID(ctx context.Context, id string) (*SumberData, error)
+	// BulkAction menerapkan aksi pada sumber yang memenuhi syaratnya (jeda: yang
+	// belum dijeda; lanjutkan: yang sedang dijeda) dan mengembalikan id yang berubah.
+	BulkAction(ctx context.Context, ids []string, action BulkAction) ([]string, error)
 }

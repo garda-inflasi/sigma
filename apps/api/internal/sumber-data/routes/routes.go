@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/sumber-data/delivery/http"
 	"github.com/garda-inflasi/api/internal/sumber-data/repository/postgres"
 	"github.com/garda-inflasi/api/internal/sumber-data/usecase"
@@ -19,15 +20,14 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo)
+	uc := usecase.New(repo, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
-	engine.GET("/sumber-data", middleware.JWTAuth(deps.Token), middleware.RequirePermission("sumber.lihat"), handler.List)
-
-	protected := engine.Group("/sumber-data")
-	protected.Use(middleware.JWTAuth(deps.Token))
+	sumber := engine.Group("/sumber-data")
+	sumber.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("sumber.lihat"))
 	{
-		protected.GET("/:id", middleware.RequirePermission("sumber.lihat"), handler.Get)
-		protected.POST("/bulk", middleware.RequirePermission("sumber.kelola"), handler.Bulk)
+		sumber.GET("", handler.List)
+		sumber.GET("/:id", handler.Get)
+		sumber.POST("/bulk", middleware.RequirePermission("sumber.kelola"), handler.Bulk)
 	}
 }

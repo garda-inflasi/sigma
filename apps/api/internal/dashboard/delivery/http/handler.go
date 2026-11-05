@@ -47,20 +47,3 @@ func (h *Handler) GetAktivitasLapangan(c *gin.Context) {
 
 	response.Success(c, dto.ToAktivitasLapanganResponses(items))
 }
-
-// GET /v1/dashboard/eksekutif
-func (h *Handler) GetRingkasanEksekutif(c *gin.Context) {
-	var req dto.RingkasanEksekutifRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "Validasi gagal: "+err.Error())
-		return
-	}
-
-	data, err := h.uc.GetRingkasanEksekutif(c.Request.Context(), req.Periode)
-	if err != nil {
-		response.InternalError(c, "Gagal mengambil data ringkasan eksekutif")
-		return
-	}
-
-	response.Success(c, dto.RingkasanEksekutifResponse{Data: data})
-}

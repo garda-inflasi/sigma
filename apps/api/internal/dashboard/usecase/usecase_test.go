@@ -41,12 +41,6 @@ func (m *mockRepository) AktivitasLapangan(ctx context.Context, awal, akhir time
 	return items, args.Error(1)
 }
 
-func (m *mockRepository) GetRingkasanEksekutif(ctx context.Context, periode string) (*domain.RingkasanEksekutif, error) {
-	args := m.Called(ctx, periode)
-	data, _ := args.Get(0).(*domain.RingkasanEksekutif)
-	return data, args.Error(1)
-}
-
 // deret membuat 14 titik harian berakhir 16 Oktober 2026 dari nilai terlama ke terbaru.
 func deret(indikator string, nilai ...float64) []domain.TitikKpi {
 	akhir := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)

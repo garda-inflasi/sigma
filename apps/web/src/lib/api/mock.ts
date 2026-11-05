@@ -302,14 +302,14 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
 /* ── Sumber data, pengguna, audit, brief, tugas, master ─── */
 export function mockSumber(): SumberData[] {
   return [
-    { id: "SRC-BPS", nama: "BPS WebAPI — IHK & inflasi", penyedia: "BPS", jenis: "API", cakupan: "Provinsi & 3 kota IHK", jadwal: "Harian 06.00", terakhir: menitLalu(142), status: "SEHAT", keberhasilan7h: 100, latensiMs: 640, rekamTerakhir: 1284 },
-    { id: "SRC-BI", nama: "PIHPS Nasional — harga pangan", penyedia: "Bank Indonesia", jenis: "API", cakupan: "Pasar tradisional & modern", jadwal: "Harian 10.00", terakhir: menitLalu(38), status: "SEHAT", keberhasilan7h: 98.6, latensiMs: 910, rekamTerakhir: 3360 },
-    { id: "SRC-DJPB", nama: "Kanwil DJPb — realisasi belanja", penyedia: "Kanwil DJPb Aceh", jenis: "API", cakupan: "APBD & BTT 23 kab/kota", jadwal: "Mingguan Senin", terakhir: menitLalu(2880), status: "SEHAT", keberhasilan7h: 100, latensiMs: 1220, rekamTerakhir: 276 },
-    { id: "SRC-BMKG", nama: "BMKG — prakiraan & curah hujan", penyedia: "BMKG", jenis: "API", cakupan: "23 kab/kota", jadwal: "Tiap 3 jam", terakhir: menitLalu(51), status: "SEHAT", keberhasilan7h: 99.1, latensiMs: 480, rekamTerakhir: 552 },
-    { id: "SRC-OWM", nama: "OpenWeather — cuaca aktual", penyedia: "OpenWeather", jenis: "API", cakupan: "Titik sentra produksi", jadwal: "Tiap jam", terakhir: menitLalu(12), status: "SEHAT", keberhasilan7h: 99.8, latensiMs: 210, rekamTerakhir: 96 },
-    { id: "SRC-BAPANAS", nama: "Panel Harga Bapanas", penyedia: "Badan Pangan Nasional", jenis: "SCRAPER", cakupan: "Harga produsen & konsumen", jadwal: "Harian 11.00", terakhir: menitLalu(325), status: "TERTUNDA", keberhasilan7h: 86.4, latensiMs: 3400, rekamTerakhir: 0 },
-    { id: "SRC-PORTAL", nama: "Portal harga Disperindag Aceh", penyedia: "Pemerintah Aceh", jenis: "SCRAPER", cakupan: "Pasar induk provinsi", jadwal: "Harian 12.00", terakhir: menitLalu(1460), status: "GAGAL", keberhasilan7h: 57.1, latensiMs: 0, rekamTerakhir: 0 },
-    { id: "SRC-CS", nama: "Telemetri cold storage", penyedia: "Sensor IoT fasilitas", jenis: "API", cakupan: "3 fasilitas operasional", jadwal: "Tiap 5 menit", terakhir: menitLalu(3), status: "SEHAT", keberhasilan7h: 99.97, latensiMs: 95, rekamTerakhir: 12 },
+    { id: "SRC-BPS", nama: "BPS WebAPI — IHK & inflasi", penyedia: "BPS", jenis: "API", cakupan: "Provinsi & 3 kota IHK", jadwal: "Harian 06.00", terakhir: menitLalu(142), status: "SEHAT", keberhasilan7h: 100, latensiMs: 640 },
+    { id: "SRC-BI", nama: "PIHPS Nasional — harga pangan", penyedia: "Bank Indonesia", jenis: "API", cakupan: "Pasar tradisional & modern", jadwal: "Harian 10.00", terakhir: menitLalu(38), status: "SEHAT", keberhasilan7h: 98.6, latensiMs: 910 },
+    { id: "SRC-DJPB", nama: "Kanwil DJPb — realisasi belanja", penyedia: "Kanwil DJPb Aceh", jenis: "API", cakupan: "APBD & BTT 23 kab/kota", jadwal: "Mingguan Senin", terakhir: menitLalu(2880), status: "SEHAT", keberhasilan7h: 100, latensiMs: 1220 },
+    { id: "SRC-BMKG", nama: "BMKG — prakiraan & curah hujan", penyedia: "BMKG", jenis: "API", cakupan: "23 kab/kota", jadwal: "Tiap 3 jam", terakhir: menitLalu(51), status: "SEHAT", keberhasilan7h: 99.1, latensiMs: 480 },
+    { id: "SRC-OWM", nama: "OpenWeather — cuaca aktual", penyedia: "OpenWeather", jenis: "API", cakupan: "Titik sentra produksi", jadwal: "Tiap jam", terakhir: menitLalu(12), status: "SEHAT", keberhasilan7h: 99.8, latensiMs: 210 },
+    { id: "SRC-BAPANAS", nama: "Panel Harga Bapanas", penyedia: "Badan Pangan Nasional", jenis: "SCRAPER", cakupan: "Harga produsen & konsumen", jadwal: "Harian 11.00", terakhir: menitLalu(325), status: "TERTUNDA", keberhasilan7h: 86.4, latensiMs: 3400 },
+    { id: "SRC-PORTAL", nama: "Portal harga Disperindag Aceh", penyedia: "Pemerintah Aceh", jenis: "SCRAPER", cakupan: "Pasar induk provinsi", jadwal: "Harian 12.00", terakhir: menitLalu(1460), status: "GAGAL", keberhasilan7h: 57.1, latensiMs: 0 },
+    { id: "SRC-CS", nama: "Telemetri cold storage", penyedia: "Sensor IoT fasilitas", jenis: "API", cakupan: "3 fasilitas operasional", jadwal: "Tiap 5 menit", terakhir: menitLalu(3), status: "SEHAT", keberhasilan7h: 99.97, latensiMs: 95 },
   ];
 }
 
@@ -402,15 +402,19 @@ export function mockEksekutif(): RingkasanEksekutif {
     selesai: k.filter((c) => c.siklus === s && c.tahap.endsWith("selesai")).length,
   });
   return {
+    demo: true,
     inflasi: {
-      yoy: 2.84, mtm: 0.41, ytd: 1.92, sasaran: { bawah: 1.5, atas: 3.5 }, rilis: "2026-10-01",
+      periode: "2026-09-01T12:00:00", sumber: "DEMO",
+      yoy: 2.84, mtm: 0.41, ytd: 1.92, sasaran: { bawah: 1.5, atas: 3.5 },
       seri: bulan.map((b, i) => ({ bulan: b, yoy: yoy[i] })),
       penyumbang: [
         { nama: "Cabai merah", andil: 0.18 }, { nama: "Bawang merah", andil: 0.06 }, { nama: "Ikan tongkol", andil: 0.04 },
         { nama: "Beras", andil: 0.03 }, { nama: "Tomat", andil: -0.02 }, { nama: "Kentang", andil: -0.01 },
       ],
     },
-    neraca: [
+    neraca: {
+      periode: "2026-09-01T12:00:00", sumber: "DEMO",
+      items: [
       { komoditasKode: "BRS-MED", nama: "Beras", produksi: 146200, kebutuhan: 52400 },
       { komoditasKode: "KTG", nama: "Kentang", produksi: 9800, kebutuhan: 3200 },
       { komoditasKode: "TMT", nama: "Tomat", produksi: 4100, kebutuhan: 2900 },
@@ -419,9 +423,10 @@ export function mockEksekutif(): RingkasanEksekutif {
       { komoditasKode: "TLR", nama: "Telur ayam", produksi: 4800, kebutuhan: 5600 },
       { komoditasKode: "CBM-KRT", nama: "Cabai merah", produksi: 3100, kebutuhan: 3900 },
       { komoditasKode: "BWM", nama: "Bawang merah", produksi: 900, kebutuhan: 2600 },
-    ],
+      ],
+    },
     fiskal: {
-      pagu: 186e9, realisasi: 54.2e9, skor: 72, status: "MEMADAI", perTanggal: "2026-09-30",
+      sumber: "DEMO", pagu: 186e9, realisasi: 54.2e9, skor: 72, status: "MEMADAI", perTanggal: "2026-09-30",
       instrumen: [
         { nama: "Belanja tidak terduga (BTT)", pagu: 120e9, realisasi: 31.2e9 },
         { nama: "Operasi pasar murah", pagu: 24e9, realisasi: 11.2e9 },

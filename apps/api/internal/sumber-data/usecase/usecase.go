@@ -4,47 +4,61 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
+	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/logger"
 )
 
 var (
-	ErrNotFound      = errors.New("sumber data tidak ditemukan")
+	ErrNotFound      = domain.ErrNotFound
 	ErrInvalidAction = errors.New("aksi tidak valid")
 )
 
-type UseCase struct {
-	repo domain.Repository
+// BulkResult: Berhasil adalah jumlah sumber yang berubah; Gagal sisanya dari id yang diminta.
+type BulkResult struct {
+	Berhasil, Gagal int
 }
 
-func New(repo domain.Repository) *UseCase {
-	return &UseCase{repo: repo}
+type UseCase struct {
+	repo  domain.Repository
+	audit audit.Writer
+	log   *logger.Logger
+}
+
+func New(repo domain.Repository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
+	return &UseCase{repo: repo, audit: auditWriter, log: log}
 }
 
 func (uc *UseCase) List(ctx context.Context) ([]domain.SumberData, error) {
 	return uc.repo.List(ctx)
 }
 
-func (uc *UseCase) GetByID(ctx context.Context, id int64) (*domain.SumberData, error) {
-	item, err := uc.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, ErrNotFound
-	}
-	return item, nil
+func (uc *UseCase) GetByID(ctx context.Context, id string) (*domain.SumberData, error) {
+	return uc.repo.GetByID(ctx, id)
 }
 
-func (uc *UseCase) BulkAction(ctx context.Context, ids []int64, action string) (int64, error) {
+// BulkAction menjeda atau melanjutkan sumber dan mencatatnya di audit trail.
+// Id ganda dihitung sekali.
+func (uc *UseCase) BulkAction(ctx context.Context, ids []string, action, actorID string) (BulkResult, error) {
 	domainAction := domain.BulkAction(action)
-	switch domainAction {
-	case domain.BulkJalankan, domain.BulkJeda, domain.BulkLanjutkan:
-		// valid
-	default:
-		return 0, ErrInvalidAction
+	if domainAction != domain.BulkJeda && domainAction != domain.BulkLanjutkan {
+		return BulkResult{}, ErrInvalidAction
 	}
 
-	count, err := uc.repo.BulkAction(ctx, ids, domainAction)
+	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	changed, err := uc.repo.BulkAction(ctx, ids, domainAction)
 	if err != nil {
-		return 0, fmt.Errorf("bulk action: %w", err)
+		return BulkResult{}, fmt.Errorf("bulk sumber data: %w", err)
 	}
-	return count, nil
+
+	err = uc.audit.Write(ctx, audit.Entry{
+		AktorID: actorID, Aksi: "BULK_" + action, Entitas: "sumber_data", EntitasID: fmt.Sprintf("%d sumber", len(changed)),
+		Hasil: audit.HasilBerhasil, Metadata: map[string]any{"diminta": ids, "berubah": changed},
+	})
+	if err != nil {
+		uc.log.Warn("sumber-data: gagal mencatat audit", map[string]interface{}{"aksi": action, "error": err.Error()})
+	}
+	return BulkResult{Berhasil: len(changed), Gagal: len(ids) - len(changed)}, nil
 }

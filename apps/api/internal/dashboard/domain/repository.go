@@ -14,7 +14,4 @@ type Repository interface {
 	Heatmap(ctx context.Context) (*HeatmapData, error)
 	// AktivitasLapangan menghitung entri antara awal (inklusif) dan akhir (eksklusif) per kabupaten.
 	AktivitasLapangan(ctx context.Context, awal, akhir time.Time) ([]AktivitasKabupaten, error)
-
-	// Eksekutif
-	GetRingkasanEksekutif(ctx context.Context, periode string) (*RingkasanEksekutif, error)
 }

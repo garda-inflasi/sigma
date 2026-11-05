@@ -17,8 +17,8 @@ const pos = (v: number) => `${Math.max(0, Math.min(100, (v / SKALA) * 100))}%`;
  * Hero eksekutif: inflasi tahunan diletakkan di "koridor sasaran".
  * Visual utamanya adalah posisi angka terhadap koridor, bukan angka saja.
  */
-export function InflationHero({ data }: { data: RingkasanEksekutif["inflasi"] }) {
-  const { yoy, mtm, ytd, sasaran, seri, rilis, penyumbang } = data;
+export function InflationHero({ data }: { data: NonNullable<RingkasanEksekutif["inflasi"]> }) {
+  const { yoy, mtm, ytd, sasaran, seri, periode, sumber, penyumbang } = data;
   const dalam = yoy >= sasaran.bawah && yoy <= sasaran.atas;
   const maxAndil = Math.max(...penyumbang.map((p) => Math.abs(p.andil)));
 
@@ -28,7 +28,7 @@ export function InflationHero({ data }: { data: RingkasanEksekutif["inflasi"] })
       <div aria-hidden className="absolute inset-0 bg-[radial-gradient(60%_80%_at_0%_100%,rgba(51,194,184,0.12),transparent)]" />
       <div className="relative grid gap-8 lg:grid-cols-[1.15fr_1fr]">
         <div>
-          <p className="text-sm text-navy-200">Inflasi tahunan Provinsi Aceh, September 2026</p>
+          <p className="text-sm text-navy-200">Inflasi tahunan Provinsi Aceh, {formatTanggal(periode, "MMMM yyyy")}</p>
           <div className="mt-3 flex items-end gap-2">
             <CountUp value={yoy} format={(n) => n.toFixed(2).replace(".", ",")} className="text-display-2xl font-semibold tracking-tight" duration={1.6} />
             <span className="num pb-2 text-3xl text-navy-300">%</span>
@@ -65,7 +65,7 @@ export function InflationHero({ data }: { data: RingkasanEksekutif["inflasi"] })
           <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-white/10 pt-5">
             <div><dt className="text-xs text-navy-300">Bulanan</dt><dd className="num mt-1 text-lg font-semibold">{formatPersen(mtm, { digits: 2, signed: true })}</dd></div>
             <div><dt className="text-xs text-navy-300">Tahun kalender</dt><dd className="num mt-1 text-lg font-semibold">{formatPersen(ytd, { digits: 2 })}</dd></div>
-            <div><dt className="text-xs text-navy-300">Rilis BPS</dt><dd className="mt-1 text-sm font-medium">{formatTanggal(rilis)}</dd></div>
+            <div><dt className="text-xs text-navy-300">Sumber</dt><dd className="mt-1 text-sm font-medium">{sumber === "DEMO" ? "Data demo" : sumber}</dd></div>
           </dl>
         </div>
 

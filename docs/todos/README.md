@@ -28,18 +28,18 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | 🟡  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
 | 3   | Audit trail                               | `/audit`                   | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [03-audit.md](03-audit.md)                                 |
 | 4   | Master data                               | `/master/[entitas]`        | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
-| 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [05-sumber-data.md](05-sumber-data.md)                     |
+| 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
 | 6   | Validasi harga                            | `/data/harga`              | ✅  |   🟡    |    🟡     |      ⬜      | 🟡  | [06-harga-validasi.md](06-harga-validasi.md)               |
 | 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ⬜     |      ⬜      | ⬜  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
 | 8   | Dashboard operasional                     | `/operasional`             | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
-| 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    🟡     |      ⬜      | ⬜  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
+| 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
 | 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [10-ews.md](10-ews.md)                                     |
 | 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
 | 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [12-peta-spasial.md](12-peta-spasial.md)                   |
 | 13  | Cold storage & food loss                  | `/cold-storage`            | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [13-cold-storage.md](13-cold-storage.md)                   |
 | 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [14-intervensi.md](14-intervensi.md)                       |
 | 15  | Policy brief                              | `/policy-brief`            | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [15-policy-brief.md](15-policy-brief.md)                   |
-| 16  | Indikator kinerja (KPI)                   | `/kpi`                     | ✅  |   ⬜    |    ⬜     |      ⬜      | ⬜  | [16-kpi.md](16-kpi.md)                                     |
+| 16  | Indikator kinerja (KPI)                   | `/kpi`                     | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [16-kpi.md](16-kpi.md)                                     |
 | 17  | Alur sistem & data                        | `/alur-sistem`             | ✅  |   n/a   |    n/a    |     n/a      | n/a | [17-alur-sistem.md](17-alur-sistem.md)                     |
 | 18  | Lintas fitur (platform, CI, deploy, docs) | —                          |  —  |    —    |     —     |      —       |  —  | [18-platform-lintas-fitur.md](18-platform-lintas-fitur.md) |
 | 19  | **Migration & seeder (fondasi data)**     | —                          |  —  |    —    |     —     |      —       |  —  | [19-migration-seeder.md](19-migration-seeder.md)           |

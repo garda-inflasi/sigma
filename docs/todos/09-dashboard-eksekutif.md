@@ -1,6 +1,6 @@
 # 09 — Dashboard eksekutif
 
-**Prioritas:** P0 (Fase 2) · **Status:** UI ✅ · Backend 🟡 · Terhubung 🟡 · Skema & seed ⬜ · Tes ⬜
+**Prioritas:** P0 (Fase 2) · **Status:** UI ✅ · Backend 🟡 (data resmi di 09-B) · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -18,18 +18,18 @@
 **Bergantung pada:** 08-A. Panel XAI menunggu [11-A](11-prediksi-xai.md).
 
 1. **MIG**
-   - [ ] `inflasi_bulanan` (`wilayah_kode`, `periode` DATE, `ihk`, `inflasi_mtm`, `inflasi_yoy`, `inflasi_ytd`, `sumber`, UNIQUE `(wilayah_kode, periode)`) menggantikan `ringkasan_eksekutif` dan `tren_inflasi`.
-   - [ ] `andil_inflasi` (`periode`, `wilayah_kode`, `komoditas_kode`, `andil`, `inflasi_pct`) menggantikan `komoditas_sumbangan`. `daerah_inflasi` tidak perlu tabel: tertinggi/terendah dihitung dari `inflasi_bulanan`.
-   - [ ] `neraca_pangan` (`komoditas_kode`, `wilayah_kode`, `periode`, `produksi_ton`, `konsumsi_ton`, `stok_ton`, kolom turunan surplus/defisit).
-   - [ ] `target_inflasi` (`tahun`, `batas_bawah`, `batas_atas`).
-   - [ ] `ruang_fiskal`: tambah `sumber`, `diimpor_pada`. Kolom `sumber` (`BPS`, `BI`, `DJPB`, `DEMO`) pada semua tabel di atas agar data demo dan resmi tidak tercampur.
+   - [x] `inflasi_bulanan` (`wilayah_kode`, `periode` DATE, `ihk`, `inflasi_mtm`, `inflasi_yoy`, `inflasi_ytd`, `sumber`, UNIQUE `(wilayah_kode, periode)`) menggantikan `ringkasan_eksekutif` dan `tren_inflasi`.
+   - [x] `andil_inflasi` (`periode`, `wilayah_kode`, `komoditas_kode`, `andil`, `inflasi_pct`) menggantikan `komoditas_sumbangan`. `daerah_inflasi` tidak perlu tabel: tertinggi/terendah dihitung dari `inflasi_bulanan`.
+   - [x] `neraca_pangan` (`komoditas_kode`, `wilayah_kode`, `periode`, `produksi_ton`, `konsumsi_ton`, `stok_ton`, kolom turunan surplus/defisit).
+   - [x] `target_inflasi` (`tahun`, `batas_bawah`, `batas_atas`).
+   - [x] `ruang_fiskal`: tambah `sumber`, `diimpor_pada`. Kolom `sumber` (`BPS`, `BI`, `DJPB`, `DEMO`) pada semua tabel di atas agar data demo dan resmi tidak tercampur.
 2. **SEED**
-   - [ ] `reference`: `target_inflasi`.
-   - [ ] `demo`: inflasi, andil, neraca, dan ruang fiskal tiruan ber-`sumber='DEMO'`, bentuk mengikuti `mockEksekutif`. UI menampilkan banner "Data demo".
-   - [ ] **Produksi:** angka resmi hanya lewat impor (lihat 09-B di bawah); jangan seed angka yang tampak resmi.
+   - [x] `reference`: `target_inflasi`.
+   - [x] `demo`: inflasi, andil, neraca, dan ruang fiskal tiruan ber-`sumber='DEMO'`, bentuk mengikuti `mockEksekutif`. UI menampilkan banner "Data demo".
+   - [x] **Produksi:** angka resmi hanya lewat impor (lihat 09-B di bawah); jangan seed angka yang tampak resmi.
 3. **API**
-   - [ ] Tulis ulang query ke tabel baru; izin `fiskal.lihat` untuk ruang fiskal; selaraskan DTO dengan `RingkasanEksekutif`.
-   - [ ] Keputusan D4: hapus atau gabungkan route `analytics` yang menduplikasi.
+   - [x] Tulis ulang query ke tabel baru; izin `fiskal.lihat` untuk ruang fiskal; selaraskan DTO dengan `RingkasanEksekutif`.
+   - [x] Keputusan D4: hapus atau gabungkan route `analytics` yang menduplikasi.
 4. **FE**: `api.eksekutif.ringkasan` sudah memanggil API; cocokkan bentuk; banner data demo. Panel XAI (`useXai`) menunggu 11-A.
 5. **TES**: tidak ada baris `DEMO` setelah seed produksi; bentuk respons cocok; hapus entri dashboard dari `belumSelaras`.
 6. **DoD** — checklist [00 §4](00-cara-kerja.md).

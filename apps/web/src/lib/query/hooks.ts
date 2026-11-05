@@ -4,6 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
+import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
@@ -62,6 +63,25 @@ export const useColdStorage = (params: ColdStorageParams) =>
     refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
   });
 export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+
+/** Jeda atau lanjutkan sumber lalu segarkan katalog dari server. */
+export function useSumberBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ aksi, ids }: { aksi: SumberBulkAksi; ids: string[]; label: string }) => api.sumber.bulk(aksi, ids),
+    onSuccess: (res, { label }) => {
+      qc.invalidateQueries({ queryKey: qk.sumber.list() });
+      toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} sumber`, {
+        description: res.gagal ? `${res.gagal} sumber tidak berubah (tidak ada, atau sudah dalam status itu).` : "Tercatat di audit trail.",
+      });
+    },
+    onError: (err) => {
+      toast.error("Aksi massal gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+
+export const useKpi = () => useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
 export const usePengguna = (search?: string) =>
   useQuery({
     queryKey: qk.pengguna.list(search),

@@ -89,9 +89,3 @@ func ToAktivitasLapanganResponses(items []domain.AktivitasKabupaten) []Aktivitas
 	}
 	return out
 }
-
-// ── Eksekutif Responses ───────────────────────────────────────────────
-
-type RingkasanEksekutifResponse struct {
-	Data *domain.RingkasanEksekutif `json:"data"`
-}

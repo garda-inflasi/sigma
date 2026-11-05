@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 const BATAS = 100; // sumbu ±100%; surplus lebih besar ditandai panah
 
 /** Neraca pangan: rasio kecukupan (produksi vs kebutuhan) sebagai batang divergen. */
-export function FoodBalance({ data }: { data: RingkasanEksekutif["neraca"] }) {
+export function FoodBalance({ data }: { data: NonNullable<RingkasanEksekutif["neraca"]>["items"] }) {
   const rows = data
     .map((d) => ({ ...d, rasio: (d.produksi / d.kebutuhan - 1) * 100, selisih: d.produksi - d.kebutuhan }))
     .sort((a, b) => b.rasio - a.rasio);
@@ -51,7 +51,9 @@ export function FoodBalance({ data }: { data: RingkasanEksekutif["neraca"] }) {
         })}
       </ul>
       <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-        Defisit terbesar: bawang merah ({formatAngka(Math.abs(rows[rows.length - 1].selisih))} ton/bulan) dipenuhi pasokan antarprovinsi. Arahkan ke kanban siklus tekanan bila pasokan tertunda.
+        {rows.length > 0 && rows[rows.length - 1].selisih < 0
+          ? `Defisit terbesar: ${rows[rows.length - 1].nama.toLowerCase()} (${formatAngka(Math.abs(rows[rows.length - 1].selisih))} ton/bulan). Arahkan ke kanban siklus tekanan bila pasokan tertunda.`
+          : "Tidak ada komoditas yang defisit pada periode ini."}
       </p>
     </section>
   );

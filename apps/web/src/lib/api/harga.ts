@@ -51,6 +51,8 @@ export interface HargaParams {
   /** Kode kabupaten/kota. */
   wilayah?: string;
   komoditas?: string;
+  /** "skor": skor anomali tertinggi lebih dulu (prioritas antrean validasi). */
+  urut?: "skor";
   /** YYYY-MM-DD, waktu Aceh. */
   dari?: string;
   sampai?: string;
@@ -92,6 +94,7 @@ export function toHargaQuery(p: HargaParams = {}): string {
   if (p.status) qs.set("status", p.status);
   if (p.wilayah) qs.set("wilayah", p.wilayah);
   if (p.komoditas) qs.set("komoditas", p.komoditas);
+  if (p.urut) qs.set("urut", p.urut);
   if (p.dari) qs.set("dari", p.dari);
   if (p.sampai) qs.set("sampai", p.sampai);
   if (p.page) qs.set("page", String(p.page));
@@ -104,7 +107,7 @@ export function filterMockEntri(
   rows: EntriHarga[],
   p: HargaParams = {},
 ): EntriHarga[] {
-  return rows
+  const hasil = rows
     .filter(
       (e) =>
         (!p.status || e.status === p.status) &&
@@ -112,6 +115,7 @@ export function filterMockEntri(
         (!p.komoditas || e.komoditasKode === p.komoditas),
     )
     .slice(0, p.limit ?? HARGA_PAGE_LIMIT);
+  return p.urut === "skor" ? hasil.sort((a, b) => b.skorAnomali - a.skorAnomali) : hasil;
 }
 
 /** Ringkasan per status dari daftar entri (data mock). */
@@ -168,4 +172,54 @@ export interface RiwayatStatus {
 
 export function toRiwayatStatus(r: RiwayatStatusResponse): RiwayatStatus {
   return { dari: r.dari ?? undefined, ke: r.ke, olehNama: r.oleh_nama ?? undefined, waktu: r.waktu, alasan: r.alasan ?? undefined };
+}
+
+/** Hasil cek otomatis server (kontrak FlagValidasi). */
+export interface FlagValidasiResponse {
+  di_luar_rentang: boolean;
+  outlier: boolean;
+  duplikat: boolean;
+  luar_geofence: boolean;
+  tanpa_lokasi: boolean;
+  bentrok: boolean;
+  median?: number;
+  jarak_meter?: number;
+}
+
+export interface HargaDetailResponse extends EntriHargaResponse {
+  lat?: number | null;
+  lng?: number | null;
+  foto_url?: string | null;
+  flag_validasi: FlagValidasiResponse;
+}
+
+/** Bukti dan bendera validasi otomatis satu entri, untuk panel detail. */
+export interface DetailHarga {
+  lat?: number;
+  lng?: number;
+  fotoUrl?: string;
+  median?: number;
+  jarakMeter?: number;
+  /** Bendera yang menyala, berurut dari yang paling berat, dengan label siap tampil. */
+  bendera: { kode: keyof Omit<FlagValidasiResponse, "median" | "jarak_meter">; label: string }[];
+}
+
+const LABEL_BENDERA: [keyof Omit<FlagValidasiResponse, "median" | "jarak_meter">, string][] = [
+  ["di_luar_rentang", "Di luar rentang harga wajar"],
+  ["outlier", "Menyimpang jauh dari histori harga"],
+  ["bentrok", "Berbeda dari harga petugas lain (dipertahankan petugas)"],
+  ["duplikat", "Duplikat: pasar, komoditas, dan pedagang sama dalam 3 jam"],
+  ["luar_geofence", "Di luar geofence pasar"],
+  ["tanpa_lokasi", "Tanpa koordinat GPS"],
+];
+
+export function toDetailHarga(r: HargaDetailResponse): DetailHarga {
+  return {
+    lat: r.lat ?? undefined,
+    lng: r.lng ?? undefined,
+    fotoUrl: r.foto_url ?? undefined,
+    median: r.flag_validasi.median || undefined,
+    jarakMeter: r.flag_validasi.jarak_meter || undefined,
+    bendera: LABEL_BENDERA.filter(([kode]) => r.flag_validasi[kode]).map(([kode, label]) => ({ kode, label })),
+  };
 }

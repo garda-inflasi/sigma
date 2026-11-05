@@ -59,12 +59,12 @@
 **Bergantung pada:** 06-A.
 
 1. **MIG**
-   - [ ] `batas_harga` (`komoditas_kode`, `kabupaten_kode` NULL = semua, `min`, `maks`, `berlaku_dari`).
-   - [ ] `flag_validasi` JSONB pada `entri_harga` (outlier, duplikat, di-luar-geofence).
+   - [x] `batas_harga` (`komoditas_kode`, `kabupaten_kode` NULL = semua, `batas_min`, `batas_maks`, `berlaku_dari`).
+   - [x] `flag_validasi` JSONB pada `entri_harga` (outlier, duplikat, di-luar-geofence).
 2. **SEED** (`reference`): `batas_harga` awal diturunkan dari `komoditas.harga_acuan`.
-3. **API**: service validasi: rentang wajar, outlier (z-score/IQR terhadap histori dan sesama pasar), duplikasi (pasar+komoditas+pedagang+waktu), geofence terhadap `pasar.radius_meter`. Isi `skor_anomali`, `deviasi_pct`, `dalam_geofence`, `flag_validasi`.
-4. **FE**: tampilkan bendera, foto, dan lokasi GPS pada panel detail; urutkan antrean menurut skor; ekspor CSV.
-5. **TES**: kasus sisipan outlier/duplikat/geofence ditandai; `batas_harga` ada untuk tiap komoditas aktif.
+3. **API** (selesai): service validasi: rentang wajar, outlier (z-score robust, median dan MAD histori resmi 30 hari sekabupaten), duplikasi (pasar+komoditas+pedagang+waktu), geofence terhadap `pasar.radius_meter`. Isi `skor_anomali`, `deviasi_pct`, `dalam_geofence`, `flag_validasi`.
+4. **FE** (selesai; foto belum tampil, unggahan di 07-C): tampilkan bendera, foto, dan lokasi GPS pada panel detail; urutkan antrean menurut skor; ekspor CSV.
+5. **TES** (selesai): kasus sisipan outlier/duplikat/geofence ditandai; `batas_harga` ada untuk tiap komoditas aktif.
 
 ---
 

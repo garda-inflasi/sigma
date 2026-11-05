@@ -30,9 +30,14 @@ type ListFilter struct {
 	PetugasID     string
 	Dari          *time.Time // inklusif
 	Sampai        *time.Time // eksklusif
-	Page          int
-	Limit         int
+	// Urut: "" (terbaru lebih dulu) atau UrutSkor (skor anomali tertinggi lebih dulu).
+	Urut  string
+	Page  int
+	Limit int
 }
+
+// Urutan daftar entri.
+const UrutSkor = "skor"
 
 // Pengiriman adalah entri baru beserta cara menanganinya.
 type Pengiriman struct {
@@ -95,6 +100,8 @@ type Repository interface {
 	Tren(ctx context.Context, komoditasKode, kabupatenKode string, sejak time.Time, interval string) ([]TitikTren, error)
 	// SatuanKomoditas mengembalikan satuan komoditas dan memastikan pasar aktif ada.
 	SatuanKomoditas(ctx context.Context, komoditasKode, pasarID string) (string, error)
+	// KonteksValidasi membaca pembanding validasi otomatis untuk entri yang akan disimpan.
+	KonteksValidasi(ctx context.Context, entri *EntriHarga) (KonteksValidasi, error)
 	// Simpan menyimpan entri secara idempoten per (petugas, kunci): kiriman ulang
 	// mengembalikan entri yang sudah tersimpan. Entri petugas lain yang bentrok
 	// menolak penyimpanan kecuali Pengiriman.Pertahankan.

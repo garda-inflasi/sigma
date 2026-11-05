@@ -11,8 +11,8 @@ import {
   type AktivitasLapangan, type AktivitasLapanganResponse, type Heatmap, type HeatmapResponse, type KpiResponse,
 } from "./dashboard";
 import {
-  filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery, toRiwayatStatus,
-  type EntriHargaResponse, type HargaParams, type RincianBulk, type RiwayatStatus, type RiwayatStatusResponse, type RingkasanHarga,
+  filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery, toRiwayatStatus, toDetailHarga,
+  type DetailHarga, type EntriHargaResponse, type HargaDetailResponse, type HargaParams, type RincianBulk, type RiwayatStatus, type RiwayatStatusResponse, type RingkasanHarga,
 } from "./harga";
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
@@ -100,6 +100,9 @@ export const api = {
     /** Entri milik pengguna yang masuk (riwayat petugas lapangan). */
     saya: (): Promise<EntriHarga[]> =>
       MODE_MOCK ? mockDelay(m.mockEntri) : apiFetch<EntriHargaResponse[]>("/v1/harga/saya?limit=100").then((rows) => rows.map(toEntriHarga)),
+    /** Bukti dan bendera validasi otomatis satu entri; mode mock tidak punya data ini. */
+    detail: (id: string): Promise<DetailHarga> =>
+      MODE_MOCK ? mockDelay({ bendera: [] }) : apiFetch<HargaDetailResponse>(`/v1/harga/${encodeURIComponent(id)}`).then(toDetailHarga),
     /** Perpindahan status satu entri; mode mock tidak punya riwayat tersimpan. */
     riwayat: (id: string): Promise<RiwayatStatus[]> =>
       MODE_MOCK ? mockDelay([]) : apiFetch<RiwayatStatusResponse[]>(`/v1/harga/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toRiwayatStatus)),

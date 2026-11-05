@@ -17,6 +17,13 @@ import (
 
 type mockRepository struct {
 	mock.Mock
+	// konteks dan konteksErr adalah jawaban KonteksValidasi; nol berarti tanpa pembanding.
+	konteks    domain.KonteksValidasi
+	konteksErr error
+}
+
+func (m *mockRepository) KonteksValidasi(_ context.Context, _ *domain.EntriHarga) (domain.KonteksValidasi, error) {
+	return m.konteks, m.konteksErr
 }
 
 func (m *mockRepository) List(ctx context.Context, filter domain.ListFilter) ([]domain.EntriView, int64, error) {
@@ -445,4 +452,47 @@ func TestRiwayat_OnlyOwnEntryWithoutViewPermission(t *testing.T) {
 	items, err = uc.Riwayat(t.Context(), "e1", "koordinator", true)
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
+}
+
+func TestCreateHarga_StoresAutomaticValidationResult(t *testing.T) {
+	repo := new(mockRepository)
+	repo.konteks = domain.KonteksValidasi{
+		Batas: &domain.BatasHarga{BatasMin: 10000, BatasMaks: 100000}, PasarLat: 5.56, PasarLng: 95.32, RadiusMeter: 400,
+		HargaAcuan: 50000, Histori: []int{50000, 51000, 49000, 50500, 49500, 50000},
+	}
+	uc, _ := newTestUseCase(repo)
+	lat, lng := 5.60, 95.32 // sekitar 4,4 km dari pasar
+	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "P").Return("kg", nil)
+	repo.On("Simpan", mock.Anything, mock.Anything).Return(domain.HasilSimpan{}, nil)
+
+	hasil, err := uc.CreateHarga(t.Context(), CreateInput{
+		KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 150000, Lat: &lat, Lng: &lng,
+	}, "u")
+
+	require.NoError(t, err)
+	e := hasil.Entri
+	assert.True(t, e.FlagValidasi.DiLuarRentang)
+	assert.True(t, e.FlagValidasi.Outlier)
+	assert.True(t, e.FlagValidasi.LuarGeofence)
+	assert.False(t, e.DalamGeofence)
+	assert.InDelta(t, 200, e.DeviasiPct, 0.5)
+	assert.InDelta(t, 1.0, e.SkorAnomali, 0.001)
+}
+
+func TestCreateHarga_ContextErrors(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	repo.On("SatuanKomoditas", mock.Anything, "CBM-KRT", "P").Return("kg", nil)
+	in := CreateInput{KomoditasKode: "CBM-KRT", PasarID: "P", Tipe: domain.TipeKonsumen, Harga: 1}
+
+	repo.konteksErr = domain.ErrReferensiTidakAda
+	_, err := uc.CreateHarga(t.Context(), in, "u")
+	require.ErrorIs(t, err, ErrValidasi)
+
+	repo.konteksErr = errors.New("db mati")
+	_, err = uc.CreateHarga(t.Context(), in, "u")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrValidasi)
+	assert.Empty(t, recorder.Entries())
+	repo.AssertNotCalled(t, "Simpan", mock.Anything, mock.Anything)
 }

@@ -572,6 +572,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: urut
+          in: query
+          description: Kosong untuk entri terbaru lebih dulu; `skor` untuk skor anomali tertinggi lebih dulu (prioritas antrean validasi)
+          schema:
+            type: string
+            enum: [skor]
         - name: dari
           in: query
           description: Tanggal awal (inklusif), YYYY-MM-DD waktu Aceh
@@ -3690,10 +3696,10 @@ components:
           enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
         deviasi_pct:
           type: number
-          description: Deviasi terhadap harga wajar, dalam persen
+          description: Deviasi terhadap median histori resmi (atau harga acuan master bila histori kurang), dalam persen
         skor_anomali:
           type: number
-          description: 0 sampai 1
+          description: 0 sampai 1; gabungan deviasi, z-score, dan penalti bendera validasi otomatis
         ada_foto:
           type: boolean
         dalam_geofence:
@@ -3715,6 +3721,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EntriHarga"
+
+    FlagValidasi:
+      type: object
+      description: |
+        Hasil cek otomatis saat entri disimpan. `di_luar_rentang`: di luar `batas_harga` yang berlaku;
+        `outlier`: |z-score| robust (median dan MAD histori resmi 30 hari sekabupaten) di atas 3,5, hanya
+        bila histori minimal 5 harga; `duplikat`: pasar, komoditas, tipe, dan kode pedagang sama dalam 3 jam;
+        `luar_geofence`: titik GPS di luar radius pasar; `tanpa_lokasi`: tanpa koordinat; `bentrok`: dipertahankan
+        walau berbeda dari harga petugas lain.
+      properties:
+        di_luar_rentang:
+          type: boolean
+        outlier:
+          type: boolean
+        duplikat:
+          type: boolean
+        luar_geofence:
+          type: boolean
+        tanpa_lokasi:
+          type: boolean
+        bentrok:
+          type: boolean
+        median:
+          type: integer
+          description: Harga pembanding (median histori resmi, atau harga acuan master bila histori kurang)
+        jarak_meter:
+          type: integer
+          description: Jarak titik GPS dari pasar
 
     RiwayatStatusEntriResponse:
       type: object
@@ -3791,6 +3825,8 @@ components:
                   type: string
                   format: date-time
                   nullable: true
+                flag_validasi:
+                  $ref: "#/components/schemas/FlagValidasi"
                 ditolak_oleh:
                   type: string
                   nullable: true

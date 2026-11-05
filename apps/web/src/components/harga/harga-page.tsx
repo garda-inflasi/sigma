@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Camera, Check, MapPin, MapPinOff, X } from "lucide-react";
+import { Camera, Check, MapPin, MapPinOff, TriangleAlert, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -15,7 +15,7 @@ import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { fadeUp, stagger } from "@/lib/motion/presets";
 import type { HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK } from "@/lib/api/client";
-import { useEntriHarga, useRingkasanHarga, useRiwayatStatus } from "@/lib/query/hooks";
+import { useDetailHarga, useEntriHarga, useRingkasanHarga, useRiwayatStatus } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { FACET_STATUS_ENTRI, useHargaBulkActions, useHargaColumns } from "./harga-table";
@@ -48,6 +48,35 @@ function AlurEntri({ e }: { e: EntriHarga }) {
         );
       })}
     </motion.ol>
+  );
+}
+
+/** Bendera validasi otomatis, lokasi GPS, dan bukti satu entri dari server. */
+function BuktiOtomatis({ id }: { id: string }) {
+  const { data } = useDetailHarga(id);
+  if (!data) return null;
+  return (
+    <div className="space-y-3">
+      {data.bendera.length > 0 ? (
+        <ul className="space-y-1.5">
+          {data.bendera.map((b) => (
+            <li key={b.kode} className="flex items-start gap-2 rounded-xl bg-waspada-soft px-3 py-2 text-sm text-waspada-ink">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />{b.label}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="rounded-xl bg-normal-soft px-3 py-2 text-sm text-normal-ink">Lolos semua cek otomatis.</p>
+      )}
+      {data.lat !== undefined && data.lng !== undefined && (
+        <p className="text-xs text-muted-foreground">
+          Lokasi GPS <span className="num">{data.lat.toFixed(5)}, {data.lng.toFixed(5)}</span>
+          {data.jarakMeter ? <> ({data.jarakMeter.toLocaleString("id-ID")} m dari pasar)</> : null}
+          {" "}<a className="text-data-700 underline-offset-4 hover:underline" href={`https://www.openstreetmap.org/?mlat=${data.lat}&mlon=${data.lng}#map=17/${data.lat}/${data.lng}`} target="_blank" rel="noreferrer">Buka peta</a>
+        </p>
+      )}
+      {data.median ? <p className="text-xs text-muted-foreground">Pembanding <span className="num">{formatRupiah(data.median)}</span></p> : null}
+    </div>
   );
 }
 
@@ -133,6 +162,7 @@ export function HargaPage() {
                   <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5"><Camera className="size-4 text-muted-foreground" /><p className="mt-1">{detail.adaFoto ? "Foto terlampir" : "Tanpa foto"}</p></div>
                   <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5">{detail.dalamGeofence ? <MapPin className="size-4 text-normal" /> : <MapPinOff className="size-4 text-waspada" />}<p className="mt-1">{detail.dalamGeofence ? "Dalam geofence" : "Di luar geofence"}</p></div>
                 </div>
+                {!MODE_MOCK && <BuktiOtomatis id={detail.id} />}
                 {detail.alasanPenolakan && (
                   <p className="rounded-xl bg-defisit-soft p-3 text-sm text-defisit-ink"><span className="font-medium">Alasan penolakan:</span> {detail.alasanPenolakan}</p>
                 )}

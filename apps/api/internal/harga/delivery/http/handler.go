@@ -49,7 +49,7 @@ func (h *Handler) list(c *gin.Context, petugasID string) {
 
 	filter := domain.ListFilter{
 		Status: req.Status, KabupatenKode: req.Wilayah, KomoditasKode: req.Komoditas,
-		PasarID: req.PasarID, PetugasID: petugasID, Page: req.Page, Limit: req.Limit,
+		PasarID: req.PasarID, PetugasID: petugasID, Urut: req.Urut, Page: req.Page, Limit: req.Limit,
 	}
 	if req.Dari != "" {
 		dari, _ := time.ParseInLocation(dateLayout, req.Dari, domain.WIB)

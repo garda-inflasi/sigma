@@ -43,6 +43,9 @@ export const useRingkasanHarga = (hari = 7, enabled = true) =>
   useQuery({ queryKey: qk.harga.ringkasan(hari), queryFn: () => api.harga.ringkasan(hari), enabled, refetchInterval: LIVE });
 /** Riwayat entri milik pengguna yang masuk. */
 export const useRiwayatHargaSaya = () => useQuery({ queryKey: qk.harga.saya(), queryFn: api.harga.saya });
+/** Bukti dan bendera validasi otomatis satu entri. */
+export const useDetailHarga = (id: string | undefined) =>
+  useQuery({ queryKey: qk.harga.detail(id ?? ""), queryFn: () => api.harga.detail(id!), enabled: !!id });
 /** Perpindahan status satu entri (timeline detail). */
 export const useRiwayatStatus = (id: string | undefined) =>
   useQuery({ queryKey: qk.harga.riwayat(id ?? ""), queryFn: () => api.harga.riwayat(id!), enabled: !!id });

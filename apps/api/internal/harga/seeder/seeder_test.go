@@ -251,3 +251,34 @@ func TestBuildRiwayat_FollowsEachEntryTrail(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedReference_OneBoundPerActiveCommodityAndIdempotent(t *testing.T) {
+	db := pg.NewDatabase(t, "harga_seed_reference")
+	pgtest.MigrateUp(t, db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+
+	first, err := SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	assert.Equal(t, 14, first.Batas, "satu batas per komoditas aktif")
+
+	second, err := SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+
+	var salah int64
+	require.NoError(t, db.Raw(`
+		SELECT count(*) FROM batas_harga b JOIN komoditas k ON k.kode = b.komoditas_kode
+		 WHERE b.batas_min >= k.harga_acuan OR b.batas_maks <= k.harga_acuan OR b.batas_min <= 0`).Scan(&salah).Error)
+	assert.Zero(t, salah, "harga acuan selalu berada di dalam batas")
+}
+
+func TestSeedReference_WithoutCommoditiesWritesNothing(t *testing.T) {
+	db := pg.NewDatabase(t, "harga_seed_reference_kosong")
+	pgtest.MigrateUp(t, db)
+
+	summary, err := SeedReference(t.Context(), db)
+
+	require.NoError(t, err)
+	assert.Zero(t, summary.Batas)
+}

@@ -206,7 +206,16 @@ func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID st
 	if entri.Kualitas == "" {
 		entri.Kualitas = "MEDIUM"
 	}
-	entri.DalamGeofence = true
+
+	konteks, err := uc.repo.KonteksValidasi(ctx, entri)
+	if err != nil {
+		if errors.Is(err, domain.ErrReferensiTidakAda) {
+			return HasilKirim{}, fmt.Errorf("%w: %w", ErrValidasi, err)
+		}
+		return HasilKirim{}, fmt.Errorf("konteks validasi harga: %w", err)
+	}
+	cek := domain.Validasi(*entri, konteks)
+	entri.DeviasiPct, entri.SkorAnomali, entri.DalamGeofence, entri.FlagValidasi = cek.DeviasiPct, cek.SkorAnomali, cek.DalamGeofence, cek.Flag
 
 	hasil, err := uc.repo.Simpan(ctx, domain.Pengiriman{Entri: entri, Pertahankan: in.Pertahankan})
 	if err != nil {

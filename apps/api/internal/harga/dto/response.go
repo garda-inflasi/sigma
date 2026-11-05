@@ -44,10 +44,12 @@ type HargaDetailResponse struct {
 	DivalidasiPada  *time.Time `json:"divalidasi_pada,omitempty"`
 	DipublikasiOleh *string    `json:"dipublikasi_oleh,omitempty"`
 	DipublikasiPada *time.Time `json:"dipublikasi_pada,omitempty"`
-	DitolakOleh     *string    `json:"ditolak_oleh,omitempty"`
-	DitolakPada     *time.Time `json:"ditolak_pada,omitempty"`
-	DibuatPada      time.Time  `json:"dibuat_pada"`
-	DiupdatePada    time.Time  `json:"diupdate_pada"`
+	// FlagValidasi adalah hasil cek otomatis: rentang, outlier, duplikat, geofence, dan bentrok.
+	FlagValidasi domain.FlagValidasi `json:"flag_validasi"`
+	DitolakOleh  *string             `json:"ditolak_oleh,omitempty"`
+	DitolakPada  *time.Time          `json:"ditolak_pada,omitempty"`
+	DibuatPada   time.Time           `json:"dibuat_pada"`
+	DiupdatePada time.Time           `json:"diupdate_pada"`
 }
 
 // ToEntriHargaResponse memetakan satu baris view ke respons daftar.
@@ -78,7 +80,7 @@ func ToHargaDetailResponse(e domain.EntriView) HargaDetailResponse {
 		Sumber:             e.Sumber, Lat: e.Lat, Lng: e.Lng, FotoURL: e.FotoURL, Catatan: e.Catatan,
 		DivalidasiOleh: e.DivalidasiOleh, DivalidasiPada: e.DivalidasiPada,
 		DipublikasiOleh: e.DipublikasiOleh, DipublikasiPada: e.DipublikasiPada,
-		DitolakOleh: e.DitolakOleh, DitolakPada: e.DitolakPada,
+		DitolakOleh: e.DitolakOleh, DitolakPada: e.DitolakPada, FlagValidasi: e.FlagValidasi,
 		DibuatPada: e.DibuatPada, DiupdatePada: e.DiupdatePada,
 	}
 }

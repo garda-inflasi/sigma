@@ -284,6 +284,7 @@ func buatEntri(rng *rand.Rand, in Input, p Petugas, k Komoditas, tipe string, of
 		Lat: &lat, Lng: &lng, DalamGeofence: !luar, KodePedagang: &pedagang,
 		DicatatPada: dicatat, PetugasID: &petugas, DibuatPada: dicatat, DiupdatePada: dicatat,
 	}
+	e.FlagValidasi = domain.FlagValidasi{Outlier: outlier, LuarGeofence: luar, Median: int(math.Round(acuan))}
 	if rng.Float64() < pFoto {
 		foto := "demo/foto/" + id + ".jpg"
 		e.FotoURL = &foto
@@ -414,6 +415,7 @@ func duplikat(e domain.EntriHarga, now time.Time) domain.EntriHarga {
 	d.Status = domain.StatusDiajukan
 	d.DivalidasiOleh, d.DivalidasiPada, d.DipublikasiOleh, d.DipublikasiPada = nil, nil, nil, nil
 	d.DitolakOleh, d.DitolakPada, d.AlasanPenolakan = nil, nil, nil
+	d.FlagValidasi.Duplikat = true
 	d.DicatatPada = e.DicatatPada.Add(5 * time.Minute)
 	if d.DicatatPada.After(now) {
 		d.DicatatPada = now

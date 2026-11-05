@@ -12,8 +12,10 @@ type ListHargaRequest struct {
 	// Komoditas adalah kode komoditas.
 	Komoditas string `form:"komoditas"`
 	PasarID   string `form:"pasar_id"`
-	Dari      string `form:"dari" binding:"omitempty,datetime=2006-01-02"`
-	Sampai    string `form:"sampai" binding:"omitempty,datetime=2006-01-02"`
+	// Urut: kosong (terbaru lebih dulu) atau "skor" (skor anomali tertinggi lebih dulu).
+	Urut   string `form:"urut" binding:"omitempty,oneof=skor"`
+	Dari   string `form:"dari" binding:"omitempty,datetime=2006-01-02"`
+	Sampai string `form:"sampai" binding:"omitempty,datetime=2006-01-02"`
 }
 
 // RingkasanHargaRequest adalah query GET /v1/harga/ringkasan.

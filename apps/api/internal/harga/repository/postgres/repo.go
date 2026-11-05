@@ -28,7 +28,7 @@ const viewColumns = `
 	e.status, e.deviasi_pct, e.skor_anomali, e.lat, e.lng, e.dalam_geofence,
 	(e.foto_url IS NOT NULL) AS ada_foto, e.foto_url, e.catatan, e.dicatat_pada,
 	e.petugas_id, u.nama AS petugas_nama, e.divalidasi_oleh, e.divalidasi_pada,
-	e.dipublikasi_oleh, e.dipublikasi_pada, e.alasan_penolakan, e.ditolak_oleh, e.ditolak_pada,
+	e.dipublikasi_oleh, e.dipublikasi_pada, e.alasan_penolakan, e.ditolak_oleh, e.ditolak_pada, e.flag_validasi,
 	e.dibuat_pada, e.diupdate_pada`
 
 // entriView menyusun query entri beserta nama komoditas, pasar, wilayah, dan petugas.
@@ -75,13 +75,21 @@ func (r *Repository) List(ctx context.Context, filter domain.ListFilter) ([]doma
 	var items []domain.EntriView
 	err := applyFilter(r.entriView(ctx), filter).
 		Select(viewColumns).
-		Order("e.dicatat_pada DESC, e.id").
+		Order(urutan(filter.Urut)).
 		Limit(filter.Limit).Offset((filter.Page - 1) * filter.Limit).
 		Scan(&items).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("list entri harga: %w", err)
 	}
 	return items, total, nil
+}
+
+// urutan menerjemahkan nama urutan daftar ke klausa ORDER BY; id menjaga halaman tetap stabil.
+func urutan(urut string) string {
+	if urut == domain.UrutSkor {
+		return "e.skor_anomali DESC, e.dicatat_pada DESC, e.id"
+	}
+	return "e.dicatat_pada DESC, e.id"
 }
 
 // GetByID mengembalikan satu entri beserta nama terkait.
@@ -191,10 +199,16 @@ func (r *Repository) Simpan(ctx context.Context, kirim domain.Pengiriman) (domai
 			return nil
 		}
 
-		if !kirim.Pertahankan {
-			if hasil.Bentrok, err = cariBentrok(tx, entri); err != nil || hasil.Bentrok != nil {
-				return err
+		bentrok, err := cariBentrok(tx, entri)
+		if err != nil {
+			return err
+		}
+		if bentrok != nil {
+			if !kirim.Pertahankan {
+				hasil.Bentrok = bentrok
+				return nil
 			}
+			entri.FlagValidasi.Bentrok = true
 		}
 
 		// Dua kiriman serentak dengan kunci sama: yang kalah tidak menambah baris.
@@ -404,4 +418,77 @@ func (r *Repository) Riwayat(ctx context.Context, entriID string) ([]domain.Riwa
 		return nil, fmt.Errorf("riwayat status entri: %w", err)
 	}
 	return items, nil
+}
+
+// KonteksValidasi membaca batas harga yang berlaku, geofence pasar, harga acuan komoditas, histori
+// harga resmi sesama kabupaten, dan ada tidaknya entri duplikat untuk entri yang akan disimpan.
+func (r *Repository) KonteksValidasi(ctx context.Context, entri *domain.EntriHarga) (domain.KonteksValidasi, error) {
+	var k domain.KonteksValidasi
+	tx := r.db.WithContext(ctx)
+
+	var pasar []struct {
+		Lat           float64 `gorm:"column:lat"`
+		Lng           float64 `gorm:"column:lng"`
+		RadiusMeter   int     `gorm:"column:radius_meter"`
+		KabupatenKode string  `gorm:"column:kabupaten_kode"`
+		HargaAcuan    int     `gorm:"column:harga_acuan"`
+	}
+	err := tx.Raw(`
+		SELECT p.lat, p.lng, p.radius_meter, p.kabupaten_kode, k.harga_acuan
+		  FROM pasar p, komoditas k
+		 WHERE p.id = ? AND k.kode = ?`, entri.PasarID, entri.KomoditasKode).Scan(&pasar).Error
+	if err != nil {
+		return k, fmt.Errorf("baca pasar dan komoditas: %w", err)
+	}
+	if len(pasar) == 0 {
+		return k, domain.ErrReferensiTidakAda
+	}
+	k.PasarLat, k.PasarLng, k.RadiusMeter = pasar[0].Lat, pasar[0].Lng, pasar[0].RadiusMeter
+	k.HargaAcuan = domain.AcuanTipe(pasar[0].HargaAcuan, entri.Tipe)
+
+	var batas []domain.BatasHarga
+	err = tx.Raw(`
+		SELECT id, komoditas_kode, kabupaten_kode, batas_min, batas_maks, berlaku_dari
+		  FROM batas_harga
+		 WHERE komoditas_kode = ? AND (kabupaten_kode = ? OR kabupaten_kode IS NULL)
+		   AND berlaku_dari <= (CAST(? AS timestamptz) AT TIME ZONE ?)::date
+		 ORDER BY (kabupaten_kode IS NULL), berlaku_dari DESC
+		 LIMIT 1`, entri.KomoditasKode, pasar[0].KabupatenKode, entri.DicatatPada, wib).Scan(&batas).Error
+	if err != nil {
+		return k, fmt.Errorf("baca batas harga: %w", err)
+	}
+	if len(batas) > 0 {
+		k.Batas = &batas[0]
+	}
+
+	err = tx.Raw(`
+		SELECT e.harga
+		  FROM entri_harga e
+		  JOIN pasar p ON p.id = e.pasar_id
+		 WHERE e.komoditas_kode = @komoditas AND e.tipe = @tipe AND p.kabupaten_kode = @kabupaten
+		   AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+		   AND e.dicatat_pada BETWEEN @dari AND @sampai
+		 ORDER BY e.dicatat_pada DESC
+		 LIMIT 500`, map[string]any{
+		"komoditas": entri.KomoditasKode, "tipe": entri.Tipe, "kabupaten": pasar[0].KabupatenKode,
+		"dari": entri.DicatatPada.AddDate(0, 0, -domain.HariHistori), "sampai": entri.DicatatPada,
+	}).Scan(&k.Histori).Error
+	if err != nil {
+		return k, fmt.Errorf("baca histori harga: %w", err)
+	}
+
+	err = tx.Raw(`
+		SELECT EXISTS (
+		    SELECT 1 FROM entri_harga e
+		     WHERE e.pasar_id = @pasar AND e.komoditas_kode = @komoditas AND e.tipe = @tipe
+		       AND e.kode_pedagang IS NOT DISTINCT FROM CAST(@pedagang AS varchar)
+		       AND e.status NOT IN ('DRAF', 'DITOLAK')
+		       AND e.dicatat_pada BETWEEN @dari AND @sampai)`, map[string]any{
+		"pasar": entri.PasarID, "komoditas": entri.KomoditasKode, "tipe": entri.Tipe, "pedagang": entri.KodePedagang,
+		"dari": entri.DicatatPada.Add(-domain.JendelaBentrok), "sampai": entri.DicatatPada.Add(domain.JendelaBentrok),
+	}).Scan(&k.Duplikat).Error
+	if err != nil {
+		return k, fmt.Errorf("cek duplikat harga: %w", err)
+	}
+	return k, nil
 }

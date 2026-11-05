@@ -66,6 +66,8 @@ func sharedSuite(t *testing.T) *suite {
 		require.NoError(t, err)
 		_, err = authseeder.SeedDemo(t.Context(), db)
 		require.NoError(t, err)
+		_, err = hargaseeder.SeedReference(t.Context(), db)
+		require.NoError(t, err)
 		_, err = hargaseeder.SeedDemo(t.Context(), db, time.Now())
 		require.NoError(t, err)
 

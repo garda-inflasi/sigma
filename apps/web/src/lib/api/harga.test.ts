@@ -7,6 +7,7 @@ import {
   ringkasanDariEntri,
   ringkasSebab,
   toEntriHarga,
+  toDetailHarga,
   toRiwayatStatus,
   toHargaQuery,
   type EntriHargaResponse,
@@ -175,5 +176,32 @@ describe("toEntriHarga alasan penolakan", () => {
     const base = { id: "e1", komoditas_kode: "BWM", komoditas_nama: "Bawang merah", pasar_id: "P", pasar_nama: "Pasar", kabupaten_kode: "1171", wilayah: "KOTA BANDA ACEH", tipe: "KONSUMEN", harga: 1, satuan: "kg", kualitas: "MEDIUM", petugas_id: "u", petugas_nama: "U", dicatat_pada: "2026-10-16T02:00:00Z", status: "DITOLAK", deviasi_pct: 0, skor_anomali: 0, ada_foto: false, dalam_geofence: true } as const;
     assert.equal(toEntriHarga({ ...base, alasan_penolakan: "satuan salah" }).alasanPenolakan, "satuan salah");
     assert.equal(toEntriHarga({ ...base, alasan_penolakan: null }).alasanPenolakan, undefined);
+  });
+});
+
+describe("toDetailHarga", () => {
+  const dasar = { ...respons, lat: 5.56, lng: 95.32, foto_url: null };
+  const bersih = { di_luar_rentang: false, outlier: false, duplikat: false, luar_geofence: false, tanpa_lokasi: false, bentrok: false };
+
+  it("mengurutkan bendera yang menyala dari yang paling berat", () => {
+    const detail = toDetailHarga({ ...dasar, flag_validasi: { ...bersih, luar_geofence: true, di_luar_rentang: true, outlier: true, median: 52000, jarak_meter: 2200 } });
+
+    assert.deepEqual(detail.bendera.map((b) => b.kode), ["di_luar_rentang", "outlier", "luar_geofence"]);
+    assert.equal(detail.median, 52000);
+    assert.equal(detail.jarakMeter, 2200);
+    assert.equal(detail.lat, 5.56);
+    assert.equal(detail.fotoUrl, undefined);
+  });
+
+  it("entri bersih tidak punya bendera", () => {
+    assert.deepEqual(toDetailHarga({ ...dasar, lat: null, lng: null, flag_validasi: bersih }), { lat: undefined, lng: undefined, fotoUrl: undefined, median: undefined, jarakMeter: undefined, bendera: [] });
+  });
+});
+
+describe("urut skor", () => {
+  it("diteruskan ke query dan diterapkan pada data mock", () => {
+    assert.equal(new URLSearchParams(toHargaQuery({ urut: "skor" }).slice(1)).get("urut"), "skor");
+    const rows = [0.1, 0.9, 0.4].map((skorAnomali, i) => ({ ...toEntriHarga(respons), id: `e${i}`, skorAnomali }));
+    assert.deepEqual(filterMockEntri(rows, { urut: "skor" }).map((e) => e.id), ["e1", "e2", "e0"]);
   });
 });

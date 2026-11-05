@@ -9,10 +9,12 @@ import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { RegionMap } from "@/components/map/region-map";
+import { LokasiPanel, type TitikLokasi } from "./lokasi-panel";
+import { NeracaPanel } from "./neraca-panel";
 import { OptimasiPanel } from "./optimasi-panel";
 import { exportCsv } from "@/lib/csv";
 import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
-import { useGeometriWilayah, useKandidatColdStorage, useMarkerWilayah, useRuteDistribusi } from "@/lib/query/hooks";
+import { useCariLokasi, useGeometriWilayah, useKandidatColdStorage, useMarkerWilayah, useRuteDistribusi } from "@/lib/query/hooks";
 import { ZOOM_GEOMETRI, type Rute } from "@/lib/api/spasial";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +27,14 @@ export function PetaPage() {
 
   const { data: rute, isLoading: ruteMemuat } = useRuteDistribusi();
   const { data: kandidat } = useKandidatColdStorage();
+
+  // Lokasi dari geolokasi atau klik peta; wilayah hasilnya langsung dipilih di peta.
+  const cariLokasi = useCariLokasi();
+  const [titik, setTitik] = useState<TitikLokasi>();
+  const cariTitik = (t: TitikLokasi) => {
+    setTitik(t);
+    cariLokasi.mutate(t, { onSuccess: (l) => setPilih(l.kode) });
+  };
 
   const kolom = useMemo<ColumnDef<Rute>[]>(() => [
     { id: "rute", accessorFn: (r) => `${r.asal} ${r.tujuan}`, header: "Rute", cell: ({ row: { original: r } }) => <span className="flex items-center gap-2 whitespace-nowrap font-medium">{r.asal}<ArrowRight className="size-3.5 text-muted-foreground" />{r.tujuan}</span> },
@@ -40,7 +50,8 @@ export function PetaPage() {
       <PageHeader title="Peta surplus–defisit" description="Status harga per wilayah, rekomendasi rute dari sentra surplus ke wilayah tertekan, dan kandidat lokasi cold storage." />
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="glass rounded-xl p-4 xl:col-span-8">
-          <RegionMap markers={markers} geometri={geometri} isLoading={isLoading} selected={pilih} onSelect={setPilih} className="h-[560px]" />
+          <LokasiPanel titik={titik} hasil={cariLokasi.data} galat={cariLokasi.error instanceof Error ? cariLokasi.error.message : undefined} mencari={cariLokasi.isPending} onCari={cariTitik} />
+          <RegionMap markers={markers} geometri={geometri} isLoading={isLoading} selected={pilih} onSelect={setPilih} onKlikPeta={(lat, lng) => cariTitik({ lat, lng })} className="h-[560px]" />
         </section>
         <section className="glass flex max-h-[600px] flex-col rounded-xl p-5 xl:col-span-4">
           <PanelTitle title="Wilayah" description="Diurutkan dari tekanan tertinggi" />
@@ -57,6 +68,7 @@ export function PetaPage() {
           </ul>
         </section>
       </div>
+      <NeracaPanel pilih={pilih} onPilih={setPilih} />
       <OptimasiPanel markers={markers ?? []} />
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="space-y-3 xl:col-span-8">

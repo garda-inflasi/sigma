@@ -7,7 +7,7 @@ import { Shimmer } from "@/components/garda/shimmer";
 import { formatPersen } from "@/lib/format";
 import { popIn } from "@/lib/motion/presets";
 import { cn } from "@/lib/utils";
-import type { GeometriWilayah } from "@/lib/api/spasial";
+import { BATAS_SKEMA, titikDariSkema, type GeometriWilayah } from "@/lib/api/spasial";
 import { MarkerPin, type MarkerWilayah } from "./marker-pin";
 
 const MapboxRegionMap = dynamic(() => import("./region-map-mapbox"), { ssr: false, loading: () => <Shimmer className="size-full rounded-none" /> });
@@ -20,15 +20,16 @@ const LEGENDA = [
   { s: "surplus", label: "Surplus", cls: "bg-surplus" },
 ];
 
-export function RegionMap({ markers, geometri, isLoading, selected, onSelect, className }: { markers?: MarkerWilayah[]; geometri?: GeometriWilayah[]; isLoading?: boolean; selected?: string; onSelect?: (kode: string) => void; className?: string }) {
+/** `onKlikPeta` menerima koordinat titik yang diklik pada area peta (bukan pada marker atau kartu). */
+export function RegionMap({ markers, geometri, isLoading, selected, onSelect, onKlikPeta, className }: { markers?: MarkerWilayah[]; geometri?: GeometriWilayah[]; isLoading?: boolean; selected?: string; onSelect?: (kode: string) => void; onKlikPeta?: (lat: number, lng: number) => void; className?: string }) {
   return (
     <div className={cn("relative overflow-hidden rounded-xl bg-mist-100 dark:bg-navy-950/60", className)}>
       {isLoading || !markers ? (
         <Shimmer className="size-full rounded-none" />
       ) : TOKEN ? (
-        <MapboxRegionMap token={TOKEN} markers={markers} geometri={geometri} selected={selected} onSelect={onSelect} />
+        <MapboxRegionMap token={TOKEN} markers={markers} geometri={geometri} selected={selected} onSelect={onSelect} onKlikPeta={onKlikPeta} />
       ) : (
-        <SkemaAceh markers={markers} geometri={geometri} selected={selected} onSelect={onSelect} />
+        <SkemaAceh markers={markers} geometri={geometri} selected={selected} onSelect={onSelect} onKlikPeta={onKlikPeta} />
       )}
       <div className="glass-subtle absolute bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-muted-foreground">
         {LEGENDA.map((l) => (
@@ -40,7 +41,7 @@ export function RegionMap({ markers, geometri, isLoading, selected, onSelect, cl
 }
 
 /* ── Fallback tanpa token Mapbox: skema Aceh (tidak berskala) ── */
-const B = { minLng: 94.9, maxLng: 98.5, minLat: 1.9, maxLat: 6.1 };
+const B = BATAS_SKEMA;
 const px = (lng: number) => ((lng - B.minLng) / (B.maxLng - B.minLng)) * 100;
 const py = (lat: number) => ((B.maxLat - lat) / (B.maxLat - B.minLat)) * 100;
 const DARAT: [number, number][] = [
@@ -57,11 +58,21 @@ const WARNA_STATUS: Record<MarkerWilayah["status"], string> = {
   surplus: "fill-surplus/25 stroke-surplus/60",
 };
 
-function SkemaAceh({ markers, geometri, selected, onSelect }: { markers: MarkerWilayah[]; geometri?: GeometriWilayah[]; selected?: string; onSelect?: (kode: string) => void }) {
+function SkemaAceh({ markers, geometri, selected, onSelect, onKlikPeta }: { markers: MarkerWilayah[]; geometri?: GeometriWilayah[]; selected?: string; onSelect?: (kode: string) => void; onKlikPeta?: (lat: number, lng: number) => void }) {
   const [aktif, setAktif] = useState<MarkerWilayah | null>(null);
   const status = new Map(markers.map((m) => [m.kode, m.status]));
   return (
-    <div className="relative mx-auto aspect-[36/42] h-full max-w-full">
+    <div
+      aria-label="Peta skema Aceh"
+      className={cn("relative mx-auto aspect-[36/42] h-full max-w-full", onKlikPeta && "cursor-crosshair")}
+      onClick={(e) => {
+        // Klik pada marker atau kartu info bukan permintaan lokasi.
+        if (!onKlikPeta || (e.target as HTMLElement).closest("button,[data-abaikan-klik]")) return;
+        const kotak = e.currentTarget.getBoundingClientRect();
+        const t = titikDariSkema((e.clientX - kotak.left) / kotak.width, (e.clientY - kotak.top) / kotak.height);
+        onKlikPeta(t.lat, t.lng);
+      }}
+    >
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full" aria-hidden>
         <polygon points={poly(DARAT)} className="fill-white/80 stroke-navy-300 dark:fill-white/5 dark:stroke-white/15" strokeWidth={0.35} strokeLinejoin="round" />
         <ellipse cx={px(96.1)} cy={py(2.62)} rx={3.6} ry={1.5} transform={`rotate(-28 ${px(96.1)} ${py(2.62)})`} className="fill-white/80 stroke-navy-300 dark:fill-white/5 dark:stroke-white/15" strokeWidth={0.35} />
@@ -87,7 +98,7 @@ function SkemaAceh({ markers, geometri, selected, onSelect }: { markers: MarkerW
       ))}
       <AnimatePresence>
         {aktif && (
-          <motion.div key={aktif.kode} variants={popIn} initial="hidden" animate="show" exit="exit" className="glass-strong absolute top-3 right-3 w-52 rounded-xl p-3">
+          <motion.div key={aktif.kode} variants={popIn} initial="hidden" animate="show" exit="exit" data-abaikan-klik className="glass-strong absolute top-3 right-3 w-52 rounded-xl p-3">
             <p className="font-display text-sm font-semibold">{aktif.nama}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Pergerakan terbesar: {aktif.komoditas}</p>
             <p className="num mt-1 text-lg font-semibold">{formatPersen(aktif.delta, { signed: true })}</p>

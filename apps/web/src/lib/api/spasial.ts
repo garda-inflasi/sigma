@@ -98,7 +98,9 @@ export function toGeometri(r: GeometriResponse): GeometriWilayah[] {
     cincinLuar: (f.geometry.type === "Polygon"
       ? [f.geometry.coordinates]
       : f.geometry.coordinates
-    ).map((poligon) => poligon[0].map(([lng, lat]) => [lng, lat] as [number, number])),
+    ).map((poligon) =>
+      poligon[0].map(([lng, lat]) => [lng, lat] as [number, number]),
+    ),
   }));
 }
 
@@ -119,7 +121,12 @@ export function geometriKeFeatureCollection(
     features: geometri.map((g) => ({
       type: "Feature" as const,
       id: g.kode,
-      properties: { kode: g.kode, nama: g.nama, status: status.get(g.kode) ?? "normal", perkiraan: g.perkiraan },
+      properties: {
+        kode: g.kode,
+        nama: g.nama,
+        status: status.get(g.kode) ?? "normal",
+        perkiraan: g.perkiraan,
+      },
       geometry: g.geometry,
     })),
   };
@@ -178,7 +185,10 @@ export function toOptimasiBody(p: OptimasiParams): Record<string, unknown> {
   return {
     komoditas_kode: p.komoditasKode,
     penyesuaian: p.penyesuaian?.length
-      ? p.penyesuaian.map((a) => ({ kabupaten_kode: a.kabupatenKode, ton: a.ton }))
+      ? p.penyesuaian.map((a) => ({
+          kabupaten_kode: a.kabupatenKode,
+          ton: a.ton,
+        }))
       : undefined,
     maks_jam_tempuh: p.maksJamTempuh || undefined,
     simpan: p.simpan || undefined,
@@ -201,8 +211,14 @@ export function toRencanaOptimasi(r: OptimasiResponse): RencanaOptimasi {
     })),
     totalVolumeTon: r.total_volume_ton,
     totalBiaya: r.total_biaya,
-    belumTerpenuhi: r.belum_terpenuhi.map((s) => ({ ...s, nama: formatWilayah(s.nama) })),
-    surplusSisa: r.surplus_sisa.map((s) => ({ ...s, nama: formatWilayah(s.nama) })),
+    belumTerpenuhi: r.belum_terpenuhi.map((s) => ({
+      ...s,
+      nama: formatWilayah(s.nama),
+    })),
+    surplusSisa: r.surplus_sisa.map((s) => ({
+      ...s,
+      nama: formatWilayah(s.nama),
+    })),
     penghematanPersen: r.penghematan_persen,
     optimasiId: r.optimasi_id,
   };
@@ -241,5 +257,210 @@ export function toKandidat(r: KandidatResponse): KandidatColdStorage {
     skor: r.skor,
     alasan: r.alasan,
     rencana: r.status === "RENCANA",
+  };
+}
+
+/** `GET /v1/spasial/neraca`: neraca pasokan satu komoditas di satu wilayah. */
+export interface NeracaResponse {
+  komoditas_kode: string;
+  komoditas_nama: string;
+  kabupaten_kode: string;
+  /** Nama resmi, mis. "KOTA BANDA ACEH". */
+  wilayah: string;
+  periode: string;
+  surplus_defisit_ton: number;
+  delta_harga_pct: number;
+  /** DEMO = data contoh; selain itu data resmi. */
+  sumber: string;
+}
+
+export type StatusNeraca = "surplus" | "defisit" | "seimbang";
+
+export interface NeracaWilayah {
+  /** Kunci unik baris: komoditas + kabupaten. */
+  id: string;
+  komoditasKode: string;
+  komoditas: string;
+  kabupatenKode: string;
+  wilayah: string;
+  periode: string;
+  /** Positif = surplus, negatif = defisit. */
+  surplusDefisitTon: number;
+  deltaHargaPct: number;
+  sumber: string;
+  demo: boolean;
+  status: StatusNeraca;
+}
+
+export function statusNeraca(ton: number): StatusNeraca {
+  return ton > 0 ? "surplus" : ton < 0 ? "defisit" : "seimbang";
+}
+
+export function toNeraca(r: NeracaResponse): NeracaWilayah {
+  return {
+    id: `${r.komoditas_kode}-${r.kabupaten_kode}`,
+    komoditasKode: r.komoditas_kode,
+    komoditas: r.komoditas_nama,
+    kabupatenKode: r.kabupaten_kode,
+    wilayah: formatWilayah(r.wilayah),
+    periode: r.periode,
+    surplusDefisitTon: r.surplus_defisit_ton,
+    deltaHargaPct: r.delta_harga_pct,
+    sumber: r.sumber,
+    demo: r.sumber === "DEMO",
+    status: statusNeraca(r.surplus_defisit_ton),
+  };
+}
+
+/** Query neraca; komoditas/periode kosong dibuang (server memakai periode terbaru dan semua komoditas). */
+export function toNeracaQuery(
+  komoditasKode?: string,
+  periode?: string,
+): string {
+  const q = new URLSearchParams();
+  if (komoditasKode) q.set("komoditas", komoditasKode);
+  if (periode) q.set("periode", periode);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+export interface RingkasanNeraca {
+  surplusTon: number;
+  defisitTon: number;
+  jumlahSurplus: number;
+  jumlahDefisit: number;
+}
+
+/** Total surplus dan defisit (ton, defisit sebagai angka positif) untuk satu tampilan neraca. */
+export function ringkasNeraca(items: NeracaWilayah[]): RingkasanNeraca {
+  const r: RingkasanNeraca = {
+    surplusTon: 0,
+    defisitTon: 0,
+    jumlahSurplus: 0,
+    jumlahDefisit: 0,
+  };
+  for (const n of items) {
+    if (n.surplusDefisitTon > 0) {
+      r.surplusTon += n.surplusDefisitTon;
+      r.jumlahSurplus++;
+    } else if (n.surplusDefisitTon < 0) {
+      r.defisitTon += -n.surplusDefisitTon;
+      r.jumlahDefisit++;
+    }
+  }
+  return r;
+}
+
+/** `GET /v1/spasial/lokasi`: wilayah untuk satu titik. */
+export interface LokasiResponse {
+  kode: string;
+  nama: string;
+  di_dalam: boolean;
+  jarak_pusat_km: number;
+}
+
+export interface LokasiWilayah {
+  kode: string;
+  nama: string;
+  /** Titik berada di dalam poligon wilayah (poligon demo adalah perkiraan). */
+  diDalam: boolean;
+  jarakPusatKm: number;
+}
+
+export function toLokasi(r: LokasiResponse): LokasiWilayah {
+  return {
+    kode: r.kode,
+    nama: formatWilayah(r.nama),
+    diDalam: r.di_dalam,
+    jarakPusatKm: r.jarak_pusat_km,
+  };
+}
+
+export function toLokasiQuery(lat: number, lng: number): string {
+  return `?${new URLSearchParams({ lat: String(lat), lng: String(lng) }).toString()}`;
+}
+
+/** Keterangan posisi titik terhadap wilayah hasil pencarian. */
+export function keteranganLokasi(l: LokasiWilayah): string {
+  const km = l.jarakPusatKm.toLocaleString("id-ID", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  });
+  return l.diDalam
+    ? `di dalam batas (perkiraan), ${km} km dari pusat`
+    : `terdekat, ${km} km dari pusat`;
+}
+
+/** Pesan galat geolokasi peramban (GeolocationPositionError.code). */
+export function pesanGalatGeolokasi(code: number): string {
+  switch (code) {
+    case 1:
+      return "Izin lokasi ditolak. Izinkan akses lokasi di pengaturan peramban, lalu coba lagi.";
+    case 2:
+      return "Posisi perangkat tidak dapat ditentukan. Periksa sambungan atau GPS Anda.";
+    case 3:
+      return "Penentuan posisi melewati batas waktu. Coba lagi.";
+    default:
+      return "Gagal menentukan lokasi Anda.";
+  }
+}
+
+/** Skema peta Aceh tanpa token Mapbox: proyeksi linear bujur/lintang ke persen kotak. */
+export const BATAS_SKEMA = {
+  minLng: 94.9,
+  maxLng: 98.5,
+  minLat: 1.9,
+  maxLat: 6.1,
+};
+
+/** Kebalikan proyeksi skema: pecahan (0-1) posisi klik di kotak peta menjadi lintang/bujur. */
+export function titikDariSkema(
+  xPecahan: number,
+  yPecahan: number,
+): { lat: number; lng: number } {
+  const b = BATAS_SKEMA;
+  return {
+    lng: b.minLng + xPecahan * (b.maxLng - b.minLng),
+    lat: b.maxLat - yPecahan * (b.maxLat - b.minLat),
+  };
+}
+
+/** `GET /v1/spasial/optimasi-rute`: ringkasan satu rencana optimasi yang tersimpan. */
+export interface RiwayatOptimasiResponse {
+  id: string;
+  komoditas_kode: string;
+  komoditas_nama: string;
+  periode: string;
+  total_volume_ton: number;
+  total_biaya: number;
+  belum_terpenuhi_ton: number;
+  /** Nama pembuat; null bila akunnya sudah dihapus. */
+  dibuat_oleh: string | null;
+  dibuat_pada: string;
+}
+
+export interface RiwayatOptimasi {
+  id: string;
+  komoditasKode: string;
+  komoditas: string;
+  periode: string;
+  totalVolumeTon: number;
+  totalBiaya: number;
+  belumTerpenuhiTon: number;
+  dibuatOleh: string | null;
+  dibuatPada: string;
+}
+
+export function toRiwayatOptimasi(r: RiwayatOptimasiResponse): RiwayatOptimasi {
+  return {
+    id: r.id,
+    komoditasKode: r.komoditas_kode,
+    komoditas: r.komoditas_nama,
+    periode: r.periode,
+    totalVolumeTon: r.total_volume_ton,
+    totalBiaya: r.total_biaya,
+    belumTerpenuhiTon: r.belum_terpenuhi_ton,
+    dibuatOleh: r.dibuat_oleh,
+    dibuatPada: r.dibuat_pada,
   };
 }

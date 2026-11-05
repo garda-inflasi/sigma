@@ -24,6 +24,8 @@ export const qk = {
     rute: () => ["spasial", "rute"] as const,
     kandidat: () => ["spasial", "kandidat"] as const,
     geometri: (zoom: number) => ["spasial", "geometri", zoom] as const,
+    neraca: (komoditas: string) => ["spasial", "neraca", komoditas] as const,
+    riwayat: () => ["spasial", "riwayat"] as const,
   },
   prediksi: {
     all: () => ["prediksi"] as const,

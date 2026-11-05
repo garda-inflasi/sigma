@@ -44,6 +44,7 @@ export function useOptimasiRute() {
     onSuccess: (res) => {
       if (res.optimasiId) {
         qc.invalidateQueries({ queryKey: qk.spasial.rute() });
+        qc.invalidateQueries({ queryKey: qk.spasial.riwayat() });
         toast.success("Rencana disimpan sebagai usulan rute", { description: "Tercatat di audit trail." });
       }
     },
@@ -55,6 +56,12 @@ export function useOptimasiRute() {
 export const useGeometriWilayah = (zoom: number) =>
   useQuery({ queryKey: qk.spasial.geometri(zoom), queryFn: () => api.spasial.geometri(zoom), staleTime: 60 * 60_000 });
 export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });
+/** Neraca per wilayah untuk satu komoditas ("" = semua komoditas), periode terbaru. */
+export const useNeracaWilayah = (komoditas: string) =>
+  useQuery({ queryKey: qk.spasial.neraca(komoditas), queryFn: () => api.spasial.neraca(komoditas || undefined), placeholderData: keepPreviousData });
+/** Mencari kabupaten/kota untuk satu koordinat; galat (mis. 404 tanpa data wilayah) ditampilkan oleh pemanggil. */
+export const useCariLokasi = () => useMutation({ mutationFn: (t: { lat: number; lng: number }) => api.spasial.lokasi(t.lat, t.lng) });
+export const useRiwayatOptimasi = () => useQuery({ queryKey: qk.spasial.riwayat(), queryFn: api.spasial.riwayatOptimasi });
 export const useTrenHarga = (kode: string, kab: string) =>
   useQuery({ queryKey: qk.operasional.tren(kode, kab), queryFn: () => api.operasional.tren(kode, kab), placeholderData: (prev) => prev });
 export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.ringkasan(), queryFn: api.eksekutif.ringkasan });

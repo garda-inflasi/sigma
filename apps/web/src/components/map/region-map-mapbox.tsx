@@ -11,7 +11,7 @@ import { MarkerPin, type MarkerWilayah } from "./marker-pin";
 
 const WARNA_STATUS = { defisit: "#e5484d", waspada: "#f5a524", normal: "#2fa77a", surplus: "#3b82f6" };
 
-export default function MapboxRegionMap({ token, markers, geometri, selected, onSelect }: { token: string; markers: MarkerWilayah[]; geometri?: GeometriWilayah[]; selected?: string; onSelect?: (kode: string) => void }) {
+export default function MapboxRegionMap({ token, markers, geometri, selected, onSelect, onKlikPeta }: { token: string; markers: MarkerWilayah[]; geometri?: GeometriWilayah[]; selected?: string; onSelect?: (kode: string) => void; onKlikPeta?: (lat: number, lng: number) => void }) {
   const { resolvedTheme } = useTheme();
   const warna = ["match", ["get", "status"], "defisit", WARNA_STATUS.defisit, "waspada", WARNA_STATUS.waspada, "surplus", WARNA_STATUS.surplus, WARNA_STATUS.normal] as never;
   const [popup, setPopup] = useState<MarkerWilayah | null>(null);
@@ -24,6 +24,7 @@ export default function MapboxRegionMap({ token, markers, geometri, selected, on
       style={{ width: "100%", height: "100%" }}
       attributionControl={false}
       cooperativeGestures
+      onClick={onKlikPeta ? (e) => onKlikPeta(e.lngLat.lat, e.lngLat.lng) : undefined}
     >
       <NavigationControl position="top-right" showCompass={false} />
       {geometri && geometri.length > 0 && (

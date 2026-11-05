@@ -15,8 +15,8 @@ import {
 import type { OptimasiParams, RencanaOptimasi } from "@/lib/api/spasial";
 import { useCan } from "@/lib/auth/session-context";
 import { KOMODITAS } from "@/lib/data/reference";
-import { formatAngka, formatRupiah } from "@/lib/format";
-import { useOptimasiRute } from "@/lib/query/hooks";
+import { formatAngka, formatRupiah, formatTanggal } from "@/lib/format";
+import { useOptimasiRute, useRiwayatOptimasi } from "@/lib/query/hooks";
 
 const TANPA = "__tanpa";
 
@@ -69,7 +69,7 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
       <div className="flex flex-wrap items-end gap-3">
         <Medan label="Komoditas">
           <Select value={komoditas} onValueChange={setKomoditas}>
-            <SelectTrigger className="h-10 w-52">
+            <SelectTrigger aria-label="Komoditas optimasi" className="h-10 w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -142,7 +142,45 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
         )}
       </div>
       {hasil && <Hasil hasil={hasil} />}
+      <Riwayat />
     </section>
+  );
+}
+
+/** Rencana yang pernah disimpan sebagai usulan rute (terbaru dulu, paling banyak 20). */
+function Riwayat() {
+  const { data, isLoading, isError, error } = useRiwayatOptimasi();
+  return (
+    <div className="space-y-2 border-t border-border pt-4" aria-label="Riwayat optimasi">
+      <h3 className="text-sm font-semibold">Riwayat optimasi</h3>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Memuat riwayat…</p>
+      ) : isError ? (
+        <p role="alert" className="text-sm text-defisit-ink dark:text-rose-300">
+          Gagal memuat riwayat optimasi{error instanceof Error ? `: ${error.message}` : "."}
+        </p>
+      ) : !data || data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Belum ada rencana yang disimpan. Hitung rute lalu pilih “Simpan sebagai usulan”.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+          {data.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+              <span className="font-medium">{r.komoditas}</span>
+              <span className="text-xs text-muted-foreground">periode {formatTanggal(r.periode, "MMMM yyyy")}</span>
+              <span className="num text-xs text-muted-foreground">
+                {formatAngka(r.totalVolumeTon, 1)} ton · {formatRupiah(r.totalBiaya, { compact: true })}
+                {r.belumTerpenuhiTon > 0 && ` · defisit tersisa ${formatAngka(r.belumTerpenuhiTon, 1)} ton`}
+              </span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                oleh {r.dibuatOleh ?? "akun terhapus"}, {formatTanggal(r.dibuatPada, "d MMM yyyy, HH.mm")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

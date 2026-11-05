@@ -58,3 +58,16 @@
 - [ ] Skor kandidat cold storage: jarak ke sentra produksi, volume surplus, kapasitas listrik, akses jalan (data kapasitas listrik/akses jalan belum ada; skor demo tetap statis).
 - [x] Simulasi skenario pasokan (what-if) lewat `penyesuaian` per wilayah (ton) di panel optimasi `/peta`; skenario tidak dapat disimpan. Skenario cuaca/kebijakan, filter periode di UI, dan klik wilayah → detail (tren, EWS, stok terdekat) belum ada.
 - [x] Tes optimasi: kasus hitung tangan (kalahkan serakah 40 vs 1010 ton-km, 450 ton-km seimbang, pasokan kurang, batas waktu, resolusi 0,1 ton), 300 instans acak dibandingkan brute force, kendala kapasitas; usecase dan integrasi (izin, validasi, simpan/gantikan, cache jarak, migrasi Up/Down). Tes komponen peta (data kosong/banyak titik) belum ada.
+
+---
+
+## 12-D — Endpoint spasial terpakai di UI *(integrasi endpoint)*
+
+Tiga endpoint `spasial.lihat` yang tadinya yatim kini dipakai `/peta` (tanpa aksi simulasi):
+
+- [x] `GET /v1/spasial/neraca` → panel **Neraca pasokan** ([neraca-panel.tsx](../../apps/web/src/components/spasial/neraca-panel.tsx)): tabel wilayah dengan filter komoditas (bawaan Cabai merah keriting, ada "Semua komoditas"), surplus (+, biru) dan defisit (−, merah) berlabel teks, Δ harga, dan label **Data demo** untuk `sumber = DEMO`. Klik baris memilih wilayah di peta. Periode selalu yang terbaru (parameter `periode` didukung `api.spasial.neraca` tetapi belum ada pemilih periode di UI).
+- [x] `GET /v1/spasial/lokasi` → tombol **Lokasi saya** (geolokasi peramban; pesan untuk tidak didukung, izin ditolak, posisi tidak tersedia, dan waktu habis) dan klik pada peta skema SVG ([lokasi-panel.tsx](../../apps/web/src/components/spasial/lokasi-panel.tsx), `RegionMap.onKlikPeta`). Hasil: nama wilayah, "di dalam batas (perkiraan)" atau "terdekat, X km dari pusat"; wilayah hasilnya dipilih/disorot di peta. Klik pada peta Mapbox sudah disambungkan (`onClick` → `lngLat`) tetapi tidak teruji otomatis (butuh token).
+- [x] `GET /v1/spasial/optimasi-rute` → **Riwayat optimasi** di bawah panel optimasi (komoditas, periode, volume, biaya, defisit tersisa, pembuat, waktu); disegarkan setelah rencana disimpan. Riwayat hanya memuat rencana yang disimpan (simulasi tidak tercatat).
+- Mode mock: neraca/lokasi/riwayat mock di `lib/api/spasial-mock.ts`.
+- **Tes:** `delivery/http/handler_test.go` (Lokasi 404 tanpa data wilayah / 400 / titik 0,0 / 500; Neraca dan Riwayat kosong menghasilkan `[]`, pemetaan kolom, pembuat terhapus = null); `lib/api/spasial-lokasi.test.ts` (mapper, query, ringkasan, proyeksi balik skema, pesan galat, mock); e2e `apps/web/e2e/peta.spec.ts`.
+- Catatan: menyimpan rencana butuh `logistik.kelola` (MANAJER_PROGRAM, OPS_AGREGATOR); MANAJER_DATA hanya melihat riwayat. Daftar komoditas di filter memakai referensi UI penuh; komoditas tanpa neraca menampilkan keadaan kosong.

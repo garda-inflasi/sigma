@@ -30,7 +30,8 @@ import {
   toKartu, toPersetujuan,
   type AksiKartu, type BulkKartuResult, type KartuResponse, type KeputusanPersetujuan, type Persetujuan, type PersetujuanResponse,
 } from "./intervensi";
-import { toGeometri, toKandidat, toMarker, toOptimasiBody, toRencanaOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type Rute, type RuteResponse } from "./spasial";
+import { toGeometri, toKandidat, toLokasi, toLokasiQuery, toMarker, toNeraca, toNeracaQuery, toOptimasiBody, toRencanaOptimasi, toRiwayatOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type LokasiResponse, type LokasiWilayah, type MarkerResponse, type NeracaResponse, type NeracaWilayah, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type RiwayatOptimasi, type RiwayatOptimasiResponse, type Rute, type RuteResponse } from "./spasial";
+import { mockLokasi, mockNeraca, mockRiwayatOptimasi } from "./spasial-mock";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
 import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
 import { mockBriefDetail } from "./brief-mock";
@@ -143,6 +144,17 @@ export const api = {
       MODE_MOCK ? mockDelay(m.mockRute) : apiFetch<RuteResponse[]>("/v1/spasial/rute").then((rows) => rows.map(toRute)),
     kandidatColdStorage: (): Promise<KandidatColdStorage[]> =>
       MODE_MOCK ? mockDelay(m.mockKandidatColdStorage) : apiFetch<KandidatResponse[]>("/v1/spasial/kandidat-cold-storage").then((rows) => rows.map(toKandidat)),
+    /** Neraca surplus/defisit per wilayah; tanpa periode dipakai periode terbaru, tanpa komoditas semua komoditas. */
+    neraca: (komoditasKode?: string, periode?: string): Promise<NeracaWilayah[]> =>
+      MODE_MOCK
+        ? mockDelay(() => mockNeraca(komoditasKode))
+        : apiFetch<NeracaResponse[]>(`/v1/spasial/neraca${toNeracaQuery(komoditasKode, periode)}`).then((rows) => rows.map(toNeraca)),
+    /** Kabupaten/kota untuk satu koordinat; 404 bila belum ada data wilayah. */
+    lokasi: (lat: number, lng: number): Promise<LokasiWilayah> =>
+      MODE_MOCK ? mockDelay(() => mockLokasi(lat, lng), 200, 400) : apiFetch<LokasiResponse>(`/v1/spasial/lokasi${toLokasiQuery(lat, lng)}`).then(toLokasi),
+    /** Riwayat rencana optimasi yang pernah disimpan (terbaru dulu). */
+    riwayatOptimasi: (): Promise<RiwayatOptimasi[]> =>
+      MODE_MOCK ? mockDelay(mockRiwayatOptimasi) : apiFetch<RiwayatOptimasiResponse[]>("/v1/spasial/optimasi-rute").then((rows) => rows.map(toRiwayatOptimasi)),
   },
   harga: {
     list: (params: HargaParams = {}): Promise<EntriHarga[]> =>

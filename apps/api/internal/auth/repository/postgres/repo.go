@@ -105,14 +105,6 @@ func (r *Repository) CreateLoginAttempt(ctx context.Context, attempt *domain.Log
 	return r.db.WithContext(ctx).Create(attempt).Error
 }
 
-func (r *Repository) CountRecentFailedAttempts(ctx context.Context, userID string, since time.Time) (int64, error) {
-	var count int64
-	err := r.db.WithContext(ctx).Model(&domain.LoginAttempt{}).
-		Where("user_id = ? AND success = ? AND attempted_at >= ?", userID, false, since).
-		Count(&count).Error
-	return count, err
-}
-
 // ── JWT Blacklist ──────────────────────────────────────────────────────
 
 func (r *Repository) BlacklistJWT(ctx context.Context, jti string, ttl time.Duration) error {

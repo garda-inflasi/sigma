@@ -146,8 +146,9 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code, ip string) (*MFA
 	if err != nil {
 		return nil, err
 	}
-	if uc.accountLocked(ctx, user.ID) {
-		return nil, ErrAccountLocked
+	kunci, err := uc.mulaiPercobaan(ctx, user.Email)
+	if err != nil {
+		return nil, err
 	}
 
 	langkah, ok := totp.ValidateTOTPStep(secret, strings.TrimSpace(code), time.Now())
@@ -155,6 +156,7 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code, ip string) (*MFA
 		uc.recordLoginAttempt(ctx, &user.ID, ip, false, "mfa_setup_invalid")
 		return nil, ErrMFACodeInvalid
 	}
+	uc.kembalikanPercobaan(ctx, kunci)
 
 	kode := totp.GenerateBackupCodes(JumlahKodeCadangan)
 	if err := uc.repo.ActivateMFA(ctx, user.ID, hashKode(user.ID, kode), langkah); err != nil {
@@ -185,9 +187,12 @@ func (uc *UseCase) ValidateMFALogin(ctx context.Context, mfaToken, code, ip stri
 	if err != nil || user.Status != "AKTIF" || !user.MfaAktif {
 		return nil, ErrMFAChallengeInvalid
 	}
-	if uc.accountLocked(ctx, user.ID) {
-		uc.recordFailedLogin(ctx, user.ID, user.Email, "account_locked")
-		return nil, ErrAccountLocked
+	kunci, err := uc.mulaiPercobaan(ctx, user.Email)
+	if err != nil {
+		if errors.Is(err, ErrAccountLocked) {
+			uc.recordFailedLogin(ctx, user.ID, user.Email, alasanAkunTerkunci)
+		}
+		return nil, err
 	}
 
 	metode, err := uc.verifySecondFactor(ctx, user, code)
@@ -195,6 +200,9 @@ func (uc *UseCase) ValidateMFALogin(ctx context.Context, mfaToken, code, ip stri
 		if errors.Is(err, ErrMFACodeInvalid) {
 			uc.recordLoginAttempt(ctx, &user.ID, ip, false, "mfa_invalid")
 			uc.recordFailedLogin(ctx, user.ID, user.Email, "mfa_invalid")
+		} else {
+			// Bukan tebakan salah (mis. MFA belum terkonfigurasi atau basis data galat): jangan dihitung.
+			uc.kembalikanPercobaan(ctx, kunci)
 		}
 		return nil, err
 	}

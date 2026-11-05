@@ -24,6 +24,8 @@ import (
 
 type mockRepository struct {
 	mock.Mock
+	// kunciFake menyediakan domain.KunciRepository dalam memori (lockout), lihat lockout_fake_test.go.
+	kunciFake
 }
 
 func (m *mockRepository) GetUserByID(ctx context.Context, id string) (*domain.Pengguna, error) {
@@ -103,11 +105,6 @@ func (m *mockRepository) IsJWTBlacklisted(ctx context.Context, jti string) (bool
 func (m *mockRepository) CreateLoginAttempt(ctx context.Context, attempt *domain.LoginAttempt) error {
 	args := m.Called(ctx, attempt)
 	return args.Error(0)
-}
-
-func (m *mockRepository) CountRecentFailedAttempts(ctx context.Context, userID string, since time.Time) (int64, error) {
-	args := m.Called(ctx, userID, since)
-	return args.Get(0).(int64), args.Error(1)
 }
 
 func (m *mockRepository) SaveResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
@@ -216,7 +213,6 @@ func TestLogin_Success(t *testing.T) {
 	user := activeUser()
 
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
@@ -237,7 +233,7 @@ func TestLogin_InvalidCredentials(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	repo.On("GetUserByEmail", mock.Anything, "wrong@example.com").Return(nil, errors.New("not found"))
+	repo.On("GetUserByEmail", mock.Anything, "wrong@example.com").Return(nil, gorm.ErrRecordNotFound)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
 	result, err := uc.Login(context.Background(), "wrong@example.com", "Test1234!", "10.0.0.1")
@@ -257,6 +253,7 @@ func TestLogin_InactiveAccount(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "inactive@example.com").Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
+	// Hanya kata sandi yang benar yang menyingkap bahwa akunnya nonaktif.
 	result, err := uc.Login(context.Background(), "inactive@example.com", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrAccountInactive)
@@ -268,14 +265,17 @@ func TestLogin_InactiveAccount(t *testing.T) {
 func TestLogin_AccountLocked(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	user := activeUser()
+	repo.kunciTerkunci("locked@example.com")
 
-	repo.On("GetUserByEmail", mock.Anything, "locked@example.com").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(10), nil)
+	// Akun dicari hanya untuk mengisi aktor audit; kata sandi tidak pernah diperiksa.
+	repo.On("GetUserByEmail", mock.Anything, "locked@example.com").Return(activeUser(), nil)
 
 	result, err := uc.Login(context.Background(), "locked@example.com", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrAccountLocked)
+	var terkunci *AkunTerkunciError
+	require.ErrorAs(t, err, &terkunci)
+	assert.Positive(t, terkunci.SisaDetik)
 	assert.Nil(t, result)
 
 	repo.AssertExpectations(t)
@@ -287,7 +287,6 @@ func TestLogin_WrongPassword(t *testing.T) {
 	user := activeUser()
 
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
 	result, err := uc.Login(context.Background(), "test@example.com", "WrongPass1!", "10.0.0.1")
@@ -517,7 +516,6 @@ func TestLogin_MandatoryChangeFlagIsCarriedByToken(t *testing.T) {
 	user.WajibGantiPassword = true
 
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)

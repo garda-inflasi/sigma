@@ -48,6 +48,15 @@ paths:
         menyala; bawaan hanya di produksi) tetapi belum setup menerima sesi dengan `mfa_setup_diwajibkan: true`:
         semua endpoint selain `/v1/auth/mfa/setup`, `/v1/auth/mfa/verify`, ganti password, keluar, dan profil
         menjawab 403 dengan kode `MFA_SETUP_REQUIRED`.
+
+        **Lockout akun (satu mekanisme).** Kegagalan dihitung per email ternormalisasi (huruf kecil, tanpa spasi tepi),
+        bukan per akun, jadi email terdaftar dan tidak terdaftar mendapat jawaban yang sama persis (anti-enumerasi).
+        Lima kegagalan berturut-turut dalam satu jendela 15 menit — kata sandi login, kode OTP login, kode setup MFA,
+        dan kata sandi lama saat ganti kata sandi memakai hitungan yang sama — mengunci akun selama 15 menit sejak
+        kegagalan kelima. Selama terkunci semua percobaan (juga dengan kata sandi benar) dijawab 423 `ACCOUNT_LOCKED`
+        tanpa diperiksa dan tanpa memperpanjang kunci. Hitungan dihapus saat login berhasil lengkap (kata sandi dan,
+        bila ada, OTP) atau saat admin membuka kunci (`POST /v1/users/{id}/buka-kunci`). Akun nonaktif baru
+        dijawab 403 `ACCOUNT_INACTIVE` setelah kata sandi terbukti benar; kata sandi salah tetap 401.
       operationId: authLogin
       tags:
         - Authentication
@@ -71,23 +80,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Email atau password salah
+          description: Email atau password salah (kode `INVALID_CREDENTIALS`; sama untuk email yang tidak terdaftar)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: Akun tidak aktif
+          description: Akun tidak aktif (kode `ACCOUNT_INACTIVE`), hanya dijawab setelah kata sandi benar
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "429":
-          description: Akun terkunci karena terlalu banyak percobaan
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          $ref: "#/components/responses/AkunTerkunci"
 
   /v1/auth/refresh:
     post:
@@ -200,6 +205,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          $ref: "#/components/responses/AkunTerkunci"
 
   /v1/auth/forgot-password:
     post:
@@ -328,7 +335,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MFAVerifyResponse"
         "400":
-          description: Kode TOTP tidak valid atau setup belum dimulai
+          description: Kode TOTP tidak valid (kode `MFA_CODE_INVALID`) atau setup belum dimulai
           content:
             application/json:
               schema:
@@ -345,12 +352,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "429":
-          description: Terlalu banyak percobaan salah
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          $ref: "#/components/responses/AkunTerkunci"
 
   /v1/auth/mfa/validate:
     post:
@@ -382,17 +385,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: Token tantangan tidak valid atau kedaluwarsa, atau kode salah
+          description: |
+            Token tantangan tidak valid atau kedaluwarsa (kode `MFA_CHALLENGE_EXPIRED`; masuk ulang), atau kode
+            salah (kode `MFA_CODE_INVALID`)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "429":
-          description: Akun terkunci karena terlalu banyak percobaan
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          $ref: "#/components/responses/AkunTerkunci"
 
   /v1/auth/mfa/backup-codes:
     post:
@@ -584,6 +585,52 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/buka-kunci:
+    post:
+      summary: Membuka kunci login pengguna (lockout)
+      description: |
+        Memerlukan izin `pengguna.kelola`. Menghapus hitungan percobaan gagal dan kunci login email pengguna itu
+        sehingga ia dapat masuk lagi seketika. Idempoten: akun yang tidak terkunci dijawab 200 dengan
+        `terkunci_sebelumnya: false`. Tercatat di audit trail (aksi `UNLOCK_USER`). Daftar dan detail pengguna
+        memuat `terkunci_sampai` selama akun terkunci.
+      operationId: bukaKunciUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: Kunci dibuka (atau akun memang tidak terkunci)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BukaKunciResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
           content:
             application/json:
               schema:
@@ -4437,6 +4484,21 @@ components:
       bearerFormat: JWT
       description: Masukkan token JWT yang diperoleh dari endpoint login
 
+  responses:
+    AkunTerkunci:
+      description: |
+        Akun terkunci karena terlalu banyak percobaan gagal (kode `ACCOUNT_LOCKED`). Header `Retry-After` dan
+        `data.sisa_detik` memuat sisa kunci. Dijawab sama untuk email terdaftar maupun tidak.
+      headers:
+        Retry-After:
+          description: Sisa kunci dalam detik
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AkunTerkunciResponse"
+
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -4493,6 +4555,11 @@ components:
 
     ErrorResponse:
       type: object
+      description: |
+        Amplop galat. `code` adalah status HTTP sebagai teks ("400", "404", ...) atau, untuk galat auth yang
+        perlu dibedakan klien, salah satu kode stabil: `INVALID_CREDENTIALS` (401), `ACCOUNT_LOCKED` (423),
+        `ACCOUNT_INACTIVE` (403), `MFA_CODE_INVALID` (401/400), `MFA_CHALLENGE_EXPIRED` (401),
+        `PASSWORD_CHANGE_REQUIRED` (403), `MFA_SETUP_REQUIRED` (403). Kode tidak berubah antara API Go dan BFF web.
       properties:
         code:
           type: string
@@ -4502,6 +4569,47 @@ components:
           example: "Bad Request"
         data:
           nullable: true
+
+    AkunTerkunciResponse:
+      type: object
+      description: Galat 423 `ACCOUNT_LOCKED`. Header `Retry-After` berisi `sisa_detik`.
+      properties:
+        code:
+          type: string
+          example: ACCOUNT_LOCKED
+        message:
+          type: string
+          example: Akun terkunci karena terlalu banyak percobaan gagal. Coba lagi nanti.
+        data:
+          type: object
+          properties:
+            terkunci_sampai:
+              type: string
+              format: date-time
+              description: Akhir kunci (UTC). Tetap sama selama terkunci, berapa pun percobaan yang masuk.
+            sisa_detik:
+              type: integer
+              description: Sisa kunci dibulatkan ke atas
+              example: 900
+
+    BukaKunciResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: test-user-001
+            terkunci_sebelumnya:
+              type: boolean
+              description: True bila akun memang sedang terkunci ketika dibuka
 
     HealthResponse:
       type: object
@@ -4840,6 +4948,13 @@ components:
             `/v1/auth/logout`, dan `/v1/auth/me` menjawab 403 dengan `code`
             `PASSWORD_CHANGE_REQUIRED`.
           example: false
+        terkunci_sampai:
+          type: string
+          format: date-time
+          description: |
+            Hanya pada `GET /v1/users` dan `GET /v1/users/{id}` (pengguna.kelola), dan hanya selama login akun
+            terkunci karena percobaan gagal berulang: akhir kunci (UTC). Dibuka lewat
+            `POST /v1/users/{id}/buka-kunci`.
 
     UserResponse:
       type: object

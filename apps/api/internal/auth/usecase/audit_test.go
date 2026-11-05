@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestLogin_SuccessWritesExactlyOneAuditEntry(t *testing.T) {
@@ -17,7 +18,6 @@ func TestLogin_SuccessWritesExactlyOneAuditEntry(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser()
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-	repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
@@ -43,7 +43,7 @@ func TestLogin_FailuresAreAudited(t *testing.T) {
 		{
 			name: "email tak dikenal",
 			setup: func(repo *mockRepository) {
-				repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(nil, errors.New("not found"))
+				repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(nil, gorm.ErrRecordNotFound)
 				repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 			},
 			password:   "Test1234!",
@@ -53,7 +53,6 @@ func TestLogin_FailuresAreAudited(t *testing.T) {
 			name: "password salah",
 			setup: func(repo *mockRepository) {
 				repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(activeUser(), nil)
-				repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(0), nil)
 				repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 			},
 			password:   "Salah123!",
@@ -63,8 +62,8 @@ func TestLogin_FailuresAreAudited(t *testing.T) {
 		{
 			name: "akun terkunci",
 			setup: func(repo *mockRepository) {
+				repo.kunciTerkunci("test@example.com")
 				repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(activeUser(), nil)
-				repo.On("CountRecentFailedAttempts", mock.Anything, "user-123", mock.Anything).Return(int64(99), nil)
 			},
 			password:   "Test1234!",
 			wantActor:  "user-123",
@@ -155,7 +154,7 @@ func TestUpdateUser_AuditsBeforeAndAfter(t *testing.T) {
 func TestCreateUser_AuditsActorAndMarksMandatoryPasswordChange(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByEmail", mock.Anything, "new@example.com").Return(nil, errors.New("not found"))
+	repo.On("GetUserByEmail", mock.Anything, "new@example.com").Return(nil, gorm.ErrRecordNotFound)
 	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 	user := &domain.Pengguna{ID: "new-user", Email: "new@example.com", Peran: "OPS_MAHASISWA"}
 

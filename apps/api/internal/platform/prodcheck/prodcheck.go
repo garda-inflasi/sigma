@@ -105,6 +105,9 @@ func ValidateAPI(getenv func(string) string) error {
 	if err := ValidateWorker(getenv); err != nil {
 		errs = append(errs, err)
 	}
+	if err := ValidateSSO(getenv); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/garda-inflasi/api/pkg/email"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
+	"github.com/garda-inflasi/api/pkg/sso"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -25,6 +26,8 @@ type Dependencies struct {
 
 type Options struct {
 	UseCaseConfig usecase.Config
+	// SSO menggantikan konfigurasi SSO Google dari lingkungan (tes); nil berarti SSO nonaktif.
+	SSO *sso.Config
 }
 
 func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
@@ -68,6 +71,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		// Menukar token tantangan dari login dan kode OTP dengan sesi; belum ada sesi, jadi publik.
 		public.POST("/mfa/validate", handler.ValidateMFA)
 	}
+	registerSSO(public, repo, uc, deps.Logger, ssoSettings(opts, os.Getenv))
 
 	// Protected routes — require valid JWT
 	protected := engine.Group("")

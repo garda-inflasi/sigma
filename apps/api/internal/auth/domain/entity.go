@@ -28,6 +28,11 @@ type Pengguna struct {
 	PasswordDiubahPada *time.Time `gorm:"column:password_diubah_pada"`
 	DibuatPada         time.Time  `gorm:"column:dibuat_pada;default:now()"`
 	DiupdatePada       time.Time  `gorm:"column:diupdate_pada;default:now()"`
+	// SSOProvider dan SSOSubject mengaitkan akun dengan satu identitas penyedia SSO (mis. "google" dan
+	// klaim sub); keduanya terisi atau keduanya nil. SSOTerhubungPada adalah waktu penautan pertama.
+	SSOProvider      *string    `gorm:"column:sso_provider"`
+	SSOSubject       *string    `gorm:"column:sso_subject"`
+	SSOTerhubungPada *time.Time `gorm:"column:sso_terhubung_pada"`
 }
 
 func (Pengguna) TableName() string {

@@ -9,7 +9,8 @@ info:
     ## Authentication
 
     Semua endpoint kecuali `/healthz`, `/v1/auth/login`, `/v1/auth/refresh`,
-    `/v1/auth/forgot-password`, dan `/v1/auth/reset-password` memerlukan
+    `/v1/auth/forgot-password`, `/v1/auth/reset-password`, `/v1/auth/mfa/validate`, dan
+    `/v1/auth/sso/*` memerlukan
     JWT Bearer token yang dikirim via header `Authorization: Bearer <token>`.
 
     Token diperoleh dari endpoint `POST /v1/auth/login`.
@@ -84,6 +85,124 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Akun terkunci karena terlalu banyak percobaan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/sso/status:
+    get:
+      summary: Penyedia SSO yang aktif
+      description: |
+        Publik. Halaman masuk memanggilnya dari server untuk memutuskan apakah tombol "Masuk dengan Google"
+        ditampilkan. `google: true` berarti SSO Google dikonfigurasi (SSO_GOOGLE_*), bukan bahwa penerbit
+        sedang terjangkau.
+      operationId: authSSOStatus
+      tags:
+        - Authentication
+      responses:
+        "200":
+          description: Status SSO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOStatusResponse"
+
+  /v1/auth/sso/google/authorize:
+    post:
+      summary: Memulai masuk dengan Google (OIDC Authorization Code + PKCE S256)
+      description: |
+        Publik, dipanggil BFF dari server ke server. Membangkitkan `state`, `nonce`, dan `code_verifier`,
+        menyimpannya di server (state dan binding hanya sebagai hash SHA-256, umur 10 menit, sekali pakai),
+        lalu mengembalikan URL otorisasi Google. `binding` adalah rahasia yang mengikat alur ke browser
+        pemulai: BFF menyimpannya di cookie httpOnly (SameSite=Lax) dan mengirimnya kembali pada callback.
+        Penemuan konfigurasi penerbit dilakukan malas; bila penerbit tidak terjangkau jawabannya 503
+        `SSO_UNAVAILABLE` dan tidak ada state tersimpan.
+      operationId: authSSOGoogleAuthorize
+      tags:
+        - Authentication
+      responses:
+        "200":
+          description: URL otorisasi dan binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOAuthorizeResponse"
+        "503":
+          description: |
+            `SSO_NOT_CONFIGURED` (SSO_GOOGLE_* belum diisi) atau `SSO_UNAVAILABLE` (penerbit tidak terjangkau)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/sso/google/callback:
+    post:
+      summary: Menyelesaikan masuk dengan Google
+      description: |
+        Publik, dipanggil BFF dari server ke server dengan `code` dan `state` dari pengalihan Google serta
+        `binding` dari cookie browser. State dipakai sekali (dihapus pada percobaan pertama apa pun hasilnya).
+        Kode ditukar dengan verifier PKCE yang tersimpan, lalu ID token diverifikasi (tanda tangan lewat JWKS,
+        penerbit, audiens, kedaluwarsa, nonce) dan `email_verified` wajib benar; `SSO_GOOGLE_HOSTED_DOMAIN`
+        (bila diisi) mewajibkan klaim `hd` yang sama.
+
+        Tidak ada pendaftaran mandiri: akun harus sudah ada dan AKTIF. Pemetaan: subjek (`sub`) yang sudah
+        bertaut lebih dulu, lalu email (tak peka huruf besar-kecil). Masuk SSO pertama menautkan
+        `sso_provider`/`sso_subject`; email milik akun yang sudah bertaut ke subjek lain ditolak (409) dan
+        diaudit. Akun tidak aktif atau terkunci ditolak dengan aturan yang sama dengan login kata sandi.
+
+        Hasil sama dengan `POST /v1/auth/login`: sesi penuh, atau `mfa_required` dan `mfa_token` untuk akun
+        ber-MFA (ditukar di `POST /v1/auth/mfa/validate`). Audit LOGIN memuat `metadata.metode = sso_google`.
+      operationId: authSSOGoogleCallback
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SSOCallbackRequest"
+      responses:
+        "200":
+          description: Sesi diterbitkan atau tantangan MFA (bentuk sama dengan login berhasil)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Validasi gagal, atau `SSO_STATE_INVALID` (state tidak dikenal, sudah dipakai, kedaluwarsa, atau binding tidak cocok)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "`SSO_EXCHANGE_FAILED`: kode ditolak, tanda tangan/penerbit/audiens/nonce ID token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: |
+            `SSO_EMAIL_UNVERIFIED`, `SSO_DOMAIN_NOT_ALLOWED`, `SSO_ACCOUNT_NOT_FOUND` (tidak ada akun untuk
+            email itu), atau `SSO_ACCOUNT_INACTIVE`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`SSO_ACCOUNT_CONFLICT`: akun sudah tertaut ke identitas Google yang berbeda"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: "`SSO_ACCOUNT_LOCKED`: akun terkunci karena terlalu banyak percobaan"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: "`SSO_NOT_CONFIGURED` atau `SSO_UNAVAILABLE`"
           content:
             application/json:
               schema:
@@ -4559,6 +4678,61 @@ components:
             mfa_setup_diwajibkan:
               type: boolean
               description: Sesi hanya membuka endpoint setup MFA sampai MFA diaktifkan
+
+    SSOStatusResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            google:
+              type: boolean
+              description: SSO Google dikonfigurasi
+
+    SSOAuthorizeResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            authorize_url:
+              type: string
+              description: URL otorisasi penerbit (response_type=code, state, nonce, code_challenge S256)
+            binding:
+              type: string
+              description: Rahasia pengikat browser; simpan di cookie httpOnly, jangan di URL
+
+    SSOCallbackRequest:
+      type: object
+      required:
+        - code
+        - state
+        - binding
+      properties:
+        code:
+          type: string
+          maxLength: 2048
+          description: Kode otorisasi dari penerbit
+        state:
+          type: string
+          maxLength: 128
+          description: State dari pengalihan penerbit
+        binding:
+          type: string
+          maxLength: 128
+          description: Binding dari respons authorize (cookie browser)
 
     RefreshTokenRequest:
       type: object

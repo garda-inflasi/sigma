@@ -1197,10 +1197,12 @@ paths:
     get:
       summary: Mendaftar katalog sumber data
       description: |
-        Metadata sumber (API resmi dan scraper). Pengambilan data nyata belum
-        berjalan (05-B), jadi sumber yang belum pernah dijalankan berstatus
-        `BELUM_AKTIF` dengan `terakhir_jalan` dan `keberhasilan_7h` null.
-        Butuh izin `sumber.lihat`.
+        Metadata sumber (API resmi dan scraper). Sumber yang belum pernah
+        dijalankan berstatus `BELUM_AKTIF` dengan `terakhir_jalan` dan
+        `keberhasilan_7h` null. Sesudah ada eksekusi, status, `terakhir_jalan`,
+        `keberhasilan_7h` (persen run SUKSES dalam 7 hari), dan `latensi_ms`
+        dihitung dari riwayat eksekusi. `bisa_dijalankan` benar bila sumber
+        punya konektor ingestion. Butuh izin `sumber.lihat`.
       operationId: listSumberData
       tags:
         - Sumber Data
@@ -1249,12 +1251,194 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/sumber-data/pipeline:
+    get:
+      summary: Isi lapisan bronze/silver/gold dan mutu data
+      description: |
+        Jumlah baris per lapisan dan empat ukuran mutu (persen 0-100) yang dihitung dari
+        eksekusi ingestion nyata. `null` berarti belum ada bahan untuk menghitung (bukan 100%).
+
+        - `bronze`: payload mentah (`data_mentah`).
+        - `silver`: `harga_eksternal` + `cuaca_harian` hasil ingestion + `inflasi_bulanan` dan
+          `andil_inflasi` bersumber BPS.
+        - `gold`: baris `gold_harga_harian` (harga lapangan vs eksternal per hari).
+        - `kelengkapan`: baris valid dari seluruh baris dibaca, 7 hari. `konsistensi`: baris
+          yang kode wilayah/komoditasnya terpetakan ke master, 7 hari. `akurasi`: pasangan
+          harga lapangan vs eksternal dengan selisih paling banyak 10%, 14 hari.
+          `ketepatan_waktu`: sumber ber-konektor (tidak dijeda) yang eksekusi suksesnya terakhir
+          tidak lebih tua dari dua kali selang jadwal.
+        - `demo`: benar bila hitungan memuat eksekusi contoh (pemicu `DEMO`).
+
+        Butuh izin `sumber.lihat`.
+      operationId: getPipelineSumber
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Hitungan lapisan dan mutu data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineSumberResponse"
+        "403":
+          description: Tanpa izin `sumber.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sumber-data/{id}/eksekusi:
+    get:
+      summary: Riwayat eksekusi ingestion sebuah sumber
+      description: |
+        Terbaru lebih dulu. `ringkasan` memuat rincian baris yang ditolak:
+        `tak_terpetakan` (alias sumber yang belum ada di pemetaan, dengan jumlah
+        baris) dan `tidak_valid` (alasan dengan jumlah baris). Butuh izin `sumber.lihat`.
+      operationId: listEksekusiSumber
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: SRC-BI
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Riwayat eksekusi (larik kosong bila belum pernah dijalankan)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EksekusiSumberListResponse"
+        "400":
+          description: limit di luar 1-100
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Sumber data tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sumber-data/{id}/sampel:
+    get:
+      summary: Cuplikan payload mentah (bronze) terbaru sebuah sumber
+      description: |
+        Awal payload (maks 2000 karakter) beserta ukuran utuhnya. Butuh izin `sumber.lihat`.
+      operationId: listSampelSumber
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: SRC-BI
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Cuplikan payload mentah, terbaru lebih dulu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SampelSumberListResponse"
+        "400":
+          description: limit di luar 1-100
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Sumber data tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sumber-data/{id}/jalankan:
+    post:
+      summary: Menjalankan ingestion sebuah sumber sekarang
+      description: |
+        Butuh izin `sumber.kelola`; tercatat di audit trail (`JALANKAN_SUMBER`,
+        termasuk penolakan). Mengembalikan segera dengan eksekusi berstatus
+        `BERJALAN`; pengambilan data berlanjut di latar belakang dan hasilnya
+        dibaca dari `GET /v1/sumber-data/{id}/eksekusi`. Hanya satu eksekusi
+        per sumber pada satu waktu.
+      operationId: jalankanSumberData
+      tags:
+        - Sumber Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: SRC-BI
+      responses:
+        "202":
+          description: Eksekusi dimulai
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EksekusiSumberResponse"
+        "403":
+          description: Tanpa izin `sumber.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Sumber data tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Sumber sedang dijeda atau masih berjalan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Sumber belum memiliki konektor ingestion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/sumber-data/bulk:
     post:
       summary: Menjeda atau melanjutkan sumber data
       description: |
-        Butuh izin `sumber.kelola`; tercatat di audit trail. Baru mengubah status
-        di katalog. `jeda` hanya berlaku untuk sumber yang belum dijeda;
+        Butuh izin `sumber.kelola`; tercatat di audit trail. Mengubah status
+        di katalog; sumber dijeda tidak dijadwalkan dan tidak bisa dijalankan
+        manual. `jeda` hanya berlaku untuk sumber yang belum dijeda;
         `lanjutkan` hanya untuk yang sedang dijeda dan mengembalikannya ke
         `TERTUNDA` (pernah berjalan) atau `BELUM_AKTIF` (belum pernah).
         Respons memuat `berhasil` dan `gagal` (id yang tidak berubah).
@@ -1293,7 +1477,14 @@ paths:
 
         **Setiap angka membawa `sumber`.** `DEMO` berarti data contoh, bukan angka
         resmi; `demo` bernilai true bila ada blok ber-sumber DEMO dan UI wajib
-        menampilkan label demo. Angka resmi (BPS, BI, DJPB) hanya masuk lewat impor.
+        menampilkan label demo. Angka resmi (BPS, BI, DJPB, BAPANAS) hanya masuk lewat impor
+        (ingestion BPS: `POST /v1/sumber-data/SRC-BPS/jalankan`).
+
+        **Angka resmi didahulukan.** Bila sebuah blok punya baris resmi, baris contoh
+        (DEMO) tidak dipakai sama sekali, walau lebih baru; seri 12 bulan dan penyumbang
+        hanya dari golongan yang sama dengan bulan terbaru, jadi satu blok tidak pernah
+        mencampur angka resmi dan contoh. Blok lain boleh tetap contoh (label demo tetap
+        menyala untuk blok itu saja). `inflasi.diimpor_pada` menunjukkan kapan angka masuk.
 
         Blok yang datanya belum ada bernilai `null` (bukan galat). `fiskal` juga
         `null` untuk peran tanpa izin `fiskal.lihat`.
@@ -1583,8 +1774,11 @@ paths:
       summary: Peta panas harga konsumen
       description: |
         Perubahan harga konsumen terakhir terhadap rata-rata tertimbang tujuh hari sebelumnya,
-        per komoditas dan kabupaten/kota, dari `mv_heatmap_harga`. Hanya kabupaten dan komoditas
-        yang punya data yang dikembalikan. Memerlukan izin `dashboard.operasional`.
+        per komoditas dan kabupaten/kota, dari `mv_heatmap_harga` (entri lapangan tervalidasi).
+        Sel yang belum punya data lapangan dilengkapi dari harga eksternal hasil ingestion
+        (`gold_harga_harian`) dan ditandai `sumber: EKSTERNAL`; sel dengan data lapangan tidak
+        pernah digantikan. Hanya kabupaten dan komoditas yang punya data yang dikembalikan.
+        Memerlukan izin `dashboard.operasional`.
       operationId: getHeatmapHarga
       tags:
         - Dashboard
@@ -1622,6 +1816,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AktivitasLapanganListResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/pembanding-harga:
+    get:
+      summary: Validasi silang harga lapangan vs eksternal
+      description: |
+        Pasangan terbaru (7 hari terakhir, waktu Aceh) harga konsumen lapangan tervalidasi dan
+        harga eksternal hasil ingestion (PIHPS) per komoditas dan kabupaten/kota, dari
+        `gold_harga_harian`. Sepakat bila selisih paling banyak `batas_pct` (10%).
+        Memerlukan izin `dashboard.operasional`.
+      operationId: getPembandingHarga
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Ringkasan pasangan dan selisih terbesar (kosong bila belum ada pasangan)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PembandingHargaResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/cuaca:
+    get:
+      summary: Cuaca harian terbaru per kabupaten/kota
+      description: |
+        Cuaca harian terbaru (hari ini atau sampai 3 hari ke belakang, waktu Aceh) hasil
+        ingestion BMKG dari `cuaca_harian`. Prakiraan hari-hari mendatang tidak dipakai.
+        Memerlukan izin `dashboard.operasional`.
+      operationId: getCuacaWilayah
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Cuaca per kabupaten/kota yang punya data (kosong bila belum ada)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CuacaWilayahListResponse"
         "403":
           description: Tanpa izin `dashboard.operasional`
           content:
@@ -3166,6 +3413,181 @@ components:
         url_dasar:
           type: string
           nullable: true
+        bisa_dijalankan:
+          type: boolean
+          description: Benar bila sumber punya konektor ingestion (POST /v1/sumber-data/{id}/jalankan)
+
+    EksekusiSumber:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        sumber_id:
+          type: string
+          example: SRC-BI
+        pemicu:
+          type: string
+          enum: [JADWAL, MANUAL, CLI, DEMO]
+        status:
+          type: string
+          enum: [BERJALAN, SUKSES, SEBAGIAN, GAGAL]
+          description: SEBAGIAN bila sebagian permintaan berhasil dan sebagian gagal
+        mulai:
+          type: string
+          format: date-time
+        selesai:
+          type: string
+          format: date-time
+          nullable: true
+        durasi_ms:
+          type: integer
+          nullable: true
+        latensi_ms:
+          type: integer
+          nullable: true
+          description: Rata-rata waktu per permintaan yang berhasil
+        dokumen:
+          type: integer
+          description: Respons yang berhasil diambil (disimpan di bronze)
+        baris_dibaca:
+          type: integer
+        baris_diambil:
+          type: integer
+          description: Baris silver yang ditulis
+        baris_tak_terpetakan:
+          type: integer
+        baris_tidak_valid:
+          type: integer
+        baris_ditolak:
+          type: integer
+          description: baris_tak_terpetakan + baris_tidak_valid
+        galat:
+          type: string
+          nullable: true
+        ringkasan:
+          type: object
+          properties:
+            permintaan:
+              type: object
+              properties:
+                berhasil:
+                  type: integer
+                gagal:
+                  type: integer
+            tak_terpetakan:
+              type: object
+              additionalProperties:
+                type: integer
+              description: '"JENIS:alias" -> jumlah baris'
+            tidak_valid:
+              type: object
+              additionalProperties:
+                type: integer
+              description: alasan -> jumlah baris
+
+    EksekusiSumberResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "202"
+        message:
+          type: string
+          example: "Accepted"
+        data:
+          $ref: "#/components/schemas/EksekusiSumber"
+
+    EksekusiSumberListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EksekusiSumber"
+
+    PipelineSumber:
+      type: object
+      properties:
+        bronze:
+          type: integer
+          format: int64
+        silver:
+          type: integer
+          format: int64
+        gold:
+          type: integer
+          format: int64
+        demo:
+          type: boolean
+        mutu:
+          type: object
+          properties:
+            kelengkapan:
+              type: number
+              nullable: true
+            akurasi:
+              type: number
+              nullable: true
+            ketepatan_waktu:
+              type: number
+              nullable: true
+            konsistensi:
+              type: number
+              nullable: true
+
+    PipelineSumberResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/PipelineSumber"
+
+    SampelSumber:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        eksekusi_id:
+          type: integer
+          format: int64
+        kunci_permintaan:
+          type: string
+          example: wilayah=101
+        diambil_pada:
+          type: string
+          format: date-time
+        ukuran:
+          type: integer
+          description: Panjang payload utuh (karakter)
+        cuplikan:
+          type: string
+
+    SampelSumberListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampelSumber"
 
     SumberDataResponse:
       type: object
@@ -3708,6 +4130,96 @@ components:
                   harga:
                     type: number
                     description: Harga konsumen rata-rata pada tanggal terakhir yang tersedia
+                  sumber:
+                    type: string
+                    enum: [LAPANGAN, EKSTERNAL]
+                    description: EKSTERNAL bila sel dihitung dari harga hasil ingestion karena belum ada data lapangan
+
+    PembandingHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            pasangan:
+              type: integer
+              description: Jumlah pasangan komoditas-kabupaten yang dibandingkan (semua, bukan hanya items)
+            sepakat:
+              type: integer
+              description: Pasangan yang selisihnya dalam batas_pct
+            batas_pct:
+              type: number
+              example: 10
+            items:
+              type: array
+              description: Paling banyak 20 pasangan, selisih absolut terbesar lebih dulu
+              items:
+                type: object
+                properties:
+                  komoditas_kode:
+                    type: string
+                  komoditas_nama:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  kabupaten_nama:
+                    type: string
+                  tanggal:
+                    type: string
+                    format: date
+                  harga_lapangan:
+                    type: number
+                  harga_eksternal:
+                    type: number
+                  selisih_pct:
+                    type: number
+                    description: (lapangan - eksternal) / eksternal, persen
+                  sepakat:
+                    type: boolean
+                  demo:
+                    type: boolean
+                    description: Benar bila sisi eksternal berasal dari eksekusi contoh
+
+    CuacaWilayahListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          description: Satu baris per kabupaten/kota; anomali dan curah hujan terbesar lebih dulu
+          items:
+            type: object
+            properties:
+              kabupaten_kode:
+                type: string
+              kabupaten_nama:
+                type: string
+              tanggal:
+                type: string
+                format: date
+              curah_hujan_mm:
+                type: number
+              suhu_c:
+                type: number
+              kelembapan:
+                type: integer
+              anomali:
+                type: boolean
+                description: Hujan lebat, curah hujan harian >= 50 mm
+              sumber:
+                type: string
+                example: BMKG
+              demo:
+                type: boolean
 
     AktivitasLapanganListResponse:
       type: object

@@ -35,6 +35,18 @@ func (m *mockRepository) Heatmap(ctx context.Context) (*domain.HeatmapData, erro
 	return data, args.Error(1)
 }
 
+func (m *mockRepository) PembandingHarga(ctx context.Context, sejak time.Time) ([]domain.PembandingHarga, error) {
+	args := m.Called(ctx, sejak)
+	items, _ := args.Get(0).([]domain.PembandingHarga)
+	return items, args.Error(1)
+}
+
+func (m *mockRepository) CuacaTerbaru(ctx context.Context, sejak, sampai time.Time) ([]domain.CuacaKabupaten, error) {
+	args := m.Called(ctx, sejak, sampai)
+	items, _ := args.Get(0).([]domain.CuacaKabupaten)
+	return items, args.Error(1)
+}
+
 func (m *mockRepository) AktivitasLapangan(ctx context.Context, awal, akhir time.Time) ([]domain.AktivitasKabupaten, error) {
 	args := m.Called(ctx, awal, akhir)
 	items, _ := args.Get(0).([]domain.AktivitasKabupaten)
@@ -208,4 +220,73 @@ func TestGetHeatmap(t *testing.T) {
 	repo.On("Heatmap", mock.Anything).Return(nil, errors.New("db mati"))
 	_, err = uc.GetHeatmap(t.Context())
 	assert.Error(t, err)
+}
+
+func TestGetPembandingHarga_UrutSelisihTerbesarDanHitungSemuaPasangan(t *testing.T) {
+	repo := new(mockRepository)
+	uc := New(repo, logger.NewDefault())
+	// 17 Oktober 2026 06.00 WIB; jendela 7 hari dimulai 10 Oktober.
+	uc.now = func() time.Time { return time.Date(2026, 10, 16, 23, 0, 0, 0, time.UTC) }
+	sejak := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+
+	pasangan := make([]domain.PembandingHarga, 0, 25)
+	for i := range 25 {
+		pasangan = append(pasangan, domain.PembandingHarga{KomoditasKode: "K" + string(rune('A'+i)), KabupatenKode: "1171", SelisihPct: float64(i) - 12})
+	}
+	repo.On("PembandingHarga", mock.Anything, sejak).Return(pasangan, nil)
+
+	res, err := uc.GetPembandingHarga(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, 25, res.Pasangan)
+	assert.Equal(t, 21, res.Sepakat, "selisih -10..10 persen dihitung sepakat")
+	require.Len(t, res.Items, 20)
+	assert.Equal(t, -12.0, res.Items[0].SelisihPct, "selisih absolut terbesar dulu; seri diurutkan menurut kode komoditas")
+	assert.Equal(t, 12.0, res.Items[1].SelisihPct)
+	repo.AssertExpectations(t)
+}
+
+func TestGetPembandingHarga_KosongBukanGalat(t *testing.T) {
+	repo := new(mockRepository)
+	uc := New(repo, logger.NewDefault())
+	repo.On("PembandingHarga", mock.Anything, mock.Anything).Return([]domain.PembandingHarga(nil), nil)
+
+	res, err := uc.GetPembandingHarga(context.Background())
+
+	require.NoError(t, err)
+	assert.Zero(t, res.Pasangan)
+	assert.Empty(t, res.Items)
+}
+
+func TestGetPembandingHarga_GalatRepositoryDibungkus(t *testing.T) {
+	repo := new(mockRepository)
+	uc := New(repo, logger.NewDefault())
+	repo.On("PembandingHarga", mock.Anything, mock.Anything).Return(nil, errors.New("db down"))
+
+	_, err := uc.GetPembandingHarga(context.Background())
+
+	assert.Error(t, err)
+}
+
+func TestGetCuaca_AnomaliDanCurahTerbesarDulu(t *testing.T) {
+	repo := new(mockRepository)
+	uc := New(repo, logger.NewDefault())
+	uc.now = func() time.Time { return time.Date(2026, 10, 16, 23, 0, 0, 0, time.UTC) } // 17 Oktober WIB
+	hari := time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+	repo.On("CuacaTerbaru", mock.Anything, hari.AddDate(0, 0, -3), hari).Return([]domain.CuacaKabupaten{
+		{KabupatenKode: "1101", CurahHujanMm: 5},
+		{KabupatenKode: "1102", CurahHujanMm: 20},
+		{KabupatenKode: "1103", CurahHujanMm: 55, Anomali: true},
+		{KabupatenKode: "1104", CurahHujanMm: 70, Anomali: true},
+	}, nil)
+
+	items, err := uc.GetCuaca(context.Background())
+
+	require.NoError(t, err)
+	kode := make([]string, len(items))
+	for i, it := range items {
+		kode[i] = it.KabupatenKode
+	}
+	assert.Equal(t, []string{"1104", "1103", "1102", "1101"}, kode)
+	repo.AssertExpectations(t)
 }

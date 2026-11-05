@@ -19,8 +19,8 @@ const (
 )
 
 // SumberData memetakan tabel sumber_data: metadata sebuah sumber data eksternal
-// (API resmi atau scraper). Belum ada pengambilan data nyata (05-B), jadi
-// TerakhirJalan, Keberhasilan7h, dan LatensiMs kosong untuk sumber yang belum berjalan.
+// (API resmi atau scraper). TerakhirJalan, Keberhasilan7h, dan LatensiMs kosong
+// untuk sumber yang belum pernah dijalankan; sesudah itu dihitung dari eksekusi_sumber.
 type SumberData struct {
 	ID       string `gorm:"column:id;primaryKey"`
 	Nama     string `gorm:"column:nama"`
@@ -37,6 +37,9 @@ type SumberData struct {
 	RobotsTxtPatuh bool     `gorm:"column:robots_txt_patuh"`
 	Atribusi       string   `gorm:"column:atribusi"`
 	URLDasar       *string  `gorm:"column:url_dasar"`
+	// Konfigurasi adalah parameter permintaan konektor (JSON, bukan rahasia);
+	// kunci API dibaca dari variabel lingkungan, tidak disimpan di sini.
+	Konfigurasi string `gorm:"column:konfigurasi;type:jsonb;default:{}"`
 }
 
 func (SumberData) TableName() string {

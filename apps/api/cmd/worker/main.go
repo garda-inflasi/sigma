@@ -1,7 +1,9 @@
 // Perintah worker menjalankan job berkala di luar proses API: penyegaran
 // agregat dashboard dan perhitungan KPI (job lain mendaftar lewat
-// register_<modul>.go). Aman dijalankan lebih dari satu instance: tiap job
-// dilindungi advisory lock Postgres.
+// register_<modul>.go) serta daemon seperti penjadwal cron ingestion
+// (INGEST_SCHEDULER=on). Aman dijalankan lebih dari satu instance: tiap job
+// dilindungi advisory lock Postgres, dan eksekusi ingestion dijaga indeks unik
+// satu run BERJALAN per sumber.
 //
 //	worker                 jalankan semua job sesuai interval (bawaan)
 //	worker list            cetak job terdaftar dan interval efektifnya
@@ -22,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -62,7 +65,11 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 
 	switch {
 	case len(args) == 0:
-		return serve(ctx, db, sched, getenv, log)
+		daemons, err := buildDaemons(deps{db: db, log: log, getenv: getenv})
+		if err != nil {
+			return err
+		}
+		return serve(ctx, db, sched, daemons, getenv, log)
 	case args[0] == "list":
 		for _, st := range sched.Statuses() {
 			fmt.Fprintf(out, "%s\tinterval=%s\n", st.Name, st.Interval)
@@ -83,7 +90,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 	return errors.New("pemakaian: worker [list | run <job>]")
 }
 
-func serve(ctx context.Context, db *gorm.DB, sched *jobs.Scheduler, getenv func(string) string, log *logger.Logger) error {
+func serve(ctx context.Context, db *gorm.DB, sched *jobs.Scheduler, daemons []daemon, getenv func(string) string, log *logger.Logger) error {
 	if addr := healthAddr(getenv); addr != "" {
 		srv := &http.Server{Addr: addr, Handler: healthHandler(db, sched), ReadHeaderTimeout: 5 * time.Second}
 		go func() {
@@ -97,8 +104,18 @@ func serve(ctx context.Context, db *gorm.DB, sched *jobs.Scheduler, getenv func(
 			_ = srv.Shutdown(shutdownCtx)
 		}()
 	}
-	log.Info("worker berjalan", map[string]interface{}{"jobs": sched.Names()})
+	var wg sync.WaitGroup
+	for _, dm := range daemons {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dm(ctx)
+		}()
+	}
+
+	log.Info("worker berjalan", map[string]interface{}{"jobs": sched.Names(), "daemon": len(daemons)})
 	sched.Run(ctx)
+	wg.Wait()
 	log.Info("worker berhenti")
 	return nil
 }

@@ -8,7 +8,8 @@ import {
 } from "./master";
 import {
   aktivitasMock, toAktivitasLapangan, toHeatmap, toKpiOperasional,
-  type AktivitasLapangan, type AktivitasLapanganResponse, type Heatmap, type HeatmapResponse, type KpiResponse,
+  type AktivitasLapangan, type AktivitasLapanganResponse, type CuacaResponse, type CuacaWilayah, type Heatmap, type HeatmapResponse, type KpiResponse,
+  type PembandingHarga, type PembandingHargaResponse, toCuacaWilayah, toPembandingHarga,
 } from "./dashboard";
 import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery,
@@ -29,11 +30,11 @@ import {
 import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { USERS } from "@/lib/data/reference";
-import { toSumberData, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
+import { toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  ColdStorageView, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
-  PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SumberData, TugasLapangan,
+  ColdStorageView, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
+  PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string };
@@ -63,6 +64,14 @@ export const api = {
   operasional: {
     kpi: (): Promise<KpiOperasional[]> =>
       MODE_MOCK ? mockDelay(m.mockKpi) : apiFetch<KpiResponse[]>("/v1/dashboard/operasional/kpi").then((rows) => rows.map(toKpiOperasional)),
+    /** Validasi silang harga lapangan vs eksternal (hasil ingestion). */
+    pembandingHarga: (): Promise<PembandingHarga> =>
+      MODE_MOCK
+        ? mockDelay({ pasangan: 0, sepakat: 0, batasPct: 10, items: [] })
+        : apiFetch<PembandingHargaResponse>("/v1/dashboard/operasional/pembanding-harga").then(toPembandingHarga),
+    /** Cuaca harian terbaru per kabupaten/kota (BMKG). */
+    cuaca: (): Promise<CuacaWilayah[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<CuacaResponse[]>("/v1/dashboard/operasional/cuaca").then((rows) => rows.map(toCuacaWilayah)),
     heatmap: (): Promise<Heatmap> =>
       MODE_MOCK ? mockDelay(m.mockHeatmap) : apiFetch<HeatmapResponse>("/v1/dashboard/operasional/heatmap").then(toHeatmap),
     aktivitas: (): Promise<AktivitasLapangan[]> =>
@@ -136,9 +145,25 @@ export const api = {
   sumber: {
     list: (): Promise<SumberData[]> =>
       MODE_MOCK ? mockDelay(m.mockSumber) : apiFetch<SumberDataResponse[]>("/v1/sumber-data").then((rows) => rows.map(toSumberData)),
-    /** Jeda atau lanjutkan sumber; mengubah status katalog (penjadwal nyata menyusul di 05-B). */
+    /** Jeda atau lanjutkan sumber; sumber dijeda tidak dijadwalkan dan tidak bisa dijalankan manual. */
     bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
       MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
+    /** Isi lapisan bronze/silver/gold dan mutu data dari eksekusi nyata. */
+    pipeline: (): Promise<PipelineSumber> =>
+      MODE_MOCK
+        ? mockDelay({ bronze: 0, silver: 0, gold: 0, demo: false, mutu: { kelengkapan: null, akurasi: null, ketepatanWaktu: null, konsistensi: null } })
+        : apiFetch<PipelineResponse>("/v1/sumber-data/pipeline").then(toPipeline),
+    /** Riwayat eksekusi ingestion, terbaru lebih dulu. */
+    eksekusi: (id: string): Promise<EksekusiSumber[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<EksekusiResponse[]>(`/v1/sumber-data/${encodeURIComponent(id)}/eksekusi`).then((rows) => rows.map(toEksekusi)),
+    /** Cuplikan payload mentah (bronze) terakhir. */
+    sampel: (id: string): Promise<SampelSumber[]> =>
+      MODE_MOCK ? mockDelay([]) : apiFetch<SampelResponse[]>(`/v1/sumber-data/${encodeURIComponent(id)}/sampel?limit=3`).then((rows) => rows.map(toSampel)),
+    /** Memulai ingestion sekarang (izin sumber.kelola); hasil dibaca dari riwayat eksekusi. */
+    jalankan: (id: string): Promise<EksekusiSumber> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Menjalankan ingestion membutuhkan backend aktif."))
+        : apiFetch<EksekusiResponse>(`/v1/sumber-data/${encodeURIComponent(id)}/jalankan`, { method: "POST" }).then(toEksekusi),
   },
   kpi: {
     list: (): Promise<KpiIndikator[]> =>

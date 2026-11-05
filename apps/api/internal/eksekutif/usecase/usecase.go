@@ -80,11 +80,12 @@ func (uc *UseCase) inflasi(ctx context.Context) (*domain.InflasiRingkas, error) 
 	if err != nil || target == nil {
 		return nil, err
 	}
-	seri, err := uc.repo.SeriInflasi(ctx, domain.WilayahProvinsi, terbaru.Periode, bulanSeri)
+	demo := terbaru.Sumber == domain.SumberDemo
+	seri, err := uc.repo.SeriInflasi(ctx, domain.WilayahProvinsi, terbaru.Periode, bulanSeri, demo)
 	if err != nil {
 		return nil, err
 	}
-	penyumbang, err := uc.repo.Penyumbang(ctx, domain.WilayahProvinsi, terbaru.Periode, jumlahPenyumbang)
+	penyumbang, err := uc.repo.Penyumbang(ctx, domain.WilayahProvinsi, terbaru.Periode, jumlahPenyumbang, demo)
 	if err != nil {
 		return nil, err
 	}

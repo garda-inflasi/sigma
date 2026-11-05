@@ -27,6 +27,7 @@ export interface HeatmapResponse {
     kabupaten_kode: string;
     delta: number;
     harga: number;
+    sumber: SelHeatmap["sumber"];
   }[];
 }
 
@@ -83,6 +84,7 @@ export function toHeatmap(h: HeatmapResponse): Heatmap {
       kabupatenKode: s.kabupaten_kode,
       delta: s.delta,
       harga: s.harga,
+      sumber: s.sumber,
     })),
   };
 }
@@ -121,4 +123,98 @@ export function aktivitasMock(
     ).length,
     target: n * komoditasAktif,
   }));
+}
+
+export interface PembandingHargaResponse {
+  pasangan: number;
+  sepakat: number;
+  batas_pct: number;
+  items: {
+    komoditas_kode: string;
+    komoditas_nama: string;
+    kabupaten_kode: string;
+    kabupaten_nama: string;
+    tanggal: string;
+    harga_lapangan: number;
+    harga_eksternal: number;
+    selisih_pct: number;
+    sepakat: boolean;
+    demo: boolean;
+  }[];
+}
+
+/** Validasi silang harga: lapangan (tervalidasi) vs eksternal (hasil ingestion) pada hari yang sama. */
+export interface PembandingHarga {
+  /** Jumlah pasangan komoditas-wilayah yang dibandingkan, dan yang selisihnya dalam batas. */
+  pasangan: number;
+  sepakat: number;
+  batasPct: number;
+  /** Selisih terbesar lebih dulu. */
+  items: {
+    komoditasNama: string;
+    kabupatenNama: string;
+    tanggal: string;
+    hargaLapangan: number;
+    hargaEksternal: number;
+    selisihPct: number;
+    sepakat: boolean;
+    demo: boolean;
+  }[];
+}
+
+export function toPembandingHarga(p: PembandingHargaResponse): PembandingHarga {
+  return {
+    pasangan: p.pasangan,
+    sepakat: p.sepakat,
+    batasPct: p.batas_pct,
+    items: p.items.map((i) => ({
+      komoditasNama: i.komoditas_nama,
+      kabupatenNama: namaRingkas(i.kabupaten_kode, i.kabupaten_nama),
+      tanggal: i.tanggal,
+      hargaLapangan: i.harga_lapangan,
+      hargaEksternal: i.harga_eksternal,
+      selisihPct: i.selisih_pct,
+      sepakat: i.sepakat,
+      demo: i.demo,
+    })),
+  };
+}
+
+export interface CuacaResponse {
+  kabupaten_kode: string;
+  kabupaten_nama: string;
+  tanggal: string;
+  curah_hujan_mm: number;
+  suhu_c: number;
+  kelembapan: number;
+  anomali: boolean;
+  sumber: string;
+  demo: boolean;
+}
+
+/** Cuaca harian terbaru satu kabupaten/kota; anomali = hujan lebat (>= 50 mm/hari). */
+export interface CuacaWilayah {
+  kode: string;
+  nama: string;
+  tanggal: string;
+  curahHujanMm: number;
+  suhuC: number;
+  kelembapan: number;
+  anomali: boolean;
+  sumber: string;
+  demo: boolean;
+}
+
+export function toCuacaWilayah(c: CuacaResponse): CuacaWilayah {
+  return {
+    kode: c.kabupaten_kode,
+    nama: namaRingkas(c.kabupaten_kode, c.kabupaten_nama),
+    tanggal: c.tanggal,
+    curahHujanMm: c.curah_hujan_mm,
+    suhuC: c.suhu_c,
+    kelembapan: c.kelembapan,
+    anomali: c.anomali,
+    sumber: c.sumber,
+    demo: c.demo,
+  };
 }

@@ -1,9 +1,12 @@
 package dto
 
 import (
+	"encoding/json"
 	"time"
 
+	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/internal/sumber-data/usecase"
 )
 
 type SumberDataResponse struct {
@@ -20,6 +23,8 @@ type SumberDataResponse struct {
 	RobotsTxtPatuh bool       `json:"robots_txt_patuh"`
 	Atribusi       string     `json:"atribusi"`
 	URLDasar       *string    `json:"url_dasar"`
+	// BisaDijalankan benar bila sumber punya konektor ingestion (tombol "jalankan sekarang").
+	BisaDijalankan bool `json:"bisa_dijalankan"`
 }
 
 // BulkSumberDataResponse: Gagal adalah id yang diminta tetapi tidak berubah
@@ -29,19 +34,106 @@ type BulkSumberDataResponse struct {
 	Gagal    int `json:"gagal"`
 }
 
-func ToSumberDataResponse(s domain.SumberData) SumberDataResponse {
+func ToSumberDataResponse(s domain.SumberData, bisaDijalankan bool) SumberDataResponse {
 	return SumberDataResponse{
 		ID: s.ID, Nama: s.Nama, Penyedia: s.Penyedia, Jenis: s.Jenis, Cakupan: s.Cakupan,
 		JadwalCron: s.JadwalCron, Status: s.Status, TerakhirJalan: s.TerakhirJalan,
 		Keberhasilan7h: s.Keberhasilan7h, LatensiMs: s.LatensiMs, RobotsTxtPatuh: s.RobotsTxtPatuh,
-		Atribusi: s.Atribusi, URLDasar: s.URLDasar,
+		Atribusi: s.Atribusi, URLDasar: s.URLDasar, BisaDijalankan: bisaDijalankan,
 	}
 }
 
-func ToSumberDataResponses(items []domain.SumberData) []SumberDataResponse {
+// ToSumberDataResponses memetakan katalog; bisaDijalankan menentukan tombol per sumber.
+func ToSumberDataResponses(items []domain.SumberData, bisaDijalankan func(id string) bool) []SumberDataResponse {
 	res := make([]SumberDataResponse, len(items))
 	for i, item := range items {
-		res[i] = ToSumberDataResponse(item)
+		res[i] = ToSumberDataResponse(item, bisaDijalankan(item.ID))
+	}
+	return res
+}
+
+// EksekusiResponse adalah satu baris riwayat eksekusi ingestion. Ringkasan berisi
+// rincian baris ditolak (alias tak terpetakan dan alasan tidak valid).
+type EksekusiResponse struct {
+	ID                 int64           `json:"id"`
+	SumberID           string          `json:"sumber_id"`
+	Pemicu             string          `json:"pemicu"`
+	Status             string          `json:"status"`
+	Mulai              time.Time       `json:"mulai"`
+	Selesai            *time.Time      `json:"selesai"`
+	DurasiMs           *int            `json:"durasi_ms"`
+	LatensiMs          *int            `json:"latensi_ms"`
+	Dokumen            int             `json:"dokumen"`
+	BarisDibaca        int             `json:"baris_dibaca"`
+	BarisDiambil       int             `json:"baris_diambil"`
+	BarisTakTerpetakan int             `json:"baris_tak_terpetakan"`
+	BarisTidakValid    int             `json:"baris_tidak_valid"`
+	BarisDitolak       int             `json:"baris_ditolak"`
+	Galat              *string         `json:"galat"`
+	Ringkasan          json.RawMessage `json:"ringkasan"`
+}
+
+func ToEksekusiResponse(e ingest.EksekusiSumber) EksekusiResponse {
+	ringkasan := json.RawMessage(e.Ringkasan)
+	if len(ringkasan) == 0 {
+		ringkasan = json.RawMessage("{}")
+	}
+	return EksekusiResponse{
+		ID: e.ID, SumberID: e.SumberID, Pemicu: e.Pemicu, Status: e.Status, Mulai: e.Mulai, Selesai: e.Selesai,
+		DurasiMs: e.DurasiMs, LatensiMs: e.LatensiMs, Dokumen: e.Dokumen, BarisDibaca: e.BarisDibaca,
+		BarisDiambil: e.BarisDiambil, BarisTakTerpetakan: e.BarisTakTerpetakan, BarisTidakValid: e.BarisTidakValid,
+		BarisDitolak: e.BarisTakTerpetakan + e.BarisTidakValid, Galat: e.Galat, Ringkasan: ringkasan,
+	}
+}
+
+func ToEksekusiResponses(items []ingest.EksekusiSumber) []EksekusiResponse {
+	res := make([]EksekusiResponse, len(items))
+	for i, item := range items {
+		res[i] = ToEksekusiResponse(item)
+	}
+	return res
+}
+
+// SampelResponse adalah cuplikan satu payload mentah (bronze). Ukuran adalah panjang
+// payload utuh dalam karakter; Cuplikan memuat awalnya saja.
+type SampelResponse struct {
+	ID              int64     `json:"id"`
+	EksekusiID      int64     `json:"eksekusi_id"`
+	KunciPermintaan string    `json:"kunci_permintaan"`
+	DiambilPada     time.Time `json:"diambil_pada"`
+	Ukuran          int       `json:"ukuran"`
+	Cuplikan        string    `json:"cuplikan"`
+}
+
+// MutuResponse adalah persen 0-100; null bila belum ada bahan untuk menghitungnya.
+type MutuResponse struct {
+	Kelengkapan    *float64 `json:"kelengkapan"`
+	Akurasi        *float64 `json:"akurasi"`
+	KetepatanWaktu *float64 `json:"ketepatan_waktu"`
+	Konsistensi    *float64 `json:"konsistensi"`
+}
+
+// PipelineResponse merangkum lapisan medallion (jumlah baris) dan mutu data. Demo benar
+// bila hitungan memuat eksekusi contoh.
+type PipelineResponse struct {
+	Bronze int64        `json:"bronze"`
+	Silver int64        `json:"silver"`
+	Gold   int64        `json:"gold"`
+	Demo   bool         `json:"demo"`
+	Mutu   MutuResponse `json:"mutu"`
+}
+
+func ToPipelineResponse(p usecase.Pipeline) PipelineResponse {
+	return PipelineResponse{
+		Bronze: p.Bronze, Silver: p.Silver, Gold: p.Gold, Demo: p.Demo,
+		Mutu: MutuResponse{Kelengkapan: p.Kelengkapan, Akurasi: p.Akurasi, KetepatanWaktu: p.KetepatanWaktu, Konsistensi: p.Konsistensi},
+	}
+}
+
+func ToSampelResponses(items []ingest.SampelMentah) []SampelResponse {
+	res := make([]SampelResponse, len(items))
+	for i, item := range items {
+		res[i] = SampelResponse(item)
 	}
 	return res
 }

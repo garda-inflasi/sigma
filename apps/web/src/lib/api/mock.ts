@@ -31,7 +31,7 @@ export function mockHeatmap() {
   for (const kom of KOMODITAS) {
     for (const k of kab) {
       const seri = seriHarga(kom, k.kode);
-      sel.push({ komoditasKode: kom.kode, kabupatenKode: k.kode, delta: delta7(seri), harga: seri[seri.length - 1].konsumen });
+      sel.push({ komoditasKode: kom.kode, kabupatenKode: k.kode, delta: delta7(seri), harga: seri[seri.length - 1].konsumen, sumber: "LAPANGAN" });
     }
   }
   return {
@@ -302,14 +302,14 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
 /* ── Sumber data, pengguna, audit, brief, tugas, master ─── */
 export function mockSumber(): SumberData[] {
   return [
-    { id: "SRC-BPS", nama: "BPS WebAPI — IHK & inflasi", penyedia: "BPS", jenis: "API", cakupan: "Provinsi & 3 kota IHK", jadwal: "Harian 06.00", terakhir: menitLalu(142), status: "SEHAT", keberhasilan7h: 100, latensiMs: 640 },
-    { id: "SRC-BI", nama: "PIHPS Nasional — harga pangan", penyedia: "Bank Indonesia", jenis: "API", cakupan: "Pasar tradisional & modern", jadwal: "Harian 10.00", terakhir: menitLalu(38), status: "SEHAT", keberhasilan7h: 98.6, latensiMs: 910 },
-    { id: "SRC-DJPB", nama: "Kanwil DJPb — realisasi belanja", penyedia: "Kanwil DJPb Aceh", jenis: "API", cakupan: "APBD & BTT 23 kab/kota", jadwal: "Mingguan Senin", terakhir: menitLalu(2880), status: "SEHAT", keberhasilan7h: 100, latensiMs: 1220 },
-    { id: "SRC-BMKG", nama: "BMKG — prakiraan & curah hujan", penyedia: "BMKG", jenis: "API", cakupan: "23 kab/kota", jadwal: "Tiap 3 jam", terakhir: menitLalu(51), status: "SEHAT", keberhasilan7h: 99.1, latensiMs: 480 },
-    { id: "SRC-OWM", nama: "OpenWeather — cuaca aktual", penyedia: "OpenWeather", jenis: "API", cakupan: "Titik sentra produksi", jadwal: "Tiap jam", terakhir: menitLalu(12), status: "SEHAT", keberhasilan7h: 99.8, latensiMs: 210 },
-    { id: "SRC-BAPANAS", nama: "Panel Harga Bapanas", penyedia: "Badan Pangan Nasional", jenis: "SCRAPER", cakupan: "Harga produsen & konsumen", jadwal: "Harian 11.00", terakhir: menitLalu(325), status: "TERTUNDA", keberhasilan7h: 86.4, latensiMs: 3400 },
-    { id: "SRC-PORTAL", nama: "Portal harga Disperindag Aceh", penyedia: "Pemerintah Aceh", jenis: "SCRAPER", cakupan: "Pasar induk provinsi", jadwal: "Harian 12.00", terakhir: menitLalu(1460), status: "GAGAL", keberhasilan7h: 57.1, latensiMs: 0 },
-    { id: "SRC-CS", nama: "Telemetri cold storage", penyedia: "Sensor IoT fasilitas", jenis: "API", cakupan: "3 fasilitas operasional", jadwal: "Tiap 5 menit", terakhir: menitLalu(3), status: "SEHAT", keberhasilan7h: 99.97, latensiMs: 95 },
+    { id: "SRC-BPS", nama: "BPS WebAPI — IHK & inflasi", penyedia: "BPS", jenis: "API", cakupan: "Provinsi & 3 kota IHK", jadwal: "Harian 06.00", terakhir: menitLalu(142), status: "SEHAT", keberhasilan7h: 100, latensiMs: 640, bisaDijalankan: false },
+    { id: "SRC-BI", nama: "PIHPS Nasional — harga pangan", penyedia: "Bank Indonesia", jenis: "API", cakupan: "Pasar tradisional & modern", jadwal: "Harian 10.00", terakhir: menitLalu(38), status: "SEHAT", keberhasilan7h: 98.6, latensiMs: 910, bisaDijalankan: true },
+    { id: "SRC-DJPB", nama: "Kanwil DJPb — realisasi belanja", penyedia: "Kanwil DJPb Aceh", jenis: "API", cakupan: "APBD & BTT 23 kab/kota", jadwal: "Mingguan Senin", terakhir: menitLalu(2880), status: "SEHAT", keberhasilan7h: 100, latensiMs: 1220, bisaDijalankan: false },
+    { id: "SRC-BMKG", nama: "BMKG — prakiraan & curah hujan", penyedia: "BMKG", jenis: "API", cakupan: "23 kab/kota", jadwal: "Tiap 3 jam", terakhir: menitLalu(51), status: "SEHAT", keberhasilan7h: 99.1, latensiMs: 480, bisaDijalankan: false },
+    { id: "SRC-OWM", nama: "OpenWeather — cuaca aktual", penyedia: "OpenWeather", jenis: "API", cakupan: "Titik sentra produksi", jadwal: "Tiap jam", terakhir: menitLalu(12), status: "SEHAT", keberhasilan7h: 99.8, latensiMs: 210, bisaDijalankan: false },
+    { id: "SRC-BAPANAS", nama: "Panel Harga Bapanas", penyedia: "Badan Pangan Nasional", jenis: "SCRAPER", cakupan: "Harga produsen & konsumen", jadwal: "Harian 11.00", terakhir: menitLalu(325), status: "TERTUNDA", keberhasilan7h: 86.4, latensiMs: 3400, bisaDijalankan: false },
+    { id: "SRC-PORTAL", nama: "Portal harga Disperindag Aceh", penyedia: "Pemerintah Aceh", jenis: "SCRAPER", cakupan: "Pasar induk provinsi", jadwal: "Harian 12.00", terakhir: menitLalu(1460), status: "GAGAL", keberhasilan7h: 57.1, latensiMs: 0, bisaDijalankan: false },
+    { id: "SRC-CS", nama: "Telemetri cold storage", penyedia: "Sensor IoT fasilitas", jenis: "API", cakupan: "3 fasilitas operasional", jadwal: "Tiap 5 menit", terakhir: menitLalu(3), status: "SEHAT", keberhasilan7h: 99.97, latensiMs: 95, bisaDijalankan: false },
   ];
 }
 
@@ -404,7 +404,7 @@ export function mockEksekutif(): RingkasanEksekutif {
   return {
     demo: true,
     inflasi: {
-      periode: "2026-09-01T12:00:00", sumber: "DEMO",
+      periode: "2026-09-01T12:00:00", sumber: "DEMO", diimporPada: "2026-10-01T01:00:00Z",
       yoy: 2.84, mtm: 0.41, ytd: 1.92, sasaran: { bawah: 1.5, atas: 3.5 },
       seri: bulan.map((b, i) => ({ bulan: b, yoy: yoy[i] })),
       penyumbang: [

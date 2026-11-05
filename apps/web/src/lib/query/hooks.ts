@@ -26,6 +26,8 @@ export const useSiklusAktif = (enabled = true) =>
 export const useKpiOperasional = () => useQuery({ queryKey: qk.operasional.kpi(), queryFn: api.operasional.kpi, refetchInterval: LIVE });
 export const useHeatmap = () => useQuery({ queryKey: qk.operasional.heatmap(), queryFn: api.operasional.heatmap, refetchInterval: LIVE * 2 });
 export const useAktivitasLapangan = () => useQuery({ queryKey: qk.operasional.aktivitas(), queryFn: api.operasional.aktivitas, refetchInterval: LIVE });
+export const usePembandingHarga = () => useQuery({ queryKey: qk.operasional.pembanding(), queryFn: api.operasional.pembandingHarga, refetchInterval: LIVE * 2 });
+export const useCuacaTerbaru = () => useQuery({ queryKey: qk.operasional.cuaca(), queryFn: api.operasional.cuaca, refetchInterval: LIVE * 10 });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
 export const useRuteDistribusi = () => useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
 export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });
@@ -63,6 +65,34 @@ export const useColdStorage = (params: ColdStorageParams) =>
     refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
   });
 export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+export const useSumberPipeline = () => useQuery({ queryKey: qk.sumber.pipeline(), queryFn: api.sumber.pipeline, refetchInterval: LIVE * 2 });
+/** Riwayat eksekusi; dimuat ulang tiap 2 detik selama masih ada run BERJALAN. */
+export const useSumberEksekusi = (id: string | null) =>
+  useQuery({
+    queryKey: qk.sumber.eksekusi(id ?? ""),
+    queryFn: () => api.sumber.eksekusi(id!),
+    enabled: !!id,
+    refetchInterval: (query) => (query.state.data?.some((e) => e.status === "BERJALAN") ? 2_000 : false),
+  });
+export const useSumberSampel = (id: string | null) =>
+  useQuery({ queryKey: qk.sumber.sampel(id ?? ""), queryFn: () => api.sumber.sampel(id!), enabled: !!id });
+
+/** Jalankan ingestion sebuah sumber sekarang, lalu segarkan riwayat dan katalog. */
+export function useSumberJalankan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.sumber.jalankan(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: qk.sumber.eksekusi(id) });
+      qc.invalidateQueries({ queryKey: qk.sumber.sampel(id) });
+      qc.invalidateQueries({ queryKey: qk.sumber.list() });
+      toast.success("Ingestion dimulai", { description: "Hasilnya muncul di riwayat eksekusi. Tercatat di audit trail." });
+    },
+    onError: (err) => {
+      toast.error("Tidak bisa menjalankan sumber", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 
 /** Jeda atau lanjutkan sumber lalu segarkan katalog dari server. */
 export function useSumberBulk() {

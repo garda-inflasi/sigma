@@ -29,6 +29,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		operasional.GET("/kpi", handler.GetKpiOperasional)
 		operasional.GET("/heatmap", handler.GetHeatmap)
 		operasional.GET("/aktivitas-lapangan", handler.GetAktivitasLapangan)
+		operasional.GET("/pembanding-harga", handler.GetPembandingHarga)
+		operasional.GET("/cuaca", handler.GetCuaca)
 	}
 
 	// Eksekutif: modul internal/eksekutif (GET /dashboard/eksekutif).

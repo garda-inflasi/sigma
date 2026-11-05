@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/garda-inflasi/api/internal/platform/jobs"
@@ -41,4 +42,32 @@ func buildScheduler(d deps) (*jobs.Scheduler, error) {
 		}
 	}
 	return s, nil
+}
+
+// daemon berjalan sepanjang umur worker: dimulai saat worker melayani dan wajib
+// kembali setelah ctx selesai, sesudah pekerjaannya yang masih berjalan rampung.
+// Dipakai untuk penjadwal yang mengatur waktunya sendiri (mis. cron ingestion per
+// sumber), yang tidak cocok dengan Job berinterval tetap.
+type daemon func(ctx context.Context)
+
+// daemonBuilder membuat daemon dari konfigurasi env; daemon nil berarti nonaktif.
+type daemonBuilder func(d deps) (daemon, error)
+
+var daemonBuilders []daemonBuilder
+
+func registerDaemon(b daemonBuilder) { daemonBuilders = append(daemonBuilders, b) }
+
+// buildDaemons membuat semua daemon yang aktif menurut konfigurasi.
+func buildDaemons(d deps) ([]daemon, error) {
+	var out []daemon
+	for _, b := range daemonBuilders {
+		dm, err := b(d)
+		if err != nil {
+			return nil, err
+		}
+		if dm != nil {
+			out = append(out, dm)
+		}
+	}
+	return out, nil
 }

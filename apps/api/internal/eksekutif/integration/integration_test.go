@@ -243,3 +243,71 @@ func TestEksekutif_LatestPeriodWins(t *testing.T) {
 	assert.Equal(t, "2026-08-01", res.Inflasi.Periode, "baris kabupaten (1171) tidak boleh mengalahkan provinsi")
 	assert.Len(t, res.Inflasi.Seri, 2)
 }
+
+// Angka resmi hasil ingestion menggantikan contoh: tidak ada pencampuran dalam satu blok, dan
+// contoh yang lebih baru tidak mengalahkan yang resmi.
+func TestEksekutif_OfficialDataReplacesDemoEvenWhenOlder(t *testing.T) {
+	s := seeded(t, "eksekutif_resmi_ganti_demo", true)
+	// Seed demo: inflasi 12 bulan sampai bulan lalu, andil/neraca bulan lalu, fiskal akhir bulan lalu.
+	// Ingestion BPS menggantikan baris contoh pada dua bulan (kunci wilayah+periode sama), keduanya
+	// lebih tua dari bulan contoh terbaru.
+	bulanLalu := time.Date(time.Now().Year(), time.Now().Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	older := bulanLalu.AddDate(0, -3, 0)
+	require.NoError(t, s.db.Exec(`
+		UPDATE inflasi_bulanan SET sumber = 'BPS', inflasi_yoy = CASE WHEN periode = ? THEN 3.3 ELSE 3.1 END
+		 WHERE wilayah_kode = '11' AND periode IN (?, ?)`, older, older, older.AddDate(0, -1, 0)).Error)
+
+	res := decode(t, s.get(t, "/v1/dashboard/eksekutif", emailEksekutif))
+
+	require.NotNil(t, res.Inflasi)
+	assert.Equal(t, "BPS", res.Inflasi.Sumber, "resmi didahulukan walau lebih tua dari contoh")
+	assert.Equal(t, older.Format("2006-01-02"), res.Inflasi.Periode)
+	assert.InDelta(t, 3.3, res.Inflasi.Yoy, 1e-9)
+	assert.Len(t, res.Inflasi.Seri, 2, "seri hanya dari angka resmi, tidak bercampur dengan 12 bulan contoh")
+	assert.Empty(t, res.Inflasi.Penyumbang, "andil contoh tidak ditempel pada inflasi resmi")
+	assert.True(t, res.Demo, "neraca dan fiskal masih contoh, jadi label demo tetap menyala")
+	require.NotNil(t, res.Neraca)
+	assert.Equal(t, "DEMO", res.Neraca.Sumber)
+}
+
+func TestEksekutif_AllBlocksOfficialClearsDemoLabel(t *testing.T) {
+	s := seeded(t, "eksekutif_semua_resmi", true)
+	bulanLalu := time.Date(time.Now().Year(), time.Now().Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	// Impor resmi menggantikan baris contoh bulan lalu; baris contoh lainnya (komoditas lain, instrumen
+	// fiskal contoh) tetap ada dan tidak boleh ikut tampil.
+	require.NoError(t, s.db.Exec(`UPDATE inflasi_bulanan SET sumber = 'BPS', inflasi_yoy = 3.1 WHERE wilayah_kode = '11' AND periode = ?`, bulanLalu).Error)
+	require.NoError(t, s.db.Exec(`UPDATE andil_inflasi SET sumber = 'BPS', andil = 0.07 WHERE periode = ? AND komoditas_kode = 'BWM'`, bulanLalu).Error)
+	require.NoError(t, s.db.Exec(`UPDATE neraca_pangan SET sumber = 'BAPANAS', produksi_ton = 100, konsumsi_ton = 80 WHERE periode = ? AND komoditas_kode = 'BRS-MED'`, bulanLalu).Error)
+	require.NoError(t, s.db.Exec(`
+		INSERT INTO ruang_fiskal (id, tahun, instrumen, pagu, realisasi, per_tanggal, sumber) VALUES ('RF-RESMI-1', ?, 'BTT', 100, 40, ?, 'DJPB')`, bulanLalu.Year(), bulanLalu).Error)
+
+	res := decode(t, s.get(t, "/v1/dashboard/eksekutif", emailEksekutif))
+
+	assert.False(t, res.Demo)
+	assert.Equal(t, "BPS", res.Inflasi.Sumber)
+	require.Len(t, res.Inflasi.Penyumbang, 1)
+	assert.Equal(t, "BWM", res.Inflasi.Penyumbang[0].Kode)
+	require.NotNil(t, res.Neraca)
+	assert.Equal(t, "BAPANAS", res.Neraca.Sumber)
+	assert.Len(t, res.Neraca.Items, 1, "baris neraca contoh tidak ikut walau periodenya sama")
+	require.NotNil(t, res.Fiskal)
+	assert.Equal(t, "DJPB", res.Fiskal.Sumber)
+	assert.Len(t, res.Fiskal.Instrumen, 1)
+	assert.EqualValues(t, 100, res.Fiskal.Pagu)
+}
+
+func TestEksekutif_DemoSeedNeverOverwritesOfficialRows(t *testing.T) {
+	s := seeded(t, "eksekutif_demo_tak_menimpa", false)
+	bulanLalu := time.Date(time.Now().Year(), time.Now().Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, s.db.Exec(`
+		INSERT INTO inflasi_bulanan (wilayah_kode, periode, ihk, inflasi_mtm, inflasi_yoy, inflasi_ytd, sumber) VALUES ('11', ?, 110, 0.1, 3.1, 1.0, 'BPS')`, bulanLalu).Error)
+
+	_, err := eksekutifseeder.SeedDemo(t.Context(), s.db, time.Now())
+	require.NoError(t, err)
+
+	var yoy float64
+	var sumber string
+	require.NoError(t, s.db.Raw(`SELECT inflasi_yoy, sumber FROM inflasi_bulanan WHERE wilayah_kode = '11' AND periode = ?`, bulanLalu).Row().Scan(&yoy, &sumber))
+	assert.Equal(t, "BPS", sumber)
+	assert.InDelta(t, 3.1, yoy, 1e-9)
+}

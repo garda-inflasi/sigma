@@ -13,7 +13,7 @@ import (
 )
 
 // Views berurutan menurut ketergantungan: agregat lebih dulu, lalu turunannya.
-var Views = []string{"agregat_harga_harian", "mv_heatmap_harga", "mv_kpi_operasional"}
+var Views = []string{"agregat_harga_harian", "mv_heatmap_harga", "mv_kpi_operasional", "gold_harga_harian"}
 
 const refreshTimeout = 2 * time.Minute
 

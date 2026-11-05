@@ -1,6 +1,7 @@
 import { ClipboardCheck, Plus } from "lucide-react";
 import { TrendChart } from "@/components/charts/trend-chart";
 import { FieldActivity } from "@/components/dashboard/field-activity";
+import { CuacaWilayahCard, PembandingHargaCard } from "@/components/dashboard/hasil-ingestion";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { OpsMap } from "@/components/dashboard/ops-map";
 import { PriceHeatmap } from "@/components/dashboard/price-heatmap";
@@ -32,6 +33,10 @@ export default async function OperasionalPage() {
       <div className="grid gap-6 xl:grid-cols-12">
         <div className="xl:col-span-8"><PriceHeatmap /></div>
         {can(role, "ews.lihat") && <EwsLiveFeed className="xl:col-span-4" />}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-12">
+        <div className="xl:col-span-7"><PembandingHargaCard /></div>
+        <div className="xl:col-span-5"><CuacaWilayahCard /></div>
       </div>
       <div className="grid gap-6 xl:grid-cols-12">
         <div className="xl:col-span-7"><OpsMap /></div>

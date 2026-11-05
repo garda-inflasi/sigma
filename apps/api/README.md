@@ -12,6 +12,7 @@ Konfigurasi lewat env (lihat `env.example` di akar repo). Alur lokal ada di [REA
 | `cmd/seed reference\|admin\|demo\|all` | seeder; `demo` ditolak bila `APP_ENV=production`             |
 | `cmd/worker [list\|run <job>]`        | job berkala di luar API (refresh dashboard, KPI); lihat §6   |
 | `cmd/kpi [-bulan N]`                   | hitung KPI sekali jalan (CLI); `cmd/worker` menjadwalkannya  |
+| `cmd/ingest <sumber>`                  | jalankan ingestion satu sumber sekali (mis. `SRC-BI`); juga `daftar`, `pemetaan`, `konfigurasi` |
 
 ## Menambah modul
 
@@ -146,3 +147,26 @@ func init() {
 `Run` wajib idempoten dan menghormati `ctx` (dibatasi `Timeout`, bawaan 5 menit). Nama job
 `[a-z][a-z0-9_]*` unik. Jangan menjalankan job yang sama dari `cmd/api`; bila perlu pemicu reaktif
 (seperti `refresher.Trigger`), itu boleh di API sebagai tambahan, bukan penjadwalan berkala.
+
+### 7. Ingestion sumber data eksternal (`internal/ingestion`)
+
+Konektor (`internal/ingestion/connector/<sumber>`) hanya merancang permintaan dan mem-parse respons;
+`engine` mengambilnya lewat `Fetcher` (pembatasan laju per host, robots.txt, retry backoff, circuit
+breaker), menyimpan payload mentah (bronze, `data_mentah`), menormalkan ke silver (`harga_eksternal`,
+`cuaca_harian`, `inflasi_bulanan`/`andil_inflasi` untuk BPS), dan mencatat tiap run di `eksekusi_sumber`.
+Gold adalah materialized view `gold_harga_harian` (ikut `refresher.Views`).
+
+- Tes konektor memakai fixture di `connector/<sumber>/testdata`; `ingestiontest.Fetcher` menyuntikkan
+  respons ke engine sehingga tidak ada tes yang memanggil internet.
+- Pemetaan alias sumber ke kode master ada di `pemetaan_sumber` (seeder `ingestion.reference`, insert-only;
+  ubah lewat `cmd/ingest pemetaan`). Baris yang tidak terpetakan dilaporkan di `eksekusi_sumber.ringkasan`.
+- Parameter permintaan per sumber ada di `sumber_data.konfigurasi` (`cmd/ingest konfigurasi`); kunci API
+  dibaca dari lingkungan (`BPS_API_KEY`), tidak disimpan di basis data.
+- Konektor yang tersedia: `SRC-BI` (PIHPS), `SRC-BMKG`, `SRC-BPS` (butuh `BPS_API_KEY` dan id variabel di
+  konfigurasi). Ketiganya belum diverifikasi terhadap layanan nyata; parser defensif dan dikunci fixture.
+- Seeder demo `ingestion.demo` menulis eksekusi, bronze, harga, dan cuaca bertanda DEMO (pemicu `DEMO`) dan
+  tidak pernah menimpa hasil ingestion nyata.
+- Penjadwal cron per sumber (`sumber_data.jadwal_cron`, WIB) berjalan di `cmd/worker` sebagai daemon dan mati
+  kecuali `INGEST_SCHEDULER=on`. Saat worker berhenti, run yang berjalan dibatalkan lalu statusnya dicatat.
+  Indeks unik satu run `BERJALAN` per sumber mencegah run ganda antar instance. Tombol "Jalankan sekarang" di
+  `/sumber-data` (izin `sumber.kelola`) memanggil `POST /v1/sumber-data/:id/jalankan` dan berjalan di `cmd/api`.

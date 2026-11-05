@@ -87,6 +87,10 @@ services:
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
       # Penyegaran berkala dashboard dimiliki service worker (satu pemilik).
       API_BACKGROUND_JOBS: "false"
+      # Ingestion manual (tombol "Jalankan sekarang" di /sumber-data) berjalan di api.
+      BPS_API_KEY: "${BPS_API_KEY:-}"
+      INGEST_USER_AGENT: "${INGEST_USER_AGENT:-}"
+      INGEST_JEDA_MS: "${INGEST_JEDA_MS:-}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
     depends_on:
@@ -95,7 +99,8 @@ services:
     networks:
       - garda_inflasi_net
 
-  # Job berkala di luar API: refresh materialized view dashboard dan perhitungan KPI.
+  # Job berkala di luar API: refresh materialized view dashboard, perhitungan KPI, dan
+  # penjadwal cron ingestion (bila INGEST_SCHEDULER=on).
   # Interval lewat JOB_<NAMA>_INTERVAL (off = nonaktif). Aman >1 instance (advisory lock).
   worker:
     <<: *api-image
@@ -114,6 +119,11 @@ services:
       JOB_DASHBOARD_REFRESH_INTERVAL: "${JOB_DASHBOARD_REFRESH_INTERVAL:-5m}"
       JOB_KPI_HITUNG_INTERVAL: "${JOB_KPI_HITUNG_INTERVAL:-1h}"
       JOB_KPI_HITUNG_BULAN: "${JOB_KPI_HITUNG_BULAN:-2}"
+      # Penjadwal cron ingestion (PIHPS, BMKG, BPS). Bawaan mati: lokal/demo tidak memanggil internet.
+      INGEST_SCHEDULER: "${INGEST_SCHEDULER:-}"
+      BPS_API_KEY: "${BPS_API_KEY:-}"
+      INGEST_USER_AGENT: "${INGEST_USER_AGENT:-}"
+      INGEST_JEDA_MS: "${INGEST_JEDA_MS:-}"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
       interval: 30s

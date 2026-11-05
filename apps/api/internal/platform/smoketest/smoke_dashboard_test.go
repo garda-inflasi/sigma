@@ -10,6 +10,8 @@ func init() {
 		smokeCase{Name: "dashboard: kpi operasional", Method: http.MethodGet, Path: "/v1/dashboard/operasional/kpi", Email: berhak, MinItems: map[string]int{"": 4}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "dashboard: heatmap harga", Method: http.MethodGet, Path: "/v1/dashboard/operasional/heatmap", Email: berhak, MinItems: map[string]int{"kabupaten": 10, "komoditas": 14, "sel": 100}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "dashboard: aktivitas lapangan", Method: http.MethodGet, Path: "/v1/dashboard/operasional/aktivitas-lapangan", Email: berhak, MinItems: map[string]int{"": 10}, ForbiddenEmail: takBerhak},
+		smokeCase{Name: "dashboard: pembanding harga lapangan vs eksternal", Method: http.MethodGet, Path: "/v1/dashboard/operasional/pembanding-harga", Email: berhak, MinItems: map[string]int{"items": 1}, ForbiddenEmail: takBerhak},
+		smokeCase{Name: "dashboard: cuaca terbaru", Method: http.MethodGet, Path: "/v1/dashboard/operasional/cuaca", Email: berhak, MinItems: map[string]int{"": 20}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "dashboard: siklus aktif", Method: http.MethodGet, Path: "/v1/siklus/aktif", Email: berhak, ForbiddenEmail: takBerhak},
 	)
 }

@@ -186,3 +186,70 @@ func (uc *UseCase) GetAktivitasLapangan(ctx context.Context) ([]domain.Aktivitas
 	}
 	return items, nil
 }
+
+// ── Validasi silang harga dan cuaca ───────────────────────────────────
+
+const (
+	// jendelaPembanding: pasangan harga dicari sampai sekian hari ke belakang.
+	jendelaPembanding = 7
+	// maksPembanding: jumlah pasangan dengan selisih terbesar yang ditampilkan.
+	maksPembanding = 20
+	// jendelaCuaca: cuaca terbaru dicari sampai sekian hari ke belakang (prakiraan hari esok tidak dipakai).
+	jendelaCuaca = 3
+)
+
+// hariIni adalah tanggal kalender WIB hari ini sebagai nilai DATE (tengah malam UTC).
+func (uc *UseCase) hariIni() time.Time {
+	t := uc.now().In(wib)
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// GetPembandingHarga membandingkan harga lapangan dengan harga eksternal (hasil ingestion):
+// pasangan terbaru per komoditas dan kabupaten/kota dalam 7 hari terakhir, diurutkan menurut
+// selisih absolut terbesar. Pasangan dan Sepakat dihitung atas semua pasangan.
+func (uc *UseCase) GetPembandingHarga(ctx context.Context) (*domain.Pembanding, error) {
+	items, err := uc.repo.PembandingHarga(ctx, uc.hariIni().AddDate(0, 0, -jendelaPembanding))
+	if err != nil {
+		uc.log.Error("dashboard: get pembanding harga failed", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("get pembanding harga: %w", err)
+	}
+	res := &domain.Pembanding{Pasangan: len(items)}
+	for _, it := range items {
+		if it.Sepakat() {
+			res.Sepakat++
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := math.Abs(items[i].SelisihPct), math.Abs(items[j].SelisihPct)
+		if a != b {
+			return a > b
+		}
+		if items[i].KabupatenKode != items[j].KabupatenKode {
+			return items[i].KabupatenKode < items[j].KabupatenKode
+		}
+		return items[i].KomoditasKode < items[j].KomoditasKode
+	})
+	res.Items = items[:min(len(items), maksPembanding)]
+	return res, nil
+}
+
+// GetCuaca mengembalikan cuaca harian terbaru tiap kabupaten/kota (hari ini atau sampai 3 hari
+// ke belakang), yang anomali (hujan lebat) dan curah hujan terbesar lebih dulu.
+func (uc *UseCase) GetCuaca(ctx context.Context) ([]domain.CuacaKabupaten, error) {
+	hari := uc.hariIni()
+	items, err := uc.repo.CuacaTerbaru(ctx, hari.AddDate(0, 0, -jendelaCuaca), hari)
+	if err != nil {
+		uc.log.Error("dashboard: get cuaca failed", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("get cuaca: %w", err)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Anomali != items[j].Anomali {
+			return items[i].Anomali
+		}
+		if items[i].CurahHujanMm != items[j].CurahHujanMm {
+			return items[i].CurahHujanMm > items[j].CurahHujanMm
+		}
+		return items[i].KabupatenKode < items[j].KabupatenKode
+	})
+	return items, nil
+}

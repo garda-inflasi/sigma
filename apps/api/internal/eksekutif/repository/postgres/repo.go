@@ -20,7 +20,9 @@ func New(db *gorm.DB) *Repository {
 
 func (r *Repository) InflasiTerbaru(ctx context.Context, wilayah string) (*domain.InflasiBulanan, error) {
 	var rows []domain.InflasiBulanan
-	err := r.db.WithContext(ctx).Where("wilayah_kode = ?", wilayah).Order("periode DESC").Limit(1).Find(&rows).Error
+	// Resmi lebih dulu (sumber <> DEMO), baru yang terbaru.
+	err := r.db.WithContext(ctx).Where("wilayah_kode = ?", wilayah).
+		Order("(sumber = '" + domain.SumberDemo + "')").Order("periode DESC").Limit(1).Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("inflasi terbaru: %w", err)
 	}
@@ -30,9 +32,9 @@ func (r *Repository) InflasiTerbaru(ctx context.Context, wilayah string) (*domai
 	return &rows[0], nil
 }
 
-func (r *Repository) SeriInflasi(ctx context.Context, wilayah string, sampai time.Time, n int) ([]domain.InflasiBulanan, error) {
+func (r *Repository) SeriInflasi(ctx context.Context, wilayah string, sampai time.Time, n int, demo bool) ([]domain.InflasiBulanan, error) {
 	var rows []domain.InflasiBulanan
-	err := r.db.WithContext(ctx).Where("wilayah_kode = ? AND periode <= ?", wilayah, sampai).
+	err := r.db.WithContext(ctx).Where("wilayah_kode = ? AND periode <= ? AND (sumber = ?) = ?", wilayah, sampai, domain.SumberDemo, demo).
 		Order("periode DESC").Limit(n).Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("seri inflasi: %w", err)
@@ -53,15 +55,15 @@ func (r *Repository) TargetBerlaku(ctx context.Context, tahun int) (*domain.Targ
 	return &rows[0], nil
 }
 
-func (r *Repository) Penyumbang(ctx context.Context, wilayah string, periode time.Time, n int) ([]domain.Penyumbang, error) {
+func (r *Repository) Penyumbang(ctx context.Context, wilayah string, periode time.Time, n int, demo bool) ([]domain.Penyumbang, error) {
 	var rows []domain.Penyumbang
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT a.komoditas_kode AS kode, k.nama, a.andil::float8 AS andil
 		  FROM andil_inflasi a
 		  JOIN komoditas k ON k.kode = a.komoditas_kode
-		 WHERE a.wilayah_kode = ? AND a.periode = ?
+		 WHERE a.wilayah_kode = ? AND a.periode = ? AND (a.sumber = ?) = ?
 		 ORDER BY ABS(a.andil) DESC, a.komoditas_kode
-		 LIMIT ?`, wilayah, periode, n).Scan(&rows).Error
+		 LIMIT ?`, wilayah, periode, domain.SumberDemo, demo, n).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("penyumbang inflasi: %w", err)
 	}
@@ -77,8 +79,9 @@ func (r *Repository) NeracaTerbaru(ctx context.Context, wilayah string) ([]domai
 		  FROM neraca_pangan n
 		  JOIN komoditas k ON k.kode = n.komoditas_kode
 		 WHERE n.wilayah_kode = ?
-		   AND n.periode = (SELECT MAX(periode) FROM neraca_pangan WHERE wilayah_kode = ?)
-		 ORDER BY n.komoditas_kode`, wilayah, wilayah).Scan(&rows).Error
+		   AND (n.sumber = ?, n.periode) = (SELECT sumber = ?, periode FROM neraca_pangan WHERE wilayah_kode = ?
+		                                     ORDER BY (sumber = ?), periode DESC LIMIT 1)
+		 ORDER BY n.komoditas_kode`, wilayah, domain.SumberDemo, domain.SumberDemo, wilayah, domain.SumberDemo).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("neraca pangan: %w", err)
 	}
@@ -89,8 +92,9 @@ func (r *Repository) RuangFiskalTerbaru(ctx context.Context) ([]domain.RuangFisk
 	var rows []domain.RuangFiskal
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT * FROM ruang_fiskal
-		 WHERE (tahun, per_tanggal) = (SELECT tahun, per_tanggal FROM ruang_fiskal ORDER BY tahun DESC, per_tanggal DESC LIMIT 1)
-		 ORDER BY pagu DESC, instrumen`).Scan(&rows).Error
+		 WHERE (sumber = ?, tahun, per_tanggal) = (SELECT sumber = ?, tahun, per_tanggal FROM ruang_fiskal
+		                                            ORDER BY (sumber = ?), tahun DESC, per_tanggal DESC LIMIT 1)
+		 ORDER BY pagu DESC, instrumen`, domain.SumberDemo, domain.SumberDemo, domain.SumberDemo).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("ruang fiskal: %w", err)
 	}

@@ -37,13 +37,18 @@
 
 ---
 
-## 08-B — Filter, cakupan baris, dan penentuan siklus nyata *(Fase F)*
+## 08-B — Hasil ingestion di dashboard operasional, filter, dan penentuan siklus *(Fase F)*
 
-1. **MIG**: tabel aturan penentuan siklus bila aturannya dikonfigurasi (ambang EWS + stok).
+Dikerjakan sebagian di gelombang F-3 (data dari ingestion/gold); sisanya menunggu.
+
+1. **MIG**: tidak ada (membaca `gold_harga_harian` dan `cuaca_harian` dari [05-C](05-sumber-data.md)). Tabel aturan penentuan siklus belum.
 2. **API**
+   - [x] Heatmap dilengkapi sel dari harga eksternal bila belum ada data lapangan (`sumber: EKSTERNAL`); sel lapangan tidak digantikan.
+   - [x] `GET /v1/dashboard/operasional/pembanding-harga`: validasi silang harga lapangan vs eksternal (selisih terbesar, jumlah pasangan sepakat).
+   - [x] `GET /v1/dashboard/operasional/cuaca`: cuaca harian terbaru per kabupaten/kota dengan penanda hujan lebat.
    - [ ] Filter wilayah/komoditas/periode pada KPI dan heatmap; row scope Koordinator/Agregator ([02-B](02-pengguna-rbac.md)).
-   - [ ] Endpoint ringkasan aktivitas per petugas/kabupaten (`field-activity`); stok real-time, agregasi produsen, pergerakan logistik (PRD §3.1).
+   - [ ] Endpoint ringkasan aktivitas per petugas; stok real-time, agregasi produsen, pergerakan logistik (PRD §3.1).
    - [ ] **Penentuan siklus otomatis** dari ambang EWS dan stok (kaitan [10-B](10-ews.md), [14-C](14-intervensi.md)); sekarang hanya membaca baris.
    - [ ] Cache untuk agregasi berat.
-3. **FE**: peta memakai token Mapbox bila ada, fallback SVG; keadaan kosong dan galat untuk tiap kartu; feed EWS memakai SSE ([10-C](10-ews.md)).
-4. **TES**: usecase/repo dashboard, kontrak, performa query.
+3. **FE**: kartu "Validasi silang harga" dan "Cuaca wilayah" di `/operasional`; sel heatmap bersumber eksternal diberi garis putus-putus dan keterangan. Belum: peta Mapbox, keadaan kosong/galat untuk tiap kartu lama, feed EWS via SSE ([10-C](10-ews.md)).
+4. **TES**: usecase (urutan/penghitungan), integrasi dengan data ingestion contoh, otorisasi, DB kosong tidak galat.

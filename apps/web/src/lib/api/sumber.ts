@@ -3,7 +3,7 @@
  * Endpoint: GET /v1/sumber-data, POST /v1/sumber-data/bulk.
  */
 
-import type { SumberData } from "@/lib/data/types";
+import type { EksekusiSumber, PipelineSumber, SampelSumber, SumberData } from "@/lib/data/types";
 
 export interface SumberDataResponse {
   id: string;
@@ -19,6 +19,46 @@ export interface SumberDataResponse {
   robots_txt_patuh: boolean;
   atribusi: string;
   url_dasar: string | null;
+  bisa_dijalankan: boolean;
+}
+
+export interface EksekusiResponse {
+  id: number;
+  pemicu: EksekusiSumber["pemicu"];
+  status: EksekusiSumber["status"];
+  mulai: string;
+  selesai: string | null;
+  durasi_ms: number | null;
+  latensi_ms: number | null;
+  dokumen: number;
+  baris_diambil: number;
+  baris_ditolak: number;
+  galat: string | null;
+  ringkasan: {
+    tak_terpetakan?: Record<string, number>;
+    tidak_valid?: Record<string, number>;
+  };
+}
+
+export interface PipelineResponse {
+  bronze: number;
+  silver: number;
+  gold: number;
+  demo: boolean;
+  mutu: {
+    kelengkapan: number | null;
+    akurasi: number | null;
+    ketepatan_waktu: number | null;
+    konsistensi: number | null;
+  };
+}
+
+export interface SampelResponse {
+  id: number;
+  kunci_permintaan: string;
+  diambil_pada: string;
+  ukuran: number;
+  cuplikan: string;
 }
 
 export type SumberBulkAksi = "jeda" | "lanjutkan";
@@ -73,5 +113,47 @@ export function toSumberData(s: SumberDataResponse): SumberData {
       : "BELUM_AKTIF",
     keberhasilan7h: s.keberhasilan_7h,
     latensiMs: s.latensi_ms,
+    bisaDijalankan: s.bisa_dijalankan,
   };
+}
+
+/** Urut menurun menurut jumlah baris, lalu abjad, agar tampilan stabil. */
+const hitungan = (m: Record<string, number> | undefined) =>
+  Object.entries(m ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+export function toEksekusi(e: EksekusiResponse): EksekusiSumber {
+  return {
+    id: e.id,
+    pemicu: e.pemicu,
+    status: e.status,
+    mulai: e.mulai,
+    selesai: e.selesai,
+    durasiMs: e.durasi_ms,
+    latensiMs: e.latensi_ms,
+    dokumen: e.dokumen,
+    barisDiambil: e.baris_diambil,
+    barisDitolak: e.baris_ditolak,
+    galat: e.galat,
+    takTerpetakan: hitungan(e.ringkasan?.tak_terpetakan).map(([alias, baris]) => ({ alias, baris })),
+    tidakValid: hitungan(e.ringkasan?.tidak_valid).map(([alasan, baris]) => ({ alasan, baris })),
+  };
+}
+
+export function toPipeline(p: PipelineResponse): PipelineSumber {
+  return {
+    bronze: p.bronze,
+    silver: p.silver,
+    gold: p.gold,
+    demo: p.demo,
+    mutu: {
+      kelengkapan: p.mutu.kelengkapan,
+      akurasi: p.mutu.akurasi,
+      ketepatanWaktu: p.mutu.ketepatan_waktu,
+      konsistensi: p.mutu.konsistensi,
+    },
+  };
+}
+
+export function toSampel(s: SampelResponse): SampelSumber {
+  return { id: s.id, kunci: s.kunci_permintaan, diambilPada: s.diambil_pada, ukuran: s.ukuran, cuplikan: s.cuplikan };
 }

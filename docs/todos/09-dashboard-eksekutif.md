@@ -38,8 +38,9 @@
 
 ## 09-B — Data resmi dan fitur eksekutif *(Fase F, gelombang F-3)*
 
-- [ ] Impor inflasi/andil dari BPS/BI, ruang fiskal dari DJPb (format impor ditetapkan; lihat [05-C](05-sumber-data.md)).
+- [x] Impor inflasi/andil dari BPS lewat ingestion ([05-C](05-sumber-data.md)); angka resmi **didahulukan** atas baris `DEMO` di dashboard (tidak ada pencampuran dalam satu blok), baris `DEMO` tidak pernah menimpa baris resmi, dan label sumber serta waktu impor tampil di hero. Banner demo menyebut blok mana yang masih contoh dan mana yang sudah resmi. **Konektor BPS belum diverifikasi terhadap endpoint nyata** dan butuh `BPS_API_KEY` serta id variabel di konfigurasi sumber.
+- [ ] Impor ruang fiskal dari DJPb dan neraca pangan: belum ada konektor (repository sudah mendahulukan baris resmi bila tabelnya terisi).
 - [ ] Koridor inflasi dan proyeksi ke depan memakai model ([11-B](11-prediksi-xai.md)).
 - [ ] Filter wilayah, komoditas, periode (PRD §3.2); ringkasan EWS, rekomendasi AI, status intervensi (dengan cache).
-- [ ] Ekspor tampilan ke PDF/gambar untuk rapat; tampilkan "data per tanggal/jam" dan sumbernya.
-- [ ] Tes usecase/handler, izin (hanya peran strategis/manajerial), kontrak.
+- [ ] Ekspor tampilan ke PDF/gambar untuk rapat; "data per tanggal/jam" baru ada untuk inflasi (`diimpor_pada`).
+- [x] Tes: usecase (golongan seri/penyumbang), integrasi (resmi menggantikan contoh walau lebih tua, semua blok resmi menghapus label demo, seeder demo tidak menimpa resmi). Tes izin (hanya peran strategis/manajerial) sudah dari 09-A.

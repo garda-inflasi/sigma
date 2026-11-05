@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PanelTitle } from "@/components/garda/page-header";
-import type { RingkasanEksekutif } from "@/lib/data/types";
+import type { RingkasanEksekutif, SumberAngka } from "@/lib/data/types";
 import { formatAngka, formatPersen } from "@/lib/format";
 import { ease } from "@/lib/motion/presets";
 import { cn } from "@/lib/utils";
@@ -11,14 +11,14 @@ import { cn } from "@/lib/utils";
 const BATAS = 100; // sumbu ±100%; surplus lebih besar ditandai panah
 
 /** Neraca pangan: rasio kecukupan (produksi vs kebutuhan) sebagai batang divergen. */
-export function FoodBalance({ data }: { data: NonNullable<RingkasanEksekutif["neraca"]>["items"] }) {
+export function FoodBalance({ data, sumber }: { data: NonNullable<RingkasanEksekutif["neraca"]>["items"]; sumber: SumberAngka }) {
   const rows = data
     .map((d) => ({ ...d, rasio: (d.produksi / d.kebutuhan - 1) * 100, selisih: d.produksi - d.kebutuhan }))
     .sort((a, b) => b.rasio - a.rasio);
 
   return (
     <section className="glass h-full rounded-xl p-5 sm:p-6">
-      <PanelTitle title="Neraca pangan" description="Produksi terhadap kebutuhan bulanan provinsi" />
+      <PanelTitle title="Neraca pangan" description={`Produksi terhadap kebutuhan bulanan provinsi, ${sumber === "DEMO" ? "data demo" : sumber}`} />
       <div className="mt-2 flex justify-between px-[140px] text-[11px] text-muted-foreground max-sm:px-[112px]">
         <span>Defisit</span><span>Surplus</span>
       </div>

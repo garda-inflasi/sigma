@@ -1,0 +1,104 @@
+{
+ "status": "OK",
+ "data-availability": "available",
+ "last_update": "2025-10-01 09:00:00",
+ "var": [
+  {
+   "val": 12,
+   "label": "Inflasi Tahunan",
+   "unit": "Persen"
+  }
+ ],
+ "turvar": [
+  {
+   "val": 0,
+   "label": "Tidak ada"
+  }
+ ],
+ "labelvervar": "Kota",
+ "vervar": [
+  {
+   "val": 1100,
+   "label": "ACEH"
+  },
+  {
+   "val": 1171,
+   "label": "Banda Aceh"
+  },
+  {
+   "val": 1174,
+   "label": "Lhokseumawe"
+  },
+  {
+   "val": 9999,
+   "label": "Kota Asing"
+  }
+ ],
+ "tahun": [
+  {
+   "val": 125,
+   "label": "2025"
+  }
+ ],
+ "turtahun": [
+  {
+   "val": 1,
+   "label": "Januari"
+  },
+  {
+   "val": 2,
+   "label": "Februari"
+  },
+  {
+   "val": 3,
+   "label": "Maret"
+  },
+  {
+   "val": 4,
+   "label": "April"
+  },
+  {
+   "val": 5,
+   "label": "Mei"
+  },
+  {
+   "val": 6,
+   "label": "Juni"
+  },
+  {
+   "val": 7,
+   "label": "Juli"
+  },
+  {
+   "val": 8,
+   "label": "Agustus"
+  },
+  {
+   "val": 9,
+   "label": "September"
+  },
+  {
+   "val": 10,
+   "label": "Oktober"
+  },
+  {
+   "val": 11,
+   "label": "November"
+  },
+  {
+   "val": 12,
+   "label": "Desember"
+  },
+  {
+   "val": 13,
+   "label": "Tahunan"
+  }
+ ],
+ "datacontent": {
+  "11001201258": 2.3,
+  "11001201259": 2.84,
+  "11711201259": 2.5,
+  "11741201259": 2.1,
+  "99991201259": 2.0
+ }
+}

@@ -10,6 +10,8 @@ export const qk = {
     kpi: () => ["operasional", "kpi"] as const,
     heatmap: () => ["operasional", "heatmap"] as const,
     aktivitas: () => ["operasional", "aktivitas"] as const,
+    pembanding: () => ["operasional", "pembanding-harga"] as const,
+    cuaca: () => ["operasional", "cuaca"] as const,
     marker: () => ["operasional", "marker"] as const,
     tren: (kode: string, kab: string) => ["operasional", "tren", kode, kab] as const,
   },
@@ -31,7 +33,12 @@ export const qk = {
     all: () => ["cold-storage"] as const,
     list: (params: ColdStorageParams) => ["cold-storage", "list", params] as const,
   },
-  sumber: { list: () => ["sumber-data"] as const },
+  sumber: {
+    list: () => ["sumber-data"] as const,
+    pipeline: () => ["sumber-data", "pipeline"] as const,
+    eksekusi: (id: string) => ["sumber-data", "eksekusi", id] as const,
+    sampel: (id: string) => ["sumber-data", "sampel", id] as const,
+  },
   kpi: { list: () => ["kpi", "list"] as const },
   pengguna: {
     all: () => ["pengguna"] as const,

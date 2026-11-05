@@ -18,7 +18,7 @@ const pos = (v: number) => `${Math.max(0, Math.min(100, (v / SKALA) * 100))}%`;
  * Visual utamanya adalah posisi angka terhadap koridor, bukan angka saja.
  */
 export function InflationHero({ data }: { data: NonNullable<RingkasanEksekutif["inflasi"]> }) {
-  const { yoy, mtm, ytd, sasaran, seri, periode, sumber, penyumbang } = data;
+  const { yoy, mtm, ytd, sasaran, seri, periode, sumber, diimporPada, penyumbang } = data;
   const dalam = yoy >= sasaran.bawah && yoy <= sasaran.atas;
   const maxAndil = Math.max(...penyumbang.map((p) => Math.abs(p.andil)));
 
@@ -65,7 +65,7 @@ export function InflationHero({ data }: { data: NonNullable<RingkasanEksekutif["
           <dl className="mt-8 grid grid-cols-3 gap-4 border-t border-white/10 pt-5">
             <div><dt className="text-xs text-navy-300">Bulanan</dt><dd className="num mt-1 text-lg font-semibold">{formatPersen(mtm, { digits: 2, signed: true })}</dd></div>
             <div><dt className="text-xs text-navy-300">Tahun kalender</dt><dd className="num mt-1 text-lg font-semibold">{formatPersen(ytd, { digits: 2 })}</dd></div>
-            <div><dt className="text-xs text-navy-300">Sumber</dt><dd className="mt-1 text-sm font-medium">{sumber === "DEMO" ? "Data demo" : sumber}</dd></div>
+            <div><dt className="text-xs text-navy-300">Sumber</dt><dd className="mt-1 text-sm font-medium">{sumber === "DEMO" ? "Data demo" : `${sumber}, diimpor ${formatTanggal(diimporPada, "d MMM yyyy, HH.mm")}`}</dd></div>
           </dl>
         </div>
 
@@ -86,6 +86,7 @@ export function InflationHero({ data }: { data: NonNullable<RingkasanEksekutif["
           </div>
           <div>
             <p className="text-sm text-navy-200">Penyumbang utama (poin persen)</p>
+            {penyumbang.length === 0 && <p className="mt-3 text-sm text-navy-300">Andil komoditas untuk bulan ini belum diimpor.</p>}
             <ul className="mt-3 space-y-2">
               {penyumbang.map((p, i) => (
                 <li key={p.nama} className="grid grid-cols-[110px_1fr_52px] items-center gap-3 text-sm">

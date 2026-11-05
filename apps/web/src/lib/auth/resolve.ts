@@ -17,8 +17,16 @@ export interface SessionUser {
 }
 
 export const DEV_ROLE_COOKIE = "garda_dev_role";
-// Always use simple cookie names (Caddy terminates TLS, no HTTPS at edge)
-const DEV = true;
+
+/**
+ * Sesi demo lewat cookie `garda_dev_role` HANYA di pengembangan. Di production
+ * cookie itu diabaikan: tanpa JWT sah, sesi null (gagal tertutup). Sebelumnya
+ * flag ini selalu true sehingga siapa pun yang menyetel cookie bisa menjadi
+ * peran apa saja di sisi UI (API Go tetap menolak, tetapi UI tidak boleh terbuka).
+ */
+export function devAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.NODE_ENV !== "production";
+}
 
 export const SESSION_COOKIE = "garda_access";
 
@@ -49,7 +57,7 @@ export async function resolveSession(getCookie: (name: string) => string | undef
       return null;
     }
   }
-  if (DEV) {
+  if (devAuthEnabled()) {
     const r = getCookie(DEV_ROLE_COOKIE);
     return demoUser(isRole(r) ? r : "MANAJER_PROGRAM");
   }

@@ -72,7 +72,7 @@ cd "$GARDA_ROOT"
 #  Validate the service name
 # ------------------------------------------------------------------------------
 INFRA_SERVICES=(postgres redis)
-APP_SERVICES=(api web caddy)
+APP_SERVICES=(api worker web caddy backup)
 
 if [[ "$SERVICE" != "all" ]]; then
   valid=0
@@ -81,7 +81,7 @@ if [[ "$SERVICE" != "all" ]]; then
   done
   if [[ "$valid" -ne 1 ]]; then
     die "Service tidak dikenal: '$SERVICE'" \
-        "Pilih salah satu: api, web, caddy, postgres, redis, all"
+        "Pilih salah satu: api, worker, web, caddy, backup, postgres, redis, all"
   fi
 fi
 
@@ -98,7 +98,7 @@ log_args=("logs" "--tail=${TAIL}")
 log_section "Logs — ${SERVICE} (tail=${TAIL}${SINCE:+, since=${SINCE}}${FOLLOW:+, follow})"
 print_kv "VM" "${VM_USER}@${VM_HOST}"
 
-remote_cmd="cd '${REMOTE_DIR}' && docker compose ${compose_files} ${log_args[*]}"
+remote_cmd="cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' ${compose_files} ${log_args[*]}"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo_cmd "ssh ${VM_USER}@${VM_HOST} \"${remote_cmd}\""

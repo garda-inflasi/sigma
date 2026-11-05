@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/platform/jobs"
+	"github.com/garda-inflasi/api/internal/platform/prodcheck"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"gorm.io/gorm"
@@ -43,6 +44,9 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, getenv func(string) string, out io.Writer, log *logger.Logger) error {
+	if err := prodcheck.ValidateWorker(getenv); err != nil {
+		return fmt.Errorf("konfigurasi production tidak aman: %w", err)
+	}
 	db, err := database.New(database.DefaultConfig())
 	if err != nil {
 		return fmt.Errorf("hubungkan basis data: %w", err)

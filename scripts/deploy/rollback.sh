@@ -142,8 +142,8 @@ done
 log_section "Up stack dengan IMAGE_TAG=${ROLLBACK_SHA}"
 rollback_cmd="cd '${REMOTE_DIR}' && \
   export IMAGE_TAG='${ROLLBACK_SHA}' && \
-  docker compose -f compose/compose.infra.yaml -f compose/compose.prod.yaml up -d --no-build --remove-orphans && \
-  docker compose -f compose/compose.yaml -f compose/compose.prod.yaml up -d --no-build --remove-orphans"
+  docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.infra.yaml -f compose/compose.prod.yaml up -d --no-build --remove-orphans postgres redis && \
+  docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml up -d --no-build --no-deps --remove-orphans api worker web caddy"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo_cmd "ssh ${VM_USER}@${VM_HOST} \"${rollback_cmd}\""
@@ -175,7 +175,7 @@ fi
 
 if [[ "$health_ok" -ne 1 ]]; then
   log_error "Healthcheck gagal setelah rollback."
-  vm_ssh "cd '${REMOTE_DIR}' && docker compose -f compose/compose.yaml -f compose/compose.prod.yaml logs --tail=80" || true
+  vm_ssh "cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml logs --tail=80" || true
   die "Rollback selesai tetapi layanan tidak sehat." \
       "Periksa log di atas. Kemungkinan image target juga bermasalah — pertimbangkan rollback ke SHA lain."
 fi
@@ -206,6 +206,6 @@ print_kv "Sebelumnya"     "${CURRENT_SHA:-none}"
 print_kv "Timestamp"      "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 log_info "Status container:"
-vm_ssh "cd '${REMOTE_DIR}' && docker compose -f compose/compose.yaml -f compose/compose.prod.yaml ps" || true
+vm_ssh "cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml ps" || true
 
 log_success "Rollback ke ${ROLLBACK_SHA} berhasil."

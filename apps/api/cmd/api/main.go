@@ -12,6 +12,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
 	"github.com/garda-inflasi/api/internal/modules"
+	"github.com/garda-inflasi/api/internal/platform/prodcheck"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
@@ -37,6 +38,12 @@ func main() {
 
 	// Logger
 	log := logger.NewDefault()
+
+	// Produksi menolak start bila rahasia masih bawaan/lemah (lihat prodcheck).
+	if err := prodcheck.ValidateAPI(os.Getenv); err != nil {
+		log.Error("konfigurasi production tidak aman, server tidak dijalankan", map[string]interface{}{"error": err.Error()})
+		os.Exit(1)
+	}
 
 	// Database
 	dbCfg := database.DefaultConfig()

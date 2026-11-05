@@ -105,13 +105,36 @@ set -a
 source ./.env
 set +a
 
+# ------------------------------------------------------------------------------
+#  Rahasia produksi: tolak deploy bila kosong atau masih nilai contoh/bawaan.
+#  (API juga menolak start di production; pemeriksaan di sini menggagalkan lebih
+#  awal, sebelum image dimuat dan migrasi berjalan.)
+# ------------------------------------------------------------------------------
+require_secret() {
+  local name="$1" value="${!1:-}" min_len="${2:-16}"
+  [[ -n "$value" ]] || die "${name} kosong di ${REMOTE_DIR}/.env." \
+      "Isi dengan nilai acak kuat: openssl rand -base64 32"
+  case "$value" in
+    *GANTI_DENGAN*|*garda_secret*|*change-in-production*|*dev-secret*|0123456789abcdef*)
+      die "${name} masih berisi nilai contoh/bawaan." "Ganti dengan nilai acak: openssl rand -base64 32" ;;
+  esac
+  [[ "${#value}" -ge "$min_len" ]] || die "${name} terlalu pendek (minimal ${min_len} karakter)." \
+      "Gunakan: openssl rand -base64 32"
+}
+require_secret POSTGRES_PASSWORD 16
+require_secret JWT_SECRET 32
+require_secret AES_KEY 32
+[[ "${#AES_KEY}" -eq 32 ]] || die "AES_KEY harus tepat 32 karakter." "Gunakan: openssl rand -hex 16"
+[[ -n "${APP_ALLOWED_ORIGINS:-}" ]] || die "APP_ALLOWED_ORIGINS kosong di .env." \
+    "Isi dengan origin publik aplikasi, mis. https://app.garda.id"
+
 # Compose needs the same variables the app containers use.
 export POSTGRES_DB="${POSTGRES_DB:-garda_inflasi}"
 export POSTGRES_USER="${POSTGRES_USER:-garda}"
-export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-garda_secret}"
 export DB_USER="${DB_USER:-$POSTGRES_USER}"
 export DB_PASSWORD="${DB_PASSWORD:-$POSTGRES_PASSWORD}"
 export DB_NAME="${DB_NAME:-$POSTGRES_DB}"
+export APP_ENV=production
 
 # ------------------------------------------------------------------------------
 #  Compose helper — always --no-build (the VM must never build)
@@ -163,7 +186,11 @@ fi
 #  4. Bring up infrastructure
 # ------------------------------------------------------------------------------
 log_section "4/8 — Up infra (postgres, redis)"
-compose_infra up -d --no-build --remove-orphans
+# compose.prod.yaml dipakai bersama oleh stack infra dan app, jadi file itu memuat stub
+# service milik stack lain. SELALU sebut nama service agar tidak ikut menaikkan stub tersebut.
+infra_services=(postgres redis)
+case ",${COMPOSE_PROFILES:-}," in *,backup,*) infra_services+=(backup) ;; esac
+compose_infra up -d --no-build --remove-orphans "${infra_services[@]}"
 
 # ------------------------------------------------------------------------------
 #  5. Wait for infra healthchecks
@@ -233,8 +260,21 @@ compose_app up -d --no-build --no-deps --remove-orphans api worker web caddy
 # ------------------------------------------------------------------------------
 log_section "8/8 — HTTP healthcheck"
 http_ok=0
+# Bila CADDY_SITE_ADDRESS berisi domain, Caddy hanya melayani host itu (HTTP dialihkan
+# ke HTTPS), jadi probe lewat HTTPS dengan --resolve ke loopback. Sertifikat dari Let's
+# Encrypt tidak valid untuk "localhost", maka host asli dipakai pada SNI/Host.
+health_url="http://localhost/healthz"
+health_curl=(curl -fsS --max-time 5)
+case "${CADDY_SITE_ADDRESS:-}" in
+  ""|localhost*) ;;
+  *)
+    health_host="${CADDY_SITE_ADDRESS%%[ ,]*}"
+    health_url="https://${health_host}/healthz"
+    health_curl+=(--resolve "${health_host}:443:127.0.0.1")
+    ;;
+esac
 for i in $(seq 1 "$HTTP_HEALTH_RETRIES"); do
-  if curl -fsS --max-time 5 http://localhost/healthz >/dev/null 2>&1; then
+  if "${health_curl[@]}" "$health_url" >/dev/null 2>&1; then
     http_ok=1
     break
   fi
@@ -246,10 +286,10 @@ if [[ "$http_ok" -ne 1 ]]; then
   log_error "Healthcheck HTTP gagal setelah $(( HTTP_HEALTH_RETRIES * HTTP_HEALTH_DELAY ))s."
   compose_app ps || true
   compose_app logs --tail=100 || true
-  die "Aplikasi tidak merespons di http://localhost/healthz." \
+  die "Aplikasi tidak merespons di ${health_url}." \
       "Periksa log di atas. Umumnya: env kurang, port 80 dipakai proses lain, atau image tidak cocok arsitektur."
 fi
-log_success "Healthcheck HTTP OK (http://localhost/healthz)."
+log_success "Healthcheck HTTP OK (${health_url})."
 
 # ------------------------------------------------------------------------------
 #  Record deploy markers

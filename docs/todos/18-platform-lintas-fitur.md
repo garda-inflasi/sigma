@@ -33,7 +33,7 @@ Keputusan arsitektur yang masih terbuka:
 
 - [ ] **Redis** untuk cache, rate limit terdistribusi, dan pub/sub SSE (lihat [10](10-ews.md)); periksa ada atau tidaknya di `compose.yaml` dan `compose.prod.yaml`.
 - [ ] **Penyimpanan objek** (MinIO/S3) untuk foto lapangan dan lampiran brief.
-- [ ] **Job queue/scheduler** untuk ingestion, generator brief, dan perhitungan KPI.
+- [x] **Job queue/scheduler** untuk ingestion, generator brief, dan perhitungan KPI. Penjadwal berkala selesai: `cmd/worker` + `internal/platform/jobs` (refresh dashboard, KPI; advisory lock; lihat [API README](../../apps/api/README.md) §6). Antrean job sesuai permintaan (queue) belum ada.
 - [ ] **Layanan ML** terpisah (lihat [11](11-prediksi-xai.md)) dan pipelinenya.
 - [ ] Strategi time-series (partisi tabel/TimescaleDB) dan retensi.
 - [ ] **Migration dan seeder:** temuan dan tugas fondasi di [19-migration-seeder.md](19-migration-seeder.md); migration/seeder spesifik ada di dalam slice tiap fitur (langkah `MIG` dan `SEED`).
@@ -41,11 +41,11 @@ Keputusan arsitektur yang masih terbuka:
 ## D. Keamanan dan kepatuhan (PRD §5.2)
 
 - [ ] Enkripsi data at-rest (disk/DB) dan in-transit (TLS di Caddy sudah ada; verifikasi koneksi ke DB/Mongo/Redis).
-- [ ] Manajemen rahasia: `.env` tidak boleh berisi rahasia produksi; pakai secret manager atau berkas rahasia pada server. `.env` lokal ter-ignore dengan benar.
+- [x] Manajemen rahasia: `.env` tidak boleh berisi rahasia produksi; pakai secret manager atau berkas rahasia pada server. `.env` lokal ter-ignore dengan benar. Penolakan start pada rahasia bawaan/lemah (API, worker, remote-deploy) selesai; secret manager belum.
 - [ ] Pemindaian dependensi (`govulncheck`, `pnpm audit`) dan SAST di CI.
 - [ ] Kepatuhan UU PDP dan SPBE: inventaris data pribadi (pengguna, petugas, lokasi GPS), dasar pemrosesan, masa simpan, hak subjek data.
-- [ ] Backup, restore yang pernah diuji, dan rencana pemulihan bencana (RPO/RTO tertulis).
-- [ ] Tinjauan header keamanan, CSP, dan CORS pada konfigurasi produksi.
+- [x] Backup, restore yang pernah diuji, dan rencana pemulihan bencana (RPO/RTO tertulis). Selesai sebagian: `scripts/backup` + [DEPLOYMENT.md §10](../DEPLOYMENT.md) (RPO harian, RTO terukur 1 detik pada data demo). Pemulihan bencana lintas-VM belum.
+- [x] Tinjauan header keamanan, CSP, dan CORS pada konfigurasi produksi. Ditinjau: lihat [DEPLOYMENT.md §12b](../DEPLOYMENT.md); CSP halaman Next.js masih terbuka.
 
 ## E. Observabilitas
 

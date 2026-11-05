@@ -29,16 +29,17 @@
 {
 	# Global options
 	admin off
-
-	# Issue all certificates from Caddy's internal CA (local development).
-	# Remove this when terminating real TLS in production.
-	local_certs
 }
 
+# SITE ADDRESS / TLS dapat diatur lewat environment container caddy:
+#   lokal (bawaan)   : CADDY_SITE_ADDRESS="localhost:80, localhost:443"  CADDY_TLS=internal
+#   produksi (domain): CADDY_SITE_ADDRESS=app.garda.id                    CADDY_TLS=admin@garda.id
+# Pada produksi, CADDY_TLS berisi email ACME (Let's Encrypt otomatis, HTTP->HTTPS otomatis);
+# `internal` memakai CA internal Caddy (self-signed) dan hanya untuk lokal/demo.
 # Explicit hostname (not a bare `:80, :443`) so Caddy can issue a cert.
-localhost:80, localhost:443 {
-	# ── TLS for local development (self-signed, internal CA) ───────
-	tls internal
+{$CADDY_SITE_ADDRESS:localhost:80, localhost:443} {
+	# ── TLS ────────────────────────────────────────────────────────
+	tls {$CADDY_TLS:internal}
 
 	# ── Request logging ─────────────────────────────────────────────
 	log {
@@ -52,6 +53,7 @@ localhost:80, localhost:443 {
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
+		Cross-Origin-Opener-Policy "same-origin"
 		-Server
 	}
 

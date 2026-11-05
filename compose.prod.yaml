@@ -17,21 +17,44 @@
 #  IMAGE_TAG defaults to `latest` so a bare `docker compose up` still works.
 # ==============================================================================
 
+# CATATAN PENTING: file ini dipakai bersama oleh stack infra DAN stack aplikasi
+# (-f compose.infra.yaml -f compose.prod.yaml dan -f compose.yaml -f compose.prod.yaml),
+# jadi tiap stack melihat juga stub service milik stack lain. SELALU sebut nama
+# service pada `up` (lihat scripts/deploy/remote-deploy.sh dan rollback.sh); `up -d`
+# tanpa nama akan ikut menaikkan stub tersebut (mis. postgres tanpa volume).
+#
+# Variabel bertanda ":?" WAJIB ada di .env VM; compose berhenti dengan pesan jelas
+# bila kosong, sehingga produksi tidak pernah jatuh ke nilai bawaan pengembangan.
+# Pemeriksaan kekuatan nilai dilakukan remote-deploy.sh (sebelum deploy) dan API
+# sendiri (menolak start bila APP_ENV=production dan rahasia lemah/bawaan).
+
+x-prod-database-url: &prod-database-url
+  DATABASE_URL: "postgres://${DB_USER:?DB_USER wajib diisi}:${DB_PASSWORD:?DB_PASSWORD wajib diisi}@postgres:5432/${DB_NAME:?DB_NAME wajib diisi}?sslmode=disable"
+
 services:
   # ── Application stack (compose.yaml) ────────────────────────────────────
   api:
     image: garda-api:${IMAGE_TAG:-latest}
     build: !reset null
     environment:
+      <<: *prod-database-url
+      APP_ENV: production
       GIN_MODE: release
       APP_ADDR: ":8080"
+      DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD wajib diisi}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET wajib diisi}"
+      AES_KEY: "${AES_KEY:?AES_KEY wajib diisi}"
+      APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:?APP_ALLOWED_ORIGINS wajib diisi (origin publik)}"
     restart: unless-stopped
 
+  # Job berkala (refresh dashboard, KPI); api tidak menjalankannya (API_BACKGROUND_JOBS=false).
   worker:
     image: garda-api:${IMAGE_TAG:-latest}
     build: !reset null
     environment:
+      APP_ENV: production
       GIN_MODE: release
+      DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD wajib diisi}"
     restart: unless-stopped
 
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
@@ -39,6 +62,8 @@ services:
   migrate:
     image: garda-api:${IMAGE_TAG:-latest}
     build: !reset null
+    environment:
+      <<: *prod-database-url
 
   # Produksi hanya mengisi referensi dan admin awal, tidak pernah demo.
   seed:
@@ -46,6 +71,7 @@ services:
     build: !reset null
     command: ["./seed", "reference", "admin"]
     environment:
+      <<: *prod-database-url
       APP_ENV: production
 
   web:
@@ -54,6 +80,9 @@ services:
     environment:
       NODE_ENV: production
       COOKIE_SECURE: "true"
+      # Harus sama dengan JWT_SECRET API (verifikasi sesi di server Next.js).
+      GARDA_JWT_SECRET: "${JWT_SECRET:?JWT_SECRET wajib diisi}"
+      APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:?APP_ALLOWED_ORIGINS wajib diisi (origin publik)}"
     restart: unless-stopped
 
   caddy:
@@ -62,17 +91,24 @@ services:
     restart: unless-stopped
 
   # ── Infrastructure stack (compose.infra.yaml) ───────────────────────────
-  # These services use upstream images and are pulled, never built. They are
-  # listed here only to pin restart policy and keep the override symmetric.
+  # Upstream image, ditarik bukan dibangun. Port basis data dan Redis HANYA di
+  # loopback VM (akses admin lewat SSH tunnel); Redis tanpa sandi tidak boleh
+  # terbuka ke jaringan.
   postgres:
     image: postgres:16-alpine
     build: !reset null
     restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi}"
+    ports: !override
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   redis:
     image: redis:7-alpine
     build: !reset null
     restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
 networks:
   garda_inflasi_net:

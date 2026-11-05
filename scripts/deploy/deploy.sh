@@ -216,7 +216,7 @@ main() {
   fi
 
   log_info "Status container:"
-  vm_ssh "cd '${REMOTE_DIR}' && docker compose -f compose/compose.yaml -f compose/compose.prod.yaml ps" || true
+  vm_ssh "cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml ps" || true
 
   log_success "Deploy ${GIT_SHA} selesai dengan sukses."
 }

@@ -74,11 +74,11 @@ fi
 #  Compose ps — infra + app
 # ------------------------------------------------------------------------------
 log_section "Container — infra"
-vm_ssh "cd '${REMOTE_DIR}' && docker compose -f compose/compose.infra.yaml -f compose/compose.prod.yaml ps" || \
+vm_ssh "cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.infra.yaml -f compose/compose.prod.yaml ps" || \
   log_warn "Tidak bisa membaca status infra."
 
 log_section "Container — aplikasi"
-vm_ssh "cd '${REMOTE_DIR}' && docker compose -f compose/compose.yaml -f compose/compose.prod.yaml ps" || \
+vm_ssh "cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml ps" || \
   log_warn "Tidak bisa membaca status aplikasi."
 
 # ------------------------------------------------------------------------------

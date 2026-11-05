@@ -71,6 +71,7 @@ services:
     restart: unless-stopped
     environment:
       APP_ADDR: ":8080"
+      APP_ENV: "${APP_ENV:-development}"
       GIN_MODE: "${GIN_MODE:-release}"
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -108,6 +109,7 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
       DB_NAME: "${DB_NAME:-garda_inflasi}"
       DB_SSLMODE: disable
+      APP_ENV: "${APP_ENV:-development}"
       WORKER_HEALTH_ADDR: ":8081"
       JOB_DASHBOARD_REFRESH_INTERVAL: "${JOB_DASHBOARD_REFRESH_INTERVAL:-5m}"
       JOB_KPI_HITUNG_INTERVAL: "${JOB_KPI_HITUNG_INTERVAL:-1h}"
@@ -160,6 +162,10 @@ services:
       dockerfile: docker/caddy.Dockerfile
     container_name: garda-caddy
     restart: unless-stopped
+    environment:
+      # Lokal: localhost + CA internal. Produksi: domain + email ACME (lihat docker/Caddyfile).
+      CADDY_SITE_ADDRESS: "${CADDY_SITE_ADDRESS:-localhost:80, localhost:443}"
+      CADDY_TLS: "${CADDY_TLS:-internal}"
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
       - "${CADDY_HTTPS_PORT:-443}:443"

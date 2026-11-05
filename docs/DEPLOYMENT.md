@@ -168,43 +168,48 @@ ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 \
 ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 'cat > ~/garda-inflasi/.env' <<'ENVEOF'
 # ── Postgres ────────────────────────────────────────────────────────────
 POSTGRES_USER=garda
-POSTGRES_PASSWORD=GANTI_DENGAN_PASSWORD_KUAT
+POSTGRES_PASSWORD=GANTI_DENGAN_HEX_ACAK
 POSTGRES_DB=garda_inflasi
-DB_HOST=postgres
-DB_PORT=5432
 DB_USER=garda
-DB_PASSWORD=GANTI_DENGAN_PASSWORD_KUAT
+DB_PASSWORD=GANTI_DENGAN_HEX_ACAK      # sama dengan POSTGRES_PASSWORD
 DB_NAME=garda_inflasi
-DATABASE_URL=postgres://garda:GANTI_DENGAN_PASSWORD_KUAT@postgres:5432/garda_inflasi?sslmode=disable
 
-# ── Redis ───────────────────────────────────────────────────────────────
-REDIS_URL=redis://redis:6379/0
-
-# ── Secrets (WAJIB diganti, minimal 32 karakter acak) ───────────────────
-JWT_SECRET=GANTI_DENGAN_RANDOM_32_KARAKTER
-AES_KEY=GANTI_DENGAN_RANDOM_32_KARAKTER
-GARDA_JWT_SECRET=GANTI_DENGAN_RANDOM_32_KARAKTER
+# ── Secrets (WAJIB diganti; deploy DITOLAK bila kosong/contoh/bawaan) ───
+# Pakai hex agar aman di URL dan env: openssl rand -hex 24   (JWT_SECRET, passwords)
+#                                     openssl rand -hex 16   (AES_KEY, TEPAT 32 karakter)
+JWT_SECRET=GANTI_DENGAN_HEX_ACAK_MIN_32
+AES_KEY=GANTI_DENGAN_HEX_32_KARAKTER
 
 # ── App ─────────────────────────────────────────────────────────────────
-GIN_MODE=release
-APP_ADDR=:8080
+# Origin publik aplikasi (proteksi CSRF); WAJIB bukan localhost di production.
 APP_ALLOWED_ORIGINS=https://app.garda.id
-NODE_ENV=production
-GO_API_BASE_URL=http://api:8080/v1
 
 # ── Caddy ───────────────────────────────────────────────────────────────
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
+# Domain publik + email ACME (Let's Encrypt). Tanpa ini Caddy memakai localhost + CA internal.
+CADDY_SITE_ADDRESS=app.garda.id
+CADDY_TLS=admin@garda.id
+
+# ── Opsional ────────────────────────────────────────────────────────────
+# COMPOSE_PROFILES=backup              # nyalakan container backup terjadwal (§10)
+# JOB_DASHBOARD_REFRESH_INTERVAL=5m    # interval job worker (off = nonaktif)
+# JOB_KPI_HITUNG_INTERVAL=1h
 ENVEOF
 
 ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 'chmod 600 ~/garda-inflasi/.env'
 ```
 
-Generate secret acak:
+Generate secret acak (hex, agar aman dalam URL DSN; `AES_KEY` harus tepat 32 karakter):
 
 ```bash
-openssl rand -base64 32
+openssl rand -hex 24   # JWT_SECRET, POSTGRES_PASSWORD/DB_PASSWORD
+openssl rand -hex 16   # AES_KEY
 ```
+
+`APP_ENV=production` dipasang compose.prod.yaml. Dalam mode itu API menolak start bila
+`JWT_SECRET`/`AES_KEY` bawaan atau lemah, `DB_PASSWORD` bawaan, atau `APP_ALLOWED_ORIGINS`
+hanya localhost; `remote-deploy.sh` memeriksa hal yang sama sebelum memuat image.
 
 ---
 
@@ -528,6 +533,30 @@ sudo ufw enable
 
 ---
 
+## 12b. Hardening produksi
+
+Sudah ditegakkan (ada tes atau diuji dengan `docker compose config`):
+
+- **Rahasia:** API dan worker menolak start bila `APP_ENV=production` dan `JWT_SECRET`/`AES_KEY`/`DB_PASSWORD` bawaan, pendek, atau berpola contoh; `APP_ALLOWED_ORIGINS` wajib origin publik (`internal/platform/prodcheck`). `remote-deploy.sh` menolak sebelum memuat image. `compose.prod.yaml` memakai `${VAR:?}` sehingga variabel kosong menghentikan compose, bukan jatuh ke bawaan dev.
+- **Cookie:** `COOKIE_SECURE=true` di `compose.prod.yaml`; sesi demo lewat cookie `garda_dev_role` dimatikan saat `NODE_ENV=production` (sebelumnya selalu aktif).
+- **Jaringan:** Postgres dan Redis hanya di `127.0.0.1` VM pada produksi (sebelumnya dipublikasikan ke semua antarmuka, Redis tanpa sandi). Akses admin lewat SSH tunnel.
+- **TLS dan domain:** `CADDY_SITE_ADDRESS` + `CADDY_TLS` (email ACME) mengaktifkan Let's Encrypt otomatis tanpa mengubah image; bawaan tetap `localhost` + CA internal. HSTS hanya untuk HTTPS (Caddy).
+- **Header keamanan:** `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` dari Caddy; middleware Next.js menambah header yang sama di semua respons; Go memasang CSP dan header keamanan.
+- **Healthcheck:** api, web, caddy, worker (`:8081/healthz`), backup (umur dump terakhir). `remote-deploy.sh` memeriksa lewat HTTPS dengan `--resolve` bila domain diset.
+- **Perbaikan skrip:** `up` pada stack infra/app kini menyebut nama service karena `compose.prod.yaml` dipakai bersama dan memuat stub service stack lain (sebelumnya `up -d` tanpa nama menaikkan `api`/`postgres` ganda di stack yang salah); `rollback.sh`, `status.sh`, `logs.sh` memakai `--project-directory` agar membaca `.env` VM (sebelumnya rollback bisa jatuh ke rahasia bawaan dev).
+
+Belum / perlu keputusan:
+
+- Swagger sengaja mati saat `GIN_MODE=release`; Caddy tetap memproksi `/swagger/*` (menghasilkan 404 dari API).
+- CSP ketat untuk halaman Next.js belum ada (butuh nonce); CSP yang ada hanya untuk respons API.
+- Rate limit API di memori per instance (100 req/menit); belum terdistribusi lewat Redis.
+- Pengguna DB aplikasi masih satu dengan pemilik skema ([19 §7](todos/19-migration-seeder.md)); pengguna migrasi terpisah dan pembatasan `audit_log` belum dibuat.
+- Backup belum disalin ke luar VM; belum ada WAL/PITR. Pemantauan/alert (healthcheck gagal, backup gagal) belum ada.
+- Tidak ada pemindaian image/dependensi di alur build; tidak ada rotasi rahasia otomatis (ganti `JWT_SECRET` memutus semua sesi).
+- `middleware.ts` memakai konvensi Next.js lama (deprecated, diganti `proxy.ts` di Next 16); masih berfungsi.
+
+---
+
 ## 13. Referensi Environment Variable
 
 ### `.env.deploy` (Mac, git-ignored)
@@ -562,12 +591,13 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | Variable | Keterangan |
 |---|---|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Kredensial Postgres |
-| `DATABASE_URL` | DSN lengkap untuk Go |
-| `REDIS_URL` | DSN Redis |
-| `JWT_SECRET` | Signing key JWT (≥32 char acak) |
-| `AES_KEY` | Enkripsi at-rest (≥32 char acak) |
-| `GARDA_JWT_SECRET` | Secret untuk BFF Next.js |
-| `APP_ALLOWED_ORIGINS` | CORS allowlist |
+| `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Koneksi aplikasi (DSN dirakit compose.prod.yaml) |
+| `JWT_SECRET` | Signing key JWT (≥32 char acak); dipakai juga BFF Next.js (compose menyalinnya ke `GARDA_JWT_SECRET`) |
+| `AES_KEY` | Enkripsi at-rest (tepat 32 char acak) |
+| `APP_ALLOWED_ORIGINS` | Origin publik untuk CSRF (wajib, bukan localhost) |
+| `CADDY_SITE_ADDRESS` / `CADDY_TLS` | Domain publik dan email ACME |
+| `COMPOSE_PROFILES` | `backup` untuk backup terjadwal |
+| `JOB_<NAMA>_INTERVAL` | Interval job worker, `off` menonaktifkan |
 | `GO_API_BASE_URL` | `http://api:8080/v1` (internal) |
 | `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` | Port publik Caddy |
 

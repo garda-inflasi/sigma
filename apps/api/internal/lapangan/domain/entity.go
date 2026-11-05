@@ -106,6 +106,14 @@ type TugasView struct {
 	JumlahSelesai int           `gorm:"column:jumlah_selesai"`
 }
 
+// RincianKomoditas adalah satu komoditas dalam tugas: Terisi benar bila sudah ada entri harga
+// yang tertaut ke tugas untuk komoditas itu.
+type RincianKomoditas struct {
+	Kode   string `gorm:"column:kode"`
+	Nama   string `gorm:"column:nama"`
+	Terisi bool   `gorm:"column:terisi"`
+}
+
 // StatusEfektif menghitung status yang ditampilkan dari data tersimpan:
 // tugas belum selesai yang lewat tenggat adalah TERLAMBAT, dan tugas yang sudah
 // mulai diisi adalah BERJALAN.

@@ -3,12 +3,14 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/auth/domain"
@@ -156,6 +158,21 @@ func (m *mockRepository) ClearMFA(ctx context.Context, userID string) error {
 func (m *mockRepository) BulkUpdateUsers(ctx context.Context, ids []string, action domain.BulkUserAction) (int64, error) {
 	args := m.Called(ctx, ids, action)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+func TestGetUser_MembedakanTidakAdaDanGalatBasisData(t *testing.T) {
+	repo := new(mockRepository)
+	uc := newTestUseCase(repo)
+
+	repo.On("GetUserByID", mock.Anything, "hilang").Return(nil, fmt.Errorf("get user by id: %w", gorm.ErrRecordNotFound))
+	repo.On("GetUserByID", mock.Anything, "rusak").Return(nil, errors.New("koneksi putus"))
+
+	_, err := uc.GetUser(context.Background(), "hilang")
+	assert.ErrorIs(t, err, ErrUserNotFound)
+
+	_, err = uc.GetUser(context.Background(), "rusak")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrUserNotFound, "galat basis data bukan pengguna hilang")
 }
 
 // ── Test Helpers ──────────────────────────────────────────────────────

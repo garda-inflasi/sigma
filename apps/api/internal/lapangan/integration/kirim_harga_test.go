@@ -222,9 +222,22 @@ func TestKirimHarga_AdvancesTaskProgressOncePerCommodity(t *testing.T) {
 		return -1
 	}
 
+	rincian := func() map[string]bool {
+		w := s.call(t, http.MethodGet, "/v1/lapangan/tugas/TGS-uji-progres", "mahasiswa.9@gardainflasi.id", nil)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		hasil := map[string]bool{}
+		for _, r := range data[tugasDetail](t, w).Rincian {
+			assert.NotEmpty(t, r.Nama, r.Kode)
+			hasil[r.Kode] = r.Terisi
+		}
+		return hasil
+	}
+	assert.Equal(t, map[string]bool{"TMT": false, "KTG": false}, rincian(), "belum ada entri tertaut")
+
 	first := kirim("progres-1", "TMT")
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
 	assert.Equal(t, 1, terisi())
+	assert.Equal(t, map[string]bool{"TMT": true, "KTG": false}, rincian(), "rincian mengikuti entri tertaut")
 	assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM tugas_entri WHERE tugas_id = 'TGS-uji-progres' AND entri_id = ?", data[hasilKirim](t, first).ID))
 
 	require.Equal(t, http.StatusCreated, kirim("progres-2", "TMT").Code)

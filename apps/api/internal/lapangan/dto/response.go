@@ -33,6 +33,28 @@ func ToTugasLapanganResponse(t usecase.Tugas) TugasLapanganResponse {
 	}
 }
 
+// RincianKomoditasResponse adalah satu komoditas tugas; Terisi benar bila sudah ada entri tertaut.
+type RincianKomoditasResponse struct {
+	Kode   string `json:"kode"`
+	Nama   string `json:"nama"`
+	Terisi bool   `json:"terisi"`
+}
+
+// TugasDetailResponse adalah tugas (semua bidang daftar) ditambah rincian per komoditas.
+type TugasDetailResponse struct {
+	TugasLapanganResponse
+	Rincian []RincianKomoditasResponse `json:"rincian_komoditas"`
+}
+
+// ToTugasDetailResponse memetakan detail tugas; Rincian selalu larik (bukan null).
+func ToTugasDetailResponse(d usecase.Detail) TugasDetailResponse {
+	rincian := make([]RincianKomoditasResponse, len(d.Rincian))
+	for i, r := range d.Rincian {
+		rincian[i] = RincianKomoditasResponse{Kode: r.Kode, Nama: r.Nama, Terisi: r.Terisi}
+	}
+	return TugasDetailResponse{TugasLapanganResponse: ToTugasLapanganResponse(d.Tugas), Rincian: rincian}
+}
+
 // BulkTugasResponse melaporkan tugas yang diproses dan yang dilewati.
 type BulkTugasResponse struct {
 	Berhasil int `json:"berhasil"`

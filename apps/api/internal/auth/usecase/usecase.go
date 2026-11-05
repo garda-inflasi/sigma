@@ -505,7 +505,11 @@ func (uc *UseCase) ListUsers(ctx context.Context, page, limit int, search string
 func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, error) {
 	user, err := uc.repo.GetUserByID(ctx, id)
 	if err != nil {
-		return nil, ErrUserNotFound
+		// Hanya "tidak ada" yang menjadi 404; galat basis data tidak boleh menyamar sebagai pengguna hilang.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("get user: %w", err)
 	}
 	return user, nil
 }

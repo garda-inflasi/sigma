@@ -42,7 +42,7 @@ func (h *Handler) ListSaya(c *gin.Context) {
 
 // GET /v1/lapangan/tugas/:id
 func (h *Handler) Get(c *gin.Context) {
-	item, err := h.uc.GetByID(c.Request.Context(), c.Param("id"), pemanggil(c))
+	item, err := h.uc.GetDetail(c.Request.Context(), c.Param("id"), pemanggil(c))
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Tugas tidak ditemukan")
@@ -51,7 +51,7 @@ func (h *Handler) Get(c *gin.Context) {
 		response.InternalError(c, "Gagal mengambil data tugas lapangan")
 		return
 	}
-	response.Success(c, dto.ToTugasLapanganResponse(*item))
+	response.Success(c, dto.ToTugasDetailResponse(*item))
 }
 
 // POST /v1/lapangan/tugas/bulk

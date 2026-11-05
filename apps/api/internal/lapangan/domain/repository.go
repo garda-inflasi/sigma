@@ -16,6 +16,8 @@ type Repository interface {
 	ListSaya(ctx context.Context, petugasID string) ([]TugasView, error)
 	// GetByID mengembalikan satu tugas; semua true membuka tugas milik petugas lain.
 	GetByID(ctx context.Context, id, petugasID string, semua bool) (*TugasView, error)
+	// Rincian mengembalikan nama dan status terisi tiap kode komoditas tugas (urutan tidak dijamin).
+	Rincian(ctx context.Context, tugasID string, kode []string) ([]RincianKomoditas, error)
 	// Aksesibel menyaring ids ke tugas yang boleh disentuh pemanggil.
 	Aksesibel(ctx context.Context, ids []string, petugasID string, semua bool) ([]string, error)
 	// TandaiSelesai menutup tugas yang targetnya sudah terpenuhi dan mengembalikan id yang berubah.

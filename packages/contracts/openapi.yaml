@@ -2539,7 +2539,10 @@ paths:
   /v1/lapangan/tugas/{id}:
     get:
       summary: Mendapatkan detail tugas lapangan
-      description: Tugas milik petugas lain tampil sebagai 404 kecuali pemanggil memegang `tugas.kelola`.
+      description: |
+        Tugas milik petugas lain tampil sebagai 404 kecuali pemanggil memegang `tugas.kelola`.
+        Selain bidang daftar, detail memuat `rincian_komoditas`: nama tiap komoditas tugas (urutan
+        sama dengan `komoditas`) dan apakah sudah ada entri harga yang tertaut ke tugas untuk komoditas itu.
       operationId: getTugasLapangan
       tags:
         - Lapangan
@@ -2557,7 +2560,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TugasLapanganResponse"
+                $ref: "#/components/schemas/TugasLapanganDetailResponse"
         "403":
           description: Tanpa izin tugas
           content:
@@ -5989,6 +5992,39 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/TugasLapangan"
+
+    TugasLapanganDetail:
+      allOf:
+        - $ref: "#/components/schemas/TugasLapangan"
+        - type: object
+          required: [rincian_komoditas]
+          properties:
+            rincian_komoditas:
+              type: array
+              items:
+                type: object
+                required: [kode, nama, terisi]
+                properties:
+                  kode:
+                    type: string
+                    example: CBM-KRT
+                  nama:
+                    type: string
+                    example: Cabai merah keriting
+                  terisi:
+                    type: boolean
+                    description: Benar bila sudah ada entri harga tertaut ke tugas untuk komoditas ini
+
+    TugasLapanganDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/TugasLapanganDetail"
 
     TugasLapanganListResponse:
       type: object

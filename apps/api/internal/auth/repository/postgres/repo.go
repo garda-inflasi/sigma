@@ -96,7 +96,9 @@ func (r *Repository) RevokeRefreshToken(ctx context.Context, id int64) error {
 
 func (r *Repository) RevokeRefreshTokenFamily(ctx context.Context, familyID string) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).Model(&domain.RefreshToken{}).Where("family_id = ?", familyID).Update("revoked_at", now).Error
+	// Hanya token hidup: token hasil rotasi mempertahankan revoked_at/rotated_at aslinya (jendela toleransi dan
+	// deteksi pemakaian ulang bergantung padanya).
+	return r.db.WithContext(ctx).Model(&domain.RefreshToken{}).Where("family_id = ? AND revoked_at IS NULL", familyID).Update("revoked_at", now).Error
 }
 
 // ── Login Attempt ─────────────────────────────────────────────────────
@@ -276,6 +278,14 @@ func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action d
 		tx = tx.Update("status", "AKTIF")
 	case domain.BulkNonaktifkan:
 		tx = tx.Update("status", "NONAKTIF")
+		// Akun nonaktif tidak boleh meneruskan sesinya: access token mati seketika lewat sid.
+		if tx.Error == nil {
+			if err := r.db.WithContext(ctx).Model(&domain.RefreshToken{}).
+				Where("user_id IN ? AND revoked_at IS NULL", ids).
+				Update("revoked_at", time.Now()).Error; err != nil {
+				return 0, fmt.Errorf("revoke sessions: %w", err)
+			}
+		}
 	case domain.BulkWajibkanMFA:
 		tx = tx.Update("mfa_wajib", true)
 	case domain.BulkAkhiriSesi:

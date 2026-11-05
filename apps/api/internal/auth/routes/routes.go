@@ -54,6 +54,11 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 	}
 	emailSender := email.New(emailCfg)
 
+	// Penegakan pencabutan access token (logout, sesi dicabut, paksa keluar): JWTAuth(tokenMgr) di semua modul
+	// menanyakannya lewat Manager yang sama, sehingga memasang modul auth di router mana pun otomatis
+	// menyalakannya tanpa mengubah tanda tangan JWTAuth.
+	deps.Token.SetRevocationChecker(postgres.NewRevocationChecker(deps.DB))
+
 	repo := postgres.New(deps.DB)
 	uc := usecase.New(repo, deps.Token, cfg, deps.Logger, emailSender, audit.NewWriter(deps.DB))
 	handler := http.New(uc)
@@ -74,6 +79,10 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 	protected.Use(middleware.JWTAuth(deps.Token))
 	{
 		protected.POST("/auth/logout", handler.Logout)
+		protected.POST("/auth/logout-all", handler.LogoutAll)
+		protected.GET("/auth/sessions", handler.ListSessions)
+		protected.DELETE("/auth/sessions/:id", handler.RevokeSession)
+		protected.POST("/auth/sessions/revoke-others", handler.RevokeOtherSessions)
 		protected.GET("/auth/me", handler.Me)
 		protected.POST("/auth/change-password", handler.ChangePassword)
 
@@ -97,6 +106,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.PATCH("/:id", handler.UpdateUser)
 			users.DELETE("/:id", handler.DeleteUser)
 			users.POST("/:id/reset-password", handler.ResetPasswordAdmin)
+			users.POST("/:id/revoke-sessions", handler.ForceLogoutUser)
 			users.PUT("/:id/roles", handler.AssignRole)
 		}
 

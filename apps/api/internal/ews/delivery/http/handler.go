@@ -34,7 +34,10 @@ func New(uc *usecase.UseCase, streamer *stream.Streamer, notif *notifikasi.Servi
 // Stream handles GET /v1/ews/stream (Server-Sent Events, event `alert`).
 // Klien yang menyambung ulang mengirim Last-Event-ID dan melanjutkan tanpa celah atau duplikat.
 func (h *Handler) Stream(c *gin.Context) {
-	ctx := c.Request.Context()
+	// JWTAuth memeriksa token hanya saat koneksi dibuka. Aliran ditutup saat access token kedaluwarsa supaya
+	// sesi yang dicabut tidak menerima alert tanpa batas; EventSource menyambung ulang lewat pemeriksaan penuh.
+	ctx, cancel := middleware.TokenLifetimeContext(c)
+	defer cancel()
 	start, err := h.stream.StartID(ctx, c.GetHeader("Last-Event-ID"))
 	if err != nil {
 		response.InternalError(c, "Gagal memulai aliran peringatan")

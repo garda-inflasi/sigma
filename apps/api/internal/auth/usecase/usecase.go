@@ -107,6 +107,9 @@ type Config struct {
 	MFAEnforce bool
 	// MFAKey menyegel rahasia TOTP di basis data; nil membuat setup dan verifikasi MFA gagal dengan ErrMFAUnavailable.
 	MFAKey *crypto.Keyring
+	// RefreshGraceWindow adalah jendela setelah rotasi saat refresh token lama yang disajikan lagi dianggap
+	// permintaan serentak yang sah (mis. dua tab), bukan pemakaian ulang. 0 mematikan toleransi. Lihat sesi.go.
+	RefreshGraceWindow time.Duration
 }
 
 func DefaultConfig() Config {
@@ -116,6 +119,8 @@ func DefaultConfig() Config {
 		MaxFailedAttempts: 5,
 		LockoutDuration:   15 * time.Minute,
 		ResetTokenTTL:     30 * time.Minute,
+
+		RefreshGraceWindow: DefaultRefreshGraceWindow,
 	}
 }
 
@@ -238,69 +243,19 @@ func (uc *UseCase) completeLogin(ctx context.Context, user *domain.Pengguna, ip,
 	return &LoginResult{User: user, AccessToken: accessToken, RefreshToken: rawRefresh, MFASetupRequired: uc.mfaSetupRequired(user)}, nil
 }
 
-// Refresh rotates a refresh token.
+// Refresh rotates a refresh token. Wrapper tipis RefreshSession untuk pemanggil yang hanya butuh token;
+// pada pemutaran ulang yang ditoleransi refresh token yang dikembalikan kosong.
 func (uc *UseCase) Refresh(ctx context.Context, refreshTokenStr, ip string) (string, string, error) {
-	tokenHash := sha256Hex(refreshTokenStr)
-
-	stored, err := uc.repo.GetRefreshTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return "", "", ErrInvalidToken
-	}
-
-	if stored.RevokedAt != nil {
-		// Reuse detection: revoke entire family
-		uc.log.Warn("refresh: reuse detected, revoking family", map[string]interface{}{
-			"family_id": stored.FamilyID,
-			"user_id":   stored.UserID,
-		})
-		_ = uc.repo.RevokeRefreshTokenFamily(ctx, stored.FamilyID)
-		uc.writeAudit(ctx, audit.Entry{
-			AktorID: stored.UserID, Aksi: "TOKEN_REUSE", Entitas: "refresh_token", EntitasID: fmt.Sprintf("%d", stored.ID),
-			Hasil: audit.HasilDitolak, Metadata: map[string]any{"family_id": stored.FamilyID},
-		})
-		return "", "", ErrInvalidToken
-	}
-
-	if time.Now().After(stored.ExpiresAt) {
-		return "", "", ErrTokenExpired
-	}
-
-	if err := uc.repo.RevokeRefreshToken(ctx, stored.ID); err != nil {
-		return "", "", fmt.Errorf("revoke old token: %w", err)
-	}
-
-	// Get user for permissions
-	user, err := uc.repo.GetUserByID(ctx, stored.UserID)
-	if err != nil {
-		return "", "", ErrUserNotFound
-	}
-
-	accessToken, rawRefresh, err := uc.issueSession(ctx, user, stored.FamilyID, ip)
+	res, err := uc.RefreshSession(ctx, refreshTokenStr, ip)
 	if err != nil {
 		return "", "", err
 	}
-
-	uc.log.Info("refresh success", map[string]interface{}{"user_id": stored.UserID, "ip": ip})
-	return accessToken, rawRefresh, nil
+	return res.AccessToken, res.RefreshToken, nil
 }
 
-// Logout revokes all refresh tokens for a user and blacklists the current JWT.
+// Logout mengakhiri sesi yang sedang dipakai dan memasukkan JWT-nya ke daftar cabut (lihat LogoutSession).
 func (uc *UseCase) Logout(ctx context.Context, userID string, jti string) error {
-	// Revoke all active refresh tokens for this user
-	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, userID); err != nil {
-		return fmt.Errorf("revoke all tokens: %w", err)
-	}
-
-	// Blacklist the current JWT
-	if jti != "" {
-		if err := uc.repo.BlacklistJWT(ctx, jti, uc.cfg.AccessTokenTTL); err != nil {
-			uc.log.Warn("logout: failed to blacklist JWT", map[string]interface{}{"jti": jti, "user_id": userID})
-		}
-	}
-
-	uc.recordAudit(ctx, userID, "LOGOUT", userID)
-	uc.log.Info("logout success", map[string]interface{}{"user_id": userID})
-	return nil
+	return uc.LogoutSession(ctx, userID, jti, "")
 }
 
 // GetMe returns the current user profile.
@@ -344,10 +299,8 @@ func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newP
 		return "", "", err
 	}
 
-	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, userID); err != nil {
-		return "", "", fmt.Errorf("revoke sessions: %w", err)
-	}
-	accessToken, refreshToken, err = uc.issueSession(ctx, user, uuid.New().String(), ip)
+	// Sesi yang sedang dipakai tetap hidup (token barunya tanpa penanda wajib ganti); sesi lain dicabut.
+	accessToken, refreshToken, err = uc.replaceCurrentSession(ctx, user, ip)
 	if err != nil {
 		return "", "", err
 	}
@@ -563,7 +516,9 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 
 	// Deactivating an account must also terminate its active sessions.
 	if patch.Status != nil && *patch.Status != "AKTIF" {
-		_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
+		if err := uc.revokeAllSessions(ctx, user.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	uc.writeAudit(ctx, audit.Entry{
@@ -614,7 +569,9 @@ func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, acto
 	}
 
 	// Force re-authentication everywhere after an administrative reset.
-	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
+	if err := uc.revokeAllSessions(ctx, user.ID); err != nil {
+		return err
+	}
 
 	uc.recordAudit(ctx, actorID, "RESET_PASSWORD_ADMIN", user.ID)
 	return nil
@@ -641,7 +598,9 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID string) (*d
 		return nil, fmt.Errorf("assign role: %w", err)
 	}
 
-	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, user.ID)
+	if err := uc.revokeAllSessions(ctx, user.ID); err != nil {
+		return nil, err
+	}
 
 	uc.writeAudit(ctx, audit.Entry{
 		AktorID: actorID, Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: user.ID,
@@ -766,36 +725,16 @@ func userSnapshot(u *domain.Pengguna) map[string]any {
 }
 
 // issueSession menerbitkan access token (membawa penanda wajib ganti kata sandi
-// bila aktif) dan refresh token baru dalam keluarga familyID.
+// bila aktif, dan sid = familyID) dan refresh token baru dalam keluarga familyID.
 func (uc *UseCase) issueSession(ctx context.Context, user *domain.Pengguna, familyID, ip string) (accessToken, refreshToken string, err error) {
-	kabupaten := ""
-	if user.KabupatenKode != nil {
-		kabupaten = *user.KabupatenKode
-	}
-	accessToken, err = uc.token.CreateAccessToken(user.ID, user.Peran, uc.getPermissionsForRole(user.Peran),
-		token.WithPasswordChangeRequired(user.WajibGantiPassword),
-		token.WithMFASetupRequired(uc.mfaSetupRequired(user)),
-		token.WithProfile(user.Nama, user.Email, user.Lembaga, kabupaten))
+	minted, err := uc.mintSession(ctx, user, familyID, ip, time.Time{}, time.Now())
 	if err != nil {
-		return "", "", fmt.Errorf("create access token: %w", err)
+		return "", "", err
 	}
-
-	refreshToken, refreshHash, err := uc.token.CreateRefreshToken()
-	if err != nil {
-		return "", "", fmt.Errorf("create refresh token: %w", err)
-	}
-
-	rt := &domain.RefreshToken{
-		UserID:    user.ID,
-		TokenHash: refreshHash,
-		FamilyID:  familyID,
-		IP:        &ip,
-		ExpiresAt: time.Now().Add(uc.cfg.RefreshTokenTTL),
-	}
-	if err := uc.repo.CreateRefreshToken(ctx, rt); err != nil {
+	if err := uc.repo.CreateRefreshToken(ctx, minted.row); err != nil {
 		return "", "", fmt.Errorf("save refresh token: %w", err)
 	}
-	return accessToken, refreshToken, nil
+	return minted.accessToken, minted.refreshToken, nil
 }
 
 // setPassword menyimpan kata sandi baru. wajibGanti true untuk kata sandi yang

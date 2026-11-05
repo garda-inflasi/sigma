@@ -334,9 +334,8 @@ func TestRefresh_Success(t *testing.T) {
 	}
 
 	repo.On("GetRefreshTokenByHash", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
-	repo.On("RevokeRefreshToken", mock.Anything, int64(1)).Return(nil)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
+	repo.On("RotateRefreshToken", mock.Anything, int64(1), mock.AnythingOfType("*domain.RefreshToken"), mock.Anything).Return(true, nil)
 
 	accessToken, newRefreshToken, err := uc.Refresh(context.Background(), "some-refresh-token", "10.0.0.1")
 
@@ -353,7 +352,7 @@ func TestRefresh_InvalidToken(t *testing.T) {
 
 	// The usecase hashes the input before looking up, so we need to match
 	// the hash of our input, not the raw input itself.
-	repo.On("GetRefreshTokenByHash", mock.Anything, mock.AnythingOfType("string")).Return(nil, errors.New("not found"))
+	repo.On("GetRefreshTokenByHash", mock.Anything, mock.AnythingOfType("string")).Return(nil, gorm.ErrRecordNotFound)
 
 	_, _, err := uc.Refresh(context.Background(), "nonexistent-token", "10.0.0.1")
 
@@ -366,13 +365,15 @@ func TestRefresh_RevokedToken(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	now := time.Now()
+	// Token hasil rotasi yang disajikan lagi jauh setelah jendela toleransi: pemakaian ulang.
+	lama := time.Now().Add(-time.Hour)
 	storedToken := &domain.RefreshToken{
 		ID:        1,
 		UserID:    "user-123",
 		TokenHash: "revoked-hash",
 		FamilyID:  "family-uuid",
-		RevokedAt: &now,
+		RevokedAt: &lama,
+		RotatedAt: &lama,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 

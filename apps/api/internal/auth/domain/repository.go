@@ -6,6 +6,7 @@ import (
 )
 
 type Repository interface {
+	SesiRepository
 	GetUserByID(ctx context.Context, id string) (*Pengguna, error)
 	GetUserByEmail(ctx context.Context, email string) (*Pengguna, error)
 	CreateUser(ctx context.Context, user *Pengguna) error

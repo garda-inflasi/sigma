@@ -71,12 +71,12 @@ func (h *Handler) Refresh(c *gin.Context) {
 	}
 
 	ip := c.ClientIP()
-	accessToken, refreshToken, err := h.uc.Refresh(audit.RequestContext(c), req.RefreshToken, ip)
+	result, err := h.uc.RefreshSession(audit.RequestContext(c), req.RefreshToken, ip)
 	if err != nil {
-		switch err {
-		case usecase.ErrInvalidToken:
+		switch {
+		case errors.Is(err, usecase.ErrInvalidToken):
 			response.Unauthorized(c, "Token tidak valid")
-		case usecase.ErrTokenExpired:
+		case errors.Is(err, usecase.ErrTokenExpired):
 			response.Unauthorized(c, "Token kedaluwarsa")
 		default:
 			response.InternalError(c, "Kesalahan server")
@@ -84,18 +84,25 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 
+	// RefreshToken kosong pada pemutaran ulang dalam jendela toleransi: klien mempertahankan token dari
+	// permintaan pemenang.
 	resp := dto.RefreshTokenResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
 	}
 	response.Success(c, resp)
 }
 
 // POST /v1/auth/logout
+// Mengakhiri hanya sesi yang sedang dipakai (sid access token). Isi opsional {"refresh_token"} dipakai
+// sebagai cadangan untuk token tanpa sid. Keluar dari semua perangkat: POST /v1/auth/logout-all.
 func (h *Handler) Logout(c *gin.Context) {
 	userID := c.GetString("user_id")
 	jti := c.GetString("jti")
-	if err := h.uc.Logout(audit.RequestContext(c), userID, jti); err != nil {
+	var req dto.LogoutRequest
+	// Isi opsional: badan kosong atau bukan JSON tidak menggagalkan logout.
+	_ = c.ShouldBindJSON(&req)
+	if err := h.uc.LogoutSession(requestContext(c), userID, jti, req.RefreshToken); err != nil {
 		response.InternalError(c, "Gagal logout")
 		return
 	}
@@ -135,7 +142,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	userID := c.GetString("user_id")
 	ip := c.ClientIP()
 
-	accessToken, refreshToken, err := h.uc.ChangePassword(audit.RequestContext(c), userID, req.OldPassword, req.NewPassword, ip)
+	accessToken, refreshToken, err := h.uc.ChangePassword(requestContext(c), userID, req.OldPassword, req.NewPassword, ip)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrWrongPassword):
@@ -482,7 +489,7 @@ func (h *Handler) VerifyMFA(c *gin.Context) {
 		return
 	}
 
-	res, err := h.uc.VerifyMFA(audit.RequestContext(c), c.GetString("user_id"), req.Code, c.ClientIP())
+	res, err := h.uc.VerifyMFA(requestContext(c), c.GetString("user_id"), req.Code, c.ClientIP())
 	if mfaError(c, err) {
 		return
 	}

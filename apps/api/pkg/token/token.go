@@ -1,9 +1,11 @@
 package token
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -36,6 +38,9 @@ type Claims struct {
 	// MFASetupRequired menandai sesi akun yang wajib mengaktifkan MFA tetapi belum; middleware hanya
 	// membuka endpoint setup MFA, keluar, dan profil selama klaim ini aktif.
 	MFASetupRequired bool `json:"wajib_setup_mfa,omitempty"`
+	// SessionID (`sid`) adalah id sesi tempat token ini terbit (family refresh token). Access token mati
+	// seketika saat sesinya dicabut; lihat RevocationChecker. Kosong pada token sebelum fitur sesi ada.
+	SessionID string `json:"sid,omitempty"`
 	// Profil untuk tampilan (nama, email, lembaga, kabupaten tugas); dibaca sesi server web.
 	// Otorisasi tidak pernah bergantung pada klaim ini.
 	Name  string `json:"name,omitempty"`
@@ -55,6 +60,7 @@ type Manager struct {
 	rememberTTL time.Duration
 	issuer      string
 	audience    string
+	revocation  atomic.Pointer[RevocationChecker]
 }
 
 // NewManager creates a new token manager.
@@ -137,6 +143,13 @@ func WithMFASetupRequired(required bool) ClaimOption {
 func WithProfile(nama, email, lembaga, kabupatenKode string) ClaimOption {
 	return func(c *Claims) {
 		c.Name, c.Email, c.Org, c.Kab = nama, email, lembaga, kabupatenKode
+	}
+}
+
+// WithSession mengikat access token ke sesi (family refresh token) sumbernya lewat klaim `sid`.
+func WithSession(sessionID string) ClaimOption {
+	return func(c *Claims) {
+		c.SessionID = sessionID
 	}
 }
 
@@ -239,6 +252,38 @@ func (m *Manager) parse(tokenString, audience string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+// ── Revocation ────────────────────────────────────────────────────────
+
+// RevocationChecker menjawab apakah access token yang tanda tangannya sah sudah dicabut: jti masuk daftar
+// cabut (logout), atau sesinya (sid) tidak lagi hidup (dicabut, diganti, atau dipaksa keluar).
+// Implementasi harus aman dipakai bersamaan dan murah: dipanggil pada setiap request terotentikasi.
+type RevocationChecker interface {
+	Revoked(ctx context.Context, jti, sessionID string) (bool, error)
+}
+
+// SetRevocationChecker memasang pemeriksa pencabutan yang dipakai middleware JWTAuth. Dipasang sekali saat
+// rute auth didaftarkan (internal/auth/routes) pada Manager yang dibagi seluruh modul, sehingga tanda tangan
+// JWTAuth(tokenMgr) tidak berubah dan setiap router yang memasang modul auth otomatis ikut menegakkannya.
+// Nil melepas pemeriksa.
+func (m *Manager) SetRevocationChecker(c RevocationChecker) {
+	if c == nil {
+		m.revocation.Store(nil)
+		return
+	}
+	m.revocation.Store(&c)
+}
+
+// IsRevoked memeriksa klaim yang sudah terverifikasi terhadap pemeriksa pencabutan. Tanpa pemeriksa
+// (router yang tidak memasang modul auth, mis. tes modul lain) tidak ada yang dicabut. Galat dikembalikan
+// apa adanya; kebijakan gagal-tutup ada di middleware.
+func (m *Manager) IsRevoked(ctx context.Context, claims *Claims) (bool, error) {
+	checker := m.revocation.Load()
+	if checker == nil || claims == nil {
+		return false, nil
+	}
+	return (*checker).Revoked(ctx, claims.ID, claims.SessionID)
 }
 
 // ── Getters ───────────────────────────────────────────────────────────

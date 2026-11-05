@@ -21,8 +21,10 @@ type LoginResponse struct {
 }
 
 type RefreshTokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken string `json:"access_token"`
+	// RefreshToken tidak ada pada pemutaran ulang dalam jendela toleransi (dua tab menyegarkan sesi
+	// bersamaan): klien mempertahankan refresh token dari permintaan yang menang.
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // ChangePasswordResponse memuat sesi baru: ganti kata sandi mencabut semua sesi

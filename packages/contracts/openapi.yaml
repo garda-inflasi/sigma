@@ -13,6 +13,14 @@ info:
     JWT Bearer token yang dikirim via header `Authorization: Bearer <token>`.
 
     Token diperoleh dari endpoint `POST /v1/auth/login`.
+
+    ## Sesi
+
+    Setiap login membuka satu sesi (perangkat). Access token (15 menit) membawa klaim `sid` = id sesi, dan
+    refresh token diputar pada setiap `POST /v1/auth/refresh`. Mencabut sesi (keluar, `Cabut`, paksa keluar,
+    pemakaian ulang refresh token, ganti atau reset kata sandi) mematikan seluruh access token sesi itu
+    seketika: token yang dicabut dijawab 401. Bila status pencabutan tidak dapat diperiksa (basis data
+    bermasalah) permintaan dijawab 503, bukan diloloskan.
   version: "1.0.0"
   contact:
     name: FMIPA USK × Kanwil DJPb
@@ -93,6 +101,16 @@ paths:
     post:
       summary: Refresh token
       operationId: authRefresh
+      description: |
+        Menukar refresh token dengan access token baru dan refresh token pengganti (rotasi). Token lama
+        langsung hangus; penukaran bersifat atomik sehingga dua permintaan serentak dengan token yang sama
+        tidak mungkin keduanya memutar.
+
+        **Jendela toleransi (10 detik).** Token yang baru saja diputar lalu disajikan lagi (mis. dua tab
+        menyegarkan sesi bersamaan) dijawab 200 dengan access token baru tetapi **tanpa** `refresh_token`:
+        pertahankan refresh token yang diterima permintaan pertama. Setelah jendela itu, menyajikan token yang
+        sudah diputar dianggap pencurian: seluruh sesi dicabut (termasuk access token-nya) dan `TOKEN_REUSE`
+        dicatat di audit. Token yang dicabut karena keluar atau `Cabut` hanya dijawab 401.
       tags:
         - Authentication
       requestBody:
@@ -123,12 +141,23 @@ paths:
 
   /v1/auth/logout:
     post:
-      summary: Logout pengguna
+      summary: Logout dari sesi ini
       operationId: authLogout
+      description: |
+        Mengakhiri hanya sesi yang sedang dipakai (klaim `sid`) dan memasukkan jti access token ke daftar
+        cabut; sesi di perangkat lain tetap hidup. Untuk keluar di semua perangkat gunakan
+        `POST /v1/auth/logout-all`. Badan opsional `refresh_token` dipakai untuk menentukan sesi bila
+        access token tidak membawa `sid` (token terbitan sebelum fitur sesi).
       tags:
         - Authentication
       security:
         - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
       responses:
         "200":
           description: Logout berhasil
@@ -138,6 +167,133 @@ paths:
                 $ref: "#/components/schemas/SuccessResponse"
         "401":
           description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/logout-all:
+    post:
+      summary: Keluar dari semua perangkat
+      operationId: authLogoutAll
+      description: |
+        Mengakhiri semua sesi pengguna, termasuk yang sedang dipakai. Seluruh access token dan refresh
+        token pengguna berhenti berlaku seketika. Tercatat di audit (`LOGOUT_ALL`).
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Semua sesi diakhiri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionsRevokedResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/sessions:
+    get:
+      summary: Daftar sesi aktif milik sendiri
+      operationId: authListSessions
+      description: |
+        Sesi aktif (perangkat yang sedang masuk) milik pengguna yang memanggil, yang terakhir dipakai
+        paling awal. `saat_ini` menandai sesi pemanggil. Tersedia untuk semua peran.
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Sesi aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/sessions/{id}:
+    delete:
+      summary: Cabut satu sesi milik sendiri
+      operationId: authRevokeSession
+      description: |
+        Mencabut sesi lain milik pengguna yang memanggil. Access token dan refresh token sesi itu
+        berhenti berlaku seketika. Sesi yang sedang dipakai tidak dapat dicabut di sini (gunakan
+        `POST /v1/auth/logout`). Tercatat di audit (`REVOKE_SESSION`).
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Id sesi dari `GET /v1/auth/sessions`
+      responses:
+        "200":
+          description: Sesi dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Sesi yang sedang dipakai tidak dapat dicabut dari daftar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Sesi tidak ada, sudah berakhir, atau milik pengguna lain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/sessions/revoke-others:
+    post:
+      summary: Cabut semua sesi lain
+      operationId: authRevokeOtherSessions
+      description: |
+        Mencabut semua sesi pengguna selain yang sedang dipakai ("keluar dari perangkat lain").
+        Tercatat di audit (`REVOKE_OTHER_SESSIONS`).
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Jumlah sesi yang dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionsRevokedResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Access token tidak membawa `sid` (terbitan sebelum fitur sesi); masuk ulang
           content:
             application/json:
               schema:
@@ -182,8 +338,8 @@ paths:
       responses:
         "200":
           description: |
-            Password berhasil diubah. Penanda `wajib_ganti_password` dimatikan, semua sesi
-            lama dicabut, dan sesi baru dikembalikan.
+            Password berhasil diubah. Penanda `wajib_ganti_password` dimatikan. Sesi yang sedang dipakai
+            tetap hidup (id sesi sama) dengan access dan refresh token baru; semua sesi lain dicabut.
           content:
             application/json:
               schema:
@@ -576,6 +732,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/revoke-sessions:
+    post:
+      summary: Paksa keluar seorang pengguna
+      operationId: revokeUserSessions
+      description: |
+        Mengakhiri semua sesi pengguna (izin `pengguna.kelola`). Access token dan refresh token
+        pengguna itu berhenti berlaku seketika; ia dapat masuk lagi. Tercatat di audit (`FORCE_LOGOUT`).
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: Jumlah sesi yang dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForceLogoutResponse"
         "401":
           description: Token tidak valid
           content:
@@ -4585,6 +4785,105 @@ components:
               type: string
             refresh_token:
               type: string
+              description: |
+                Refresh token pengganti. Tidak ada pada pemutaran ulang dalam jendela toleransi
+                (lihat `POST /v1/auth/refresh`): pertahankan token yang sudah Anda miliki.
+
+    LogoutRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Opsional; menentukan sesi bila access token tidak membawa `sid`
+
+    SessionInfo:
+      type: object
+      required:
+        - id
+        - perangkat
+        - dibuat_pada
+        - terakhir_dipakai_pada
+        - kedaluwarsa_pada
+        - saat_ini
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id sesi (family refresh token), sama dengan klaim `sid`
+        perangkat:
+          type: string
+          example: Chrome di macOS
+          description: Ringkasan user agent
+        user_agent:
+          type: string
+          description: User agent mentah (dipotong 512 karakter)
+        ip:
+          type: string
+          example: 203.0.113.7
+          description: IP klien saat sesi dibuat atau token terakhir diputar
+        dibuat_pada:
+          type: string
+          format: date-time
+          description: Awal sesi (login)
+        terakhir_dipakai_pada:
+          type: string
+          format: date-time
+          description: Terakhir sesi menukar token (login atau refresh)
+        kedaluwarsa_pada:
+          type: string
+          format: date-time
+        saat_ini:
+          type: boolean
+          description: True untuk sesi tempat permintaan ini berasal
+
+    SessionListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionInfo"
+
+    SessionsRevokedResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            dicabut:
+              type: integer
+              description: Jumlah sesi yang diakhiri
+
+    ForceLogoutResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              description: ID pengguna
+            dicabut:
+              type: integer
+              description: Jumlah sesi yang diakhiri
 
     ChangePasswordRequest:
       type: object

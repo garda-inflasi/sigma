@@ -17,7 +17,10 @@ import {
 import { toTugasLapangan, type TugasLapanganResponse } from "./lapangan";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
 import { kpiMock, toKpiIndikator, type KpiIndikator, type KpiResponse as KpiIndikatorResponse } from "./kpi";
-import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse } from "./ews";
+import {
+  toEwsAlert, toEwsAturan, toUbahAturanBody,
+  type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type UbahAturanInput,
+} from "./ews";
 import { toKartu, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
@@ -109,6 +112,16 @@ export const api = {
     /** Aturan ambang per komoditas dan jenis, beserta kanal notifikasi. */
     aturan: (): Promise<EwsAturan[]> =>
       MODE_MOCK ? mockDelay(m.mockEwsAturan) : apiFetch<EwsAturanResponse[]>("/v1/ews/aturan").then((rows) => rows.map(toEwsAturan)),
+    /** Mengubah ambang aturan; 409 (ApiError) bila aturan sudah diubah pengguna lain sejak dibaca. */
+    ubahAturan: (id: string, input: UbahAturanInput): Promise<EwsAturan> =>
+      MODE_MOCK
+        ? mockDelay(() => ({ ...m.mockEwsAturan().find((a) => a.id === id)!, ...input, versi: input.versi + 1 }), 200, 400)
+        : apiFetch<EwsAturanResponse>(`/v1/ews/aturan/${id}`, { method: "PUT", body: JSON.stringify(toUbahAturanBody(input)) }).then(toEwsAturan),
+    /** Menjalankan rule engine sekarang (di luar jadwal). */
+    evaluasi: (): Promise<EvaluasiEws> =>
+      MODE_MOCK
+        ? mockDelay({ aturan: 9, diukur: 0, dibuat: 0, dinaikkan: 0, dilewati: 0, diredam: 0, galat: 0 }, 300, 600)
+        : apiFetch<EvaluasiEws>("/v1/ews/evaluasi", { method: "POST" }),
   },
   intervensi: {
     list: (): Promise<KartuIntervensi[]> =>

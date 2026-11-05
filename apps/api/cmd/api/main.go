@@ -11,6 +11,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
+	ewsjobs "github.com/garda-inflasi/api/internal/ews/jobs"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -94,10 +95,19 @@ func main() {
 	// Register all other modules
 	modules.RegisterAll(v1, db, log, tokenMgr)
 
+	// Pekerjaan latar belakang berhenti bersama server.
+	bgCtx, stopBackground := context.WithCancel(context.Background())
+	defer stopBackground()
+
 	// Agregat dashboard disegarkan berkala, selain setelah harga divalidasi atau dipublikasi.
-	refreshCtx, stopRefresh := context.WithCancel(context.Background())
-	defer stopRefresh()
-	go refresher.Shared(db, log).Run(refreshCtx, dashboardRefreshInterval)
+	go refresher.Shared(db, log).Run(bgCtx, dashboardRefreshInterval)
+
+	// Rule engine EWS mengevaluasi aturan ambang terhadap data nyata secara berkala.
+	ewsCfg, err := ewsjobs.ConfigFromEnv()
+	if err != nil {
+		log.Warn("konfigurasi EWS tidak valid, memakai bawaan", map[string]interface{}{"error": err.Error()})
+	}
+	go ewsjobs.Shared(db, log).Run(bgCtx, ewsCfg)
 
 	srv := &http.Server{
 		Addr: addr,

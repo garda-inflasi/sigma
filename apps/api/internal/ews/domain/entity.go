@@ -34,9 +34,29 @@ type EwsAlert struct {
 	DiakuiOlehID  *string    `gorm:"column:diakui_oleh_id"`
 	DiakuiPada    *time.Time `gorm:"column:diakui_pada"`
 	AturanID      *string    `gorm:"column:aturan_id"`
+	// DedupKey mengidentifikasi kondisi yang dipantau rule engine; hanya satu alert
+	// aktif (bukan SELESAI) per kunci. Kosong untuk alert yang tidak berasal dari mesin.
+	DedupKey         *string    `gorm:"column:dedup_key"`
+	DieskalasiPada   *time.Time `gorm:"column:dieskalasi_pada"`
+	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id"`
+	SelesaiPada      *time.Time `gorm:"column:selesai_pada"`
 }
 
 func (EwsAlert) TableName() string { return "ews_alert" }
+
+// EwsRiwayat memetakan tabel ews_riwayat: satu perubahan status alert. Oleh kosong
+// berarti sistem (rule engine atau eskalasi otomatis).
+type EwsRiwayat struct {
+	ID      string    `gorm:"column:id;primaryKey"`
+	AlertID string    `gorm:"column:alert_id"`
+	Dari    *string   `gorm:"column:dari"`
+	Ke      string    `gorm:"column:ke"`
+	Oleh    *string   `gorm:"column:oleh"`
+	Waktu   time.Time `gorm:"column:waktu;default:now()"`
+	Catatan string    `gorm:"column:catatan"`
+}
+
+func (EwsRiwayat) TableName() string { return "ews_riwayat" }
 
 // Alert adalah alert beserta nama komoditas dan kabupaten untuk tampilan.
 type Alert struct {
@@ -87,17 +107,44 @@ func (k Kanal) Value() (driver.Value, error) {
 type AturanEws struct {
 	ID            string  `gorm:"column:id;primaryKey"`
 	KomoditasKode *string `gorm:"column:komoditas_kode"`
+	// KabupatenKode membatasi aturan ke satu kabupaten; kosong berlaku untuk semua.
+	KabupatenKode *string `gorm:"column:kabupaten_kode"`
 	Jenis         string  `gorm:"column:jenis"`
 	AmbangWaspada float64 `gorm:"column:ambang_waspada"`
 	AmbangSiaga   float64 `gorm:"column:ambang_siaga"`
 	AmbangKritis  float64 `gorm:"column:ambang_kritis"`
 	JendelaHari   int     `gorm:"column:jendela_hari"`
-	Kanal         Kanal   `gorm:"column:kanal;type:_text"`
-	Aktif         bool    `gorm:"column:aktif"`
-	Keterangan    string  `gorm:"column:keterangan"`
+	// CooldownJam adalah jeda setelah alert SELESAI sebelum kondisi yang sama boleh memicu alert baru.
+	CooldownJam int    `gorm:"column:cooldown_jam"`
+	Kanal       Kanal  `gorm:"column:kanal;type:_text"`
+	Aktif       bool   `gorm:"column:aktif"`
+	Keterangan  string `gorm:"column:keterangan"`
+	// Versi naik tiap perubahan ambang; dipakai untuk optimistic locking.
+	Versi        int        `gorm:"column:versi"`
+	DiubahOlehID *string    `gorm:"column:diubah_oleh_id"`
+	DiubahPada   *time.Time `gorm:"column:diubah_pada"`
 }
 
 func (AturanEws) TableName() string { return "aturan_ews" }
+
+// AturanEwsRiwayat memetakan tabel aturan_ews_riwayat: foto satu versi ambang.
+type AturanEwsRiwayat struct {
+	ID            string    `gorm:"column:id;primaryKey"`
+	AturanID      string    `gorm:"column:aturan_id"`
+	Versi         int       `gorm:"column:versi"`
+	AmbangWaspada float64   `gorm:"column:ambang_waspada"`
+	AmbangSiaga   float64   `gorm:"column:ambang_siaga"`
+	AmbangKritis  float64   `gorm:"column:ambang_kritis"`
+	JendelaHari   int       `gorm:"column:jendela_hari"`
+	CooldownJam   int       `gorm:"column:cooldown_jam"`
+	Kanal         Kanal     `gorm:"column:kanal;type:_text"`
+	Aktif         bool      `gorm:"column:aktif"`
+	Keterangan    string    `gorm:"column:keterangan"`
+	DiubahOlehID  *string   `gorm:"column:diubah_oleh_id"`
+	Waktu         time.Time `gorm:"column:waktu;default:now()"`
+}
+
+func (AturanEwsRiwayat) TableName() string { return "aturan_ews_riwayat" }
 
 // Aturan adalah aturan beserta nama komoditasnya.
 type Aturan struct {

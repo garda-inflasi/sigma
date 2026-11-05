@@ -94,6 +94,45 @@ func TestBuildAlerts_SeverityFollowsRuleThresholds(t *testing.T) {
 	assert.Equal(t, "INFO", bySeverity["EWS-1012"], "surplus selalu info")
 }
 
+func TestBuildRiwayat_FollowsEachAlertLifecycle(t *testing.T) {
+	alerts := BuildAlerts(seedNow)
+	riwayat := BuildRiwayat(alerts)
+
+	byAlert := map[string][]string{}
+	ids := map[string]bool{}
+	for _, r := range riwayat {
+		assert.False(t, ids[r.ID], "id ganda %s", r.ID)
+		ids[r.ID] = true
+		byAlert[r.AlertID] = append(byAlert[r.AlertID], r.Ke)
+	}
+	for _, a := range alerts {
+		path := byAlert[a.ID]
+		require.NotEmpty(t, path, a.ID)
+		assert.Equal(t, domain.StatusBaru, path[0], a.ID)
+		switch a.Status {
+		case domain.StatusBaru:
+			assert.Len(t, path, 1, a.ID)
+		case domain.StatusDiakui:
+			assert.Equal(t, []string{"BARU", "DIAKUI"}, path, a.ID)
+		case domain.StatusDieskalasi:
+			assert.Equal(t, []string{"BARU", "DIAKUI", "DIESKALASI"}, path, a.ID)
+			require.NotNil(t, a.DieskalasiPada, a.ID)
+			assert.True(t, a.DieskalasiPada.After(*a.DiakuiPada), a.ID)
+		case domain.StatusSelesai:
+			assert.Equal(t, []string{"BARU", "DIAKUI", "SELESAI"}, path, a.ID)
+			require.NotNil(t, a.SelesaiPada, a.ID)
+		}
+	}
+}
+
+func TestBuildAturan_StartAtVersionOneWithCooldown(t *testing.T) {
+	for _, a := range BuildAturan() {
+		assert.Equal(t, 1, a.Versi, a.ID)
+		assert.Equal(t, 24, a.CooldownJam, a.ID)
+		assert.Nil(t, a.KabupatenKode, "aturan seed berlaku untuk semua kabupaten")
+	}
+}
+
 func seededDB(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
@@ -123,10 +162,12 @@ func TestSeed_IsIdempotentAndRoundTripsKanal(t *testing.T) {
 		demo, err := SeedDemo(ctx, db, seedNow)
 		require.NoError(t, err)
 		assert.Equal(t, 17, demo.Alert)
+		assert.Equal(t, 31, demo.Riwayat)
 	}
 
 	assert.EqualValues(t, 9, count(t, db, "aturan_ews"), "aturan tidak boleh bertambah")
 	assert.EqualValues(t, 17, count(t, db, "ews_alert"), "alert tidak boleh bertambah")
+	assert.EqualValues(t, 31, count(t, db, "ews_riwayat"), "riwayat tidak boleh bertambah")
 
 	var rule domain.AturanEws
 	require.NoError(t, db.First(&rule, "id = ?", "ATR-LH-CBM-KRT").Error)

@@ -4,6 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
+import type { UbahAturanInput } from "@/lib/api/ews";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
@@ -45,6 +46,31 @@ export const useRingkasanHarga = (hari = 7, enabled = true) =>
 export const useRiwayatHargaSaya = () => useQuery({ queryKey: qk.harga.saya(), queryFn: api.harga.saya });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 export const useEwsAturan = () => useQuery({ queryKey: qk.ews.aturan(), queryFn: api.ews.aturan, staleTime: 5 * 60_000 });
+
+/** Menyimpan ambang aturan. Galat (termasuk 409 versi usang) ditampilkan oleh pemanggil; aturan dimuat ulang dari server. */
+export function useUbahAturanEws() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UbahAturanInput }) => api.ews.ubahAturan(id, input),
+    onSuccess: () => toast.success("Ambang disimpan", { description: "Berlaku pada evaluasi berikutnya. Tercatat di audit trail." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.ews.aturan() }),
+  });
+}
+
+/** Menjalankan rule engine sekarang lalu menyegarkan daftar alert. */
+export function useEvaluasiEws() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.ews.evaluasi,
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: qk.ews.list() });
+      toast.success(`Evaluasi selesai: ${r.dibuat} alert baru, ${r.dinaikkan} naik tingkat`, {
+        description: `${r.aturan} aturan aktif, ${r.diukur} kondisi diukur${r.galat ? `, ${r.galat} galat (lihat log server)` : ""}.`,
+      });
+    },
+    onError: (err) => toast.error("Evaluasi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
+  });
+}
 /** Kartu kanban. Dengan backend aktif disegarkan berkala agar perpindahan oleh pengguna lain muncul. */
 export const useIntervensi = () =>
   useQuery({ queryKey: qk.intervensi.list(), queryFn: api.intervensi.list, staleTime: Infinity, refetchInterval: MODE_MOCK ? false : LIVE });

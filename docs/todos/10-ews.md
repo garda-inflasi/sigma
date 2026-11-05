@@ -33,23 +33,23 @@
 
 ---
 
-## 10-B — Rule engine dan deteksi anomali *(Fase F, gelombang F-2)*
+## 10-B — Rule engine dan deteksi anomali *(Fase F, gelombang F-2)* — ✅ rule engine (z-score/ML belum)
 
 **Tujuan:** alert dibuat otomatis dari data harga, bukan hanya seed.
 **Bergantung pada:** 10-A, 06-A.
 
-1. **MIG**
-   - [ ] `ews_alert`: `dedup_key` dengan UNIQUE parsial `WHERE status <> 'SELESAI'`, `dieskalasi_pada`/`dieskalasi_oleh`, `selesai_pada`.
-   - [ ] `ews_riwayat` (`alert_id`, `dari`, `ke`, `oleh`, `waktu`, `catatan`).
-   - [ ] `aturan_ews`: `kabupaten_kode` opsional, `versi`, `diubah_oleh`, `diubah_pada` + riwayat perubahan ambang.
-   - [ ] Index `(status, severity, dibuat_pada DESC)`, `(komoditas_kode, kabupaten_kode, dibuat_pada DESC)`.
+1. **MIG** (`000070_10b_ews_rule_engine.sql`)
+   - [x] `ews_alert`: `dedup_key` dengan UNIQUE parsial `WHERE status <> 'SELESAI'`, `dieskalasi_pada`/`dieskalasi_oleh_id`, `selesai_pada`, sequence id `EWS-2000+`.
+   - [x] `ews_riwayat` (`alert_id`, `dari`, `ke`, `oleh`, `waktu`, `catatan`); aksi massal akui/eskalasi/selesai ikut mencatat.
+   - [x] `aturan_ews`: `kabupaten_kode` opsional, `cooldown_jam`, `versi` (optimistic locking), `diubah_oleh_id`, `diubah_pada`; `aturan_ews_riwayat` menyimpan foto tiap versi.
+   - [x] Index `(status, severity, dibuat_pada DESC)`, `(komoditas_kode, kabupaten_kode, dibuat_pada DESC)`.
 2. **API**
-   - [ ] Mesin aturan terjadwal dan dipicu publikasi harga: lonjakan harga (% harian/mingguan), kelangkaan stok cold storage, deviasi dari harga acuan; peredaman (cooldown) dan deduplikasi.
-   - [ ] CRUD ambang (izin `ews.atur_ambang`); siklus hidup BARU → DIAKUI → DIESKALASI → SELESAI; eskalasi (`ews.eskalasi`).
-   - [ ] Deteksi anomali statistik dulu (z-score musiman/STL); model ML belakangan. Target PRD §12: F1 ≥ 0,88, AUC-ROC ≥ 0,94.
-   - [ ] Alert memicu siklus tekanan ([08-B](08-dashboard-operasional.md)) dan kartu intervensi ([14-C](14-intervensi.md)).
-3. **FE**: UI ubah ambang + simulasi "bagaimana jika" pada data historis.
-4. **TES**: rule engine dengan deret sintetis (lonjakan, plateau, data hilang); evaluasi F1/AUC pada data historis berlabel, hasil disimpan.
+   - [x] `internal/ews/engine`: mengukur data nyata (harga konsumen tervalidasi/dipublikasi: kenaikan 24 jam terakhir vs rata-rata jendela; stok cold storage layak simpan: penurunan vs awal jendela; curah hujan kumulatif) menjadi alert idempoten per kondisi (`jenis|komoditas|kabupaten`), naik tingkat bila memburuk, peredaman (`cooldown_jam`) setelah ditutup. Terjadwal di `cmd/api` (`EWS_EVAL_INTERVAL`, bawaan 15m, `off` mematikan) dan manual `POST /v1/ews/evaluasi` (`ews.atur_ambang`).
+   - [x] `PUT /v1/ews/aturan/:id` (`ews.atur_ambang`, 409 bila versi usang, audit), `GET /v1/ews/:id/riwayat`. Siklus hidup BARU, DIAKUI, DIESKALASI, SELESAI lewat aksi massal (`ews.akui`/`ews.eskalasi`).
+   - [ ] Deteksi anomali statistik (z-score musiman/STL), model ML, evaluasi F1/AUC. Pemicu saat harga dipublikasi, serta pemicu siklus tekanan ([08-B](08-dashboard-operasional.md)): belum.
+   - [ ] Kartu intervensi otomatis dari alert ([14-C](14-intervensi.md)).
+3. **FE**: dialog ubah ambang (+kanal, jendela, peredaman, aktif) dan tombol "Evaluasi sekarang" untuk peran `ews.atur_ambang`. Simulasi "bagaimana jika": belum.
+4. **TES**: unit engine (ambang, pesan, idempoten, galat), integrasi Postgres (lonjakan, naik tingkat, cooldown, stok, cuaca, aturan nonaktif, optimistic locking, audit, riwayat), seeder (riwayat, reseed tidak menimpa aturan yang sudah diubah).
 
 ---
 

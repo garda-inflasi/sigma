@@ -4,6 +4,8 @@ import {
   satuanAmbang,
   toEwsAlert,
   toEwsAturan,
+  toUbahAturanBody,
+  validasiAmbang,
   type EwsAlertResponse,
 } from "./ews";
 
@@ -69,16 +71,22 @@ describe("toEwsAturan", () => {
       id: "ATR-LH-CBM-KRT",
       komoditas_kode: "CBM-KRT",
       komoditas_nama: "Cabai merah keriting",
+      kabupaten_kode: null,
       jenis: "LONJAKAN_HARGA",
       ambang_waspada: 8,
       ambang_siaga: 12,
       ambang_kritis: 18,
       jendela_hari: 7,
+      cooldown_jam: 24,
       kanal: ["DASHBOARD", "PUSH"],
       aktif: true,
       keterangan: "Ambang awal",
+      versi: 3,
     });
     assert.deepEqual([row.waspada, row.siaga, row.kritis], [8, 12, 18]);
+    assert.equal(row.versi, 3);
+    assert.equal(row.cooldownJam, 24);
+    assert.equal(row.kabupatenKode, undefined);
     assert.deepEqual(row.kanal, ["DASHBOARD", "PUSH"]);
     assert.equal(row.komoditasNama, "Cabai merah keriting");
   });
@@ -89,5 +97,28 @@ describe("satuanAmbang", () => {
     assert.equal(satuanAmbang("ANOMALI_CUACA"), "mm");
     assert.equal(satuanAmbang("LONJAKAN_HARGA"), "%");
     assert.equal(satuanAmbang("KELANGKAAN_STOK"), "%");
+  });
+});
+
+describe("toUbahAturanBody", () => {
+  it("menerjemahkan masukan formulir ke badan PUT snake_case dengan versi yang dibaca", () => {
+    assert.deepEqual(
+      toUbahAturanBody({ waspada: 5, siaga: 10, kritis: 20, jendelaHari: 7, cooldownJam: 12, kanal: ["EMAIL"], aktif: true, keterangan: "x", versi: 2 }),
+      { versi: 2, ambang_waspada: 5, ambang_siaga: 10, ambang_kritis: 20, jendela_hari: 7, cooldown_jam: 12, kanal: ["EMAIL"], aktif: true, keterangan: "x" },
+    );
+  });
+});
+
+describe("validasiAmbang", () => {
+  it("menerima ambang positif yang menaik", () => {
+    assert.equal(validasiAmbang({ waspada: 1, siaga: 2, kritis: 3 }), null);
+  });
+  it("menolak urutan sama, menurun, nol, dan bukan angka", () => {
+    for (const a of [
+      { waspada: 5, siaga: 5, kritis: 9 },
+      { waspada: 9, siaga: 5, kritis: 1 },
+      { waspada: 0, siaga: 5, kritis: 9 },
+      { waspada: Number.NaN, siaga: 5, kritis: 9 },
+    ]) assert.notEqual(validasiAmbang(a), null);
   });
 });

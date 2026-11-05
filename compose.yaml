@@ -84,6 +84,7 @@ services:
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
       JWT_SECRET: "${JWT_SECRET:-garda-inflasi-dev-secret-key-change-in-production}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
+      EWS_EVAL_INTERVAL: "${EWS_EVAL_INTERVAL:-15m}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
     depends_on:

@@ -221,9 +221,9 @@ export function mockEwsAturan(): EwsAturan[] {
   const kanal = ["DASHBOARD", "PUSH"];
   const ket = "Ambang awal, harus dikalibrasi bersama BI/BPS.";
   return [
-    { id: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, kanal, aktif: true, keterangan: ket },
-    { id: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, kanal, aktif: true, keterangan: ket },
-    { id: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, kanal, aktif: true, keterangan: ket },
+    { id: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
   ];
 }
 

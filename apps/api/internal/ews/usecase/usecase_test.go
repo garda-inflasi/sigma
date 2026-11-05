@@ -37,6 +37,27 @@ func (m *mockRepository) ListAturan(ctx context.Context) ([]domain.Aturan, error
 	return args.Get(0).([]domain.Aturan), args.Error(1)
 }
 
+func (m *mockRepository) ListRiwayat(ctx context.Context, alertID string) ([]domain.Riwayat, error) {
+	args := m.Called(ctx, alertID)
+	return args.Get(0).([]domain.Riwayat), args.Error(1)
+}
+
+func (m *mockRepository) GetAturan(ctx context.Context, id string) (*domain.Aturan, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Aturan), args.Error(1)
+}
+
+func (m *mockRepository) UpdateAturan(ctx context.Context, id string, upd domain.AturanUpdate, userID string) (*domain.Aturan, error) {
+	args := m.Called(ctx, id, upd, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Aturan), args.Error(1)
+}
+
 func (m *mockRepository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction, userID string) ([]string, error) {
 	args := m.Called(ctx, ids, action, userID)
 	if args.Get(0) == nil {
@@ -47,7 +68,7 @@ func (m *mockRepository) BulkAction(ctx context.Context, ids []string, action do
 
 func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
 	recorder := &audittest.Recorder{}
-	return New(repo, recorder, logger.NewDefault()), recorder
+	return New(repo, nil, recorder, logger.NewDefault()), recorder
 }
 
 func sampleAlert() domain.Alert {

@@ -968,6 +968,124 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/ews/aturan/{id}:
+    put:
+      summary: Mengubah ambang suatu aturan EWS
+      description: |
+        Memerlukan izin `ews.atur_ambang`. Ambang harus positif dan menaik (waspada < siaga < kritis).
+        Optimistic locking: `versi` harus sama dengan versi aturan saat ini, bila tidak 409. Setiap
+        perubahan menaikkan versi, menyimpan foto di riwayat, dan dicatat di audit trail.
+      operationId: updateEwsAturan
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID aturan, mis. ATR-LH-CBM-KRT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEwsAturanRequest"
+      responses:
+        "200":
+          description: Aturan tersimpan (versi baru)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsAturanResponse"
+        "400":
+          description: Validasi gagal atau ambang tidak menaik
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `ews.atur_ambang`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Aturan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Aturan sudah diubah pengguna lain (versi usang)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ews/evaluasi:
+    post:
+      summary: Menjalankan rule engine EWS sekarang
+      description: |
+        Memerlukan izin `ews.atur_ambang`. Mengevaluasi semua aturan aktif terhadap data nyata
+        (harga tervalidasi, stok cold storage, cuaca harian) di luar jadwal. Idempoten: kondisi
+        yang sudah punya alert aktif tidak membuat alert ganda. Dicatat di audit trail.
+      operationId: evaluateEws
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Ringkasan satu putaran evaluasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsEvaluasiResponse"
+        "403":
+          description: Tanpa izin `ews.atur_ambang`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ews/{id}/riwayat:
+    get:
+      summary: Riwayat perubahan status alert
+      description: Memerlukan izin `ews.lihat`. Terlama dahulu; `oleh_id` kosong berarti sistem.
+      operationId: listEwsRiwayat
+      tags:
+        - Early Warning System
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Riwayat alert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EwsRiwayatListResponse"
+        "403":
+          description: Tanpa izin `ews.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Alert tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/ews/{id}:
     get:
       summary: Mendapatkan detail alert EWS
@@ -3969,6 +4087,14 @@ components:
         aturan_id:
           type: string
           nullable: true
+        dieskalasi_pada:
+          type: string
+          format: date-time
+          nullable: true
+        selesai_pada:
+          type: string
+          format: date-time
+          nullable: true
 
     EwsAlertResponse:
       type: object
@@ -4024,11 +4150,146 @@ components:
           type: array
           items:
             type: string
+            enum: [DASHBOARD, PUSH, EMAIL, WHATSAPP]
           example: [DASHBOARD, PUSH]
         aktif:
           type: boolean
         keterangan:
           type: string
+        kabupaten_kode:
+          type: string
+          nullable: true
+          description: Membatasi aturan ke satu kabupaten; kosong berlaku untuk semua
+        cooldown_jam:
+          type: integer
+          description: Jeda setelah alert SELESAI sebelum kondisi yang sama boleh memicu alert baru
+        versi:
+          type: integer
+          description: Naik tiap perubahan; dikirim kembali saat menyimpan (optimistic locking)
+        diubah_oleh_id:
+          type: string
+          nullable: true
+        diubah_pada:
+          type: string
+          format: date-time
+          nullable: true
+
+    EwsAturanResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          $ref: "#/components/schemas/EwsAturan"
+
+    UpdateEwsAturanRequest:
+      type: object
+      required: [versi, ambang_waspada, ambang_siaga, ambang_kritis, jendela_hari, kanal, aktif]
+      properties:
+        versi:
+          type: integer
+          minimum: 1
+        ambang_waspada:
+          type: number
+          exclusiveMinimum: 0
+        ambang_siaga:
+          type: number
+        ambang_kritis:
+          type: number
+          description: Harus lebih besar dari ambang_siaga, yang lebih besar dari ambang_waspada
+        jendela_hari:
+          type: integer
+          minimum: 1
+          maximum: 90
+        cooldown_jam:
+          type: integer
+          minimum: 0
+          maximum: 720
+        kanal:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [DASHBOARD, PUSH, EMAIL, WHATSAPP]
+        aktif:
+          type: boolean
+        keterangan:
+          type: string
+          maxLength: 500
+
+    EwsRiwayat:
+      type: object
+      properties:
+        id:
+          type: string
+        dari:
+          type: string
+          nullable: true
+          enum: [BARU, DIAKUI, DIESKALASI, SELESAI]
+        ke:
+          type: string
+          enum: [BARU, DIAKUI, DIESKALASI, SELESAI]
+        oleh_id:
+          type: string
+          nullable: true
+        oleh_nama:
+          type: string
+          nullable: true
+        waktu:
+          type: string
+          format: date-time
+        catatan:
+          type: string
+
+    EwsRiwayatListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EwsRiwayat"
+
+    EwsEvaluasiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            aturan:
+              type: integer
+              description: Aturan aktif yang dievaluasi
+            diukur:
+              type: integer
+              description: Kondisi (komoditas x kabupaten) yang diukur
+            dibuat:
+              type: integer
+            dinaikkan:
+              type: integer
+              description: Alert aktif yang naik tingkat
+            dilewati:
+              type: integer
+              description: Sudah ada alert aktif dengan tingkat sama atau lebih tinggi
+            diredam:
+              type: integer
+              description: Masih dalam masa peredaman setelah alert ditutup
+            galat:
+              type: integer
 
     EwsAturanListResponse:
       type: object

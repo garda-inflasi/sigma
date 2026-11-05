@@ -69,6 +69,56 @@ func (h *Handler) ListAturan(c *gin.Context) {
 	response.Success(c, dto.ToAturanResponses(items))
 }
 
+// UpdateAturan handles PUT /v1/ews/aturan/:id
+func (h *Handler) UpdateAturan(c *gin.Context) {
+	var req dto.UpdateAturanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	updated, err := h.uc.UpdateAturan(audit.RequestContext(c), c.Param("id"), domain.AturanUpdate{
+		Versi: req.Versi, AmbangWaspada: req.AmbangWaspada, AmbangSiaga: req.AmbangSiaga, AmbangKritis: req.AmbangKritis,
+		JendelaHari: req.JendelaHari, CooldownJam: req.CooldownJam, Kanal: req.Kanal, Aktif: *req.Aktif, Keterangan: req.Keterangan,
+	}, c.GetString("user_id"))
+	switch {
+	case err == nil:
+		response.Success(c, dto.ToAturanResponse(*updated))
+	case errors.Is(err, usecase.ErrAmbangTidakValid):
+		response.BadRequest(c, err.Error())
+	case errors.Is(err, usecase.ErrAturanNotFound):
+		response.NotFound(c, "Aturan ambang tidak ditemukan")
+	case errors.Is(err, usecase.ErrVersiUsang):
+		response.Conflict(c, "Aturan telah diubah pengguna lain. Muat ulang lalu ulangi perubahan.")
+	default:
+		response.InternalError(c, "Gagal menyimpan ambang")
+	}
+}
+
+// Evaluasi handles POST /v1/ews/evaluasi: menjalankan rule engine sekarang.
+func (h *Handler) Evaluasi(c *gin.Context) {
+	ringkasan, err := h.uc.Evaluasi(audit.RequestContext(c), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal menjalankan evaluasi")
+		return
+	}
+	response.Success(c, dto.ToEvaluasiResponse(ringkasan))
+}
+
+// ListRiwayat handles GET /v1/ews/:id/riwayat
+func (h *Handler) ListRiwayat(c *gin.Context) {
+	items, err := h.uc.ListRiwayat(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Alert EWS tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil riwayat alert")
+		return
+	}
+	response.Success(c, dto.ToRiwayatResponses(items))
+}
+
 // Bulk handles POST /v1/ews/bulk. Route meminta ews.akui atau ews.eskalasi;
 // izin yang tepat menurut aksi diperiksa di sini.
 func (h *Handler) Bulk(c *gin.Context) {

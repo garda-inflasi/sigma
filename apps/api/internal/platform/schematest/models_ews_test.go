@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("ews", &ewsdomain.EwsAlert{}, &ewsdomain.AturanEws{})
+	registerModels("ews", &ewsdomain.EwsAlert{}, &ewsdomain.EwsRiwayat{}, &ewsdomain.AturanEws{}, &ewsdomain.AturanEwsRiwayat{})
 }

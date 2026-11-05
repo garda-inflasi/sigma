@@ -24,20 +24,20 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 
 | #   | Fitur                                     | Rute UI                    | UI  | Backend | Terhubung | Skema & seed | Tes | Berkas                                                     |
 | --- | ----------------------------------------- | -------------------------- | :-: | :-----: | :-------: | :----------: | :-: | ---------------------------------------------------------- |
-| 1   | Autentikasi, MFA, sesi                    | `/masuk`, `/lupa-password` | 🟡  |   ✅    |    ✅     |      ✅      | ✅  | [01-auth.md](01-auth.md)                                   |
+| 1   | Autentikasi, MFA, sesi                    | `/masuk`, `/lupa-password` | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [01-auth.md](01-auth.md)                                   |
 | 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | 🟡  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
 | 3   | Audit trail                               | `/audit`                   | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [03-audit.md](03-audit.md)                                 |
 | 4   | Master data                               | `/master/[entitas]`        | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
 | 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
-| 6   | Validasi harga                            | `/data/harga`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [06-harga-validasi.md](06-harga-validasi.md)               |
+| 6   | Validasi harga                            | `/data/harga`              | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [06-harga-validasi.md](06-harga-validasi.md)               |
 | 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
-| 8   | Dashboard operasional                     | `/operasional`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
+| 8   | Dashboard operasional                     | `/operasional`             | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |
 | 9   | Dashboard eksekutif                       | `/eksekutif`               | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [09-dashboard-eksekutif.md](09-dashboard-eksekutif.md)     |
-| 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [10-ews.md](10-ews.md)                                     |
+| 10  | Peringatan dini (EWS)                     | `/ews`                     | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [10-ews.md](10-ews.md)                                     |
 | 11  | Prediksi & XAI                            | `/prediksi`                | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [11-prediksi-xai.md](11-prediksi-xai.md)                   |
 | 12  | Peta surplus–defisit                      | `/peta`                    | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [12-peta-spasial.md](12-peta-spasial.md)                   |
 | 13  | Cold storage & food loss                  | `/cold-storage`            | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [13-cold-storage.md](13-cold-storage.md)                   |
-| 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [14-intervensi.md](14-intervensi.md)                       |
+| 14  | Intervensi (kanban)                       | `/intervensi`              | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [14-intervensi.md](14-intervensi.md)                       |
 | 15  | Policy brief                              | `/policy-brief`            | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [15-policy-brief.md](15-policy-brief.md)                   |
 | 16  | Indikator kinerja (KPI)                   | `/kpi`                     | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [16-kpi.md](16-kpi.md)                                     |
 | 17  | Alur sistem & data                        | `/alur-sistem`             | ✅  |   n/a   |    n/a    |     n/a      | n/a | [17-alur-sistem.md](17-alur-sistem.md)                     |
@@ -46,16 +46,27 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 
 "Backend ⬜" berarti ada route/CRUD tipis tetapi logika inti (AI, scraping, generator) belum ada. "Backend 🟡" berarti route dan query dasar ada, tetapi aturan bisnis penuh belum. "Skema & seed ⬜" berarti, berdasarkan analisis kode, query modul itu akan gagal pada database hasil migrasi atau tabelnya kosong (detail di §19).
 
-## Status setelah Fase P (diperbarui 5 Nov 2026)
+## Status setelah Fase F (diperbarui 5 Nov 2026)
 
-Fondasi (F0), seluruh slice `-A` Fase P, dan F1 sudah dikerjakan dan lolos `go test ./...` serta typecheck/tes web. Semua halaman tampil dari API Go dan database; stack Docker demo ada di [README akar](../../README.md) (`make docker/demo/up`). Yang **belum** selesai dan perlu diketahui:
+Fondasi (F0), Fase P (semua slice `-A`), F1, Fase F gelombang F-1 sampai F-5, dan gerbang produksi
+([00 §7](00-cara-kerja.md)) sudah dikerjakan dan lolos `go test ./...` (90 paket, termasuk tes Postgres
+sungguhan), tes web, dan tes layanan ML. Stack Docker demo: `make docker/demo/up` ([README akar](../../README.md)).
+"Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 
-1. **Fase F (fitur nyata) belum dikerjakan:** layanan ML/prediksi nyata, penyusunan brief dengan LLM, ingestion/scraping sumber data, PostGIS, MFA UI, halaman reset password, SSO, sinkronisasi offline lapangan (`POST /v1/lapangan/harga`). Data pada halaman prediksi, eksekutif, peta, dan sebagian sumber data adalah **data demo** yang berlabel demo.
-2. **Penegakan izin per halaman di edge belum ada:** `middleware.ts` hanya memeriksa keberadaan cookie. Izin ditegakkan di API Go (403) dan sidebar menyembunyikan menu; membuka URL halaman tanpa izin menampilkan halaman dengan pesan galat, bukan `/akses-ditolak`.
-3. **Aksi yang masih simulasi di klien:** ajukan/setujui/arsip master data (04-B).
-4. **Belum diuji:** beban data besar (`EXPLAIN` pada ratusan ribu baris), e2e Playwright otomatis, dan penjadwal di luar proses API (refresh materialized view dan `cmd/kpi` belum dipasang ke cron/deploy).
-5. **Asumsi yang perlu dikonfirmasi pemilik program:** target `target_kpi` awal, target inflasi 2025–2027 (1,5–3,5%), skor ruang fiskal heuristik, dan kode/koordinat wilayah-pasar perkiraan.
-6. **OpenAPI sudah satu sumber:** `packages/contracts/openapi.yaml`; salinan embed `apps/api/pkg/swagger/openapi.yaml` dihasilkan dengan `make openapi/sync` dan dijaga tes.
+1. **Belum diuji terhadap layanan nyata** (tidak ada akses/kunci saat dikerjakan): konektor PIHPS, BMKG, dan BPS
+   (parser dikunci fixture; id wilayah PIHPS dan id variabel BPS wajib diisi operator), panggilan Claude untuk
+   brief (tanpa `ANTHROPIC_API_KEY` brief memakai templat), pengiriman SMTP dan Web Push, serta deploy ujung ke
+   ujung (remote-deploy, rollback, sertifikat ACME).
+2. **Belum dikerjakan (di luar daftar Fase F):** row scope dan pemisahan tugas per peran (02-B), hash berantai dan
+   partisi audit (03-C), persetujuan perubahan master data (04-B, aksinya masih simulasi di klien), foto entri
+   lapangan (07-C), ensemble dan fitur eksogen model prediksi serta retraining terjadwal (11), batas wilayah resmi
+   dan matriks jarak jalan (12), MQTT cold storage (13), SSO, WhatsApp, dan konektor Bapanas/DJPb/OpenWeather.
+3. **Data demo atau perkiraan** (berlabel di UI): geometri dan koordinat wilayah, target KPI dan target inflasi awal,
+   skor ruang fiskal heuristik, koefisien simulasi skenario prediksi. Perlu konfirmasi pemilik program.
+4. **Pengujian:** belum ada e2e Playwright otomatis (halaman diperiksa manual dengan browser headless saat demo);
+   kinerja pada data ratusan ribu baris belum diukur.
+5. **Operasional:** backup belum disalin ke luar VM dan belum ada WAL/PITR; pengguna DB aplikasi masih pemilik
+   skema (least-privilege di [19 §7](19-migration-seeder.md) belum).
 
 ## Urutan pengerjaan
 

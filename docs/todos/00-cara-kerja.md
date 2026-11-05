@@ -136,6 +136,9 @@ Setelah #17: **tahap kelengkapan Fase P** — `NEXT_PUBLIC_API_BASE_URL=/api` bi
 | **F-4 AI**                            | 11-B (baseline model + layanan ML) → 11-C (MLOps, simulasi) → 10-D (notifikasi) → 15-B (generator brief + LLM)                  |
 | **F-5 Fisik dan optimasi**            | 14-C (workflow engine) → 13-B (telemetri, transaksi) → 12-B/12-C (geometri, optimasi rute) → 16-B                               |
 
+Status 5 Nov 2026: semua task gelombang F-1 sampai F-5 di atas sudah dikerjakan. Keterbatasan dan yang belum teruji
+terhadap layanan nyata dicatat di [README §Status setelah Fase F](README.md).
+
 ## 7. Gerbang produksi (blokir deploy pertama)
 
 Belum boleh deploy ke produksi sebelum semuanya tercentang:

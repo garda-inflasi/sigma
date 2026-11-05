@@ -81,7 +81,7 @@ export GIT_SHA
 #  Verify all images exist locally
 # ------------------------------------------------------------------------------
 IMAGES=()
-for svc in api web caddy; do
+for svc in api web caddy ml; do
   img="${IMAGE_TAG_PREFIX}-${svc}:${GIT_SHA}"
   if [[ "$DRY_RUN" != "1" ]] && ! docker image inspect "$img" >/dev/null 2>&1; then
     die "Image '$img' tidak ada di Docker lokal." \

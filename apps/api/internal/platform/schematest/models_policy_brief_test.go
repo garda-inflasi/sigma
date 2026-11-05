@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("policy-brief", &policybriefdomain.PolicyBrief{})
+	registerModels("policy-brief", &policybriefdomain.PolicyBrief{}, &policybriefdomain.BriefJob{}, &policybriefdomain.BriefVersi{})
 }

@@ -10,5 +10,6 @@ func init() {
 		smokeCase{Name: "prediksi: proyeksi seluruh komoditas", Method: http.MethodGet, Path: "/v1/prediksi", Email: berhak, MinItems: map[string]int{"": 14}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "prediksi: proyeksi cabai (XAI)", Method: http.MethodGet, Path: "/v1/prediksi/CBM-KRT", Email: berhak, MinItems: map[string]int{"seri": 2, "faktor": 3}, ForbiddenEmail: takBerhak},
 		smokeCase{Name: "prediksi: registri model", Method: http.MethodGet, Path: "/v1/prediksi/registri", Email: berhak, MinItems: map[string]int{"": 28}, ForbiddenEmail: takBerhak},
+		smokeCase{Name: "prediksi: status layanan ML", Method: http.MethodGet, Path: "/v1/prediksi/ml", Email: berhak, ForbiddenEmail: takBerhak},
 	)
 }

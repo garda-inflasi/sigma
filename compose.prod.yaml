@@ -74,6 +74,11 @@ services:
       <<: *prod-database-url
       APP_ENV: production
 
+  ml:
+    image: garda-ml:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+
   web:
     image: garda-web:${IMAGE_TAG:-latest}
     build: !reset null

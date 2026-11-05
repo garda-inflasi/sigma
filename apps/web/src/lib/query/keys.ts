@@ -17,10 +17,16 @@ export const qk = {
   },
   eksekutif: {
     ringkasan: () => ["eksekutif", "ringkasan"] as const,
+    xaiAll: () => ["eksekutif", "xai"] as const,
     xai: (kode: string) => ["eksekutif", "xai", kode] as const,
   },
   spasial: { rute: () => ["spasial", "rute"] as const, kandidat: () => ["spasial", "kandidat"] as const },
-  prediksi: { ringkasan: () => ["prediksi", "ringkasan"] as const, model: () => ["prediksi", "model"] as const },
+  prediksi: {
+    all: () => ["prediksi"] as const,
+    ringkasan: () => ["prediksi", "ringkasan"] as const,
+    model: () => ["prediksi", "model"] as const,
+    ml: () => ["prediksi", "ml"] as const,
+  },
   harga: {
     all: () => ["harga"] as const,
     list: (params: HargaParams = {}) => ["harga", "list", params] as const,
@@ -46,7 +52,7 @@ export const qk = {
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
   audit: { list: (filter: AuditFilter) => ["audit", "list", filter] as const },
-  brief: { list: () => ["policy-brief"] as const },
+  brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
   tugas: { saya: () => ["tugas", "saya"] as const },
   master: {
     komoditas: () => ["master", "komoditas"] as const,

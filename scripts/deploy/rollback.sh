@@ -108,7 +108,7 @@ fi
 verify_images() {
   local missing=()
   local svc
-  for svc in api web caddy; do
+  for svc in api web caddy ml; do
     if ! vm_ssh "docker image inspect 'garda-${svc}:${ROLLBACK_SHA}' >/dev/null 2>&1"; then
       missing+=("garda-${svc}:${ROLLBACK_SHA}")
     fi
@@ -134,7 +134,7 @@ fi
 #  Retag target → latest, then bring the stack up with IMAGE_TAG=<target>
 # ------------------------------------------------------------------------------
 log_section "Retag image target sebagai :latest"
-for svc in api web caddy; do
+for svc in api web caddy ml; do
   vm_ssh "docker tag 'garda-${svc}:${ROLLBACK_SHA}' 'garda-${svc}:latest'"
   log_success "garda-${svc}:${ROLLBACK_SHA} → garda-${svc}:latest"
 done
@@ -143,7 +143,7 @@ log_section "Up stack dengan IMAGE_TAG=${ROLLBACK_SHA}"
 rollback_cmd="cd '${REMOTE_DIR}' && \
   export IMAGE_TAG='${ROLLBACK_SHA}' && \
   docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.infra.yaml -f compose/compose.prod.yaml up -d --no-build --remove-orphans postgres redis && \
-  docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml up -d --no-build --no-deps --remove-orphans api worker web caddy"
+  docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml up -d --no-build --no-deps --remove-orphans api worker ml web caddy"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo_cmd "ssh ${VM_USER}@${VM_HOST} \"${rollback_cmd}\""

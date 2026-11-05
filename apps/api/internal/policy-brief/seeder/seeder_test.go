@@ -9,6 +9,7 @@ import (
 	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,6 +75,35 @@ func TestSeedDemo_IsIdempotentAndKeepsEdits(t *testing.T) {
 	var status string
 	require.NoError(t, db.Raw("SELECT status::text FROM policy_brief WHERE id = 'PB-2026-10'").Scan(&status).Error)
 	assert.Equal(t, "TELAAH", status, "seed ulang tidak menimpa perubahan")
+}
+
+func TestSeedDemo_BriefContohBerlabelDemoDanDilengkapiBilaKontenKosong(t *testing.T) {
+	db := pg.NewDatabase(t, "brief_seeder_konten")
+	pgtest.MigrateUp(t, db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	_, err = authseeder.SeedDemo(t.Context(), db)
+	require.NoError(t, err)
+	_, err = SeedDemo(t.Context(), db, now)
+	require.NoError(t, err)
+
+	var jumlahDemo int64
+	require.NoError(t, db.Table("policy_brief").Where("sumber_narasi = 'DEMO' AND konten->>'label' = ?", domain.LabelDemo).Count(&jumlahDemo).Error)
+	assert.EqualValues(t, 5, jumlahDemo)
+
+	// Brief contoh dari sebelum kolom konten ada (konten kosong) dilengkapi; yang sudah berisi tidak ditimpa.
+	require.NoError(t, db.Exec(`UPDATE policy_brief SET konten = '{}', sumber_narasi = 'TEMPLAT' WHERE id = 'PB-2026-10'`).Error)
+	require.NoError(t, db.Exec(`UPDATE policy_brief SET konten = '{"label":"diubah"}' WHERE id = 'PB-2026-09'`).Error)
+	_, err = SeedDemo(t.Context(), db, now)
+	require.NoError(t, err)
+
+	var label, sumber string
+	require.NoError(t, db.Raw(`SELECT konten->>'label' FROM policy_brief WHERE id = 'PB-2026-10'`).Scan(&label).Error)
+	require.NoError(t, db.Raw(`SELECT sumber_narasi FROM policy_brief WHERE id = 'PB-2026-10'`).Scan(&sumber).Error)
+	assert.Equal(t, domain.LabelDemo, label)
+	assert.Equal(t, "DEMO", sumber)
+	require.NoError(t, db.Raw(`SELECT konten->>'label' FROM policy_brief WHERE id = 'PB-2026-09'`).Scan(&label).Error)
+	assert.Equal(t, "diubah", label)
 }
 
 func TestSeedDemo_RequiresDemoAccount(t *testing.T) {

@@ -116,6 +116,8 @@ func TestBuildModels_OneProductionAndOneCandidatePerCommodity(t *testing.T) {
 	for _, m := range models {
 		assert.Equal(t, domain.SumberDemo, m.Sumber)
 		assert.Positive(t, m.Mape)
+		assert.Contains(t, m.Catatan, "bukan keluaran model sungguhan", "model demo tidak boleh tampak seperti hasil pelatihan")
+		assert.Nil(t, m.ArtefakURI)
 		switch m.Status {
 		case domain.StatusProduksi:
 			produksi[m.KomoditasKode]++

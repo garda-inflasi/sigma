@@ -12,6 +12,10 @@ Thumbs.db
 *.out
 tmp/
 
+# === Python ===
+__pycache__/
+*.pyc
+
 # === Node / pnpm ===
 node_modules/
 .pnpm-store

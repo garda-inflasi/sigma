@@ -65,7 +65,7 @@ fi
 cd "$GARDA_ROOT"
 
 IMAGE_PREFIX="${IMAGE_TAG_PREFIX:-garda}"
-SERVICES=(api web caddy)
+SERVICES=(api web caddy ml)
 
 log_section "Prune — keep last ${KEEP} version(s)"
 print_kv "Root"   "$GARDA_ROOT"

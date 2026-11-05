@@ -2396,14 +2396,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/policy-brief/{id}:
+    get:
+      summary: Policy brief lengkap
+      description: |
+        Isi brief per bagian (ringkasan, temuan, risiko, rekomendasi untuk Pemda dan TPID) beserta
+        lampiran sitasi sumber tiap angka, label draf yang wajib ditampilkan, dan jejak penyusunan
+        (model, versi prompt, dan hash prompt bila LLM dipakai). Dipakai klien untuk memantau brief
+        berstatus `DIPROSES` sampai `DRAF` atau `GAGAL`.
+      operationId: getPolicyBrief
+      tags:
+        - Policy Brief
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: PB-2026-11
+      responses:
+        "200":
+          description: Brief lengkap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyBriefDetailResponse"
+        "403":
+          description: Tanpa izin `brief.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Brief tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/policy-brief/generate:
     post:
       summary: Menyusun draf policy brief
       description: |
-        Menyimpan draf berstatus `DRAF` untuk satu periode bulanan atas nama pemanggil
-        (penyusun diambil dari token). Isinya kerangka dari templat deterministik yang
-        berlabel draf otomatis non-LLM; penyusunan dengan data dan LLM menyusul (15-B).
-        Aksi dicatat di audit trail (`GENERATE_BRIEF`).
+        Memulai penyusunan draf untuk satu periode bulanan atas nama pemanggil (penyusun diambil dari
+        token) dan segera menjawab brief berstatus `DIPROSES`; penyusunan berjalan di latar belakang dan
+        dipantau lewat `GET /v1/policy-brief/{id}` sampai `DRAF` (atau `GAGAL`).
+
+        Server lebih dulu merangkum data nyata (inflasi, harga, peringatan dini, proyeksi) menjadi daftar
+        fakta. Narasi ditulis oleh LLM Claude bila `ANTHROPIC_API_KEY` dikonfigurasi (model dari
+        `LLM_MODEL`, bawaan `claude-sonnet-5-5`), selain itu oleh templat deterministik. Anti-halusinasi:
+        narasi menyebut angka hanya lewat placeholder `{{ID}}` yang diganti server dengan nilai fakta;
+        narasi yang menulis angka sendiri atau memakai placeholder tak dikenal ditolak dan digantikan
+        templat (alasannya dicatat). Hasil LLM berlabel "Draf AI — wajib ditelaah manusia".
+
+        Brief `GAGAL`, atau `DIPROSES` yang tidak berubah lebih dari 5 menit (proses mati), dapat disusun
+        ulang dengan permintaan yang sama. Aksi dicatat di audit trail (`GENERATE_BRIEF`,
+        `BRIEF_DRAF_SELESAI`, `BRIEF_DRAF_GAGAL`).
       operationId: generatePolicyBrief
       tags:
         - Policy Brief
@@ -2417,7 +2467,7 @@ paths:
               $ref: "#/components/schemas/GeneratePolicyBriefRequest"
       responses:
         "201":
-          description: Draf tersimpan
+          description: Penyusunan dimulai (status `DIPROSES`)
           content:
             application/json:
               schema:
@@ -2435,7 +2485,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Periode itu sudah punya brief
+          description: Periode itu sudah punya brief (bukan GAGAL dan tidak basi)
           content:
             application/json:
               schema:
@@ -2525,6 +2575,172 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/prediksi/ml:
+    get:
+      summary: Status layanan ML
+      description: |
+        Apakah `ML_SERVICE_URL` dikonfigurasi dan layanan ML menjawab. Layanan mati tidak
+        membuat API gagal: pelatihan menjawab 503 dan proyeksi demo tetap tampil.
+      operationId: statusMlPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Status layanan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiStatusMlResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/latih:
+    post:
+      summary: Latih model prediksi satu komoditas
+      description: |
+        Melatih model dari harga konsumen tervalidasi (rata-rata harian per kabupaten, 180 hari
+        terakhir) lewat layanan ML: baseline naif, seasonal naive, Holt, dan Holt-Winters dipilih
+        dengan backtest walk-forward. Hasilnya berupa baris registri berstatus KANDIDAT bersumber
+        MODEL (MAPE/RMSE dari lipatan uji, MAPE baseline pada lipatan yang sama) dan proyeksi
+        horizon 7, 14, 30 hari. Model baru belum dipakai sebelum dipromosikan. Izin `model.kelola`;
+        dicatat di audit trail (`LATIH_MODEL`).
+      operationId: latihModelPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrediksiKomoditasRequest"
+      responses:
+        "201":
+          description: Model kandidat tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiModelResponse"
+        "400":
+          description: "`komoditas_kode` kosong"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Entri harga tervalidasi belum cukup untuk dilatih
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Layanan ML menolak permintaan atau menjawab di luar kontrak
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Layanan ML tidak dikonfigurasi, mati, atau kehabisan waktu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/segarkan:
+    post:
+      summary: Segarkan proyeksi model produksi hasil pelatihan
+      description: |
+        Meramal ulang dari harga terbaru dengan parameter model PRODUKSI yang sudah dilatih
+        (tanpa melatih ulang); idempoten menurut tanggal target. Model produksi berupa data demo
+        ditolak (409). Izin `model.kelola`; audit `SEGARKAN_PROYEKSI`.
+      operationId: segarkanPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrediksiKomoditasRequest"
+      responses:
+        "200":
+          description: Jumlah proyeksi yang ditulis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiSegarkanResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Komoditas tanpa model produksi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Model produksi adalah data demo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Tidak ada harga terbaru untuk diramal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Layanan ML tidak tersedia
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/evaluasi:
+    post:
+      summary: Evaluasi proyeksi yang sudah jatuh tempo
+      description: |
+        Membandingkan proyeksi bersumber MODEL yang tanggal targetnya sudah lewat dengan harga
+        konsumen rata-rata hari itu (dasar `mape_realisasi` di registri). Idempoten; proyeksi tanpa
+        data harga dilewati. Izin `model.kelola`; audit `EVALUASI_PREDIKSI`.
+      operationId: evaluasiPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Jumlah proyeksi yang baru dievaluasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiEvaluasiResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/prediksi/registri:
     get:
       summary: Registri model prediksi
@@ -2543,6 +2759,93 @@ paths:
                 $ref: "#/components/schemas/PrediksiModelListResponse"
         "403":
           description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/registri/bulk:
+    post:
+      summary: Promosikan atau arsipkan model (aksi massal)
+      description: |
+        `promosi` menjadikan model KANDIDAT atau ARSIP (rollback) sebagai PRODUKSI dan mengarsipkan
+        model produksi komoditas yang sama dalam satu transaksi; `arsip` mengarsipkan KANDIDAT (model
+        produksi tidak dapat diarsipkan langsung). Model yang tidak ada, berstatus tidak sesuai, belum
+        punya proyeksi, atau (untuk model hasil pelatihan) MAPE backtest-nya lebih buruk dari baseline
+        naif dilewati dan dilaporkan di `detail`. Izin `model.kelola`; riwayat di `model_promosi`;
+        audit `PROMOSI_MODEL`/`ARSIP_MODEL`.
+      operationId: bulkModelPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrediksiBulkModelRequest"
+      responses:
+        "200":
+          description: Hasil aksi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiBulkModelResponse"
+        "400":
+          description: Aksi tidak dikenal atau id kosong
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tanpa izin `model.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/prediksi/simulasi:
+    post:
+      summary: Simulasi skenario what-if
+      description: |
+        Dihitung di server dari proyeksi model PRODUKSI (bawaan Kota Banda Aceh, 14 hari) ditambah
+        efek tiap parameter (koefisien x parameter). Koefisien saat ini berupa asumsi generik
+        (`sumber: ASUMSI`) karena riwayat pasokan, cuaca, dan subsidi belum tersedia untuk diestimasi;
+        hasilnya diberi `terbatas: true` dan `catatan`. Skenario disimpan di `skenario_simulasi` dan
+        dicatat di audit (`SIMULASI_SKENARIO`). Field yang tidak diisi berarti netral.
+      operationId: simulasiPrediksi
+      tags:
+        - Prediksi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrediksiSimulasiRequest"
+      responses:
+        "201":
+          description: Hasil simulasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrediksiSimulasiResponse"
+        "400":
+          description: Parameter di luar rentang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tanpa izin `prediksi.lihat`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tidak ada proyeksi model produksi untuk komoditas, kabupaten, dan horizon itu
           content:
             application/json:
               schema:
@@ -5099,7 +5402,8 @@ components:
           type: string
         status:
           type: string
-          enum: [DRAF, TELAAH, DISETUJUI, DIDISTRIBUSIKAN]
+          enum: [DIPROSES, GAGAL, DRAF, TELAAH, DISETUJUI, DIDISTRIBUSIKAN]
+          description: "`DIPROSES` = draf sedang disusun server; `GAGAL` = penyusunan gagal dan dapat diulang."
         ringkasan:
           type: string
         disusun_oleh:
@@ -5109,12 +5413,104 @@ components:
           type: integer
         halaman:
           type: integer
+        sumber_narasi:
+          type: string
+          enum: [LLM, TEMPLAT, DEMO]
+          description: Asal narasi.
+        label_draf:
+          type: string
+          description: Label yang wajib tampil bersama isi brief.
+          example: Draf AI — wajib ditelaah manusia
         dibuat_pada:
           type: string
           format: date-time
         diperbarui:
           type: string
           format: date-time
+
+    PolicyBriefBagian:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: temuan
+        judul:
+          type: string
+        butir:
+          type: array
+          items:
+            type: string
+
+    PolicyBriefSitasi:
+      type: object
+      properties:
+        id:
+          type: string
+          example: INFLASI_YOY
+        label:
+          type: string
+        nilai:
+          type: string
+          example: 2,84%
+        sumber:
+          type: string
+          example: inflasi_bulanan (BPS)
+
+    PolicyBriefKonten:
+      type: object
+      description: Kosong (`{}`) selama brief belum selesai disusun atau gagal.
+      properties:
+        label:
+          type: string
+        penyusun:
+          type: string
+          enum: [LLM, TEMPLAT, DEMO]
+        catatan:
+          type: string
+          description: Mis. alasan LLM digantikan templat.
+        bagian:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyBriefBagian"
+        lampiran:
+          type: array
+          description: Sitasi sumber untuk setiap angka yang dipakai narasi.
+          items:
+            $ref: "#/components/schemas/PolicyBriefSitasi"
+
+    PolicyBriefDetail:
+      allOf:
+        - $ref: "#/components/schemas/PolicyBrief"
+        - type: object
+          properties:
+            konten:
+              $ref: "#/components/schemas/PolicyBriefKonten"
+            model_llm:
+              type: string
+              nullable: true
+            prompt_versi:
+              type: string
+              nullable: true
+            prompt_hash:
+              type: string
+              nullable: true
+              description: SHA-256 prompt sistem dan pesan pengguna yang dikirim ke LLM.
+            galat:
+              type: string
+              nullable: true
+              description: Alasan kegagalan penyusunan, atau alasan LLM digantikan templat.
+
+    PolicyBriefDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/PolicyBriefDetail"
 
     PolicyBriefListResponse:
       type: object
@@ -5230,6 +5626,145 @@ components:
         status: {type: string, enum: [PRODUKSI, KANDIDAT, ARSIP]}
         dilatih_pada: {type: string, format: date-time}
         sumber: {type: string, enum: [MODEL, DEMO]}
+        catatan: {type: string}
+        baseline_mape:
+          type: number
+          format: double
+          nullable: true
+          description: MAPE baseline naif pada backtest yang sama; null bila tidak diukur (model demo).
+        mape_realisasi:
+          type: number
+          format: double
+          nullable: true
+          description: Rata-rata |galat| proyeksi model yang sudah jatuh tempo; null bila belum ada.
+        n_evaluasi: {type: integer}
+
+    PrediksiBulkModelRequest:
+      type: object
+      required: [action, ids]
+      properties:
+        action: {type: string, enum: [promosi, arsip]}
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {type: string, example: MDL-CBM-KRT-v2.4.0-rc1}
+
+    PrediksiBulkModelResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            berhasil: {type: integer}
+            gagal: {type: integer}
+            detail:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: {type: string}
+                  alasan: {type: string}
+
+    PrediksiSimulasiRequest:
+      type: object
+      required: [komoditas_kode]
+      properties:
+        komoditas_kode: {type: string, example: CBM-KRT}
+        kabupaten_kode: {type: string, pattern: '^[0-9]{4}$', description: Bawaan 1171}
+        horizon_hari: {type: integer, minimum: 1, maximum: 365, description: Bawaan 14}
+        hujan_pct: {type: number, minimum: 0, maximum: 300, description: Curah hujan sentra terhadap normal (100 = normal). Bawaan 100}
+        pasokan_pct: {type: number, minimum: -50, maximum: 100, description: Perubahan pasokan antardaerah (persen). Bawaan 0}
+        subsidi_pct: {type: number, minimum: 0, maximum: 100, description: Subsidi ongkos angkut (persen). Bawaan 0}
+
+    PrediksiSimulasi:
+      type: object
+      properties:
+        id: {type: string}
+        komoditas_kode: {type: string}
+        komoditas_nama: {type: string}
+        kabupaten_kode: {type: string}
+        horizon_hari: {type: integer}
+        harga_kini: {type: integer}
+        proyeksi: {type: integer}
+        dasar_pct: {type: number, format: double, description: Perubahan proyeksi model tanpa skenario}
+        hasil_pct: {type: number, format: double}
+        bawah_pct: {type: number, format: double}
+        atas_pct: {type: number, format: double}
+        efek:
+          type: array
+          items:
+            type: object
+            properties:
+              faktor: {type: string}
+              parameter: {type: number, format: double}
+              koefisien: {type: number, format: double}
+              efek_pct: {type: number, format: double}
+              sumber: {type: string, enum: [ASUMSI]}
+        model_versi: {type: string}
+        sumber_model: {type: string, enum: [MODEL, DEMO]}
+        terbatas: {type: boolean}
+        catatan: {type: string}
+        dibuat_pada: {type: string, format: date-time}
+
+    PrediksiSimulasiResponse:
+      type: object
+      properties:
+        code: {type: string, example: "201"}
+        message: {type: string, example: "Created"}
+        data:
+          $ref: "#/components/schemas/PrediksiSimulasi"
+
+    PrediksiKomoditasRequest:
+      type: object
+      required: [komoditas_kode]
+      properties:
+        komoditas_kode: {type: string, example: CBM-KRT}
+
+    PrediksiStatusMl:
+      type: object
+      properties:
+        dikonfigurasi: {type: boolean}
+        tersedia: {type: boolean}
+        versi: {type: string}
+
+    PrediksiStatusMlResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/PrediksiStatusMl"
+
+    PrediksiModelResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/PrediksiModel"
+
+    PrediksiSegarkanResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            proyeksi: {type: integer}
+
+    PrediksiEvaluasiResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            dievaluasi: {type: integer}
 
     PrediksiRingkasanListResponse:
       type: object

@@ -35,27 +35,30 @@
 
 ---
 
-## 11-B — Model prediksi pertama *(Fase F, gelombang F-4)*
+## 11-B — Model prediksi pertama *(Fase F, gelombang F-4)* — baseline selesai
 
-**Tujuan:** proyeksi dihasilkan model, bukan seed. Target PRD §12: MAPE ≤ 5,4%.
+**Tujuan:** proyeksi dihasilkan model, bukan seed. Target PRD §12: MAPE ≤ 5,4%. **Belum diklaim tercapai:** baseline di bawah diukur jujur dengan backtest, dan akurasi sungguhan baru terlihat dari MAPE realisasi setelah proyeksi jatuh tempo.
 **Bergantung pada:** 11-A, 06-A, 05-C (cuaca).
 
 1. **MIG**
-   - [ ] `prediksi_evaluasi` (`prediksi_id`, `realisasi`, `galat_pct`, `dievaluasi_pada`) untuk MAPE nyata.
-   - [ ] `model_registry`: `artefak_uri`, `catatan`.
+   - [x] `000090`: `prediksi_evaluasi` (`prediksi_id` PK/FK, `realisasi`, `galat_pct`, `dievaluasi_pada`) untuk MAPE realisasi; `model_registry`: `artefak_uri`, `catatan`.
 2. **API/ML**
-   - [ ] **Layanan ML terpisah** (Python/FastAPI) dengan kontrak dan versi; Go memanggilnya dan menulis ke `prediksi_harga` secara idempoten.
-   - [ ] Baseline dulu (seasonal naive, ETS/ARIMA/Prophet) untuk komoditas pilot (cabai, bawang merah, beras); lalu ensemble (time-series + regresi + gradient boosting) dengan fitur harga historis, cuaca, hari raya, stok, pasokan.
-   - [ ] **XAI:** nilai SHAP/kontribusi fitur per prediksi → `faktor`; interval kepercayaan pada setiap proyeksi; estimasi volume panen dan risiko inflasi.
-   - [ ] Evaluasi walk-forward; skrip menyimpan metrik per versi.
-3. **FE**: tampilkan metrik model (MAPE, tanggal latih, versi), peringatan model usang, label "proyeksi" bukan fakta; ekspor.
-4. **TES**: kontrak Go ↔ ML; build gagal bila MAPE kandidat lebih buruk dari baseline.
+   - [x] **Layanan ML terpisah** `apps/ml` (Python, pustaka standar, tanpa dependensi): `GET /health`, `POST /train`, `POST /predict`; image `docker/ml.Dockerfile`, service `ml` di `compose.yaml` (jaringan internal, tanpa port publik). Go memanggilnya lewat `internal/prediksi/mlclient` (antarmuka + timeout, `ML_SERVICE_URL`); layanan mati/tak dikonfigurasi = `503` pada `POST /v1/prediksi/latih|segarkan`, API dan proyeksi demo tetap jalan.
+   - [x] Baseline: naive, seasonal naive (mingguan), Holt (tren teredam), Holt-Winters aditif, dipilih per kabupaten lewat backtest walk-forward; metrik (MAPE/RMSE lipatan uji, MAPE/RMSE baseline naif pada lipatan yang sama, `optimistis` bila riwayat terlalu pendek untuk dipisah) ke `model_registry.metrics`. Interval 80% dari galat backtest. Dilatih dari `entri_harga` tervalidasi (konsumen, rata-rata harian per kabupaten, 180 hari). Hasil ditulis idempoten ke `prediksi_harga` (`sumber = MODEL`) berstatus KANDIDAT sampai dipromosikan (11-C). Komoditas pilot dengan riwayat demo 90 hari memenuhi syarat; cuaca/stok/hari raya/ensemble belum.
+   - [x] **XAI:** `faktor` = penguraian ramalan (penyesuaian level, tren, musiman) dalam poin persen, jumlahnya sama dengan perubahan proyeksi; `feature_importance` = rata-rata |kontribusi| ternormalisasi. Belum SHAP/gradient boosting.
+   - [x] `POST /v1/prediksi/segarkan` (ramal ulang dengan parameter model produksi hasil pelatihan), `POST /v1/prediksi/evaluasi` (galat nyata proyeksi jatuh tempo), `GET /v1/prediksi/ml` (status layanan). Izin `model.kelola` + audit.
+   - [ ] Ensemble (regresi, gradient boosting), fitur cuaca/hari raya/stok/pasokan, estimasi volume panen dan risiko inflasi, jadwal retraining otomatis.
+3. **FE**: [x] registri menampilkan MAPE backtest, baseline naif, MAPE realisasi (jumlah), umur model (penanda "Usang" > 30 hari), label Demo; tombol "Latih model" (izin `model.kelola`, nonaktif bila layanan ML mati). [ ] Ekspor metrik.
+4. **TES**: [x] unit Python (fungsi murni peramalan, kontrak layanan, server loopback); kontrak Go ↔ ML dengan `httptest`; integrasi (latih, segarkan idempoten, evaluasi, 503, 403). Model kandidat tidak dapat dipromosikan bila MAPE-nya lebih buruk dari baseline (11-C).
 
 ---
 
-## 11-C — MLOps dan simulasi *(Fase F, gelombang F-4)*
+## 11-C — MLOps dan simulasi *(Fase F, gelombang F-4)* — promosi, arsip, simulasi selesai
 
-1. **MIG**: `model_promosi` (riwayat promosi), `skenario_simulasi` (`id`, `parameter` JSONB, `hasil` JSONB, `dibuat_oleh`, `dibuat_pada`), `model_registry`: `dipromosikan_oleh`/`dipromosikan_pada`.
-2. **API**: promosi model dengan persetujuan manusia (izin `model.kelola`); retraining terjadwal dan pemantauan drift/performa; `POST /v1/prediksi/simulasi` (what-if pasokan, cuaca, kebijakan); audit keputusan ([03-A](03-audit.md)).
-3. **FE**: aksi promosi di registri model; simulasi memakai endpoint.
-4. **TES**: promosi hanya oleh pemegang izin; simulasi tersimpan.
+1. **MIG**: [x] `000091`: `model_promosi` (riwayat promosi/arsip, model yang digantikan, pelaku), `skenario_simulasi` (`parameter`, `hasil` JSONB, `dibuat_oleh`), `model_registry.dipromosikan_oleh`/`dipromosikan_pada`.
+2. **API**
+   - [x] `POST /v1/prediksi/registri/bulk` (`action`: `promosi`|`arsip`, izin `model.kelola`, audit `PROMOSI_MODEL`/`ARSIP_MODEL`): promosi KANDIDAT atau ARSIP (rollback) mengarsipkan model produksi komoditas itu dalam satu transaksi; model produksi tak dapat diarsipkan langsung. **Gerbang:** model hasil pelatihan yang MAPE backtest-nya lebih buruk dari baseline naif ditolak; model tanpa proyeksi ditolak (komoditas tidak boleh kehilangan proyeksi). Alasan penolakan dikembalikan per model.
+   - [x] `POST /v1/prediksi/simulasi` (izin `prediksi.lihat`, audit `SIMULASI_SKENARIO`): proyeksi dasar dari model produksi + efek parameter (hujan, pasokan, subsidi) dihitung di server dan disimpan. **Terbatas:** koefisien masih `ASUMSI` generik (riwayat pasokan/cuaca/subsidi belum ada untuk diestimasi); hasil berlabel `terbatas` beserta koefisien dan sumbernya.
+   - [ ] Retraining terjadwal, pemantauan drift (kolom `drift` masih nol untuk model hasil pelatihan), estimasi koefisien simulasi dari data (menunggu 05-B/05-C), antarmuka riwayat `model_promosi`.
+3. **FE**: [x] aksi "Promosikan ke produksi" dan "Arsipkan kandidat" di registri (izin `model.kelola`, konfirmasi, alasan penolakan ditampilkan); simulasi memanggil endpoint untuk komoditas terpilih dan menampilkan efek per parameter dengan label asumsi.
+4. **TES**: [x] promosi hanya oleh pemegang izin (403 untuk `prediksi.lihat` saja), satu produksi per komoditas, rollback, penolakan baseline dan tanpa proyeksi, arsip hanya KANDIDAT, riwayat dan audit tercatat; simulasi tersimpan, netral = proyeksi model, validasi rentang.

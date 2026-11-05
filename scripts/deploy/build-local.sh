@@ -7,6 +7,7 @@
 #      garda-api:<git-sha>    garda-api:latest
 #      garda-web:<git-sha>    garda-web:latest
 #      garda-caddy:<git-sha>  garda-caddy:latest
+#      garda-ml:<git-sha>     garda-ml:latest
 #
 #  Usage:
 #      bash scripts/deploy/build-local.sh [options]
@@ -33,7 +34,7 @@ install_traps
 # ------------------------------------------------------------------------------
 #  Defaults + argument parsing
 # ------------------------------------------------------------------------------
-ALL_SERVICES=(api web caddy)
+ALL_SERVICES=(api web caddy ml)
 SERVICES=("${ALL_SERVICES[@]}")
 NO_CACHE=0
 PUSH_REGISTRY=0
@@ -70,8 +71,8 @@ export DRY_RUN
 # Validate the requested service list.
 for svc in "${SERVICES[@]}"; do
   case "$svc" in
-    api|web|caddy) ;;
-    *) die "Service tidak dikenal: '$svc'" "Pilih dari: api, web, caddy (contoh: --only=api,web)." ;;
+    api|web|caddy|ml) ;;
+    *) die "Service tidak dikenal: '$svc'" "Pilih dari: api, web, caddy, ml (contoh: --only=api,web)." ;;
   esac
 done
 

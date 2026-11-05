@@ -161,7 +161,7 @@ fi
 #  2. Verify images exist
 # ------------------------------------------------------------------------------
 log_section "2/8 — Verifikasi image"
-for svc in api web caddy; do
+for svc in api web caddy ml; do
   img="garda-${svc}:${GIT_SHA}"
   if ! docker image inspect "$img" >/dev/null 2>&1; then
     die "Image '${img}' tidak ada setelah docker load." \
@@ -252,8 +252,8 @@ log_success "Seed referensi/admin selesai."
 # ------------------------------------------------------------------------------
 #  7. Bring up the application
 # ------------------------------------------------------------------------------
-log_section "7/8 — Up aplikasi (api, worker, web, caddy)"
-compose_app up -d --no-build --no-deps --remove-orphans api worker web caddy
+log_section "7/8 — Up aplikasi (api, worker, ml, web, caddy)"
+compose_app up -d --no-build --no-deps --remove-orphans api worker ml web caddy
 
 # ------------------------------------------------------------------------------
 #  8. HTTP healthcheck

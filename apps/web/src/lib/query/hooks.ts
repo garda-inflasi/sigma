@@ -4,6 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { toast } from "sonner";
 import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
+import type { AksiModel, SimulasiInput } from "@/lib/api/prediksi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
@@ -37,6 +38,22 @@ export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.rin
 export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
 export const useProyeksiRingkasan = () => useQuery({ queryKey: qk.prediksi.ringkasan(), queryFn: api.prediksi.ringkasan });
 export const useModelPrediksi = () => useQuery({ queryKey: qk.prediksi.model(), queryFn: api.prediksi.model });
+/** Status layanan ML; `enabled` mencegah 403 bagi peran tanpa `prediksi.lihat`. */
+export const useStatusMl = (enabled = true) => useQuery({ queryKey: qk.prediksi.ml(), queryFn: api.prediksi.statusMl, enabled, staleTime: 30_000 });
+/** Melatih model kandidat lalu menyegarkan registri; galat (mis. 503 layanan ML mati) ditampilkan sebagai toast. */
+export function useLatihModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (komoditasKode: string) => api.prediksi.latih(komoditasKode),
+    onSuccess: (m) => {
+      qc.invalidateQueries({ queryKey: qk.prediksi.all() });
+      toast.success(`Model kandidat ${m.versi} dilatih`, { description: `MAPE backtest ${m.mape.toLocaleString("id-ID")}%. Promosikan setelah ditelaah.` });
+    },
+    onError: (err) => {
+      toast.error("Pelatihan model gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
 /** Daftar entri harga yang disaring server; `enabled` mencegah 403 bagi peran tanpa `harga.lihat`. */
 export const useEntriHarga = (params: HargaParams = {}, enabled = true) =>
   useQuery({ queryKey: qk.harga.list(params), queryFn: () => api.harga.list(params), enabled, placeholderData: keepPreviousData });
@@ -127,8 +144,22 @@ export const useAudit = (filter: AuditFilter) =>
     getNextPageParam: (last) => last.nextCursor,
     placeholderData: keepPreviousData,
   });
-export const useBriefs = () => useQuery({ queryKey: qk.brief.list(), queryFn: api.brief.list });
-/** Menyusun draf brief; galat ditampilkan oleh pemanggil (dialog generator). */
+/** Daftar brief; dimuat ulang berkala selama ada brief yang masih disusun server (DIPROSES). */
+export const useBriefs = () =>
+  useQuery({
+    queryKey: qk.brief.list(),
+    queryFn: api.brief.list,
+    refetchInterval: (query) => (query.state.status !== "error" && query.state.data?.some((b) => b.status === "DIPROSES") ? 3000 : false),
+  });
+/** Brief lengkap; dipantau tiap 2 detik selama server masih menyusun drafnya (status DIPROSES). */
+export const useBriefDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.brief.detail(id ?? ""),
+    queryFn: () => api.brief.detail(id!),
+    enabled: !!id,
+    refetchInterval: (query) => (query.state.status !== "error" && query.state.data?.status === "DIPROSES" ? 2000 : false),
+  });
+/** Memulai penyusunan draf brief (juga untuk mengulang brief GAGAL); galat ditampilkan oleh pemanggil (dialog generator). */
 export function useSusunBrief() {
   const qc = useQueryClient();
   return useMutation({
@@ -176,6 +207,35 @@ export function useBulkAction<T extends { id: string }>(opts: {
     },
     onSettled: () => {
       if (opts.invalidate && !MODE_MOCK) qc.invalidateQueries({ queryKey: opts.invalidate });
+    },
+  });
+}
+
+// ── Mutasi prediksi ───────────────────────────────────────────────────
+
+/** Promosi/arsip model; menyegarkan registri dan proyeksi (model produksi menentukan proyeksi yang tampil). */
+export function useAksiModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ aksi, ids }: { aksi: AksiModel; ids: string[]; label: string }) => api.prediksi.aksiModel(aksi, ids),
+    onSuccess: (res, { label }) => {
+      qc.invalidateQueries({ queryKey: qk.prediksi.all() });
+      qc.invalidateQueries({ queryKey: qk.eksekutif.xaiAll() });
+      toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} model`, { description: res.berhasil ? "Tercatat di audit trail." : undefined });
+      if (res.gagal) toast.warning(`${res.gagal} model dilewati`, { description: res.detail.map((d) => d.alasan).join("; ") });
+    },
+    onError: (err) => {
+      toast.error("Aksi model gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
+    },
+  });
+}
+
+/** Menghitung simulasi skenario di server; hasilnya dibaca dari `data` mutasi. */
+export function useSimulasi() {
+  return useMutation({
+    mutationFn: (input: SimulasiInput) => api.prediksi.simulasi(input),
+    onError: (err) => {
+      toast.error("Simulasi gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
     },
   });
 }

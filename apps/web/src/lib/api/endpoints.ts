@@ -22,12 +22,14 @@ import { toEwsAlert, toEwsAturan, type EwsAlertResponse, type EwsAturan, type Ew
 import { toKartu, type KartuResponse } from "./intervensi";
 import { toKandidat, toMarker, toRute, type KandidatColdStorage, type KandidatResponse, type MarkerResponse, type Rute, type RuteResponse } from "./spasial";
 import type { MarkerWilayah } from "@/components/map/marker-pin";
-import { toPolicyBrief, type PolicyBriefResponse } from "./brief";
+import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
+import { mockBriefDetail } from "./brief-mock";
 import {
-  toBarisModel, toBarisProyeksi, toProyeksiXai,
-  type BarisModel, type BarisProyeksi, type ModelResponse, type ProyeksiResponse, type RingkasanResponse,
+  toBarisModel, toBarisProyeksi, toHasilSimulasi, toProyeksiXai,
+  type AksiModel, type AksiModelResult, type BarisModel, type BarisProyeksi, type HasilSimulasi, type ModelResponse,
+  type ProyeksiResponse, type RingkasanResponse, type SimulasiInput, type SimulasiResponse, type StatusMl,
 } from "./prediksi";
-import { mockBarisModel, mockBarisProyeksi } from "./prediksi-mock";
+import { mockBarisModel, mockBarisProyeksi, mockSimulasi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses } from "./pengguna";
 import { USERS } from "@/lib/data/reference";
 import { toEksekusi, toPipeline, toSampel, toSumberData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
@@ -96,6 +98,27 @@ export const api = {
     /** Registri model seluruh komoditas. */
     model: (): Promise<BarisModel[]> =>
       MODE_MOCK ? mockDelay(mockBarisModel) : apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel)),
+    /** Keadaan layanan ML (pelatihan hanya bisa bila tersedia). */
+    statusMl: (): Promise<StatusMl> =>
+      MODE_MOCK ? mockDelay<StatusMl>(() => ({ dikonfigurasi: false, tersedia: false, versi: "" })) : apiFetch<StatusMl>("/v1/prediksi/ml"),
+    /** Melatih model kandidat dari harga tervalidasi; galat 503 bila layanan ML mati. */
+    latih: (komoditasKode: string): Promise<BarisModel> =>
+      MODE_MOCK
+        ? Promise.reject(new Error("Pelatihan model memerlukan backend dan layanan ML."))
+        : apiFetch<ModelResponse>("/v1/prediksi/latih", { method: "POST", body: JSON.stringify({ komoditas_kode: komoditasKode }) }).then(toBarisModel),
+    /** Promosi (kandidat/arsip ke produksi) atau arsip kandidat; izin `model.kelola`, dicatat di audit. */
+    aksiModel: (aksi: AksiModel, ids: string[]): Promise<AksiModelResult> =>
+      MODE_MOCK
+        ? mockDelay({ berhasil: ids.length, gagal: 0, detail: [] }, 300, 600)
+        : apiFetch<AksiModelResult>("/v1/prediksi/registri/bulk", { method: "POST", body: JSON.stringify({ action: aksi, ids }), idempotencyKey: crypto.randomUUID() }),
+    /** Simulasi skenario what-if yang dihitung dan disimpan server. */
+    simulasi: (input: SimulasiInput): Promise<HasilSimulasi> =>
+      MODE_MOCK
+        ? mockDelay(() => mockSimulasi(input), 200, 400)
+        : apiFetch<SimulasiResponse>("/v1/prediksi/simulasi", {
+            method: "POST",
+            body: JSON.stringify({ komoditas_kode: input.komoditasKode, hujan_pct: input.hujanPct, pasokan_pct: input.pasokanPct, subsidi_pct: input.subsidiPct }),
+          }).then(toHasilSimulasi),
   },
   spasial: {
     rute: (): Promise<Rute[]> =>
@@ -181,7 +204,10 @@ export const api = {
   brief: {
     list: (): Promise<PolicyBrief[]> =>
       MODE_MOCK ? mockDelay(m.mockBriefs) : apiFetch<PolicyBriefResponse[]>("/v1/policy-brief").then((rows) => rows.map(toPolicyBrief)),
-    /** Menyimpan draf brief untuk periode YYYY-MM; kembaliannya brief yang tersimpan. */
+    /** Brief lengkap dengan isi dan jejak penyusunan; dipantau berkala selama berstatus DIPROSES. */
+    detail: (id: string): Promise<PolicyBriefDetail> =>
+      MODE_MOCK ? mockDelay(() => mockBriefDetail(id)) : apiFetch<PolicyBriefDetailResponse>(`/v1/policy-brief/${encodeURIComponent(id)}`).then(toPolicyBriefDetail),
+    /** Memulai penyusunan draf brief untuk periode YYYY-MM; kembaliannya brief berstatus DIPROSES (di server, penyusunan berjalan di latar belakang). */
     susun: (periode: string): Promise<PolicyBrief> =>
       MODE_MOCK
         ? mockDelay(() => m.mockBriefs()[0], 1200, 1800)

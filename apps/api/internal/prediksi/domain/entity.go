@@ -53,6 +53,12 @@ type ModelRegistry struct {
 	DeployedAt        *time.Time `gorm:"column:deployed_at"`
 	FeatureImportance string     `gorm:"column:feature_importance;type:jsonb;default:[]"`
 	Sumber            string     `gorm:"column:sumber;default:MODEL"`
+	// ArtefakURI menandai implementasi yang menghasilkan model (layanan ML dan versinya).
+	ArtefakURI *string `gorm:"column:artefak_uri"`
+	Catatan    string  `gorm:"column:catatan"`
+	// DipromosikanOleh dan DipromosikanPada mencatat promosi terakhir ke PRODUKSI.
+	DipromosikanOleh *string    `gorm:"column:dipromosikan_oleh"`
+	DipromosikanPada *time.Time `gorm:"column:dipromosikan_pada"`
 }
 
 func (ModelRegistry) TableName() string {
@@ -109,6 +115,59 @@ type TitikHarga struct {
 	Harga   int       `gorm:"column:harga"`
 }
 
+// PrediksiEvaluasi memetakan tabel prediksi_evaluasi: galat nyata satu proyeksi
+// setelah tanggal targetnya lewat.
+type PrediksiEvaluasi struct {
+	PrediksiID     string    `gorm:"column:prediksi_id;primaryKey"`
+	Realisasi      int       `gorm:"column:realisasi"`
+	GalatPct       float64   `gorm:"column:galat_pct"`
+	DievaluasiPada time.Time `gorm:"column:dievaluasi_pada;default:now()"`
+}
+
+func (PrediksiEvaluasi) TableName() string {
+	return "prediksi_evaluasi"
+}
+
+// Aksi pada riwayat model_promosi.
+const (
+	AksiPromosi = "PROMOSI"
+	AksiArsip   = "ARSIP"
+)
+
+// ModelPromosi memetakan tabel model_promosi: satu keputusan promosi atau pengarsipan model.
+type ModelPromosi struct {
+	ID                string    `gorm:"column:id;primaryKey"`
+	ModelID           string    `gorm:"column:model_id"`
+	KomoditasKode     string    `gorm:"column:komoditas_kode"`
+	Aksi              string    `gorm:"column:aksi"`
+	StatusLama        string    `gorm:"column:status_lama"`
+	StatusBaru        string    `gorm:"column:status_baru"`
+	ModelDigantikanID *string   `gorm:"column:model_digantikan_id"`
+	Oleh              string    `gorm:"column:oleh"`
+	Waktu             time.Time `gorm:"column:waktu;default:now()"`
+}
+
+func (ModelPromosi) TableName() string {
+	return "model_promosi"
+}
+
+// SkenarioSimulasi memetakan tabel skenario_simulasi: satu simulasi what-if yang
+// dihitung server. Parameter dan Hasil adalah dokumen JSON.
+type SkenarioSimulasi struct {
+	ID            string    `gorm:"column:id;primaryKey"`
+	KomoditasKode string    `gorm:"column:komoditas_kode"`
+	KabupatenKode string    `gorm:"column:kabupaten_kode"`
+	HorizonHari   int       `gorm:"column:horizon_hari"`
+	Parameter     string    `gorm:"column:parameter;type:jsonb"`
+	Hasil         string    `gorm:"column:hasil;type:jsonb"`
+	DibuatOleh    string    `gorm:"column:dibuat_oleh"`
+	DibuatPada    time.Time `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (SkenarioSimulasi) TableName() string {
+	return "skenario_simulasi"
+}
+
 // ModelView adalah satu baris registri model beserta nama komoditasnya.
 type ModelView struct {
 	ID            string    `gorm:"column:id"`
@@ -121,6 +180,14 @@ type ModelView struct {
 	Status        string    `gorm:"column:status"`
 	DilatihPada   time.Time `gorm:"column:dilatih_pada"`
 	Sumber        string    `gorm:"column:sumber"`
+	Catatan       string    `gorm:"column:catatan"`
+	// BaselineMape adalah MAPE baseline naif pada backtest yang sama (nil bila tidak diukur,
+	// mis. model demo).
+	BaselineMape *float64 `gorm:"column:baseline_mape"`
+	// MapeRealisasi adalah rata-rata |galat| proyeksi model yang sudah jatuh tempo dan
+	// dievaluasi; nil bila belum ada. NEvaluasi adalah jumlah proyeksi yang dievaluasi.
+	MapeRealisasi *float64 `gorm:"column:mape_realisasi"`
+	NEvaluasi     int      `gorm:"column:n_evaluasi"`
 }
 
 // Ringkasan adalah satu proyeksi dengan perubahannya terhadap harga dasar

@@ -31,7 +31,22 @@ func (h *Handler) List(c *gin.Context) {
 	response.Success(c, dto.ToBriefResponses(items))
 }
 
+// GET /v1/policy-brief/:id
+func (h *Handler) Get(c *gin.Context) {
+	detail, err := h.uc.Detail(c.Request.Context(), c.Param("id"))
+	switch {
+	case errors.Is(err, usecase.ErrBriefTidakAda):
+		response.NotFound(c, "Policy brief tidak ditemukan")
+	case err != nil:
+		response.InternalError(c, "Gagal mengambil policy brief")
+	default:
+		response.Success(c, dto.ToBriefDetail(*detail))
+	}
+}
+
 // POST /v1/policy-brief/generate
+//
+// Penyusunan berjalan di latar belakang: jawabannya brief berstatus DIPROSES yang dipantau lewat GET /:id.
 func (h *Handler) Generate(c *gin.Context) {
 	var req dto.GenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -72,7 +72,7 @@ cd "$GARDA_ROOT"
 #  Validate the service name
 # ------------------------------------------------------------------------------
 INFRA_SERVICES=(postgres redis)
-APP_SERVICES=(api worker web caddy backup)
+APP_SERVICES=(api worker ml web caddy backup)
 
 if [[ "$SERVICE" != "all" ]]; then
   valid=0
@@ -81,7 +81,7 @@ if [[ "$SERVICE" != "all" ]]; then
   done
   if [[ "$valid" -ne 1 ]]; then
     die "Service tidak dikenal: '$SERVICE'" \
-        "Pilih salah satu: api, worker, web, caddy, backup, postgres, redis, all"
+        "Pilih salah satu: api, worker, ml, web, caddy, backup, postgres, redis, all"
   fi
 fi
 

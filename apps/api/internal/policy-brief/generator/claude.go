@@ -1,19 +1,19 @@
 package generator
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
+	"github.com/anthropics/anthropic-sdk-go/v2/shared/constant"
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 )
 
@@ -24,51 +24,52 @@ const (
 	EnvModel   = "LLM_MODEL"
 	EnvBaseURL = "ANTHROPIC_BASE_URL"
 
-	ModelBawaan   = "claude-sonnet-5-5"
-	BaseURLBawaan = "https://api.anthropic.com"
-	// VersiAPI adalah nilai header anthropic-version.
-	VersiAPI = "2026-10-21"
+	ModelBawaan = "claude-opus-5-5"
 	// VersiPrompt dinaikkan setiap prompt atau skema berubah; tersimpan di brief bersama hash prompt.
 	VersiPrompt = "brief-v1"
 
 	// maksToken menampung pemikiran dan jawaban; narasi brief sendiri pendek.
 	maksToken = 16000
-	// effort rendah cukup untuk menyusun narasi dari fakta yang sudah diberikan.
-	effort        = "low"
-	timeoutBawaan = 3 * time.Minute
-	maksCoba      = 3
-	jedaAwal      = 2 * time.Second
-	maksBadanResp = 8 << 20
+	// timeoutPanggilan membatasi satu percobaan; SDK mengulang galat sementara
+	// (jaringan, 408, 409, 429, 5xx) dua kali dengan jeda bertambah.
+	timeoutPanggilan = 3 * time.Minute
 )
+
+// modelDenganFallback adalah model yang menerima fallback server-side "default": bila
+// pengaman model menolak permintaan, API menjalankannya ulang pada model pengganti yang
+// direkomendasikan untuk kategori penolakan itu, dalam panggilan yang sama.
+var modelDenganFallback = map[string]bool{
+	"claude-fable-5-1": true, "claude-opus-5-5": true, "claude-opus-5": true, "claude-sonnet-5-5": true,
+}
 
 // ErrDitolakModel berarti model menolak menyusun (stop_reason "refusal").
 var ErrDitolakModel = errors.New("model menolak permintaan")
 
-// Claude menyusun narasi lewat Claude Messages API (HTTP langsung). Jawaban dipaksa
+// Claude menyusun narasi lewat Claude Messages API memakai SDK Go resmi. Jawaban dipaksa
 // berskema JSON (structured outputs); angka tetap hanya boleh berupa placeholder fakta.
 type Claude struct {
-	apiKey  string
-	model   string
-	baseURL string
-	http    *http.Client
-	// tidur menunggu sebelum percobaan ulang; diganti di tes.
-	tidur func(ctx context.Context, d time.Duration) error
+	client anthropic.Client
+	model  string
 }
 
 var _ domain.Generator = (*Claude)(nil)
 
-// NewClaude membuat klien. model/baseURL kosong memakai bawaan; httpClient nil memakai klien dengan timeout bawaan.
-func NewClaude(apiKey, model, baseURL string, httpClient *http.Client) *Claude {
+// NewClaude membuat klien dengan kunci API eksplisit; tidak ada kredensial yang dibaca
+// dari lingkungan atau profil. model/baseURL kosong memakai bawaan. opsi tambahan
+// (mis. option.WithHTTPClient) diterapkan terakhir.
+func NewClaude(apiKey, model, baseURL string, opsi ...option.RequestOption) *Claude {
 	if model == "" {
 		model = ModelBawaan
 	}
-	if baseURL == "" {
-		baseURL = BaseURLBawaan
+	opts := []option.RequestOption{
+		option.WithoutEnvironmentDefaults(),
+		option.WithAPIKey(apiKey),
+		option.WithRequestTimeout(timeoutPanggilan),
 	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: timeoutBawaan}
+	if baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
 	}
-	return &Claude{apiKey: apiKey, model: model, baseURL: strings.TrimRight(baseURL, "/"), http: httpClient, tidur: tidurKonteks}
+	return &Claude{client: anthropic.NewClient(append(opts, opsi...)...), model: model}
 }
 
 // ClaudeDariEnv membuat klien dari ANTHROPIC_API_KEY (dan LLM_MODEL, ANTHROPIC_BASE_URL);
@@ -78,21 +79,10 @@ func ClaudeDariEnv() domain.Generator {
 	if kunci == "" {
 		return nil
 	}
-	return NewClaude(kunci, strings.TrimSpace(os.Getenv(EnvModel)), strings.TrimSpace(os.Getenv(EnvBaseURL)), nil)
+	return NewClaude(kunci, strings.TrimSpace(os.Getenv(EnvModel)), strings.TrimSpace(os.Getenv(EnvBaseURL)))
 }
 
 func (c *Claude) Nama() string { return "claude:" + c.model }
-
-func tidurKonteks(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
 
 const promptSistem = `Kamu adalah analis kebijakan yang menulis draf policy brief pengendalian inflasi pangan untuk Pemerintah Daerah dan Tim Pengendalian Inflasi Daerah (TPID) di Aceh. Tulis dalam bahasa Indonesia baku, ringkas, dan netral.
 
@@ -157,54 +147,44 @@ type narasiJSON struct {
 	RekomendasiTPID  []string `json:"rekomendasi_tpid"`
 }
 
-type jawabanPesan struct {
-	Model      string `json:"model"`
-	StopReason string `json:"stop_reason"`
-	StopDetail *struct {
-		Category string `json:"category"`
-	} `json:"stop_details"`
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
-}
-
 // Susun mengirim fakta ke Claude dan mengembalikan narasi ber-placeholder beserta jejak model dan prompt.
 func (c *Claude) Susun(ctx context.Context, k domain.Konteks) (*domain.Narasi, error) {
 	sistem, pengguna := BangunPrompt(k)
-	badan, err := json.Marshal(map[string]any{
-		"model":      c.model,
-		"max_tokens": maksToken,
-		"system":     sistem,
-		"messages":   []map[string]any{{"role": "user", "content": pengguna}},
-		"output_config": map[string]any{
-			"effort": effort,
-			"format": map[string]any{"type": "json_schema", "schema": skemaNarasi()},
+	params := anthropic.BetaMessageNewParams{
+		Model:     c.model,
+		MaxTokens: maksToken,
+		System:    []anthropic.BetaTextBlockParam{{Text: sistem}},
+		Messages:  []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(pengguna))},
+		OutputConfig: anthropic.BetaOutputConfigParam{
+			// Effort rendah cukup untuk menyusun narasi dari fakta yang sudah diberikan.
+			Effort: anthropic.BetaOutputConfigEffortLow,
+			Format: anthropic.BetaJSONOutputFormatParam{Schema: skemaNarasi()},
 		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("claude: encode permintaan: %w", err)
+	}
+	if modelDenganFallback[c.model] {
+		params.Fallbacks = anthropic.BetaFallbacksParamUnion{OfDefault: constant.ValueOf[constant.Default]()}
+		params.Betas = []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01}
 	}
 
-	jawaban, err := c.kirim(ctx, badan)
+	jawaban, err := c.client.Beta.Messages.New(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, galatPanggilan(err)
 	}
 	switch jawaban.StopReason {
-	case "refusal":
-		kategori := "tidak disebutkan"
-		if jawaban.StopDetail != nil && jawaban.StopDetail.Category != "" {
-			kategori = jawaban.StopDetail.Category
+	case anthropic.BetaStopReasonRefusal:
+		kategori := string(jawaban.StopDetails.Category)
+		if kategori == "" {
+			kategori = "tidak disebutkan"
 		}
 		return nil, fmt.Errorf("%w (kategori %s)", ErrDitolakModel, kategori)
-	case "max_tokens":
+	case anthropic.BetaStopReasonMaxTokens:
 		return nil, errors.New("claude: jawaban terpotong karena batas token")
 	}
 
 	var teks strings.Builder
 	for _, blok := range jawaban.Content {
-		if blok.Type == "text" {
-			teks.WriteString(blok.Text)
+		if t, ok := blok.AsAny().(anthropic.BetaTextBlock); ok {
+			teks.WriteString(t.Text)
 		}
 	}
 	var n narasiJSON
@@ -214,7 +194,7 @@ func (c *Claude) Susun(ctx context.Context, k domain.Konteks) (*domain.Narasi, e
 		return nil, fmt.Errorf("claude: jawaban bukan JSON narasi yang valid: %w", err)
 	}
 
-	model := jawaban.Model
+	model := string(jawaban.Model)
 	if model == "" {
 		model = c.model
 	}
@@ -225,70 +205,16 @@ func (c *Claude) Susun(ctx context.Context, k domain.Konteks) (*domain.Narasi, e
 	}, nil
 }
 
-// kirim mengirim permintaan dengan percobaan ulang untuk galat sementara (jaringan, 429, 5xx, 529).
-func (c *Claude) kirim(ctx context.Context, badan []byte) (*jawabanPesan, error) {
-	var err error
-	for coba := 0; coba < maksCoba; coba++ {
-		if coba > 0 {
-			if e := c.tidur(ctx, jedaAwal<<(coba-1)); e != nil {
-				return nil, fmt.Errorf("claude: dibatalkan sebelum percobaan ulang: %w", e)
-			}
+// galatPanggilan merumuskan galat SDK tanpa memuat kunci API: galat dari API menyebut
+// status, jenis, dan pesannya; galat lain (jaringan, konteks batal) dibungkus apa adanya.
+func galatPanggilan(err error) error {
+	var apiErr *anthropic.Error
+	if errors.As(err, &apiErr) {
+		jenis := string(apiErr.Type())
+		if jenis == "" {
+			return fmt.Errorf("claude: status %d: badan galat tidak dikenali", apiErr.StatusCode)
 		}
-		var jawaban *jawabanPesan
-		var ulangi bool
-		jawaban, ulangi, err = c.sekali(ctx, badan)
-		if err == nil {
-			return jawaban, nil
-		}
-		if !ulangi {
-			return nil, err
-		}
+		return fmt.Errorf("claude: status %d: %s: %s", apiErr.StatusCode, jenis, apiErr.Message)
 	}
-	return nil, err
-}
-
-// sekali melakukan satu panggilan; ulangi benar bila galatnya layak dicoba lagi.
-func (c *Claude) sekali(ctx context.Context, badan []byte) (jawaban *jawabanPesan, ulangi bool, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(badan))
-	if err != nil {
-		return nil, false, fmt.Errorf("claude: buat permintaan: %w", err)
-	}
-	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", c.apiKey)
-	req.Header.Set("anthropic-version", VersiAPI)
-
-	res, err := c.http.Do(req)
-	if err != nil {
-		// Pesan galat jaringan tidak memuat header, jadi kunci API tidak bocor.
-		return nil, ctx.Err() == nil, fmt.Errorf("claude: panggilan gagal: %w", err)
-	}
-	defer res.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(res.Body, maksBadanResp))
-	if err != nil {
-		return nil, ctx.Err() == nil, fmt.Errorf("claude: baca jawaban: %w", err)
-	}
-
-	if res.StatusCode != http.StatusOK {
-		ulangi = res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500
-		return nil, ulangi, fmt.Errorf("claude: status %d: %s", res.StatusCode, pesanGalat(raw))
-	}
-	var j jawabanPesan
-	if err := json.Unmarshal(raw, &j); err != nil {
-		return nil, false, fmt.Errorf("claude: jawaban bukan JSON: %w", err)
-	}
-	return &j, false, nil
-}
-
-// pesanGalat mengambil jenis dan pesan galat dari badan jawaban galat API.
-func pesanGalat(raw []byte) string {
-	var e struct {
-		Error struct {
-			Type    string `json:"type"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(raw, &e) == nil && e.Error.Type != "" {
-		return e.Error.Type + ": " + e.Error.Message
-	}
-	return "badan galat tidak dikenali"
+	return fmt.Errorf("claude: panggilan gagal: %w", err)
 }

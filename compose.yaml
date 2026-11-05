@@ -95,7 +95,7 @@ services:
       ML_SERVICE_URL: "${ML_SERVICE_URL:-http://ml:8000}"
       # Narasi policy brief oleh LLM aktif hanya bila kunci ada; kosong => templat deterministik.
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      LLM_MODEL: "${LLM_MODEL:-claude-sonnet-5-5}"
+      LLM_MODEL: "${LLM_MODEL:-claude-opus-5-5}"
     # postgres dan redis berjalan di compose.infra.yaml secara terpisah;
     # api hanya menunggu skema selesai dimigrasi.
     depends_on:

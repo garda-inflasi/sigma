@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,7 @@ const jawabanNarasi = `{"ringkasan":"Inflasi tahunan {{INFLASI_YOY}}.","temuan":
 func jawabanAPI(t *testing.T, stopReason string, bagian ...map[string]any) string {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
-		"id": "msg_uji", "type": "message", "role": "assistant", "model": "claude-sonnet-5-5-diverifikasi",
+		"id": "msg_uji", "type": "message", "role": "assistant", "model": "claude-opus-5-5-diverifikasi",
 		"content": bagian, "stop_reason": stopReason,
 	})
 	require.NoError(t, err)
@@ -66,6 +67,8 @@ func newServerUji(t *testing.T, respons func(panggilan int) (int, string)) *serv
 		s.mu.Unlock()
 		status, badan := s.respons(panggilan)
 		w.Header().Set("content-type", "application/json")
+		// Jeda percobaan ulang SDK dibuat nol agar tes cepat dan deterministik.
+		w.Header().Set("retry-after-ms", "0")
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, badan)
 	}))
@@ -79,16 +82,11 @@ func (s *serverUji) jumlah() int {
 	return len(s.badan)
 }
 
-func klienUji(s *serverUji) (*Claude, *[]time.Duration) {
-	c := NewClaude(kunciUji, "", s.URL, nil)
-	var jeda []time.Duration
-	c.tidur = func(_ context.Context, d time.Duration) error { jeda = append(jeda, d); return nil }
-	return c, &jeda
-}
+func klienUji(s *serverUji) *Claude { return NewClaude(kunciUji, "", s.URL) }
 
 func TestClaude_MengirimPermintaanSesuaiKontrak(t *testing.T) {
 	s := newServerUji(t, func(int) (int, string) { return 200, jawabanAPI(t, "end_turn", teks(jawabanNarasi)) })
-	c, _ := klienUji(s)
+	c := klienUji(s)
 	k := konteksUji()
 
 	n, err := c.Susun(t.Context(), k)
@@ -98,14 +96,15 @@ func TestClaude_MengirimPermintaanSesuaiKontrak(t *testing.T) {
 	assert.Equal(t, []string{"POST /v1/messages"}, s.jalur)
 
 	h := s.header[0]
-	assert.Equal(t, kunciUji, h.Get("x-api-key"))
-	assert.Equal(t, VersiAPI, h.Get("anthropic-version"))
+	assert.Equal(t, "Bearer "+kunciUji, h.Get("authorization"))
+	assert.Equal(t, "2026-10-21", h.Get("anthropic-version"))
 	assert.Equal(t, "application/json", h.Get("content-type"))
-	assert.Empty(t, h.Get("anthropic-beta"), "tanpa fitur beta")
+	assert.Equal(t, "server-side-fallback-2026-07-01", h.Get("anthropic-beta"), "fallback server-side saat ditolak")
 
 	var badan map[string]any
 	require.NoError(t, json.Unmarshal(s.badan[0], &badan))
-	assert.Equal(t, "claude-sonnet-5-5", badan["model"], "model bawaan")
+	assert.Equal(t, "claude-opus-5-5", badan["model"], "model bawaan")
+	assert.Equal(t, "default", badan["fallbacks"])
 	assert.EqualValues(t, maksToken, badan["max_tokens"])
 	for _, dilarang := range []string{"temperature", "top_p", "top_k", "thinking", "tool_choice", "tools", "stream"} {
 		assert.NotContains(t, badan, dilarang, "parameter %s ditolak/tidak perlu pada model ini", dilarang)
@@ -113,13 +112,13 @@ func TestClaude_MengirimPermintaanSesuaiKontrak(t *testing.T) {
 	assert.NotContains(t, string(s.badan[0]), kunciUji, "kunci API tidak boleh ikut ke badan permintaan")
 
 	sistem, pengguna := BangunPrompt(k)
-	assert.Equal(t, sistem, badan["system"])
+	assert.Equal(t, []any{map[string]any{"type": "text", "text": sistem}}, badan["system"])
 	pesan := badan["messages"].([]any)
 	require.Len(t, pesan, 1, "tanpa prefill")
-	assert.Equal(t, map[string]any{"role": "user", "content": pengguna}, pesan[0])
+	assert.Equal(t, map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": pengguna}}}, pesan[0])
 
 	cfg := badan["output_config"].(map[string]any)
-	assert.Equal(t, effort, cfg["effort"])
+	assert.Equal(t, "low", cfg["effort"])
 	format := cfg["format"].(map[string]any)
 	assert.Equal(t, "json_schema", format["type"])
 	skema := format["schema"].(map[string]any)
@@ -132,7 +131,7 @@ func TestClaude_MengirimPermintaanSesuaiKontrak(t *testing.T) {
 	assert.Equal(t, []string{"c"}, n.RekomendasiPemda)
 	assert.Equal(t, []string{"d"}, n.RekomendasiTPID)
 	assert.Equal(t, domain.MetaNarasi{
-		Penyusun: domain.PenyusunLLM, Model: "claude-sonnet-5-5-diverifikasi", PromptVersi: VersiPrompt, PromptHash: HashPrompt(sistem, pengguna),
+		Penyusun: domain.PenyusunLLM, Model: "claude-opus-5-5-diverifikasi", PromptVersi: VersiPrompt, PromptHash: HashPrompt(sistem, pengguna),
 	}, n.Meta, "model dari jawaban API, hash dari prompt yang benar-benar dikirim")
 	assert.Len(t, n.Meta.PromptHash, 64)
 }
@@ -141,7 +140,7 @@ func TestClaude_ModelDariKonfigurasiDanCadanganBilaJawabanTanpaModel(t *testing.
 	s := newServerUji(t, func(int) (int, string) {
 		return 200, `{"stop_reason":"end_turn","content":[{"type":"text","text":` + jsonString(jawabanNarasi) + `}]}`
 	})
-	c := NewClaude(kunciUji, "claude-model-lain", s.URL, nil)
+	c := NewClaude(kunciUji, "claude-model-lain", s.URL)
 
 	n, err := c.Susun(t.Context(), konteksUji())
 
@@ -150,6 +149,8 @@ func TestClaude_ModelDariKonfigurasiDanCadanganBilaJawabanTanpaModel(t *testing.
 	var badan map[string]any
 	require.NoError(t, json.Unmarshal(s.badan[0], &badan))
 	assert.Equal(t, "claude-model-lain", badan["model"])
+	assert.NotContains(t, badan, "fallbacks", "fallback hanya untuk model yang mendukungnya")
+	assert.Empty(t, s.header[0].Get("anthropic-beta"))
 	assert.Equal(t, "claude:claude-model-lain", c.Nama())
 }
 
@@ -162,7 +163,7 @@ func TestClaude_MengabaikanBlokThinkingDanMembacaTeks(t *testing.T) {
 	s := newServerUji(t, func(int) (int, string) {
 		return 200, jawabanAPI(t, "end_turn", map[string]any{"type": "thinking", "thinking": ""}, teks(jawabanNarasi))
 	})
-	c, _ := klienUji(s)
+	c := klienUji(s)
 
 	n, err := c.Susun(t.Context(), konteksUji())
 
@@ -177,7 +178,7 @@ func TestClaude_PenolakanModel(t *testing.T) {
 	})
 	require.NoError(t, err)
 	s := newServerUji(t, func(int) (int, string) { return 200, string(raw) })
-	c, _ := klienUji(s)
+	c := klienUji(s)
 
 	_, err = c.Susun(t.Context(), konteksUji())
 
@@ -197,7 +198,7 @@ func TestClaude_JawabanTerpotongAtauRusakDitolak(t *testing.T) {
 	for nama, badan := range kasus {
 		t.Run(nama, func(t *testing.T) {
 			s := newServerUji(t, func(int) (int, string) { return 200, badan })
-			c, _ := klienUji(s)
+			c := klienUji(s)
 
 			n, err := c.Susun(t.Context(), konteksUji())
 
@@ -207,7 +208,7 @@ func TestClaude_JawabanTerpotongAtauRusakDitolak(t *testing.T) {
 	}
 }
 
-func TestClaude_GalatSementaraDiulangDenganJedaBertambah(t *testing.T) {
+func TestClaude_GalatSementaraDiulang(t *testing.T) {
 	s := newServerUji(t, func(panggilan int) (int, string) {
 		switch panggilan {
 		case 1:
@@ -217,27 +218,24 @@ func TestClaude_GalatSementaraDiulangDenganJedaBertambah(t *testing.T) {
 		}
 		return 200, jawabanAPI(t, "end_turn", teks(jawabanNarasi))
 	})
-	c, jeda := klienUji(s)
 
-	n, err := c.Susun(t.Context(), konteksUji())
+	n, err := klienUji(s).Susun(t.Context(), konteksUji())
 
 	require.NoError(t, err)
 	assert.NotNil(t, n)
 	assert.Equal(t, 3, s.jumlah())
-	assert.Equal(t, []time.Duration{jedaAwal, 2 * jedaAwal}, *jeda)
 }
 
 func TestClaude_BerhentiSetelahBatasPercobaan(t *testing.T) {
 	s := newServerUji(t, func(int) (int, string) {
 		return 500, `{"type":"error","error":{"type":"api_error","message":"galat internal"}}`
 	})
-	c, _ := klienUji(s)
 
-	_, err := c.Susun(t.Context(), konteksUji())
+	_, err := klienUji(s).Susun(t.Context(), konteksUji())
 
 	require.Error(t, err)
-	assert.Equal(t, maksCoba, s.jumlah())
-	assert.ErrorContains(t, err, "api_error: galat internal")
+	assert.Equal(t, 3, s.jumlah(), "satu panggilan dan dua percobaan ulang")
+	assert.ErrorContains(t, err, "status 500: api_error: galat internal")
 	assert.NotContains(t, err.Error(), kunciUji)
 }
 
@@ -246,13 +244,11 @@ func TestClaude_GalatPermintaanTidakDiulang(t *testing.T) {
 		s := newServerUji(t, func(int) (int, string) {
 			return status, `{"type":"error","error":{"type":"invalid_request_error","message":"model tidak didukung"}}`
 		})
-		c, jeda := klienUji(s)
 
-		_, err := c.Susun(t.Context(), konteksUji())
+		_, err := klienUji(s).Susun(t.Context(), konteksUji())
 
 		require.Error(t, err, status)
 		assert.Equal(t, 1, s.jumlah(), "status %d tidak layak diulang", status)
-		assert.Empty(t, *jeda)
 		assert.ErrorContains(t, err, "invalid_request_error: model tidak didukung")
 		assert.NotContains(t, err.Error(), kunciUji)
 	}
@@ -260,53 +256,34 @@ func TestClaude_GalatPermintaanTidakDiulang(t *testing.T) {
 
 func TestClaude_BadanGalatTakDikenaliTetapDilaporkan(t *testing.T) {
 	s := newServerUji(t, func(int) (int, string) { return 400, "teks biasa" })
-	c, _ := klienUji(s)
 
-	_, err := c.Susun(t.Context(), konteksUji())
+	_, err := klienUji(s).Susun(t.Context(), konteksUji())
 
 	assert.ErrorContains(t, err, "status 400: badan galat tidak dikenali")
 }
 
-func TestClaude_LayananMatiDiulangLaluGagalTanpaMembocorkanKunci(t *testing.T) {
+func TestClaude_LayananMatiGagalTanpaMembocorkanKunci(t *testing.T) {
 	s := newServerUji(t, func(int) (int, string) { return 200, "" })
 	url := s.URL
 	s.Close()
-	c := NewClaude(kunciUji, "", url, nil)
-	var jeda []time.Duration
-	c.tidur = func(_ context.Context, d time.Duration) error { jeda = append(jeda, d); return nil }
+	c := NewClaude(kunciUji, "", url, option.WithMaxRetries(0))
 
 	_, err := c.Susun(t.Context(), konteksUji())
 
 	require.Error(t, err)
-	assert.Len(t, jeda, maksCoba-1, "galat jaringan dianggap sementara")
+	assert.ErrorContains(t, err, "claude: panggilan gagal")
 	assert.NotContains(t, err.Error(), kunciUji)
 }
 
-func TestClaude_DibatalkanSaatMenungguPercobaanUlang(t *testing.T) {
-	s := newServerUji(t, func(int) (int, string) {
-		return 429, `{"type":"error","error":{"type":"rate_limit_error","message":"x"}}`
-	})
-	c := NewClaude(kunciUji, "", s.URL, nil)
-	ctx, batal := context.WithCancel(t.Context())
-	c.tidur = func(ctx context.Context, _ time.Duration) error { batal(); return ctx.Err() }
-
-	_, err := c.Susun(ctx, konteksUji())
-
-	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
-	assert.Equal(t, 1, s.jumlah())
-}
-
-func TestClaude_KonteksBatalMenghentikanPanggilanTanpaPercobaanUlang(t *testing.T) {
+func TestClaude_KonteksBatalMenghentikanPanggilan(t *testing.T) {
 	s := newServerUji(t, func(int) (int, string) { return 200, jawabanAPI(t, "end_turn", teks(jawabanNarasi)) })
-	c, jeda := klienUji(s)
 	ctx, batal := context.WithCancel(t.Context())
 	batal()
 
-	_, err := c.Susun(ctx, konteksUji())
+	_, err := klienUji(s).Susun(ctx, konteksUji())
 
 	require.Error(t, err)
-	assert.Empty(t, *jeda, "konteks yang sudah batal tidak diulang")
+	assert.ErrorIs(t, err, context.Canceled)
 	assert.Zero(t, s.jumlah())
 }
 
@@ -320,7 +297,7 @@ func TestClaudeDariEnv(t *testing.T) {
 		t.Setenv(EnvAPIKey, "   ")
 		assert.Nil(t, ClaudeDariEnv())
 	})
-	t.Run("bawaan model dan alamat", func(t *testing.T) {
+	t.Run("bawaan model", func(t *testing.T) {
 		t.Setenv(EnvAPIKey, kunciUji)
 		t.Setenv(EnvModel, "")
 		t.Setenv(EnvBaseURL, "")
@@ -328,20 +305,23 @@ func TestClaudeDariEnv(t *testing.T) {
 		c, ok := ClaudeDariEnv().(*Claude)
 
 		require.True(t, ok)
-		assert.Equal(t, "claude-sonnet-5-5", c.model)
-		assert.Equal(t, "https://api.anthropic.com", c.baseURL)
-		assert.Equal(t, "claude:claude-sonnet-5-5", c.Nama())
+		assert.Equal(t, "claude-opus-5-5", c.model)
+		assert.Equal(t, "claude:claude-opus-5-5", c.Nama())
 	})
-	t.Run("model dan alamat dari env", func(t *testing.T) {
-		t.Setenv(EnvAPIKey, kunciUji)
+	t.Run("model, kunci, dan alamat dari env", func(t *testing.T) {
+		s := newServerUji(t, func(int) (int, string) { return 200, jawabanAPI(t, "end_turn", teks(jawabanNarasi)) })
+		t.Setenv(EnvAPIKey, " "+kunciUji+" ")
 		t.Setenv(EnvModel, " claude-lain ")
-		t.Setenv(EnvBaseURL, "http://gateway.internal/")
+		t.Setenv(EnvBaseURL, s.URL)
 
 		c, ok := ClaudeDariEnv().(*Claude)
-
 		require.True(t, ok)
+		_, err := c.Susun(t.Context(), konteksUji())
+
+		require.NoError(t, err)
 		assert.Equal(t, "claude-lain", c.model)
-		assert.Equal(t, "http://gateway.internal", c.baseURL)
+		require.Equal(t, 1, s.jumlah(), "permintaan dikirim ke alamat dari env")
+		assert.Equal(t, "Bearer "+kunciUji, s.header[0].Get("authorization"))
 	})
 }
 

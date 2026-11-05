@@ -2446,7 +2446,7 @@ paths:
 
         Server lebih dulu merangkum data nyata (inflasi, harga, peringatan dini, proyeksi) menjadi daftar
         fakta. Narasi ditulis oleh LLM Claude bila `ANTHROPIC_API_KEY` dikonfigurasi (model dari
-        `LLM_MODEL`, bawaan `claude-sonnet-5-5`), selain itu oleh templat deterministik. Anti-halusinasi:
+        `LLM_MODEL`, bawaan `claude-opus-5-5`), selain itu oleh templat deterministik. Anti-halusinasi:
         narasi menyebut angka hanya lewat placeholder `{{ID}}` yang diganti server dengan nilai fakta;
         narasi yang menulis angka sendiri atau memakai placeholder tak dikenal ditolak dan digantikan
         templat (alasannya dicatat). Hasil LLM berlabel "Draf AI — wajib ditelaah manusia".

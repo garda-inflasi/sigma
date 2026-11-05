@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Kbd } from "@/components/command/command-palette";
 import { PulseRing } from "@/components/motion/pulse-ring";
 import { MODE_MOCK } from "@/lib/api/client";
+import { keluarDariSesi } from "@/lib/auth/logout-client";
 import { useSession } from "@/lib/auth/session-context";
 import { siklusMeta, toneClass } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
@@ -121,8 +122,8 @@ export function Topbar() {
                 </DropdownMenuItem>
               </>
             )}
-            <DropdownMenuItem asChild className="rounded-md">
-              <Link href="/masuk"><LogOut className="size-4" /> Keluar</Link>
+            <DropdownMenuItem onSelect={() => void keluarDariSesi()} className="rounded-md">
+              <LogOut className="size-4" /> Keluar
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -81,6 +81,10 @@ func (rl *RateLimiter) allow(ip string) (bool, time.Duration) {
 
 	if len(active) >= rl.limit {
 		rl.requests[ip] = active
+		if rl.limit <= 0 {
+			// Batas nol menolak semuanya; tidak ada entri penahan untuk dihitung sisa waktunya.
+			return false, rl.window
+		}
 		penahan := active[len(active)-rl.limit]
 		return false, penahan.Add(rl.window).Sub(now)
 	}

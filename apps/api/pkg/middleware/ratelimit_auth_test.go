@@ -157,3 +157,12 @@ func TestRateLimiter_AllowTetapBerperilakuSama(t *testing.T) {
 	assert.True(t, ok)
 	assert.Zero(t, tunggu)
 }
+
+func TestAuthRateLimit_BatasNolMenolakSemuanyaTanpaPanik(t *testing.T) {
+	r := routerBatasAuth(t, 0, time.Minute, nil)
+
+	w := kirimDari(r, "203.0.113.5:1", "")
+
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+	assert.Equal(t, "60", w.Header().Get("Retry-After"))
+}

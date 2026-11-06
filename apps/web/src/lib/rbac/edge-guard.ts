@@ -33,6 +33,8 @@ export const PUBLIC_ROUTES = [
   "/masuk",
   "/lupa-password",
   "/reset-password",
+  // Aktivasi akun dari tautan undangan (kata sandi pertama): token 256-bit sekali pakai, dibatasi laju.
+  "/aktivasi",
   "/api/auth/login",
   "/api/auth/mfa/validate",
   "/api/auth/sso",
@@ -42,6 +44,7 @@ export const PUBLIC_ROUTES = [
   "/api/auth/logout",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
+  "/api/auth/aktivasi",
   "/healthz",
   "/akses-ditolak",
   "/offline",

@@ -145,6 +145,19 @@ export function tautanReset(isi: string): { path: string; token: string } {
   };
 }
 
+/** Mengambil token dari tautan `/aktivasi?token=…` di isi email undangan; path relatif agar lepas dari APP_PUBLIC_URL. */
+export function tautanAktivasi(isi: string): { path: string; token: string } {
+  const cocok = isi.match(/\/aktivasi\?token=([A-Za-z0-9%._~-]+)/);
+  if (!cocok)
+    throw new Error(
+      `Tautan /aktivasi?token=… tidak ada di email: ${isi.slice(0, 300)}`,
+    );
+  return {
+    path: `/aktivasi?token=${cocok[1]}`,
+    token: decodeURIComponent(cocok[1]),
+  };
+}
+
 /** Menghapus semua email untuk `penerima` (upaya terbaik; kegagalan diabaikan). */
 export async function hapusEmail(penerima: string): Promise<void> {
   await fetch(
@@ -158,12 +171,13 @@ export async function hapusEmail(penerima: string): Promise<void> {
 // Route BFF memakai satu jendela geser 60 detik per IP (lib/bff/rate-limit.ts, kunci `bff:<ip>`):
 //   - POST /api/auth/login dan /api/auth/mfa/validate diizinkan bila isi jendela < 5,
 //   - POST /api/auth/forgot-password diizinkan bila isi jendela < 3 (jendela yang sama, tercampur
-//     dengan percobaan login).
+//     dengan percobaan login),
+//   - POST /api/auth/aktivasi (kata sandi pertama dari tautan undangan) memakai batas login (< 5).
 // Setiap permintaan yang lolos menambah satu entri. Semua tes dari mesin ini datang dari IP yang sama,
 // jadi `pakai` mencatat tiap percobaan dan menunggu deterministik sampai jendela cukup longgar.
 // Catatan disimpan di berkas sementara agar dua kali jalan berurutan (< 1 menit) saling mengetahui.
 
-export type JenisBff = "login" | "mfa" | "lupa";
+export type JenisBff = "login" | "mfa" | "lupa" | "aktivasi";
 
 const BERKAS_ANGGARAN = join(tmpdir(), "garda-e2e-bff-laju.json");
 const JENDELA_MS = 60_000;

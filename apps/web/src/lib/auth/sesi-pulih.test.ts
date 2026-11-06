@@ -66,6 +66,7 @@ describe("perluPulih", () => {
       "/api/auth/mfa/validate",
       "/api/auth/forgot-password",
       "/api/auth/reset-password",
+      "/api/auth/aktivasi",
     ])
       assert.equal(perluPulih(path, 401, "Unauthorized"), false, path);
   });
@@ -413,6 +414,7 @@ describe("tujuanSetelahBerakhir", () => {
       "/masuk",
       "/lupa-password",
       "/reset-password",
+      "/aktivasi",
       "/masuk/mfa",
     ])
       assert.equal(tujuanSetelahBerakhir(p), null, p);

@@ -7,6 +7,9 @@ import "server-only";
 
 import type { BulkColdStorageWire, ColdStorageWire, DetailFasilitasWire } from "@/lib/api/cold-storage";
 import { toQueryString, type ColdStorageBulkAction, type ColdStorageParams } from "@/lib/api/cold-storage-query";
+import type { UndanganWire } from "@/lib/api/pengguna-undangan";
+import type { ImporWire } from "@/lib/pengguna/impor";
+import type { UndangPenggunaInput } from "@/lib/pengguna/undang";
 
 const API_BASE = process.env.GO_API_BASE_URL || "http://localhost:8080/v1";
 
@@ -395,6 +398,13 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  /** Aktivasi akun dari tautan undangan: menetapkan kata sandi pertama (publik, tanpa sesi). */
+  aktivasi: (data: { token: string; password: string }) =>
+    apiFetch<void>("/auth/aktivasi", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
 
 // ── User Management API ───────────────────────────────────────────────
@@ -497,6 +507,50 @@ export const userApi = {
       method: "GET",
       headers: bearer(accessToken),
     }),
+
+  /** Undang pengguna lewat email: akun MENUNGGU tanpa kata sandi (02-D). */
+  undang: (accessToken: string, data: UndangPenggunaInput) =>
+    apiFetch<UndanganWire>("/users/undang", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
+    }),
+
+  /** Kirim ulang undangan akun yang masih menunggu aktivasi. */
+  undangUlang: (accessToken: string, id: string) =>
+    apiFetch<UndanganWire>(`/users/${encodeURIComponent(id)}/undang-ulang`, {
+      method: "POST",
+      headers: bearer(accessToken),
+    }),
+
+  /** Impor CSV pengguna: dryRun true hanya memeriksa. */
+  impor: (accessToken: string, csv: string, dryRun: boolean) =>
+    apiFetch<ImporWire>("/users/impor", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify({ csv, dry_run: dryRun }),
+    }),
+
+  /**
+   * Ekspor CSV pengguna. Mengembalikan respons mentah (bukan JSON) supaya route BFF meneruskan berkas apa
+   * adanya; galat dilempar sebagai BffApiError seperti pemanggilan lain.
+   */
+  ekspor: async (accessToken: string, query: string): Promise<Response> => {
+    const res = await fetch(`${API_BASE}/users/ekspor${query}`, {
+      method: "GET",
+      headers: { Accept: "text/csv", ...(await headerKlien()), ...bearer(accessToken) },
+    });
+    if (!res.ok) {
+      let errorBody: ApiErrorResponse | undefined;
+      try {
+        errorBody = await res.json();
+      } catch {
+        // badan bukan JSON
+      }
+      throw new BffApiError(res.status, errorBody?.message || `Backend error (${res.status})`, errorBody?.code);
+    }
+    return res;
+  },
 };
 
 // ── Cold Storage API ──────────────────────────────────────────────────

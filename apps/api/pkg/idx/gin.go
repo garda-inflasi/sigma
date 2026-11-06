@@ -52,3 +52,45 @@ func ParamUUIDAtauKode(c *gin.Context, nama string, maksKode int, pesanTidakAda 
 	}
 	return RujukanUUID{Kode: teks}, true
 }
+
+// Kondisi mengembalikan potongan WHERE dan argumennya untuk mencari baris dengan rujukan ini, mis.
+// db.Where(r.Kondisi("id", "kode")). Nama kolom boleh diberi awalan tabel ("i.id", "i.kode").
+func (r RujukanUUID) Kondisi(kolomID, kolomKode string) (string, any) {
+	if r.ID != "" {
+		return kolomID + " = ?", r.ID
+	}
+	return kolomKode + " = ?", r.Kode
+}
+
+// RujukanID adalah isi parameter rute untuk entitas BIGINT yang punya kode tampilan atau ID lama di kolom kode
+// (mis. ews_alert EWS-0901, tugas_lapangan TGS-…). Tautan lama yang memakai kode tetap berlaku sebagai alias.
+type RujukanID struct {
+	// ID terisi bila parameter berupa bilangan bulat positif.
+	ID ID
+	// Kode terisi bila parameter bukan ID; dicari pada kolom kode.
+	Kode string
+}
+
+// ParamIDAtauKode membaca parameter rute yang boleh berupa ID BIGINT atau kode tampilan. Teks yang lolos Parse
+// selalu dibaca sebagai ID, jadi kode tidak boleh berupa angka murni. Teks kosong atau lebih dari maksKode
+// karakter dijawab 404 dan mengembalikan false.
+func ParamIDAtauKode(c *gin.Context, nama string, maksKode int, pesanTidakAda string) (RujukanID, bool) {
+	teks := c.Param(nama)
+	if id, err := Parse(teks); err == nil {
+		return RujukanID{ID: id}, true
+	}
+	if teks == "" || len(teks) > maksKode {
+		response.NotFound(c, pesanTidakAda)
+		return RujukanID{}, false
+	}
+	return RujukanID{Kode: teks}, true
+}
+
+// Kondisi mengembalikan potongan WHERE dan argumennya untuk mencari baris dengan rujukan ini, mis.
+// db.Where(r.Kondisi("id", "kode")).
+func (r RujukanID) Kondisi(kolomID, kolomKode string) (string, any) {
+	if r.ID != 0 {
+		return kolomID + " = ?", r.ID
+	}
+	return kolomKode + " = ?", r.Kode
+}

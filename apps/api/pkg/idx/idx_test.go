@@ -165,5 +165,41 @@ func TestParamHelpers(t *testing.T) {
 		assert.Equal(t, http.StatusOK, jalankan("/x/"+u, h).Code)
 		assert.Equal(t, RujukanUUID{ID: u}, dapat)
 		assert.Equal(t, http.StatusNotFound, jalankan("/x/kode-yang-terlalu-panjang-sekali", h).Code)
+
+		w, a := RujukanUUID{ID: u}.Kondisi("i.id", "i.kode")
+		assert.Equal(t, "i.id = ?", w)
+		assert.Equal(t, u, a)
+		w, a = RujukanUUID{Kode: "INT-1000"}.Kondisi("id", "kode")
+		assert.Equal(t, "kode = ?", w)
+		assert.Equal(t, "INT-1000", a)
+	})
+
+	t.Run("ParamIDAtauKode", func(t *testing.T) {
+		var dapat RujukanID
+		h := func(c *gin.Context) {
+			r, ok := ParamIDAtauKode(c, "id", 20, "Alert tidak ditemukan")
+			if !ok {
+				return
+			}
+			dapat = r
+			c.Status(http.StatusOK)
+		}
+		assert.Equal(t, http.StatusOK, jalankan("/x/901", h).Code)
+		assert.Equal(t, RujukanID{ID: 901}, dapat)
+		assert.Equal(t, http.StatusOK, jalankan("/x/EWS-0901", h).Code)
+		assert.Equal(t, RujukanID{Kode: "EWS-0901"}, dapat)
+		// "0" dan "007" bukan ID sah, jadi dibaca sebagai kode (dan tidak akan cocok dengan baris mana pun).
+		assert.Equal(t, http.StatusOK, jalankan("/x/007", h).Code)
+		assert.Equal(t, RujukanID{Kode: "007"}, dapat)
+		w := jalankan("/x/kode-yang-terlalu-panjang-sekali", h)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Contains(t, w.Body.String(), "Alert tidak ditemukan")
+
+		k, a := RujukanID{ID: 901}.Kondisi("id", "kode")
+		assert.Equal(t, "id = ?", k)
+		assert.Equal(t, ID(901), a)
+		k, a = RujukanID{Kode: "EWS-0901"}.Kondisi("a.id", "a.kode")
+		assert.Equal(t, "a.kode = ?", k)
+		assert.Equal(t, "EWS-0901", a)
 	})
 }

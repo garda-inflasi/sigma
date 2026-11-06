@@ -31,8 +31,9 @@ Kolom ini punya tiga fungsi:
 
 1. **Kode tampilan** untuk manusia, misalnya `INT-1000`, `PB-2026-10`, `EWS-0901`, `CS-01`, `SRC-BAPANAS`, `TGS-…`.
    Baris baru tetap diberi kode bila modulnya memang menampilkan kode.
-2. **Alias tautan lama**: rute entitas UUID yang punya kode menerima UUID maupun kode (`idx.ParamUUIDAtauKode`),
-   jadi URL lama seperti `/policy-brief/PB-2026-10` tetap berlaku.
+2. **Alias tautan lama**: rute entitas yang punya kode menerima ID maupun kode (`idx.ParamUUIDAtauKode` untuk
+   UUID, `idx.ParamIDAtauKode` untuk BIGINT), jadi URL lama seperti `/policy-brief/PB-2026-10` atau `/ews/EWS-0901`
+   tetap berlaku. Kode tidak boleh berupa angka murni, karena angka selalu dibaca sebagai ID BIGINT.
 3. **Kunci idempoten seeder** (`ON CONFLICT (kode)`) dan pemulihan ID lama saat migrasi di-rollback.
 
 Baris yang dibuat aplikasi tanpa makna kode boleh berisi `kode NULL`, karena indeks unik mengizinkan banyak NULL.
@@ -75,7 +76,7 @@ Baris yang dibuat aplikasi tanpa makna kode boleh berisi `kode NULL`, karena ind
 
 - **Kolom UUID nullable** dipetakan ke `*string`, dan "tidak ada pelaku" ditulis sebagai `NULL`, bukan string kosong. PostgreSQL menolak `''` untuk kolom `uuid`.
 - **Repositori** membaca, mengubah, dan menghapus berdasarkan PK (`FindByID`, `Update`, `Delete`). Daftar yang menampilkan relasi memakai `JOIN` atau `Preload` yang terindeks, bukan kueri per baris (N+1).
-- **Handler** membaca `:id` lewat `idx.ParamID`, `idx.ParamUUID`, atau `idx.ParamUUIDAtauKode`. ID yang salah bentuk dijawab `404`, sama dengan ID yang tidak ada, sehingga teks bebas tidak pernah sampai ke kolom `uuid`. Pelanggaran FK saat menghapus (`23503`) dijawab `409`.
+- **Handler** membaca `:id` lewat `idx.ParamID`, `idx.ParamUUID`, `idx.ParamIDAtauKode`, atau `idx.ParamUUIDAtauKode`. Repositori mencari baris rujukan alias dengan `db.Where(rujukan.Kondisi("id", "kode"))`. ID yang salah bentuk dijawab `404`, sama dengan ID yang tidak ada, sehingga teks bebas tidak pernah sampai ke kolom `uuid`. Pelanggaran FK saat menghapus (`23503`) dijawab `409`.
 - **Seed `GENERATED ALWAYS`**: kolom identity tidak boleh diisi. Tes dan seeder tidak menulis `id` BIGINT sendiri, kecuali memakai `OVERRIDING SYSTEM VALUE` di fixture SQL yang memang membutuhkannya.
 
 ## 5. API, BFF, dan web
@@ -114,8 +115,10 @@ Baris yang dibuat aplikasi tanpa makna kode boleh berisi `kode NULL`, karena ind
 
 ## Matriks tabel
 
-Kolom "FK utama" dan "Indeks utama" diisi oleh migrasi konversi masing-masing modul (`000110`–`000115`). Daftar
-lengkap FK dan indeks selalu bisa diturunkan dari katalog (`\d+ <tabel>` atau kueri di `kunci_test.go`).
+Matriks dikelompokkan per migrasi konversi (`000110`–`000115`). Daftar lengkap FK dan indeks selalu bisa
+diturunkan dari katalog (`\d+ <tabel>` atau kueri di `kunci_test.go`).
+
+### 000110: pengguna dan keamanan akun
 
 | Tabel                                       | PK  | Alasan | FK utama | Indeks utama |
 | ------------------------------------------- | --- | ------ | -------- | ------------ |
@@ -133,4 +136,33 @@ lengkap FK dan indeks selalu bisa diturunkan dari katalog (`\d+ <tabel>` atau ku
 | `sso_login_state` | HASH `state_hash` | Keadaan satu alur SSO (≤ 10 menit), kuncinya hash `state`. | tanpa FK | PK, `idx_sso_login_state_expires` |
 | `preferensi_notifikasi` | KOMPOSIT `(pengguna_id, kanal)` | Satu baris per pengguna dan kanal. | `pengguna_id` → `pengguna` CASCADE | PK (awalan `pengguna_id`) |
 | `langganan_push` | BIGINT | Satu langganan push per endpoint, milik akun. | `pengguna_id` → `pengguna` CASCADE | `idx_langganan_push_pengguna`, `UNIQUE (endpoint)` |
-| _diisi bertahap oleh migrasi 000111–000115_ |     |        |          |              |
+
+### 000111: harga, lapangan, dan master wilayah
+
+| Tabel | PK | Alasan | FK utama | Indeks utama |
+| ----- | -- | ------ | -------- | ------------ |
+| _diisi oleh migrasi 000111_ | | | | |
+
+### 000112: EWS dan intervensi
+
+| Tabel | PK | Alasan | FK utama | Indeks utama |
+| ----- | -- | ------ | -------- | ------------ |
+| _diisi oleh migrasi 000112_ | | | | |
+
+### 000113: cold storage dan spasial
+
+| Tabel | PK | Alasan | FK utama | Indeks utama |
+| ----- | -- | ------ | -------- | ------------ |
+| _diisi oleh migrasi 000113_ | | | | |
+
+### 000114: prediksi dan policy brief
+
+| Tabel | PK | Alasan | FK utama | Indeks utama |
+| ----- | -- | ------ | -------- | ------------ |
+| _diisi oleh migrasi 000114_ | | | | |
+
+### 000115: sumber data, ingestion, eksekutif, siklus, KPI, dashboard, dan audit
+
+| Tabel | PK | Alasan | FK utama | Indeks utama |
+| ----- | -- | ------ | -------- | ------------ |
+| _diisi oleh migrasi 000115_ | | | | |

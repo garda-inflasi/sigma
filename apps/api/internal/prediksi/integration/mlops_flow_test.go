@@ -71,7 +71,7 @@ func TestMLOps_LatihMenulisKandidatDanProyeksiBersumberModel(t *testing.T) {
 	})
 
 	t.Run("tercatat di audit", func(t *testing.T) {
-		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'LATIH_MODEL' AND entitas_id = ? AND aktor_id = 'manajer_data'`, m.ID))
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'LATIH_MODEL' AND entitas_id = ? AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID))
 	})
 
 	t.Run("kandidat belum dipakai: proyeksi yang tampil tetap demo", func(t *testing.T) {

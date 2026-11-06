@@ -128,7 +128,7 @@ func TestUndangan_AlurPenuh_UndangAktivasiMasuk(t *testing.T) {
 		assert.Equal(t, hashToken(token), u.TokenHash)
 		assert.Regexp(t, `^[0-9a-f]{64}$`, u.TokenHash)
 		assert.Equal(t, "budi.santoso@gardainflasi.id", u.Email)
-		assert.Equal(t, "test-user-001", u.DiundangOleh)
+		assert.Equal(t, uid("test-user-001"), u.DiundangOleh)
 		assert.Nil(t, u.UsedAt)
 		assert.Zero(t, s.hitung(t, "SELECT count(*) FROM undangan_pengguna WHERE token_hash = ? OR email = ?", token, token), "token mentah tidak tersimpan")
 	})
@@ -163,7 +163,7 @@ func TestUndangan_AlurPenuh_UndangAktivasiMasuk(t *testing.T) {
 		assert.EqualValues(t, 1, s.jumlahAudit(t, "AKTIVASI_AKUN", id))
 		var aktor string
 		require.NoError(t, s.db.Raw("SELECT aktor_id FROM audit_log WHERE aksi = 'UNDANG_PENGGUNA' AND entitas_id = ?", id).Scan(&aktor).Error)
-		assert.Equal(t, "test-user-001", aktor)
+		assert.Equal(t, uid("test-user-001"), aktor)
 		require.NoError(t, s.db.Raw("SELECT aktor_id FROM audit_log WHERE aksi = 'AKTIVASI_AKUN' AND entitas_id = ?", id).Scan(&aktor).Error)
 		assert.Equal(t, id, aktor, "aktor aktivasi adalah pemilik akun")
 		assert.Zero(t, s.hitung(t, "SELECT count(*) FROM audit_log WHERE metadata::text LIKE ? OR sesudah::text LIKE ? OR sebelum::text LIKE ?", "%"+token+"%", "%"+token+"%", "%"+token+"%"), "token tidak masuk audit")
@@ -327,7 +327,7 @@ func TestUndangan_KirimUlangTidakAdaDan409UntukBukanMenunggu(t *testing.T) {
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 
 	assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPost, "/v1/users/tidak-ada/undang-ulang", nil, admin.access).Code)
-	for _, id := range []string{userBiasa, "test-user-002"} { // aktif dan nonaktif
+	for _, id := range []string{userBiasa, uid("test-user-002")} { // aktif dan nonaktif
 		w := s.panggil(t, http.MethodPost, "/v1/users/"+id+"/undang-ulang", nil, admin.access)
 		assert.Equal(t, http.StatusConflict, w.Code, id)
 	}
@@ -496,15 +496,15 @@ func TestUndangan_AkunMenungguDiJalurLain(t *testing.T) {
 func TestUndangan_AdminYangMengundangDihapusUndanganTetapAda(t *testing.T) {
 	s, smtp := setupSuiteSMTP(t)
 	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga, status)
-		VALUES ('admin-sementara', 'Admin Sementara', 'adm.sementara@gardainflasi.id', 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', 'AKTIF')`).Error)
-	require.NoError(t, s.db.Exec("UPDATE pengguna SET password_hash = (SELECT password_hash FROM pengguna WHERE id = 'test-user-001') WHERE id = 'admin-sementara'").Error)
+		VALUES (garda_uuid_stabil('pengguna', 'admin-sementara'), 'Admin Sementara', 'adm.sementara@gardainflasi.id', 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', 'AKTIF')`).Error)
+	require.NoError(t, s.db.Exec("UPDATE pengguna SET password_hash = (SELECT password_hash FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')) WHERE id = garda_uuid_stabil('pengguna', 'admin-sementara')").Error)
 	sementara := s.mulaiSesi(t, "adm.sementara@gardainflasi.id", uaMac)
 	id, _ := s.dataUndangan(t, s.undang(t, sementara.access, isianSah("yatim@gardainflasi.id")))
 	token := smtp.Tunggu(t, "yatim@gardainflasi.id", 1)[0].Token()
 
-	require.NoError(t, s.db.Exec("DELETE FROM refresh_tokens WHERE user_id = 'admin-sementara'").Error)
-	require.NoError(t, s.db.Exec("DELETE FROM login_attempts WHERE user_id = 'admin-sementara'").Error)
-	require.NoError(t, s.db.Exec("DELETE FROM pengguna WHERE id = 'admin-sementara'").Error)
+	require.NoError(t, s.db.Exec("DELETE FROM refresh_tokens WHERE user_id = garda_uuid_stabil('pengguna', 'admin-sementara')").Error)
+	require.NoError(t, s.db.Exec("DELETE FROM login_attempts WHERE user_id = garda_uuid_stabil('pengguna', 'admin-sementara')").Error)
+	require.NoError(t, s.db.Exec("DELETE FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'admin-sementara')").Error)
 
 	assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM undangan_pengguna WHERE user_id = ? AND diundang_oleh IS NULL", id), "FK SET NULL: undangan tidak menghalangi penghapusan admin")
 	assert.Equal(t, http.StatusOK, s.aktivasi(t, token, sandiAktivasi).Code)

@@ -287,7 +287,7 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 		assert.Equal(t, 12, got.CooldownJam)
 		assert.Equal(t, []string{"DASHBOARD", "EMAIL"}, got.Kanal)
 		require.NotNil(t, got.DiubahOlehID)
-		assert.Equal(t, "manajer_data", *got.DiubahOlehID)
+		assert.Equal(t, uid("manajer_data"), *got.DiubahOlehID)
 
 		var snapshot []struct {
 			Versi        int
@@ -368,7 +368,7 @@ func TestBulk_RecordsHistoryAndTimestamps(t *testing.T) {
 	assert.NotNil(t, stamp.DieskalasiPada)
 	assert.NotNil(t, stamp.SelesaiPada)
 	require.NotNil(t, stamp.DieskalasiOlehID)
-	assert.Equal(t, "manajer_risiko", *stamp.DieskalasiOlehID)
+	assert.Equal(t, uid("manajer_risiko"), *stamp.DieskalasiOlehID)
 
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/ews/TIDAK-ADA/riwayat", emailLihat, nil).Code)
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/ews/EWS-1000/riwayat", emailTanpaIzin, nil).Code)

@@ -54,7 +54,7 @@ func TestAdmin_BuatPenggunaKataSandiLemahDijawab400(t *testing.T) {
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	badan := func(password string) map[string]any {
 		return map[string]any{
-			"id": "u-baru-1", "nama": "Baru", "email": "baru1@gardainflasi.id", "password": password,
+			"id": uid("u-baru-1"), "nama": "Baru", "email": "baru1@gardainflasi.id", "password": password,
 			"peran": "OPS_MAHASISWA", "lapis": "OPERASIONAL", "lembaga": "BPPSDMP",
 		}
 	}
@@ -63,7 +63,7 @@ func TestAdmin_BuatPenggunaKataSandiLemahDijawab400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 
 	var n int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM pengguna WHERE id = 'u-baru-1'").Scan(&n).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'u-baru-1')").Scan(&n).Error)
 	assert.Zero(t, n, "pengguna dengan kata sandi lemah tidak dibuat")
 
 	w = s.panggil(t, http.MethodPost, "/v1/users", badan("Kuat#12345"), admin.access)

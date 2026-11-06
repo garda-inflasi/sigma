@@ -62,7 +62,7 @@ func routerAdmin(t *testing.T, repo domain.Repository) *gin.Engine {
 		logger.NewDefault(), email.New(email.Config{}), &audittest.Recorder{})
 	h := New(uc)
 	r := gin.New()
-	r.Use(func(c *gin.Context) { c.Set("user_id", "admin-1") })
+	r.Use(func(c *gin.Context) { c.Set("user_id", uid("admin-1")) })
 	r.GET("/users", h.ListUsers)
 	r.POST("/users/:id/reset-mfa", h.ResetMFAPengguna)
 	r.GET("/users/:id/riwayat-peran", h.RiwayatPeranPengguna)
@@ -115,7 +115,7 @@ func TestListUsers_PesanGalatMenyebutParameterYangSalah(t *testing.T) {
 
 func TestListUsers_MeneruskanQueryTernormalDanMenjawabHalamanYangDipakai(t *testing.T) {
 	repo := &repoAdmin{daftar: func(domain.DaftarPenggunaQuery) ([]domain.Pengguna, int64, error) {
-		return []domain.Pengguna{{ID: "u-1", Nama: "Ani", Email: "ani@garda.test", Peran: "OPS_MAHASISWA", Status: "AKTIF"}}, 41, nil
+		return []domain.Pengguna{{ID: uid("u-1"), Nama: "Ani", Email: "ani@garda.test", Peran: "OPS_MAHASISWA", Status: "AKTIF"}}, 41, nil
 	}}
 	r := routerAdmin(t, repo)
 
@@ -180,15 +180,15 @@ func TestResetMFA_Handler(t *testing.T) {
 		reset      func(string) (*domain.HasilResetMFA, error)
 		wantStatus int
 	}{
-		{"berhasil", "u-1", func(string) (*domain.HasilResetMFA, error) {
+		{"berhasil", uid("u-1"), func(string) (*domain.HasilResetMFA, error) {
 			return &domain.HasilResetMFA{MFAAktifSebelumnya: true, SesiDicabut: []string{"a", "b"}}, nil
 		}, nethttp.StatusOK},
-		{"tanpa MFA tetap 200", "u-1", func(string) (*domain.HasilResetMFA, error) { return &domain.HasilResetMFA{}, nil }, nethttp.StatusOK},
-		{"tidak ada", "hilang", func(string) (*domain.HasilResetMFA, error) {
+		{"tanpa MFA tetap 200", uid("u-1"), func(string) (*domain.HasilResetMFA, error) { return &domain.HasilResetMFA{}, nil }, nethttp.StatusOK},
+		{"tidak ada", uid("hilang"), func(string) (*domain.HasilResetMFA, error) {
 			return nil, fmt.Errorf("reset mfa: %w", gorm.ErrRecordNotFound)
 		}, nethttp.StatusNotFound},
-		{"akun sendiri", "admin-1", func(string) (*domain.HasilResetMFA, error) { panic("tidak boleh dipanggil") }, nethttp.StatusBadRequest},
-		{"galat basis data", "u-1", func(string) (*domain.HasilResetMFA, error) { return nil, errors.New("pq: rahasia-internal") }, nethttp.StatusInternalServerError},
+		{"akun sendiri", uid("admin-1"), func(string) (*domain.HasilResetMFA, error) { panic("tidak boleh dipanggil") }, nethttp.StatusBadRequest},
+		{"galat basis data", uid("u-1"), func(string) (*domain.HasilResetMFA, error) { return nil, errors.New("pq: rahasia-internal") }, nethttp.StatusInternalServerError},
 	}
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
@@ -211,23 +211,23 @@ func TestResetMFA_Handler(t *testing.T) {
 func TestResetMFA_PesanAkunSendiriMenunjukkanJalurPemilik(t *testing.T) {
 	r := routerAdmin(t, &repoAdmin{})
 
-	w, body := panggil(t, r, nethttp.MethodPost, "/users/admin-1/reset-mfa")
+	w, body := panggil(t, r, nethttp.MethodPost, "/users/"+uid("admin-1")+"/reset-mfa")
 
 	require.Equal(t, nethttp.StatusBadRequest, w.Code)
 	assert.Contains(t, body["message"], "akun sendiri")
 }
 
 func TestRiwayatPeran_Handler(t *testing.T) {
-	dari, id, nama := "OPS_MAHASISWA", "admin-1", "Admin Satu"
+	dari, id, nama := "OPS_MAHASISWA", uid("admin-1"), "Admin Satu"
 	repo := &repoAdmin{
 		pengguna: func(id string) (*domain.Pengguna, error) {
-			if id == "hilang" {
+			if id == uid("hilang") {
 				return nil, gorm.ErrRecordNotFound
 			}
 			return &domain.Pengguna{ID: id}, nil
 		},
-		riwayat: func(uid string, limit int) ([]domain.PerubahanPeran, error) {
-			if uid == "rusak" {
+		riwayat: func(penggunaID string, limit int) ([]domain.PerubahanPeran, error) {
+			if penggunaID == uid("rusak") {
 				return nil, errors.New("pq: rahasia-internal")
 			}
 			return []domain.PerubahanPeran{
@@ -239,7 +239,7 @@ func TestRiwayatPeran_Handler(t *testing.T) {
 	r := routerAdmin(t, repo)
 
 	t.Run("berhasil", func(t *testing.T) {
-		w, body := panggil(t, r, nethttp.MethodGet, "/users/u-1/riwayat-peran")
+		w, body := panggil(t, r, nethttp.MethodGet, "/users/"+uid("u-1")+"/riwayat-peran")
 
 		require.Equal(t, nethttp.StatusOK, w.Code, w.Body.String())
 		data := body["data"].(map[string]any)
@@ -251,23 +251,23 @@ func TestRiwayatPeran_Handler(t *testing.T) {
 		assert.Equal(t, "ASSIGN_ROLE", pertama["aksi"])
 		assert.Equal(t, "OPS_MAHASISWA", pertama["dari"])
 		assert.Equal(t, "MANAJER_DATA", pertama["ke"])
-		assert.Equal(t, map[string]any{"id": "admin-1", "nama": "Admin Satu"}, pertama["aktor"])
+		assert.Equal(t, map[string]any{"id": uid("admin-1"), "nama": "Admin Satu"}, pertama["aktor"])
 		kedua := items[1].(map[string]any)
 		assert.Nil(t, kedua["dari"])
 		assert.Nil(t, kedua["aktor"])
 	})
 	t.Run("pengguna tidak ada", func(t *testing.T) {
-		w, _ := panggil(t, r, nethttp.MethodGet, "/users/hilang/riwayat-peran")
+		w, _ := panggil(t, r, nethttp.MethodGet, "/users/"+uid("hilang")+"/riwayat-peran")
 		assert.Equal(t, nethttp.StatusNotFound, w.Code)
 	})
 	t.Run("galat basis data", func(t *testing.T) {
-		w, _ := panggil(t, r, nethttp.MethodGet, "/users/rusak/riwayat-peran")
+		w, _ := panggil(t, r, nethttp.MethodGet, "/users/"+uid("rusak")+"/riwayat-peran")
 		assert.Equal(t, nethttp.StatusInternalServerError, w.Code)
 		assert.NotContains(t, w.Body.String(), "rahasia-internal")
 	})
 	t.Run("limit di luar rentang", func(t *testing.T) {
 		for _, q := range []string{"limit=1.5", "limit=201", "limit=-1", "limit=abc"} {
-			w, _ := panggil(t, r, nethttp.MethodGet, "/users/u-1/riwayat-peran?"+q)
+			w, _ := panggil(t, r, nethttp.MethodGet, "/users/"+uid("u-1")+"/riwayat-peran?"+q)
 			assert.Equal(t, nethttp.StatusBadRequest, w.Code, q)
 		}
 	})

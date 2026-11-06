@@ -12,6 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPtrAtauNil(t *testing.T) {
+	assert.Nil(t, PtrAtauNil(""), "pelaku sistem ditulis NULL")
+	id := uuid.NewString()
+	got := PtrAtauNil(id)
+	require.NotNil(t, got)
+	assert.Equal(t, id, *got)
+}
+
 func TestParse(t *testing.T) {
 	sah := map[string]ID{"1": 1, "42": 42, "9223372036854775807": 9223372036854775807}
 	for teks, mau := range sah {

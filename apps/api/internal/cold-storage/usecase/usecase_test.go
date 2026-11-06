@@ -334,7 +334,7 @@ func TestBulkAction_RecordsAudit(t *testing.T) {
 		Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.9}, nil)
 
 	_, err := uc.BulkAction(context.Background(), BulkInput{
-		Action: "rencanakan_distribusi", IDs: []string{"S1", "S2"}, ActorID: "manajer_program",
+		Action: "rencanakan_distribusi", IDs: []string{"S1", "S2"}, ActorID: uid("manajer_program"),
 	})
 
 	require.NoError(t, err)
@@ -345,7 +345,7 @@ func TestBulkAction_RecordsAudit(t *testing.T) {
 	assert.Equal(t, "stok_cold_storage", logged.Entitas)
 	assert.Equal(t, "2 lot", logged.EntitasID)
 	assert.Equal(t, audit.HasilBerhasil, logged.Hasil)
-	assert.Equal(t, "manajer_program", logged.AktorID)
+	assert.Equal(t, uid("manajer_program"), logged.AktorID)
 	assert.Equal(t, map[string]any{"ids": []string{"S1", "S2"}, "gagal": 0, "volume_ton": 65.9}, logged.Metadata)
 }
 

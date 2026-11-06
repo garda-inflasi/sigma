@@ -213,7 +213,7 @@ func TestIngestTelemetri(t *testing.T) {
 	t.Run("aksi tercatat di audit trail", func(t *testing.T) {
 		rows := auditRows(t, s, "INGEST_TELEMETRI")
 		require.NotEmpty(t, rows)
-		assert.Equal(t, "manajer_mutu", rows[0].AktorID)
+		assert.Equal(t, uid("manajer_mutu"), rows[0].AktorID)
 		assert.Equal(t, "CS-01", rows[0].EntitasID)
 	})
 
@@ -602,12 +602,12 @@ func TestBulk_PrioritasJualDanBuang(t *testing.T) {
 		assert.Equal(t, "HABIS", status)
 
 		var n int64
-		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM transaksi_stok WHERE jenis = 'KELUAR' AND alasan = 'Dibuang (aksi massal)' AND oleh_id = 'manajer_mutu'`).Scan(&n).Error)
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM transaksi_stok WHERE jenis = 'KELUAR' AND alasan = 'Dibuang (aksi massal)' AND oleh_id = garda_uuid_stabil('pengguna', 'manajer_mutu')`).Scan(&n).Error)
 		assert.EqualValues(t, 2, n)
 
 		rows := auditRows(t, s, "BULK_buang")
 		require.Len(t, rows, 1)
-		assert.Equal(t, "manajer_mutu", rows[0].AktorID)
+		assert.Equal(t, uid("manajer_mutu"), rows[0].AktorID)
 		assert.Equal(t, "2 lot", rows[0].EntitasID)
 
 		again := bulk(t, s, userKelola, "buang", "STK-CS03-01")

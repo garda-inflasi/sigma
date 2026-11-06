@@ -69,14 +69,14 @@ func tugas(id, status string, tenggat time.Duration, selesai int) domain.TugasVi
 func TestListSaya_ComputesDisplayedStatus(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
-	repo.On("ListSaya", mock.Anything, "mahasiswa_1").Return([]domain.TugasView{
+	repo.On("ListSaya", mock.Anything, uid("mahasiswa_1")).Return([]domain.TugasView{
 		tugas("belum", domain.StatusBelum, 2*time.Hour, 0),
 		tugas("mulai", domain.StatusBelum, 2*time.Hour, 1),
 		tugas("lewat", domain.StatusBerjalan, -time.Hour, 1),
 		tugas("selesai", domain.StatusSelesai, -time.Hour, 4),
 	}, nil)
 
-	got, err := uc.ListSaya(t.Context(), "mahasiswa_1")
+	got, err := uc.ListSaya(t.Context(), uid("mahasiswa_1"))
 
 	require.NoError(t, err)
 	status := map[string]string{}

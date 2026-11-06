@@ -20,7 +20,7 @@ import (
 
 func tokenSah(t *testing.T, m *token.Manager, opts ...token.ClaimOption) string {
 	t.Helper()
-	s, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", []string{"pengguna.kelola"}, opts...)
+	s, err := m.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", []string{"pengguna.kelola"}, opts...)
 	require.NoError(t, err)
 	return s
 }
@@ -136,7 +136,7 @@ func TestJWTAuth_RuteSesiBaruTertutupBagiAkunYangWajibMemperbaikiAkun(t *testing
 				{http.MethodDelete, "/v1/auth/sessions/3f1c8a52-0a57-4b9a-8f0e-0d1f6f3c9a11"},
 				{http.MethodPost, "/v1/auth/sessions/revoke-others"},
 				{http.MethodPost, "/v1/auth/logout-all"},
-				{http.MethodPost, "/v1/users/u1/revoke-sessions"},
+				{http.MethodPost, "/v1/users/" + uid("u1") + "/revoke-sessions"},
 			} {
 				w := kirim(r, tertutup.method, tertutup.path, bearer, nil)
 				assert.Equal(t, http.StatusForbidden, w.Code, tertutup.method+" "+tertutup.path)

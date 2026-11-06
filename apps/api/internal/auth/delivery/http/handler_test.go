@@ -47,7 +47,7 @@ func router(t *testing.T, repo domain.Repository) *gin.Engine {
 		logger.NewDefault(), email.New(email.Config{}), &audittest.Recorder{})
 	h := New(uc)
 	r := gin.New()
-	r.Use(func(c *gin.Context) { c.Set("user_id", "admin-1") })
+	r.Use(func(c *gin.Context) { c.Set("user_id", uid("admin-1")) })
 	r.POST("/users", h.CreateUser)
 	r.POST("/users/bulk", h.BulkUser)
 	return r
@@ -68,7 +68,7 @@ func kirim(t *testing.T, r *gin.Engine, path string, body any) (*httptest.Respon
 
 func penggunaBaru(password string) map[string]any {
 	return map[string]any{
-		"id": "u-baru", "nama": "Baru", "email": "baru@garda.test", "password": password,
+		"id": uid("u-baru"), "nama": "Baru", "email": "baru@garda.test", "password": password,
 		"peran": "OPS_MAHASISWA", "lapis": "OPERASIONAL", "lembaga": "BPPSDMP",
 	}
 }
@@ -120,7 +120,7 @@ func TestCreateUser_BerhasilDijawab201(t *testing.T) {
 func TestBulkUser_GalatBasisDataDijawab500TanpaMembocorkanDetail(t *testing.T) {
 	r := router(t, &repoPalsu{bulk: func() (int64, error) { return 0, errors.New("pq: relation pengguna rusak") }})
 
-	w, body := kirim(t, r, "/users/bulk", map[string]any{"action": "nonaktifkan", "ids": []string{"a"}})
+	w, body := kirim(t, r, "/users/bulk", map[string]any{"action": "nonaktifkan", "ids": []string{uid("a")}})
 
 	assert.Equal(t, nethttp.StatusInternalServerError, w.Code)
 	assert.Equal(t, "500", body["code"])
@@ -130,7 +130,7 @@ func TestBulkUser_GalatBasisDataDijawab500TanpaMembocorkanDetail(t *testing.T) {
 func TestBulkUser_BerhasilMelaporkanJumlahYangBerubah(t *testing.T) {
 	r := router(t, &repoPalsu{bulk: func() (int64, error) { return 2, nil }})
 
-	w, body := kirim(t, r, "/users/bulk", map[string]any{"action": "aktifkan", "ids": []string{"a", "b", "c"}})
+	w, body := kirim(t, r, "/users/bulk", map[string]any{"action": "aktifkan", "ids": []string{uid("a"), uid("b"), uid("c")}})
 
 	require.Equal(t, nethttp.StatusOK, w.Code)
 	assert.EqualValues(t, 2, body["data"].(map[string]any)["berhasil"])
@@ -139,7 +139,7 @@ func TestBulkUser_BerhasilMelaporkanJumlahYangBerubah(t *testing.T) {
 func TestBulkUser_AksiTakDikenalDanIdKosongDitolak400(t *testing.T) {
 	r := router(t, &repoPalsu{bulk: func() (int64, error) { panic("tidak boleh dipanggil") }})
 
-	w, _ := kirim(t, r, "/users/bulk", map[string]any{"action": "hapus", "ids": []string{"a"}})
+	w, _ := kirim(t, r, "/users/bulk", map[string]any{"action": "hapus", "ids": []string{uid("a")}})
 	assert.Equal(t, nethttp.StatusBadRequest, w.Code)
 
 	w, _ = kirim(t, r, "/users/bulk", map[string]any{"action": "aktifkan", "ids": []string{}})

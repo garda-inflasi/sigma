@@ -166,17 +166,17 @@ func TestBulkAction_ReportsChangedAndFailedAndWritesAudit(t *testing.T) {
 			repo := new(mockRepository)
 			uc, recorder := newTestUseCase(repo)
 			// id ganda dibuang sebelum ke repository; "EWS-3" tidak berubah.
-			repo.On("BulkAction", mock.Anything, []string{"EWS-1", "EWS-2", "EWS-3"}, domain.BulkAction(action), "user-001").
+			repo.On("BulkAction", mock.Anything, []string{"EWS-1", "EWS-2", "EWS-3"}, domain.BulkAction(action), uid("user-001")).
 				Return([]string{"EWS-1", "EWS-2"}, nil)
 
-			res, err := uc.BulkAction(context.Background(), []string{"EWS-1", "EWS-2", "EWS-1", "EWS-3"}, action, "user-001")
+			res, err := uc.BulkAction(context.Background(), []string{"EWS-1", "EWS-2", "EWS-1", "EWS-3"}, action, uid("user-001"))
 
 			require.NoError(t, err)
 			assert.Equal(t, BulkResult{Berhasil: 2, Gagal: 1}, res)
 			entry, ok := recorder.Last()
 			require.True(t, ok, "aksi yang mengubah data harus dicatat di audit")
 			assert.Equal(t, "ews_alert", entry.Entitas)
-			assert.Equal(t, "user-001", entry.AktorID)
+			assert.Equal(t, uid("user-001"), entry.AktorID)
 			assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 			assert.Equal(t, []string{"EWS-1", "EWS-2"}, entry.Metadata["ids"])
 		})

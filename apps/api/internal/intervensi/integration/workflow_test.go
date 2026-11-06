@@ -65,7 +65,7 @@ func TestWorkflow_AlertBecomesAutomaticCardOnce(t *testing.T) {
 	require.NotNil(t, auto.EwsAlertID)
 	assert.Contains(t, *auto.EwsAlertID, "EWS-2")
 	require.Len(t, auto.PenanggungJawab, 1, "ditugasi otomatis ke unit manajemen program")
-	assert.Equal(t, "manajer_program", auto.PenanggungJawab[0].ID)
+	assert.Equal(t, uid("manajer_program"), auto.PenanggungJawab[0].ID)
 
 	var row struct {
 		DibuatOlehID *string

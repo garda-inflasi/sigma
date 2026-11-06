@@ -108,25 +108,25 @@ func TestRunAuthPembersihanAgainstMigratedDatabase(t *testing.T) {
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, db.Exec(`
 		INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga, status)
-		VALUES ('worker-u', 'Worker U', 'worker-u@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF')`).Error)
+		VALUES (garda_uuid_stabil('pengguna', 'worker-u'), 'Worker U', 'worker-u@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF')`).Error)
 	now := time.Now()
 	require.NoError(t, db.Exec(`INSERT INTO jwt_blacklist (jti, expires_at) VALUES ('mati', ?), ('hidup', ?)`,
 		now.Add(-time.Minute), now.Add(time.Hour)).Error)
 	require.NoError(t, db.Exec(`
 		INSERT INTO refresh_tokens (user_id, token_hash, family_id, expires_at, revoked_at) VALUES
-		('worker-u', 'rt-mati', gen_random_uuid(), ?, NULL),
-		('worker-u', 'rt-dicabut-berlaku', gen_random_uuid(), ?, ?),
-		('worker-u', 'rt-hidup', gen_random_uuid(), ?, NULL)`,
+		(garda_uuid_stabil('pengguna', 'worker-u'), 'rt-mati', gen_random_uuid(), ?, NULL),
+		(garda_uuid_stabil('pengguna', 'worker-u'), 'rt-dicabut-berlaku', gen_random_uuid(), ?, ?),
+		(garda_uuid_stabil('pengguna', 'worker-u'), 'rt-hidup', gen_random_uuid(), ?, NULL)`,
 		now.Add(-time.Minute), now.Add(time.Hour), now.Add(-time.Second), now.Add(time.Hour)).Error)
 	require.NoError(t, db.Exec(`
 		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used_at) VALUES
-		('worker-u', 'pr-mati-lama', ?, NULL),
-		('worker-u', 'pr-mati-baru', ?, NULL),
-		('worker-u', 'pr-hidup', ?, NULL)`,
+		(garda_uuid_stabil('pengguna', 'worker-u'), 'pr-mati-lama', ?, NULL),
+		(garda_uuid_stabil('pengguna', 'worker-u'), 'pr-mati-baru', ?, NULL),
+		(garda_uuid_stabil('pengguna', 'worker-u'), 'pr-hidup', ?, NULL)`,
 		now.Add(-30*24*time.Hour), now.Add(-time.Hour), now.Add(time.Hour)).Error)
 	require.NoError(t, db.Exec(`
 		INSERT INTO login_attempts (user_id, success, failure_reason, attempted_at) VALUES
-		('worker-u', false, 'lama', ?), ('worker-u', false, 'baru', ?)`,
+		(garda_uuid_stabil('pengguna', 'worker-u'), false, 'lama', ?), (garda_uuid_stabil('pengguna', 'worker-u'), false, 'baru', ?)`,
 		now.Add(-100*24*time.Hour), now.Add(-time.Hour)).Error)
 
 	s, err := buildScheduler(deps{db: db, log: quiet(), getenv: env(nil)})

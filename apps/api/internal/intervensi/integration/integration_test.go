@@ -237,7 +237,7 @@ func TestIntervensi_ListReturnsTheSeedShapedForTheBoard(t *testing.T) {
 	require.NotNil(t, first.EwsAlertID)
 	assert.Equal(t, "EWS-1000", *first.EwsAlertID)
 	require.Len(t, first.PenanggungJawab, 1)
-	assert.Equal(t, "manajer_program", first.PenanggungJawab[0].ID)
+	assert.Equal(t, uid("manajer_program"), first.PenanggungJawab[0].ID)
 	assert.Equal(t, "Rina Safitri, S.T., M.T.", first.PenanggungJawab[0].Nama)
 
 	assert.Len(t, card(t, s, "INT-302").PenanggungJawab, 2, "kartu genap-ganjil dengan dua penanggung jawab")
@@ -295,7 +295,7 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 		return map[string]any{
 			"judul": "Operasi pasar beras Banda Aceh", "deskripsi": "Gelontorkan 20 ton", "siklus": "TEKANAN", "prioritas": "TINGGI",
 			"komoditas_kode": "BRS-MED", "kabupaten_kode": "1171", "tenggat": time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339),
-			"ews_alert_id": "EWS-1008", "penanggung_jawab_ids": []string{"manajer_data", "manajer_data", "agregator_data"},
+			"ews_alert_id": "EWS-1008", "penanggung_jawab_ids": []string{uid("manajer_data"), uid("manajer_data"), uid("agregator_data")},
 		}
 	}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/pkg/email"
 	"github.com/garda-inflasi/api/pkg/email/emailtest"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Tes handler undang pengguna, kirim ulang undangan, aktivasi publik, impor CSV, dan ekspor CSV: validasi
@@ -101,7 +102,7 @@ func TestUndangPengguna_BerhasilTanpaSMTPTidakMembocorkanTokenAtauHash(t *testin
 	assert.Equal(t, "budi@garda.test", user["email"], "email dirapikan ke huruf kecil")
 	assert.Equal(t, "Budi", user["nama"])
 	assert.Equal(t, "MENUNGGU", user["status"])
-	assert.True(t, strings.HasPrefix(user["id"].(string), "USR-"), "id dibuat server")
+	assert.True(t, idx.ValidUUID(user["id"].(string)), "id dibuat server berupa UUID")
 	assert.Equal(t, "OPS_KOORDINATOR", user["peran"], "peran dinormalkan ke huruf besar")
 
 	// Yang tersimpan: akun tanpa kata sandi dan hanya hash token (token mentah tidak punya jalan keluar).
@@ -136,7 +137,7 @@ func TestUndangPengguna_EmailTerkirimLewatSMTPPalsu(t *testing.T) {
 // ── POST /users/:id/undang-ulang ──────────────────────────────────────
 
 func TestUndangUlang_Handler(t *testing.T) {
-	menunggu := penggunaAktif("u-1")
+	menunggu := penggunaAktif(uid("u-1"))
 	menunggu.Status = domain.StatusMenunggu
 	cases := []struct {
 		nama   string
@@ -151,7 +152,7 @@ func TestUndangUlang_Handler(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
 			r, rec := routerPengguna(t, tc.repo)
-			h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/undang-ulang", "")
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/undang-ulang", "")
 			assert.Equal(t, tc.status, h.Code, h.Body.String())
 			tanpaBocor(t, h)
 			if tc.status == 200 {
@@ -173,7 +174,7 @@ func TestUndangUlang_Handler(t *testing.T) {
 func TestAktivasiAkun_Handler(t *testing.T) {
 	const sandi = "Baru#Sandi123"
 	hidup := func(string) (*domain.Undangan, error) {
-		return &domain.Undangan{UserID: "u-1", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		return &domain.Undangan{UserID: uid("u-1"), ExpiresAt: time.Now().Add(time.Hour)}, nil
 	}
 	cases := []struct {
 		nama   string
@@ -226,7 +227,7 @@ func TestAktivasiAkun_Handler(t *testing.T) {
 	}
 
 	t.Run("berhasil tanpa menerbitkan sesi", func(t *testing.T) {
-		aktif := penggunaAktif("u-1")
+		aktif := penggunaAktif(uid("u-1"))
 		r, rec := routerPengguna(t, &repoUji{getUndangan: hidup, aktifkan: func() (*domain.Pengguna, error) { return aktif, nil }})
 		h := panggilJSON(t, r, nethttp.MethodPost, "/auth/aktivasi", `{"token":"abc","password":"`+sandi+`"}`)
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
@@ -235,7 +236,7 @@ func TestAktivasiAkun_Handler(t *testing.T) {
 		e, ok := rec.Last()
 		require.True(t, ok)
 		assert.Equal(t, "AKTIVASI_AKUN", e.Aksi)
-		assert.Equal(t, "u-1", e.AktorID)
+		assert.Equal(t, uid("u-1"), e.AktorID)
 		assert.NotContains(t, fmt.Sprint(e), sandi)
 		assert.NotContains(t, fmt.Sprint(e), "abc", "audit tanpa token")
 	})
@@ -340,7 +341,7 @@ func TestImporPengguna_KomitMembuatAkunMenungguDanMengaudit(t *testing.T) {
 	for _, b := range d["baris"].([]any) {
 		baris := b.(map[string]any)
 		assert.Equal(t, "dibuat", baris["status"])
-		assert.True(t, strings.HasPrefix(baris["id"].(string), "USR-"))
+		assert.True(t, idx.ValidUUID(baris["id"].(string)))
 	}
 	require.Len(t, ditulis, 2, "semua baris sah ditulis dalam satu pemanggilan (satu transaksi)")
 	for _, b := range ditulis {
@@ -433,7 +434,7 @@ func TestEksporPengguna_MeneruskanSemuaFilterDaftarDanIds(t *testing.T) {
 	}})
 
 	h := panggilJSON(t, r, nethttp.MethodGet,
-		"/users/ekspor?search=+ani+&peran=ADMIN_SISTEM&status=AKTIF&lapis=SISTEM&mfa=true&terkunci=false&ids=u-1,+u-2+,,u-1", "")
+		"/users/ekspor?search=+ani+&peran=ADMIN_SISTEM&status=AKTIF&lapis=SISTEM&mfa=true&terkunci=false&ids="+uid("u-1")+",+"+uid("u-2")+"+,,"+uid("u-1"), "")
 
 	require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 	assert.Equal(t, "ani", diterima.Cari)
@@ -444,12 +445,12 @@ func TestEksporPengguna_MeneruskanSemuaFilterDaftarDanIds(t *testing.T) {
 	assert.True(t, *diterima.MFA)
 	require.NotNil(t, diterima.Terkunci)
 	assert.False(t, *diterima.Terkunci)
-	assert.Equal(t, []string{"u-1", "u-2"}, diterima.IDs, "id dirapikan dan duplikat dibuang")
+	assert.Equal(t, []string{uid("u-1"), uid("u-2")}, diterima.IDs, "id dirapikan dan duplikat dibuang")
 }
 
 func TestEksporPengguna_BerhasilHeaderIsiDanAudit(t *testing.T) {
 	sandi, rahasia := "hash-rahasia", "v1:rahasia-mfa"
-	u := penggunaAktif("u-1")
+	u := penggunaAktif(uid("u-1"))
 	u.Nama = "=HYPERLINK(\"http://x\")"
 	u.PasswordHash, u.MfaSecret = &sandi, &rahasia
 	r, rec := routerPengguna(t, &repoUji{ekspor: func(domain.FilterPengguna, int) ([]domain.Pengguna, bool, error) {
@@ -481,7 +482,7 @@ func TestEksporPengguna_BerhasilHeaderIsiDanAudit(t *testing.T) {
 
 func TestEksporPengguna_TanpaTerpotongTidakMenyetelHeaderTerpotong(t *testing.T) {
 	r, _ := routerPengguna(t, &repoUji{ekspor: func(domain.FilterPengguna, int) ([]domain.Pengguna, bool, error) {
-		return []domain.Pengguna{*penggunaAktif("u-1")}, false, nil
+		return []domain.Pengguna{*penggunaAktif(uid("u-1"))}, false, nil
 	}})
 	h := panggilJSON(t, r, nethttp.MethodGet, "/users/ekspor", "")
 	require.Equal(t, nethttp.StatusOK, h.Code)
@@ -490,7 +491,7 @@ func TestEksporPengguna_TanpaTerpotongTidakMenyetelHeaderTerpotong(t *testing.T)
 
 func TestEksporPengguna_AuditGagalTidakMenyerahkanData(t *testing.T) {
 	r, rec := routerPengguna(t, &repoUji{ekspor: func(domain.FilterPengguna, int) ([]domain.Pengguna, bool, error) {
-		return []domain.Pengguna{*penggunaAktif("u-1")}, false, nil
+		return []domain.Pengguna{*penggunaAktif(uid("u-1"))}, false, nil
 	}})
 	rec.Err = errors.New("tabel audit rusak")
 

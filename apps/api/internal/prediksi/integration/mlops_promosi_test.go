@@ -64,12 +64,12 @@ func TestPromosi_AlurLatihPromosiDanRollback(t *testing.T) {
 		assert.Equal(t, "PRODUKSI", s.statusModel(t, m.ID))
 		assert.Equal(t, "ARSIP", s.statusModel(t, demoProduksi))
 		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_registry WHERE komoditas_kode = 'CBM-KRT' AND status = 'PRODUKSI'`))
-		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_registry WHERE id = ? AND dipromosikan_oleh = 'manajer_data' AND dipromosikan_pada IS NOT NULL AND deployed_at IS NOT NULL`, m.ID))
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_registry WHERE id = ? AND dipromosikan_oleh = garda_uuid_stabil('pengguna', 'manajer_data') AND dipromosikan_pada IS NOT NULL AND deployed_at IS NOT NULL`, m.ID))
 	})
 
 	t.Run("riwayat dan audit tercatat", func(t *testing.T) {
-		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE model_id = ? AND aksi = 'PROMOSI' AND status_lama = 'KANDIDAT' AND status_baru = 'PRODUKSI' AND model_digantikan_id = ? AND oleh = 'manajer_data'`, m.ID, demoProduksi))
-		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'PROMOSI_MODEL' AND entitas_id = ? AND aktor_id = 'manajer_data'`, m.ID))
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE model_id = ? AND aksi = 'PROMOSI' AND status_lama = 'KANDIDAT' AND status_baru = 'PRODUKSI' AND model_digantikan_id = ? AND oleh = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID, demoProduksi))
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'PROMOSI_MODEL' AND entitas_id = ? AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID))
 	})
 
 	t.Run("halaman prediksi memakai proyeksi model terlatih", func(t *testing.T) {
@@ -142,7 +142,7 @@ func TestPromosi_ArsipHanyaUntukKandidat(t *testing.T) {
 	}
 	assert.Contains(t, alasan["MDL-CBM-KRT-v2.3.1"], "status model")
 	assert.Equal(t, "model tidak ditemukan", alasan["MDL-TIDAK-ADA"])
-	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE aksi = 'ARSIP' AND model_id = 'MDL-CBM-KRT-v2.4.0-rc1' AND oleh = 'manajer_data'`))
+	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE aksi = 'ARSIP' AND model_id = 'MDL-CBM-KRT-v2.4.0-rc1' AND oleh = garda_uuid_stabil('pengguna', 'manajer_data')`))
 	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'ARSIP_MODEL' AND entitas_id = 'MDL-CBM-KRT-v2.4.0-rc1'`))
 }
 

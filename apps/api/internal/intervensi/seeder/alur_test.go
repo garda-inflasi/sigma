@@ -113,7 +113,7 @@ func TestSeedDemo_OpenRequestIsRebuiltWithoutDuplicates(t *testing.T) {
 	assert.Equal(t, "INT-304", p.IntervensiID)
 	assert.Equal(t, "MENUNGGU", p.Status)
 	assert.Equal(t, "t-fiskal", p.TahapTujuan)
-	assert.Equal(t, "manajer_program", p.DiajukanOleh)
+	assert.Equal(t, uid("manajer_program"), p.DiajukanOleh)
 }
 
 func TestBuildKartu_TahapSejakFollowsTheWalkToTheCurrentTahap(t *testing.T) {

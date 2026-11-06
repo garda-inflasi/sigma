@@ -115,7 +115,7 @@ func TestUpdateRolePermissions_BerhasilDanTanpaPerubahanTidakDiaudit(t *testing.
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		assert.Equal(t, "ADMIN_SISTEM", diterima.Peran)
 		assert.EqualValues(t, 2, diterima.Versi)
-		assert.Equal(t, "admin-1", diterima.Oleh)
+		assert.Equal(t, uid("admin-1"), diterima.Oleh)
 		assert.Equal(t, []any{"harga.lihat", "harga.ekspor"}, h.data(t)["permissions"])
 		e, ok := rec.Last()
 		require.True(t, ok)
@@ -143,19 +143,19 @@ func TestUpdateRolePermissions_BerhasilDanTanpaPerubahanTidakDiaudit(t *testing.
 func TestListUserPermissions_Handler(t *testing.T) {
 	lewat := time.Now().Add(-time.Hour)
 	depan := time.Now().Add(time.Hour)
-	pemberi := "admin-1"
+	pemberi := uid("admin-1")
 	nama := "Admin Satu"
 	t.Run("berhasil: peran, langsung aktif dan kedaluwarsa, efektif", func(t *testing.T) {
 		r, _ := routerPengguna(t, &repoUji{listLangsung: func(string) (*domain.IzinPengguna, error) {
 			return &domain.IzinPengguna{
 				Peran: "OPS_MAHASISWA", IzinPeran: []string{"harga.lihat"},
 				Langsung: []domain.IzinLangsungDetail{
-					{IzinLangsung: domain.IzinLangsung{PenggunaID: "u-1", PermissionNama: "harga.ekspor", BerlakuSampai: &depan, Alasan: "audit", DiberikanOleh: &pemberi, DiberikanPada: time.Now()}, Deskripsi: "Ekspor", Kelompok: "Harga", DiberikanOlehNama: &nama},
-					{IzinLangsung: domain.IzinLangsung{PenggunaID: "u-1", PermissionNama: "harga.validasi", BerlakuSampai: &lewat, Alasan: "dulu", DiberikanPada: time.Now()}},
+					{IzinLangsung: domain.IzinLangsung{PenggunaID: uid("u-1"), PermissionNama: "harga.ekspor", BerlakuSampai: &depan, Alasan: "audit", DiberikanOleh: &pemberi, DiberikanPada: time.Now()}, Deskripsi: "Ekspor", Kelompok: "Harga", DiberikanOlehNama: &nama},
+					{IzinLangsung: domain.IzinLangsung{PenggunaID: uid("u-1"), PermissionNama: "harga.validasi", BerlakuSampai: &lewat, Alasan: "dulu", DiberikanPada: time.Now()}},
 				},
 			}, nil
 		}})
-		h := panggilJSON(t, r, nethttp.MethodGet, "/users/u-1/permissions", "")
+		h := panggilJSON(t, r, nethttp.MethodGet, "/users/"+uid("u-1")+"/permissions", "")
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		d := h.data(t)
 		assert.Equal(t, "OPS_MAHASISWA", d["peran"])
@@ -171,7 +171,7 @@ func TestListUserPermissions_Handler(t *testing.T) {
 		r, _ := routerPengguna(t, &repoUji{listLangsung: func(string) (*domain.IzinPengguna, error) {
 			return &domain.IzinPengguna{Peran: "OPS_MAHASISWA"}, nil
 		}})
-		h := panggilJSON(t, r, nethttp.MethodGet, "/users/u-1/permissions", "")
+		h := panggilJSON(t, r, nethttp.MethodGet, "/users/"+uid("u-1")+"/permissions", "")
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		d := h.data(t)
 		assert.Equal(t, []any{}, d["langsung"])
@@ -183,7 +183,7 @@ func TestListUserPermissions_Handler(t *testing.T) {
 	})
 	t.Run("galat basis data", func(t *testing.T) {
 		r, _ := routerPengguna(t, &repoUji{listLangsung: func(string) (*domain.IzinPengguna, error) { return nil, galatDB() }})
-		h := panggilJSON(t, r, nethttp.MethodGet, "/users/u-1/permissions", "")
+		h := panggilJSON(t, r, nethttp.MethodGet, "/users/"+uid("u-1")+"/permissions", "")
 		assert.Equal(t, nethttp.StatusInternalServerError, h.Code)
 		tanpaBocor(t, h)
 	})
@@ -224,7 +224,7 @@ func TestGrantUserPermission_ValidasiDanPemetaanGalat(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
 			r, rec := routerPengguna(t, tc.repo)
-			h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/permissions", tc.badan)
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/permissions", tc.badan)
 			assert.Equal(t, tc.status, h.Code, h.Body.String())
 			assert.Equal(t, tc.kode, h.kode())
 			tanpaBocor(t, h)
@@ -247,7 +247,7 @@ func TestGrantUserPermission_BerhasilMengauditSebelumSesudah(t *testing.T) {
 			&domain.IzinLangsung{PenggunaID: g.PenggunaID, PermissionNama: g.Izin, BerlakuSampai: &lama, Alasan: "dulu", DiberikanPada: lama.Add(-time.Hour)}, nil
 	}})
 
-	h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/permissions",
+	h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/permissions",
 		`{"izin":"harga.ekspor","alasan":"  tugas audit  ","berlaku_sampai":"`+depan.Format(time.RFC3339)+`"}`)
 
 	require.Equal(t, nethttp.StatusCreated, h.Code, h.Body.String())
@@ -255,15 +255,15 @@ func TestGrantUserPermission_BerhasilMengauditSebelumSesudah(t *testing.T) {
 	assert.Equal(t, "harga.ekspor", d["izin"])
 	assert.Equal(t, "tugas audit", d["alasan"], "alasan dipangkas")
 	assert.Equal(t, true, d["aktif"])
-	assert.Equal(t, "admin-1", d["diberikan_oleh"], "pemberi dari token, bukan dari badan permintaan")
-	assert.Equal(t, "u-1", diterima.PenggunaID)
+	assert.Equal(t, uid("admin-1"), d["diberikan_oleh"], "pemberi dari token, bukan dari badan permintaan")
+	assert.Equal(t, uid("u-1"), diterima.PenggunaID)
 	require.NotNil(t, diterima.BerlakuSampai)
 	assert.True(t, diterima.BerlakuSampai.Equal(depan))
 
 	e, ok := rec.Last()
 	require.True(t, ok)
 	assert.Equal(t, "GRANT_USER_PERMISSION", e.Aksi)
-	assert.Equal(t, "u-1", e.EntitasID)
+	assert.Equal(t, uid("u-1"), e.EntitasID)
 	assert.NotNil(t, e.Sebelum, "baris kedaluwarsa yang diganti ikut tercatat")
 	assert.Equal(t, "tugas audit", snap(e.Sesudah)["alasan"])
 }
@@ -274,7 +274,7 @@ func TestGrantUserPermission_TanpaMasaBerlakuAdalahTanpaBatas(t *testing.T) {
 		return &domain.IzinLangsungDetail{IzinLangsung: domain.IzinLangsung{PenggunaID: g.PenggunaID, PermissionNama: g.Izin, Alasan: g.Alasan, DiberikanPada: time.Now()}}, nil, nil
 	}})
 
-	h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/permissions", `{"izin":"harga.ekspor","alasan":"permanen"}`)
+	h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/permissions", `{"izin":"harga.ekspor","alasan":"permanen"}`)
 
 	require.Equal(t, nethttp.StatusCreated, h.Code, h.Body.String())
 	assert.Nil(t, h.data(t)["berlaku_sampai"])
@@ -290,10 +290,10 @@ func TestRevokeUserPermission_Handler(t *testing.T) {
 			u, izin = id, i
 			return &domain.IzinLangsung{PenggunaID: id, PermissionNama: i, Alasan: "audit", DiberikanPada: time.Now()}, nil
 		}})
-		h := panggilJSON(t, r, nethttp.MethodDelete, "/users/u-1/permissions/harga.ekspor", "")
+		h := panggilJSON(t, r, nethttp.MethodDelete, "/users/"+uid("u-1")+"/permissions/harga.ekspor", "")
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
-		assert.Equal(t, map[string]any{"id": "u-1", "izin": "harga.ekspor"}, h.data(t))
-		assert.Equal(t, "u-1", u)
+		assert.Equal(t, map[string]any{"id": uid("u-1"), "izin": "harga.ekspor"}, h.data(t))
+		assert.Equal(t, uid("u-1"), u)
 		assert.Equal(t, "harga.ekspor", izin)
 		e, ok := rec.Last()
 		require.True(t, ok)
@@ -302,14 +302,14 @@ func TestRevokeUserPermission_Handler(t *testing.T) {
 	})
 	t.Run("tidak ada izin langsung untuk dicabut", func(t *testing.T) {
 		r, rec := routerPengguna(t, &repoUji{cabutIzin: func(string, string) (*domain.IzinLangsung, error) { return nil, domain.ErrIzinLangsungTidakAda }})
-		h := panggilJSON(t, r, nethttp.MethodDelete, "/users/u-1/permissions/harga.ekspor", "")
+		h := panggilJSON(t, r, nethttp.MethodDelete, "/users/"+uid("u-1")+"/permissions/harga.ekspor", "")
 		assert.Equal(t, nethttp.StatusNotFound, h.Code)
 		assert.Equal(t, "DIRECT_PERMISSION_NOT_FOUND", h.kode())
 		assert.Empty(t, rec.Entries())
 	})
 	t.Run("galat basis data", func(t *testing.T) {
 		r, rec := routerPengguna(t, &repoUji{cabutIzin: func(string, string) (*domain.IzinLangsung, error) { return nil, galatDB() }})
-		h := panggilJSON(t, r, nethttp.MethodDelete, "/users/u-1/permissions/harga.ekspor", "")
+		h := panggilJSON(t, r, nethttp.MethodDelete, "/users/"+uid("u-1")+"/permissions/harga.ekspor", "")
 		assert.Equal(t, nethttp.StatusInternalServerError, h.Code)
 		tanpaBocor(t, h)
 		assert.Empty(t, rec.Entries())

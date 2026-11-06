@@ -331,7 +331,7 @@ func TestPublishingPricesRefreshesDashboardAggregates(t *testing.T) {
 
 	// Entri DIAJUKAN terbaru milik kabupaten yang belum tentu terwakili: validasi lalu terbitkan semuanya.
 	var ids []string
-	require.NoError(t, s.db.Raw("SELECT id FROM entri_harga WHERE status = 'DIAJUKAN' AND petugas_id <> 'koordinator_lapangan' LIMIT 400").Scan(&ids).Error)
+	require.NoError(t, s.db.Raw("SELECT id FROM entri_harga WHERE status = 'DIAJUKAN' AND petugas_id <> garda_uuid_stabil('pengguna', 'koordinator_lapangan') LIMIT 400").Scan(&ids).Error)
 	require.NotEmpty(t, ids)
 
 	valid := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": ids})

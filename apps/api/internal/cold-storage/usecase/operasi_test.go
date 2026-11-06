@@ -117,7 +117,7 @@ func TestIngest_ReportsAlarmsAndAudits(t *testing.T) {
 	}}
 	ops, rec := newOps(repo)
 
-	out, err := ops.Ingest(context.Background(), IngestInput{ActorID: "u1", Pembacaan: []Pembacaan{
+	out, err := ops.Ingest(context.Background(), IngestInput{ActorID: uid("u1"), Pembacaan: []Pembacaan{
 		{FasilitasID: "CS-01", Waktu: fixedNow.Add(-2 * time.Minute), SuhuC: 7.5},
 		{FasilitasID: "CS-01", Waktu: fixedNow.Add(-time.Minute), SuhuC: 4.0},
 	}})
@@ -130,7 +130,7 @@ func TestIngest_ReportsAlarmsAndAudits(t *testing.T) {
 	last, found := rec.Last()
 	require.True(t, found)
 	assert.Equal(t, "INGEST_TELEMETRI", last.Aksi)
-	assert.Equal(t, "u1", last.AktorID)
+	assert.Equal(t, uid("u1"), last.AktorID)
 }
 
 func TestTransaksi_RequestValidation(t *testing.T) {
@@ -167,14 +167,14 @@ func TestTransaksi_BuildsInputAndAuditsDomainResult(t *testing.T) {
 	ops, rec := newOps(repo)
 
 	hasil, err := ops.Transaksi(context.Background(), TransaksiRequest{
-		Jenis: "PINDAH", LotID: "STK-1", FasilitasTujuanID: "CS-03", VolumeTon: 10, ActorID: "u1",
+		Jenis: "PINDAH", LotID: "STK-1", FasilitasTujuanID: "CS-03", VolumeTon: 10, ActorID: uid("u1"),
 	})
 
 	require.NoError(t, err)
 	require.Len(t, repo.trx, 1)
 	in := repo.trx[0]
 	assert.Equal(t, fixedNow, in.Waktu)
-	assert.Equal(t, "u1", in.OlehID)
+	assert.Equal(t, uid("u1"), in.OlehID)
 	assert.Regexp(t, `^TRX-[0-9A-F]{12}$`, in.ID)
 	assert.Regexp(t, `^STK-[0-9A-F]{12}$`, in.LotBaruID, "id lot tujuan dibuat bila pindah sebagian")
 	last, _ := rec.Last()
@@ -200,7 +200,7 @@ func TestBulkMutasi_BuangReportsPerLot(t *testing.T) {
 	}}
 	ops, rec := newOps(repo)
 
-	out, err := ops.BulkMutasi(context.Background(), BulkInput{Action: "buang", IDs: []string{"A", "HABIS", "RUSAK", "A"}, ActorID: "u1"})
+	out, err := ops.BulkMutasi(context.Background(), BulkInput{Action: "buang", IDs: []string{"A", "HABIS", "RUSAK", "A"}, ActorID: uid("u1")})
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, out.Berhasil)
@@ -230,11 +230,11 @@ func TestUbahFasilitas_Validation(t *testing.T) {
 	ops, _ := newOps(&stubOps{})
 	nol, status := 0, "TUTUP"
 
-	_, err := ops.UbahFasilitas(context.Background(), "CS-01", domain.FasilitasPatch{}, "u1")
+	_, err := ops.UbahFasilitas(context.Background(), "CS-01", domain.FasilitasPatch{}, uid("u1"))
 	var input *InputError
 	assert.ErrorAs(t, err, &input)
-	_, err = ops.UbahFasilitas(context.Background(), "CS-01", domain.FasilitasPatch{KapasitasTon: &nol}, "u1")
+	_, err = ops.UbahFasilitas(context.Background(), "CS-01", domain.FasilitasPatch{KapasitasTon: &nol}, uid("u1"))
 	assert.ErrorAs(t, err, &input)
-	_, err = ops.UbahFasilitas(context.Background(), "CS-01", domain.FasilitasPatch{Status: &status}, "u1")
+	_, err = ops.UbahFasilitas(context.Background(), "CS-01", domain.FasilitasPatch{Status: &status}, uid("u1"))
 	assert.ErrorAs(t, err, &input)
 }

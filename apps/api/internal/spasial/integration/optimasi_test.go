@@ -296,10 +296,10 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 		assert.JSONEq(t, `{"tarif_ton_km":4200,"faktor_jalan":1.35,"kecepatan_km":45,"maks_jam_tempuh":0}`, rencana.Parameter)
 		assert.Equal(t, first.TotalVolumeTon, rencana.TotalVolumeTon)
 		assert.Equal(t, first.TotalBiaya, rencana.TotalBiaya)
-		assert.Equal(t, "manajer_program", rencana.DibuatOleh)
+		assert.Equal(t, uid("manajer_program"), rencana.DibuatOleh)
 
 		var aksi int64
-		require.NoError(t, db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'OPTIMASI_RUTE' AND entitas_id = ? AND aktor_id = 'manajer_program'`, *first.OptimasiID).Scan(&aksi).Error)
+		require.NoError(t, db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'OPTIMASI_RUTE' AND entitas_id = ? AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_program')`, *first.OptimasiID).Scan(&aksi).Error)
 		assert.EqualValues(t, 1, aksi)
 	})
 

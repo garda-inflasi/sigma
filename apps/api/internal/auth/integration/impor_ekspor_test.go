@@ -125,7 +125,7 @@ func TestImpor_KomitMembuatBarisSahSebagaiUndangan(t *testing.T) {
 		s.loginAs(t, "budi@gardainflasi.id", sandiAktivasi)
 	})
 	t.Run("audit: satu entri per akun dan satu ringkasan", func(t *testing.T) {
-		assert.EqualValues(t, 2, s.hitung(t, "SELECT count(*) FROM audit_log WHERE aksi = 'UNDANG_PENGGUNA' AND aktor_id = 'test-user-001' AND metadata->>'sumber' = 'impor'"))
+		assert.EqualValues(t, 2, s.hitung(t, "SELECT count(*) FROM audit_log WHERE aksi = 'UNDANG_PENGGUNA' AND aktor_id = garda_uuid_stabil('pengguna', 'test-user-001') AND metadata->>'sumber' = 'impor'"))
 		assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM audit_log WHERE aksi = 'IMPOR_PENGGUNA' AND (metadata->>'dibuat')::int = 2 AND (metadata->>'ditolak')::int = 1"))
 	})
 	t.Run("komit ulang berkas yang sama: semua baris kini terdaftar", func(t *testing.T) {
@@ -222,16 +222,16 @@ func TestImpor_PenulisanAtomik(t *testing.T) {
 	}
 
 	err := repo.BuatUndangan(context.Background(), []domain.UndanganBaru{
-		akun("atomik-1", "atomik1@gardainflasi.id"),
-		akun("atomik-2", "atomik2@gardainflasi.id"),
-		akun("atomik-3", "UJI.BIASA@gardainflasi.id"), // sudah terdaftar (beda huruf)
+		akun(uid("atomik-1"), "atomik1@gardainflasi.id"),
+		akun(uid("atomik-2"), "atomik2@gardainflasi.id"),
+		akun(uid("atomik-3"), "UJI.BIASA@gardainflasi.id"), // sudah terdaftar (beda huruf)
 	})
 
 	require.ErrorIs(t, err, gorm.ErrDuplicatedKey)
-	assert.Zero(t, s.hitung(t, "SELECT count(*) FROM pengguna WHERE id LIKE 'atomik-%'"), "akun sebelum duplikat ikut dibatalkan")
+	assert.Zero(t, s.hitung(t, "SELECT count(*) FROM pengguna WHERE id IN (?, ?, ?)", uid("atomik-1"), uid("atomik-2"), uid("atomik-3")), "akun sebelum duplikat ikut dibatalkan")
 	assert.Zero(t, s.hitung(t, "SELECT count(*) FROM undangan_pengguna"), "undangan ikut dibatalkan")
 
-	require.NoError(t, repo.BuatUndangan(context.Background(), []domain.UndanganBaru{akun("atomik-1", "atomik1@gardainflasi.id"), akun("atomik-2", "atomik2@gardainflasi.id")}))
+	require.NoError(t, repo.BuatUndangan(context.Background(), []domain.UndanganBaru{akun(uid("atomik-1"), "atomik1@gardainflasi.id"), akun(uid("atomik-2"), "atomik2@gardainflasi.id")}))
 	assert.EqualValues(t, 2, s.hitung(t, "SELECT count(*) FROM undangan_pengguna"))
 }
 
@@ -344,7 +344,7 @@ func TestEkspor_IsiHeaderDanAudit(t *testing.T) {
 			assert.NotContains(t, body, terlarang)
 		}
 		var hash string
-		require.NoError(t, s.db.Raw("SELECT password_hash FROM pengguna WHERE id = 'test-user-001'").Scan(&hash).Error)
+		require.NoError(t, s.db.Raw("SELECT password_hash FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')").Scan(&hash).Error)
 		assert.NotContains(t, body, hash)
 	})
 	t.Run("tercatat sebagai EKSPOR_DATA", func(t *testing.T) {
@@ -357,7 +357,7 @@ func TestEkspor_IsiHeaderDanAudit(t *testing.T) {
 		}
 		require.NoError(t, s.db.Raw(`SELECT aktor_id, entitas_id, hasil, (metadata->>'baris')::int AS baris, (metadata->>'terpotong')::boolean AS terpotong
 			FROM audit_log WHERE aksi = 'EKSPOR_DATA' AND entitas = 'pengguna'`).Scan(&row).Error)
-		assert.Equal(t, "test-user-001", row.AktorID)
+		assert.Equal(t, uid("test-user-001"), row.AktorID)
 		assert.Equal(t, "ekspor", row.EntitasID)
 		assert.Equal(t, "BERHASIL", row.Hasil)
 		assert.Equal(t, len(rekaman)-1, row.Baris)
@@ -388,7 +388,7 @@ func TestEkspor_FilterSamaDenganDaftar(t *testing.T) {
 			dariDaftar = append(dariDaftar, it.(map[string]any)["id"].(string))
 		}
 		assert.ElementsMatch(t, dariDaftar, kolomEkspor(rekaman, "id"), "ekspor memuat persis yang tampil di daftar")
-		assert.Equal(t, []string{"test-user-mfa"}, kolomEkspor(rekaman, "id"))
+		assert.Equal(t, []string{uid("test-user-mfa")}, kolomEkspor(rekaman, "id"))
 	})
 	// Filter 02-B (peran, status, lapis, mfa) menghasilkan baris yang persis sama dengan daftar.
 	samaDenganDaftar := func(t *testing.T, query string) []string {
@@ -405,8 +405,8 @@ func TestEkspor_FilterSamaDenganDaftar(t *testing.T) {
 		return kolomEkspor(rekaman, "id")
 	}
 	t.Run("filter mfa, peran, status, lapis", func(t *testing.T) {
-		assert.Equal(t, []string{"test-user-mfa"}, samaDenganDaftar(t, "mfa=true"))
-		assert.NotContains(t, samaDenganDaftar(t, "mfa=false"), "test-user-mfa")
+		assert.Equal(t, []string{uid("test-user-mfa")}, samaDenganDaftar(t, "mfa=true"))
+		assert.NotContains(t, samaDenganDaftar(t, "mfa=false"), uid("test-user-mfa"))
 		for _, id := range samaDenganDaftar(t, "peran=ADMIN_SISTEM") {
 			var peran string
 			require.NoError(t, s.db.Raw("SELECT peran FROM pengguna WHERE id = ?", id).Scan(&peran).Error)
@@ -427,12 +427,12 @@ func TestEkspor_FilterSamaDenganDaftar(t *testing.T) {
 		assert.Empty(t, samaDenganDaftar(t, "search="+url.QueryEscape("%")))
 	})
 	t.Run("id terpilih", func(t *testing.T) {
-		rekaman := bacaEkspor(t, s.ekspor(t, admin.access, "ids="+url.QueryEscape("test-user-biasa, test-user-002 ,test-user-biasa,tidak-ada")))
-		assert.ElementsMatch(t, []string{"test-user-biasa", "test-user-002"}, kolomEkspor(rekaman, "id"))
+		rekaman := bacaEkspor(t, s.ekspor(t, admin.access, "ids="+url.QueryEscape(uid("test-user-biasa")+", "+uid("test-user-002")+" ,"+uid("test-user-biasa")+","+uid("tidak-ada")+",tidak-ada")))
+		assert.ElementsMatch(t, []string{uid("test-user-biasa"), uid("test-user-002")}, kolomEkspor(rekaman, "id"))
 	})
 	t.Run("pencarian dan id digabung", func(t *testing.T) {
-		rekaman := bacaEkspor(t, s.ekspor(t, admin.access, "search=biasa&ids=test-user-001,test-user-biasa"))
-		assert.Equal(t, []string{"test-user-biasa"}, kolomEkspor(rekaman, "id"))
+		rekaman := bacaEkspor(t, s.ekspor(t, admin.access, "search=biasa&ids="+uid("test-user-001")+","+uid("test-user-biasa")))
+		assert.Equal(t, []string{uid("test-user-biasa")}, kolomEkspor(rekaman, "id"))
 	})
 	t.Run("tidak ada yang cocok: hanya header, tetap tercatat", func(t *testing.T) {
 		w := s.ekspor(t, admin.access, "search=tidak-ada-yang-cocok")
@@ -460,10 +460,10 @@ func TestEkspor_InjeksiRumusDinetralkan(t *testing.T) {
 	s := setupSuite(t)
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga, status) VALUES
-		('inj-1', '=HYPERLINK("http://jahat.test","klik")', 'inj1@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', '+62811', 'AKTIF'),
-		('inj-2', E'Santoso; "Budi"\nKedua', 'inj2@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', '@SUM(A1)', 'AKTIF')`).Error)
+		(garda_uuid_stabil('pengguna', 'inj-1'), '=HYPERLINK("http://jahat.test","klik")', 'inj1@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', '+62811', 'AKTIF'),
+		(garda_uuid_stabil('pengguna', 'inj-2'), E'Santoso; "Budi"\nKedua', 'inj2@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', '@SUM(A1)', 'AKTIF')`).Error)
 
-	w := s.ekspor(t, admin.access, "ids=inj-1,inj-2")
+	w := s.ekspor(t, admin.access, "ids="+uid("inj-1")+","+uid("inj-2"))
 
 	rekaman := bacaEkspor(t, w)
 	nama := kolomEkspor(rekaman, "nama")
@@ -471,10 +471,10 @@ func TestEkspor_InjeksiRumusDinetralkan(t *testing.T) {
 	ids := kolomEkspor(rekaman, "id")
 	for i, id := range ids {
 		switch id {
-		case "inj-1":
+		case uid("inj-1"):
 			assert.Equal(t, `'=HYPERLINK("http://jahat.test","klik")`, nama[i])
 			assert.Equal(t, "'+62811", lembaga[i])
-		case "inj-2":
+		case uid("inj-2"):
 			assert.Equal(t, "Santoso; \"Budi\"\nKedua", nama[i], "pemisah, kutip, dan baris baru dikutip dengan benar")
 			assert.Equal(t, "'@SUM(A1)", lembaga[i])
 		}

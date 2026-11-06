@@ -166,7 +166,7 @@ func TestHistory_CreateAssignEscalateAndMove(t *testing.T) {
 
 	k := card(t, s, id)
 	require.Len(t, k.PenanggungJawab, 1)
-	assert.Equal(t, "manajer_program", k.PenanggungJawab[0].ID)
+	assert.Equal(t, uid("manajer_program"), k.PenanggungJawab[0].ID)
 	assert.Equal(t, 2, k.Versi, "penugasan menaikkan versi")
 
 	_, again := bulk("tugaskan", id)

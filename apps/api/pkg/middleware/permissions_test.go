@@ -75,10 +75,10 @@ func kodeGalat(t *testing.T, body []byte) string {
 
 func TestJWTAuth_PermissionResolver_IzinDitegakkanDariResolverBukanKlaim(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	resolver := &fakeResolver{izin: map[string][]string{"u1": {"harga.lihat", "kpi.lihat"}}}
+	resolver := &fakeResolver{izin: map[string][]string{uid("u1"): {"harga.lihat", "kpi.lihat"}}}
 	tokenMgr.SetPermissionResolver(resolver)
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"harga.lihat", "kpi.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"harga.lihat", "kpi.lihat"})
 	require.NoError(t, err)
 
 	w := doGet(router, tokenStr)
@@ -93,9 +93,9 @@ func TestJWTAuth_PermissionResolver_IzinDitegakkanDariResolverBukanKlaim(t *test
 
 func TestJWTAuth_PermissionResolver_UrutanDanDuplikatDiabaikan(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	tokenMgr.SetPermissionResolver(&fakeResolver{izin: map[string][]string{"u1": {"b.satu", "a.dua"}}})
+	tokenMgr.SetPermissionResolver(&fakeResolver{izin: map[string][]string{uid("u1"): {"b.satu", "a.dua"}}})
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"a.dua", "b.satu", "a.dua"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"a.dua", "b.satu", "a.dua"})
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, doGet(router, tokenStr).Code)
@@ -103,10 +103,10 @@ func TestJWTAuth_PermissionResolver_UrutanDanDuplikatDiabaikan(t *testing.T) {
 
 func TestJWTAuth_PermissionResolver_IzinDicabutMenolakTokenDenganKodeKhusus(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	resolver := &fakeResolver{izin: map[string][]string{"u1": {"kpi.lihat"}}}
+	resolver := &fakeResolver{izin: map[string][]string{uid("u1"): {"kpi.lihat"}}}
 	tokenMgr.SetPermissionResolver(resolver)
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"kpi.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"kpi.lihat"})
 	require.NoError(t, err)
 
 	req := func(path string) int {
@@ -114,7 +114,7 @@ func TestJWTAuth_PermissionResolver_IzinDicabutMenolakTokenDenganKodeKhusus(t *t
 	}
 	require.Equal(t, http.StatusOK, req("/kpi"))
 
-	resolver.set("u1") // izin dicabut di basis data; token masih membawa kpi.lihat
+	resolver.set(uid("u1")) // izin dicabut di basis data; token masih membawa kpi.lihat
 
 	w := doGetPath(router, "/kpi", tokenStr)
 	assert.Equal(t, http.StatusUnauthorized, w.Code, "izin tidak lagi berlaku: bukan 200 hanya karena klaim token masih memuatnya")
@@ -126,20 +126,20 @@ func TestJWTAuth_PermissionResolver_IzinDicabutMenolakTokenDenganKodeKhusus(t *t
 
 func TestJWTAuth_PermissionResolver_IzinBaruDiberikanMenolakTokenBasiAgarDiperbarui(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	resolver := &fakeResolver{izin: map[string][]string{"u1": {"harga.lihat"}}}
+	resolver := &fakeResolver{izin: map[string][]string{uid("u1"): {"harga.lihat"}}}
 	tokenMgr.SetPermissionResolver(resolver)
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "OPS_MAHASISWA", []string{"harga.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "OPS_MAHASISWA", []string{"harga.lihat"})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, doGetPath(router, "/uji", tokenStr).Code)
 
-	resolver.set("u1", "harga.lihat", "kpi.lihat") // izin langsung diberikan
+	resolver.set(uid("u1"), "harga.lihat", "kpi.lihat") // izin langsung diberikan
 
 	w := doGetPath(router, "/kpi", tokenStr)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	assert.Equal(t, PermissionsChangedCode, kodeGalat(t, w.Body.Bytes()))
 
-	baru, err := tokenMgr.CreateAccessToken("u1", "OPS_MAHASISWA", []string{"harga.lihat", "kpi.lihat"})
+	baru, err := tokenMgr.CreateAccessToken(uid("u1"), "OPS_MAHASISWA", []string{"harga.lihat", "kpi.lihat"})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, doGetPath(router, "/kpi", baru).Code, "token hasil refresh langsung berlaku")
 }
@@ -148,7 +148,7 @@ func TestJWTAuth_PermissionResolver_AkunTidakAdaAtauNonaktifDijawab401(t *testin
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	tokenMgr.SetPermissionResolver(&fakeResolver{izin: map[string][]string{}})
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("hantu", "ADMIN_SISTEM", []string{"kpi.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("hantu"), "ADMIN_SISTEM", []string{"kpi.lihat"})
 	require.NoError(t, err)
 
 	w := doGetPath(router, "/uji", tokenStr)
@@ -161,7 +161,7 @@ func TestJWTAuth_PermissionResolver_GalatInfrastrukturGagalTutup503(t *testing.T
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	tokenMgr.SetPermissionResolver(&fakeResolver{err: errors.New("connection refused")})
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"kpi.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"kpi.lihat"})
 	require.NoError(t, err)
 
 	w := doGetPath(router, "/kpi", tokenStr)
@@ -172,7 +172,7 @@ func TestJWTAuth_PermissionResolver_GalatInfrastrukturGagalTutup503(t *testing.T
 func TestJWTAuth_PermissionResolver_TanpaResolverKlaimDipakaiApaAdanya(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"kpi.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"kpi.lihat"})
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, doGetPath(router, "/kpi", tokenStr).Code)
@@ -183,7 +183,7 @@ func TestJWTAuth_PermissionResolver_NilMelepasResolver(t *testing.T) {
 	tokenMgr.SetPermissionResolver(&fakeResolver{err: errors.New("x")})
 	tokenMgr.SetPermissionResolver(nil)
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"kpi.lihat"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"kpi.lihat"})
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, doGetPath(router, "/kpi", tokenStr).Code)
@@ -191,11 +191,11 @@ func TestJWTAuth_PermissionResolver_NilMelepasResolver(t *testing.T) {
 
 func TestJWTAuth_PermissionResolver_SesiDicabutMenangSebelumPemeriksaanIzin(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	resolver := &fakeResolver{izin: map[string][]string{"u1": {"kpi.lihat"}}}
+	resolver := &fakeResolver{izin: map[string][]string{uid("u1"): {"kpi.lihat"}}}
 	tokenMgr.SetPermissionResolver(resolver)
 	tokenMgr.SetRevocationChecker(&fakeChecker{revokedSID: map[string]bool{sidUji: true}})
 	router := izinRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", []string{"kpi.lihat"}, token.WithSession(sidUji))
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", []string{"kpi.lihat"}, token.WithSession(sidUji))
 	require.NoError(t, err)
 
 	w := doGetPath(router, "/kpi", tokenStr)

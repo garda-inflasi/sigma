@@ -18,6 +18,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/email"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 const sandiAktivasi = "Rahasia#2026Kuat"
@@ -52,7 +53,7 @@ func TestUndang_MembuatAkunMenungguTanpaKataSandiDanMengirimEmail(t *testing.T) 
 		assert.Equal(t, "FMIPA USK", u.Lembaga)
 		require.NotNil(t, u.KabupatenKode)
 		assert.Equal(t, "1171", *u.KabupatenKode)
-		assert.True(t, strings.HasPrefix(u.ID, "USR-"))
+		assert.True(t, idx.ValidUUID(u.ID), "id akun undangan adalah UUID: %q", u.ID)
 	})
 	t.Run("hasil: berlaku 72 jam dan email terkirim", func(t *testing.T) {
 		assert.True(t, h.EmailTerkirim)
@@ -170,7 +171,7 @@ func TestUndang_KabupatenOpsional(t *testing.T) {
 }
 
 func TestUndang_EmailKembarDitolakTanpaMemedulikanHurufBesar(t *testing.T) {
-	ada := &domain.Pengguna{ID: "u-1", Nama: "Ada", Email: "Budi@Garda.Test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
+	ada := &domain.Pengguna{ID: uid("u-1"), Nama: "Ada", Email: "Budi@Garda.Test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
 	f := newUndanganFixture(t, ada)
 
 	_, err := f.uc.UndangPengguna(context.Background(), masukanUndang(), adminUndangID)
@@ -288,11 +289,11 @@ func TestKirimUlang_MencabutUndanganLamaDanMengirimYangBaru(t *testing.T) {
 }
 
 func TestKirimUlang_HanyaUntukAkunMenunggu(t *testing.T) {
-	aktif := &domain.Pengguna{ID: "u-aktif", Nama: "Aktif", Email: "aktif@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
-	nonaktif := &domain.Pengguna{ID: "u-non", Nama: "Non", Email: "non@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "NONAKTIF"}
+	aktif := &domain.Pengguna{ID: uid("u-aktif"), Nama: "Aktif", Email: "aktif@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
+	nonaktif := &domain.Pengguna{ID: uid("u-non"), Nama: "Non", Email: "non@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "NONAKTIF"}
 	f := newUndanganFixture(t, aktif, nonaktif)
 
-	for _, id := range []string{"u-aktif", "u-non"} {
+	for _, id := range []string{uid("u-aktif"), uid("u-non")} {
 		_, err := f.uc.KirimUlangUndangan(context.Background(), id, adminUndangID)
 		require.ErrorIs(t, err, ErrBukanMenunggu, id)
 	}
@@ -658,7 +659,8 @@ func TestTokenUndanganBaru(t *testing.T) {
 func TestIDPenggunaBaru(t *testing.T) {
 	id, err := idPenggunaBaru()
 	require.NoError(t, err)
-	assert.Regexp(t, `^USR-[0-9A-F]{16}$`, id)
+	assert.True(t, idx.ValidUUID(id), "UUID kanonik huruf kecil: %q", id)
+	assert.Equal(t, strings.ToLower(id), id)
 	lain, _ := idPenggunaBaru()
 	assert.NotEqual(t, id, lain)
 }

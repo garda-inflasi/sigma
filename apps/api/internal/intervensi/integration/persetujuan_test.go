@@ -102,7 +102,7 @@ func TestPersetujuan_SingleStepApprovalMovesTheCard(t *testing.T) {
 	require.Len(t, p.Langkah, 1)
 	assert.Equal(t, "intervensi.setujui", p.IzinLangkahKini)
 	require.NotNil(t, p.DiajukanOlehID)
-	assert.Equal(t, "manajer_program", *p.DiajukanOlehID)
+	assert.Equal(t, uid("manajer_program"), *p.DiajukanOlehID)
 	assert.Equal(t, "t-ews", card(t, s, "INT-301").Tahap, "kartu belum berpindah sebelum disetujui")
 
 	t.Run("pemegang kelola tidak dapat memutuskan", func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestPersetujuan_SingleStepApprovalMovesTheCard(t *testing.T) {
 		assert.Equal(t, "DISETUJUI", done.Status)
 		require.NotNil(t, done.Langkah[0].Keputusan)
 		assert.Equal(t, "SETUJU", *done.Langkah[0].Keputusan)
-		assert.Equal(t, "strategis_bi", *done.Langkah[0].OlehID)
+		assert.Equal(t, uid("strategis_bi"), *done.Langkah[0].OlehID)
 
 		k := card(t, s, "INT-301")
 		assert.Equal(t, "t-petakan", k.Tahap)
@@ -160,7 +160,7 @@ func TestPersetujuan_MultiStepChainAndSeparationOfDuties(t *testing.T) {
 		code, _, body := s.putus(t, emailFiskal, p.ID, "SETUJU", "")
 		require.Equal(t, http.StatusOK, code, body) // DJPb memegang setujui, jadi sah memutus langkah 1 sekarang
 		// Tes pemisahan tugas ada di bawah; di sini kembalikan keputusan langkah 1 ke penyetuju lain.
-		require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan_langkah SET oleh = 'strategis_bi' WHERE persetujuan_id = ? AND urutan = 1`, p.ID).Error)
+		require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan_langkah SET oleh = garda_uuid_stabil('pengguna', 'strategis_bi') WHERE persetujuan_id = ? AND urutan = 1`, p.ID).Error)
 	})
 
 	t.Run("langkah 2 butuh izin fiskal: penyetuju biasa ditolak dengan izin yang jelas", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestPersetujuan_ConcurrentDecisionsOnlyOneWins(t *testing.T) {
 func TestPersetujuan_RequesterCannotApproveOwnRequest(t *testing.T) {
 	s := newSuite(t, "intervensi_setuju_sendiri")
 	_, p, _ := s.ajukan(t, emailKelola, "INT-301", "t-petakan")
-	require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan SET diajukan_oleh = 'strategis_bi' WHERE id = ?`, p.ID).Error)
+	require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan SET diajukan_oleh = garda_uuid_stabil('pengguna', 'strategis_bi') WHERE id = ?`, p.ID).Error)
 
 	code, _, body := s.putus(t, emailSetuju, p.ID, "SETUJU", "")
 

@@ -90,7 +90,7 @@ func (f *fixtureKolom) ubah(id string, fn func(u *domain.Pengguna)) {
 }
 
 func (f *fixtureKolom) disela(fn func(u *domain.Pengguna)) {
-	f.repo.sela = func() { f.ubah("user-123", fn) }
+	f.repo.sela = func() { f.ubah(uid("user-123"), fn) }
 }
 
 // ── Ganti kata sandi ──────────────────────────────────────────────────
@@ -99,10 +99,10 @@ func TestChangePassword_PenonaktifanDanGantiPeranAdminSelamaProsesTidakTertimpa(
 	f := newFixtureKolom(t, activeUser())
 	f.disela(func(u *domain.Pengguna) { u.Status, u.Peran = "NONAKTIF", "ADMIN_SISTEM" })
 
-	_, _, err := f.uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+	_, _, err := f.uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 
 	require.NoError(t, err)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "NONAKTIF", stored.Status, "penonaktifan admin tidak boleh dibalikkan ganti kata sandi")
 	assert.Equal(t, "ADMIN_SISTEM", stored.Peran)
 	assert.True(t, crypto.VerifyPassword("NewTest1@", *stored.PasswordHash))
@@ -118,10 +118,10 @@ func TestChangePassword_ResetAdminSelamaProsesTidakDitimpaDanDitolak(t *testing.
 	require.NoError(t, err)
 	f.disela(func(u *domain.Pengguna) { u.PasswordHash, u.WajibGantiPassword = &hashAdmin, true })
 
-	_, _, err = f.uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+	_, _, err = f.uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 
 	require.ErrorIs(t, err, ErrPenggunaBerubah, "kata sandi lama yang baru saja diverifikasi sudah tidak berlaku")
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.True(t, crypto.VerifyPassword("Admin#Reset1", *stored.PasswordHash), "kata sandi hasil reset admin tetap")
 	assert.True(t, stored.WajibGantiPassword, "penanda wajib ganti dari admin tetap")
 	assert.Equal(t, 0, len(f.mem.refresh), "tidak ada sesi baru untuk perubahan yang ditolak")
@@ -134,10 +134,10 @@ func TestChangePassword_PenggantianSerentakSatuMenang(t *testing.T) {
 	require.NoError(t, err)
 	f.disela(func(u *domain.Pengguna) { u.PasswordHash = &hashLain })
 
-	_, _, err = f.uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+	_, _, err = f.uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 
 	require.ErrorIs(t, err, ErrPenggunaBerubah)
-	assert.True(t, crypto.VerifyPassword("Lain#Serentak9", *f.mem.stored("user-123").PasswordHash))
+	assert.True(t, crypto.VerifyPassword("Lain#Serentak9", *f.mem.stored(uid("user-123")).PasswordHash))
 }
 
 // ── Reset kata sandi ──────────────────────────────────────────────────
@@ -145,13 +145,13 @@ func TestChangePassword_PenggantianSerentakSatuMenang(t *testing.T) {
 func TestResetPassword_PenonaktifanAdminSelamaProsesTidakTertimpa(t *testing.T) {
 	f := newFixtureKolom(t, activeUser())
 	f.mem.On("GetResetToken", mock.Anything, mock.Anything).
-		Return(&domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}, nil)
+		Return(&domain.ResetToken{ID: 1, UserID: uid("user-123"), ExpiresAt: time.Now().Add(30 * time.Minute)}, nil)
 	f.mem.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	f.disela(func(u *domain.Pengguna) { u.Status, u.Peran = "NONAKTIF", "MANAJER_DATA" })
 
 	require.NoError(t, f.uc.ResetPassword(context.Background(), "token", "NewPass1@"))
 
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "NONAKTIF", stored.Status)
 	assert.Equal(t, "MANAJER_DATA", stored.Peran)
 	assert.True(t, crypto.VerifyPassword("NewPass1@", *stored.PasswordHash))
@@ -162,9 +162,9 @@ func TestResetPasswordAdmin_PerubahanAdminLainSelamaProsesTidakTertimpa(t *testi
 	f := newFixtureKolom(t, activeUser())
 	f.disela(func(u *domain.Pengguna) { u.Status, u.Peran, u.MfaWajib = "NONAKTIF", "ADMIN_SISTEM", true })
 
-	require.NoError(t, f.uc.ResetPasswordAdmin(context.Background(), "user-123", "Baru#12345", "admin-1"))
+	require.NoError(t, f.uc.ResetPasswordAdmin(context.Background(), uid("user-123"), "Baru#12345", uid("admin-1")))
 
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "NONAKTIF", stored.Status)
 	assert.Equal(t, "ADMIN_SISTEM", stored.Peran)
 	assert.True(t, stored.MfaWajib)
@@ -177,10 +177,10 @@ func TestResetPasswordAdmin_PenggunaDihapusSelamaProsesDijawabTidakAda(t *testin
 	f.repo.sela = func() {
 		f.mem.mu.Lock()
 		defer f.mem.mu.Unlock()
-		delete(f.mem.users, "user-123")
+		delete(f.mem.users, uid("user-123"))
 	}
 
-	err := f.uc.ResetPasswordAdmin(context.Background(), "user-123", "Baru#12345", "admin-1")
+	err := f.uc.ResetPasswordAdmin(context.Background(), uid("user-123"), "Baru#12345", uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrUserNotFound)
 	assert.Empty(t, f.audit.Entries())
@@ -192,10 +192,10 @@ func TestUpdateUser_PenonaktifanAdminLainSelamaProsesTidakTertimpaDanAuditAkurat
 	f := newFixtureKolom(t, activeUser())
 	f.disela(func(u *domain.Pengguna) { u.Status = "NONAKTIF" })
 
-	updated, err := f.uc.UpdateUser(context.Background(), "user-123", UserPatch{Nama: ptr("Nama Baru")}, "admin-1")
+	updated, err := f.uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Nama: ptr("Nama Baru")}, uid("admin-1"))
 
 	require.NoError(t, err)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "Nama Baru", stored.Nama)
 	assert.Equal(t, "NONAKTIF", stored.Status, "PATCH nama tidak boleh mengaktifkan kembali akun yang baru dinonaktifkan")
 	assert.Equal(t, "NONAKTIF", updated.Status, "respons memuat keadaan sebenarnya, bukan salinan basi")
@@ -218,10 +218,10 @@ func TestUpdateUser_HanyaKolomDiminta(t *testing.T) {
 		u.PasswordHash, u.WajibGantiPassword, u.MfaAktif = &hash, true, true
 	})
 
-	_, err := f.uc.UpdateUser(context.Background(), "user-123", UserPatch{Lembaga: ptr("BPS")}, "admin-1")
+	_, err := f.uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Lembaga: ptr("BPS")}, uid("admin-1"))
 
 	require.NoError(t, err)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "BPS", stored.Lembaga)
 	assert.True(t, crypto.VerifyPassword("Admin#Reset1", *stored.PasswordHash), "kata sandi hasil reset serentak tetap")
 	assert.True(t, stored.WajibGantiPassword)
@@ -232,15 +232,15 @@ func TestAssignRole_PenonaktifanAdminLainSelamaProsesTidakTertimpaDanAuditAkurat
 	f := newFixtureKolom(t, activeUser())
 	f.disela(func(u *domain.Pengguna) { u.Status = "NONAKTIF" })
 
-	updated, err := f.uc.AssignRole(context.Background(), "user-123", "MANAJER_DATA", "admin-1")
+	updated, err := f.uc.AssignRole(context.Background(), uid("user-123"), "MANAJER_DATA", uid("admin-1"))
 
 	require.NoError(t, err)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "MANAJER_DATA", stored.Peran)
 	assert.Equal(t, roleLapis["MANAJER_DATA"], stored.Lapis)
 	assert.Equal(t, "NONAKTIF", stored.Status, "ganti peran tidak boleh mengaktifkan kembali akun yang baru dinonaktifkan")
 	assert.Equal(t, "NONAKTIF", updated.Status)
-	f.mem.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, "user-123")
+	f.mem.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, uid("user-123"))
 
 	entri, ok := f.audit.Last()
 	require.True(t, ok)
@@ -255,7 +255,7 @@ func TestAssignRole_PenonaktifanAdminLainSelamaProsesTidakTertimpaDanAuditAkurat
 func TestAssignRole_PenggunaTidakAdaDijawabTidakAda(t *testing.T) {
 	f := newFixtureKolom(t, activeUser())
 
-	_, err := f.uc.AssignRole(context.Background(), "hantu", "MANAJER_DATA", "admin-1")
+	_, err := f.uc.AssignRole(context.Background(), "hantu", "MANAJER_DATA", uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrUserNotFound)
 	assert.Empty(t, f.audit.Entries())
@@ -270,10 +270,10 @@ func TestSetupMFA_AktivasiSerentakTidakDimatikan(t *testing.T) {
 	require.NoError(t, err)
 	f.disela(func(u *domain.Pengguna) { u.MfaAktif, u.MfaSecret, u.MfaLangkahTerakhir = true, &rahasiaAktif, 99 })
 
-	_, err = f.uc.SetupMFA(context.Background(), "user-123")
+	_, err = f.uc.SetupMFA(context.Background(), uid("user-123"))
 
 	require.ErrorIs(t, err, ErrMFAAlreadyActive)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.True(t, stored.MfaAktif, "MFA yang baru diaktifkan tidak boleh dimatikan setup lain")
 	assert.Equal(t, rahasiaAktif, *stored.MfaSecret, "rahasia yang sudah aktif tidak diganti rahasia setup")
 	assert.EqualValues(t, 99, stored.MfaLangkahTerakhir)
@@ -284,10 +284,10 @@ func TestSetupMFA_PenonaktifanAdminSelamaProsesTidakTertimpa(t *testing.T) {
 	f := newFixtureKolom(t, activeUser())
 	f.disela(func(u *domain.Pengguna) { u.Status, u.Peran = "NONAKTIF", "ADMIN_SISTEM" })
 
-	setup, err := f.uc.SetupMFA(context.Background(), "user-123")
+	setup, err := f.uc.SetupMFA(context.Background(), uid("user-123"))
 
 	require.NoError(t, err)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.Equal(t, "NONAKTIF", stored.Status)
 	assert.Equal(t, "ADMIN_SISTEM", stored.Peran)
 	require.NotNil(t, stored.MfaSecret)
@@ -304,7 +304,7 @@ func userSetupMFA(t *testing.T, f *fixtureKolom) (secret, sealed string) {
 	var err error
 	sealed, err = f.uc.cfg.MFAKey.Seal(secret)
 	require.NoError(t, err)
-	f.ubah("user-123", func(u *domain.Pengguna) { u.MfaSecret = &sealed })
+	f.ubah(uid("user-123"), func(u *domain.Pengguna) { u.MfaSecret = &sealed })
 	return secret, sealed
 }
 
@@ -318,10 +318,10 @@ func TestVerifyMFA_SetupDiulangDiTabLainSelamaVerifikasiTidakMengaktifkanRahasia
 	kode, err := totp.GenerateTOTP(secret, time.Now())
 	require.NoError(t, err)
 
-	_, err = f.uc.VerifyMFA(context.Background(), "user-123", kode, "10.0.0.1")
+	_, err = f.uc.VerifyMFA(context.Background(), uid("user-123"), kode, "10.0.0.1")
 
 	require.ErrorIs(t, err, ErrMFASetupBerubah)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.False(t, stored.MfaAktif, "MFA tidak boleh aktif dengan rahasia yang kodenya tidak pernah diverifikasi")
 	assert.Equal(t, rahasiaBaru, *stored.MfaSecret)
 	assert.Empty(t, f.audit.Entries())
@@ -336,7 +336,7 @@ func TestVerifyMFA_AktivasiSerentakHanyaSatuYangMenerbitkanKode(t *testing.T) {
 	kode, err := totp.GenerateTOTP(secret, time.Now())
 	require.NoError(t, err)
 
-	hasil, err := f.uc.VerifyMFA(context.Background(), "user-123", kode, "10.0.0.1")
+	hasil, err := f.uc.VerifyMFA(context.Background(), uid("user-123"), kode, "10.0.0.1")
 
 	require.ErrorIs(t, err, ErrMFAAlreadyActive)
 	assert.Nil(t, hasil, "kode cadangan dari aktivasi yang kalah tidak boleh sampai ke pengguna")
@@ -351,11 +351,11 @@ func TestVerifyMFA_AktivasiNormalMenulisHanyaKolomMFA(t *testing.T) {
 	kode, err := totp.GenerateTOTP(secret, time.Now())
 	require.NoError(t, err)
 
-	hasil, err := f.uc.VerifyMFA(context.Background(), "user-123", kode, "10.0.0.1")
+	hasil, err := f.uc.VerifyMFA(context.Background(), uid("user-123"), kode, "10.0.0.1")
 
 	require.NoError(t, err)
 	assert.Len(t, hasil.KodeCadangan, JumlahKodeCadangan)
-	stored := f.mem.stored("user-123")
+	stored := f.mem.stored(uid("user-123"))
 	assert.True(t, stored.MfaAktif)
 	assert.Equal(t, "MANAJER_DATA", stored.Peran, "peran dari admin yang menyela tidak tertimpa")
 	entri, ok := f.audit.Last()

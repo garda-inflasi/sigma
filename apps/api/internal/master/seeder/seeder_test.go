@@ -201,7 +201,7 @@ func TestSeedReference_DoesNotTouchNonReferenceData(t *testing.T) {
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, db.Exec(`
 		INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga)
-		VALUES ('u-uji-seed', 'U', 'u-uji-seed@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'X')`).Error)
+		VALUES (garda_uuid_stabil('pengguna', 'u-uji-seed'), 'U', 'u-uji-seed@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'X')`).Error)
 	before := rowCount(t, db, "pengguna")
 
 	_, err := SeedReference(t.Context(), db)

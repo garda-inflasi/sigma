@@ -199,7 +199,7 @@ func TestCreateHarga_StoresPendingEntryAndAudits(t *testing.T) {
 
 	hasil, err := uc.CreateHarga(t.Context(), CreateInput{
 		KomoditasKode: "CBM-KRT", PasarID: "PSR-1171-01", Tipe: domain.TipeKonsumen, Harga: 52000,
-	}, "mahasiswa_1")
+	}, uid("mahasiswa_1"))
 
 	require.NoError(t, err)
 	entri := hasil.Entri
@@ -210,13 +210,13 @@ func TestCreateHarga_StoresPendingEntryAndAudits(t *testing.T) {
 	assert.Equal(t, "MEDIUM", entri.Kualitas)
 	assert.Equal(t, fixedNow, entri.DicatatPada)
 	require.NotNil(t, entri.PetugasID)
-	assert.Equal(t, "mahasiswa_1", *entri.PetugasID)
+	assert.Equal(t, uid("mahasiswa_1"), *entri.PetugasID)
 
 	entry, ok := recorder.Last()
 	require.True(t, ok, "aksi yang mengubah data tercatat di audit")
 	assert.Equal(t, "HARGA_INPUT", entry.Aksi)
 	assert.Equal(t, entri.ID, entry.EntitasID)
-	assert.Equal(t, "mahasiswa_1", entry.AktorID)
+	assert.Equal(t, uid("mahasiswa_1"), entry.AktorID)
 	assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 }
 
@@ -438,15 +438,15 @@ func TestBulkAction_RefreshesDashboardWhenRowsChanged(t *testing.T) {
 func TestRiwayat_OnlyOwnEntryWithoutViewPermission(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
-	pemilik := "mahasiswa_1"
+	pemilik := uid("mahasiswa_1")
 	repo.On("GetByID", mock.Anything, "e1").Return(&domain.EntriView{ID: "e1", PetugasID: &pemilik}, nil)
 	repo.On("Riwayat", mock.Anything, "e1").Return([]domain.RiwayatView{{Ke: domain.StatusDiajukan}}, nil)
 
-	items, err := uc.Riwayat(t.Context(), "e1", "mahasiswa_1", false)
+	items, err := uc.Riwayat(t.Context(), "e1", uid("mahasiswa_1"), false)
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
 
-	_, err = uc.Riwayat(t.Context(), "e1", "mahasiswa_2", false)
+	_, err = uc.Riwayat(t.Context(), "e1", uid("mahasiswa_2"), false)
 	assert.ErrorIs(t, err, ErrNotFound, "entri petugas lain tampil sebagai tidak ada")
 
 	items, err = uc.Riwayat(t.Context(), "e1", "koordinator", true)

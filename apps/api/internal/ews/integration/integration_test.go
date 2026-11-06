@@ -304,7 +304,7 @@ func TestEWS_BulkTransitionsAndAudit(t *testing.T) {
 		a := status("EWS-1000")
 		assert.Equal(t, "DIAKUI", a.Status)
 		require.NotNil(t, a.DiakuiOlehID)
-		assert.Equal(t, "koordinator_lapangan", *a.DiakuiOlehID)
+		assert.Equal(t, uid("koordinator_lapangan"), *a.DiakuiOlehID)
 	})
 
 	t.Run("eskalasi menuntut izin eskalasi", func(t *testing.T) {

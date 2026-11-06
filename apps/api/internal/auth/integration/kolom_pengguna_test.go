@@ -106,7 +106,7 @@ func TestPatchUser_KosongTidakMenulisDanPenggunaHilangDilaporkan(t *testing.T) {
 	require.NoError(t, s.db.Raw("SELECT diupdate_pada FROM pengguna WHERE id = ?", idBiasa).Scan(&sesudahTs).Error)
 	assert.True(t, sebelumTs.Equal(sesudahTs), "patch kosong tidak menulis apa pun")
 
-	_, _, err = repo.PatchUser(ctx, "tidak-ada", domain.PenggunaPatch{Nama: ptr("x")})
+	_, _, err = repo.PatchUser(ctx, uid("tidak-ada"), domain.PenggunaPatch{Nama: ptr("x")})
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
@@ -180,7 +180,7 @@ func TestSetPassword_PenggunaTidakAdaDanSyaratHashLama(t *testing.T) {
 	saatIni := s.barisPengguna(t, idBiasa).PasswordHash
 	require.NotNil(t, saatIni)
 
-	ok, err := repo.SetPassword(ctx, "tidak-ada", domain.GantiPassword{Hash: hashBaru, At: time.Now()})
+	ok, err := repo.SetPassword(ctx, uid("tidak-ada"), domain.GantiPassword{Hash: hashBaru, At: time.Now()})
 	require.NoError(t, err)
 	assert.False(t, ok, "tidak ada baris yang cocok")
 
@@ -239,15 +239,15 @@ func TestSetMFASecret_HanyaBilaMFABelumAktif(t *testing.T) {
 	assert.False(t, b.MfaAktif)
 
 	// Akun yang MFA-nya sudah aktif (uji.mfa): rahasia aktif tidak boleh diganti rahasia setup.
-	sebelum := s.barisPengguna(t, "test-user-mfa")
-	ok, err = repo.SetMFASecret(ctx, "test-user-mfa", "v1:rahasia-setup")
+	sebelum := s.barisPengguna(t, uid("test-user-mfa"))
+	ok, err = repo.SetMFASecret(ctx, uid("test-user-mfa"), "v1:rahasia-setup")
 	require.NoError(t, err)
 	assert.False(t, ok)
-	sesudah := s.barisPengguna(t, "test-user-mfa")
+	sesudah := s.barisPengguna(t, uid("test-user-mfa"))
 	assert.True(t, sesudah.MfaAktif)
 	assert.Equal(t, *sebelum.MfaSecret, *sesudah.MfaSecret)
 
-	ok, err = repo.SetMFASecret(ctx, "tidak-ada", "v1:x")
+	ok, err = repo.SetMFASecret(ctx, uid("tidak-ada"), "v1:x")
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -344,8 +344,8 @@ func TestAdmin_PatchDanGantiPeranMencatatSnapshotAuditDariBarisYangDitulis(t *te
 		AND sebelum->>'nama' = 'Pengguna Biasa' AND sesudah->>'nama' = 'Nama Audit' AND sesudah->>'status' = 'AKTIF'`, userBiasa))
 	assert.EqualValues(t, 1, s.count(t, `SELECT count(*) FROM audit_log WHERE aksi = 'ASSIGN_ROLE' AND entitas_id = ?
 		AND sebelum->>'peran' = 'OPS_MAHASISWA' AND sesudah->>'peran' = 'MANAJER_DATA' AND sesudah->>'nama' = 'Nama Audit'`, userBiasa))
-	assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPut, "/v1/users/tidak-ada/roles", map[string]any{"peran": "MANAJER_DATA"}, admin.access).Code)
-	assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPatch, "/v1/users/tidak-ada", map[string]any{"nama": "x"}, admin.access).Code)
+	assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPut, "/v1/users/"+uid("tidak-ada")+"/roles", map[string]any{"peran": "MANAJER_DATA"}, admin.access).Code)
+	assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPatch, "/v1/users/"+uid("tidak-ada"), map[string]any{"nama": "x"}, admin.access).Code)
 }
 
 func TestAdmin_PatchEmailYangDipakaiPenggunaLainDijawab409(t *testing.T) {

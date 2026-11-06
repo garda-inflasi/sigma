@@ -134,7 +134,7 @@ func seedData(t *testing.T, db *gorm.DB) {
 	if count == 0 {
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, kabupaten_kode, status)
-			VALUES ('test-user-001', 'Test User', 'test@gardainflasi.id', ?, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', '1171', 'AKTIF')
+			VALUES (garda_uuid_stabil('pengguna', 'test-user-001'), 'Test User', 'test@gardainflasi.id', ?, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', '1171', 'AKTIF')
 		`, passwordHash).Error)
 	}
 
@@ -142,7 +142,7 @@ func seedData(t *testing.T, db *gorm.DB) {
 	if count == 0 {
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status)
-			VALUES ('test-user-002', 'Inactive User', 'inactive@gardainflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'NONAKTIF')
+			VALUES (garda_uuid_stabil('pengguna', 'test-user-002'), 'Inactive User', 'inactive@gardainflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'NONAKTIF')
 		`, passwordHash).Error)
 	}
 
@@ -150,7 +150,7 @@ func seedData(t *testing.T, db *gorm.DB) {
 	if count == 0 {
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status)
-			VALUES ('test-user-biasa', 'Pengguna Biasa', 'uji.biasa@gardainflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF')
+			VALUES (garda_uuid_stabil('pengguna', 'test-user-biasa'), 'Pengguna Biasa', 'uji.biasa@gardainflasi.id', ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF')
 		`, passwordHash).Error)
 	}
 
@@ -162,11 +162,11 @@ func seedData(t *testing.T, db *gorm.DB) {
 		require.NoError(t, err)
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret)
-			VALUES ('test-user-mfa', 'MFA User', 'uji.mfa@gardainflasi.id', ?, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, ?)
+			VALUES (garda_uuid_stabil('pengguna', 'test-user-mfa'), 'MFA User', 'uji.mfa@gardainflasi.id', ?, 'OPS_KOORDINATOR', 'OPERASIONAL', 'BPPSDMP', 'AKTIF', true, ?)
 		`, passwordHash, sealed).Error)
 		for _, kode := range kodeCadanganUji {
-			require.NoError(t, db.Exec("INSERT INTO mfa_kode_cadangan (user_id, kode_hash) VALUES ('test-user-mfa', ?)",
-				usecase.HashKodeCadangan("test-user-mfa", kode)).Error)
+			require.NoError(t, db.Exec("INSERT INTO mfa_kode_cadangan (user_id, kode_hash) VALUES (garda_uuid_stabil('pengguna', 'test-user-mfa'), ?)",
+				usecase.HashKodeCadangan(uid("test-user-mfa"), kode)).Error)
 		}
 	}
 
@@ -294,7 +294,7 @@ func TestIntegration_AuthFlow(t *testing.T) {
 		result := s.parseResponse(t, w)
 		data, ok := result["data"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "test-user-001", data["id"])
+		assert.Equal(t, uid("test-user-001"), data["id"])
 		assert.Equal(t, "Test User", data["nama"])
 		assert.Equal(t, "test@gardainflasi.id", data["email"])
 	})

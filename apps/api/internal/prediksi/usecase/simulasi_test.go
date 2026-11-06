@@ -97,7 +97,7 @@ func TestSimulasiHitung_MenyimpanSkenarioDanMencatatAudit(t *testing.T) {
 	p := netral()
 	p.PasokanPct = 10
 
-	hasil, err := u.Hitung(t.Context(), "u-1", p)
+	hasil, err := u.Hitung(t.Context(), uid("u-1"), p)
 
 	require.NoError(t, err)
 	assert.Equal(t, 10.5, hasil.HasilPct, "14,0 - 3,5")
@@ -107,7 +107,7 @@ func TestSimulasiHitung_MenyimpanSkenarioDanMencatatAudit(t *testing.T) {
 	s := repo.disimpan
 	require.NotNil(t, s)
 	assert.Equal(t, hasil.ID, s.ID)
-	assert.Equal(t, "u-1", s.DibuatOleh)
+	assert.Equal(t, uid("u-1"), s.DibuatOleh)
 	assert.Equal(t, "CBM-KRT", s.KomoditasKode)
 	assert.Equal(t, 14, s.HorizonHari)
 	var parameter ParameterSimulasi
@@ -128,7 +128,7 @@ func TestSimulasiHitung_TanpaProyeksiModelProduksi(t *testing.T) {
 	repo := &fakeSimulasiRepo{}
 	u := NewSimulasi(repo, &audittest.Recorder{}, logger.NewDefault())
 
-	_, err := u.Hitung(t.Context(), "u-1", netral())
+	_, err := u.Hitung(t.Context(), uid("u-1"), netral())
 
 	assert.ErrorIs(t, err, ErrProyeksiTidakAda)
 	assert.Nil(t, repo.disimpan)
@@ -138,7 +138,7 @@ func TestSimulasiHitung_GalatRepositori(t *testing.T) {
 	boom := errors.New("db down")
 	u := NewSimulasi(&fakeSimulasiRepo{view: contohView(57000), err: boom}, &audittest.Recorder{}, logger.NewDefault())
 
-	_, err := u.Hitung(t.Context(), "u-1", netral())
+	_, err := u.Hitung(t.Context(), uid("u-1"), netral())
 
 	assert.ErrorIs(t, err, boom)
 }

@@ -16,11 +16,11 @@ import (
 func TestAssignRole_AuditTetapDitulisBilaPencabutanSesiGagal(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db putus"))
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errors.New("db putus"))
 
-	_, err := uc.AssignRole(context.Background(), "user-123", "MANAJER_DATA", "admin-1")
+	_, err := uc.AssignRole(context.Background(), uid("user-123"), "MANAJER_DATA", uid("admin-1"))
 
 	require.Error(t, err, "pencabutan sesi yang gagal tetap dilaporkan")
 	entries := recorder.Entries()
@@ -34,12 +34,12 @@ func TestAssignRole_AuditTetapDitulisBilaPencabutanSesiGagal(t *testing.T) {
 func TestUpdateUser_GantiPeranAuditTetapDitulisBilaPencabutanSesiGagal(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db putus"))
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errors.New("db putus"))
 	peran := "OPS_KOORDINATOR"
 
-	_, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Peran: &peran}, "admin-1")
+	_, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Peran: &peran}, uid("admin-1"))
 
 	require.Error(t, err)
 	entries := recorder.Entries()
@@ -54,14 +54,14 @@ func TestUpdateUser_GantiPeranAuditTetapDitulisBilaPencabutanSesiGagal(t *testin
 func TestJalurPerubahanPeran_SnapshotMemuatPeran(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 	peran := "MANAJER_DATA"
 
-	_, err := uc.AssignRole(context.Background(), "user-123", peran, "admin-1")
+	_, err := uc.AssignRole(context.Background(), uid("user-123"), peran, uid("admin-1"))
 	require.NoError(t, err)
-	_, err = uc.UpdateUser(context.Background(), "user-123", UserPatch{Peran: &peran}, "admin-1")
+	_, err = uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Peran: &peran}, uid("admin-1"))
 	require.NoError(t, err)
 
 	for _, e := range recorder.Entries() {

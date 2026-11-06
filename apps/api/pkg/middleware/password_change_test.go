@@ -39,7 +39,7 @@ func TestJWTAuth_PasswordChangeRequired_OnlyExemptRoutesOpen(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
-			tokenStr, err := tokenMgr.CreateAccessToken("user-1", "ADMIN_SISTEM", []string{"pengguna.kelola"}, token.WithPasswordChangeRequired(true))
+			tokenStr, err := tokenMgr.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", []string{"pengguna.kelola"}, token.WithPasswordChangeRequired(true))
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
@@ -62,7 +62,7 @@ func TestJWTAuth_PasswordChangeRequired_OnlyExemptRoutesOpen(t *testing.T) {
 func TestJWTAuth_NoPasswordChangeRequired_AllRoutesOpen(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	router := passwordChangeRouter(tokenMgr)
-	tokenStr, err := tokenMgr.CreateAccessToken("user-1", "ADMIN_SISTEM", nil)
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/harga", nil)
@@ -93,7 +93,7 @@ func TestJWTAuth_MFASetupRequired_OnlySetupRoutesOpen(t *testing.T) {
 	}
 	for path, want := range cases {
 		t.Run(path, func(t *testing.T) {
-			tokenStr, err := tokenMgr.CreateAccessToken("user-1", "ADMIN_SISTEM", []string{"harga.lihat"}, token.WithMFASetupRequired(true))
+			tokenStr, err := tokenMgr.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", []string{"harga.lihat"}, token.WithMFASetupRequired(true))
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -116,7 +116,7 @@ func TestJWTAuth_MFASetupRequired_OnlySetupRoutesOpen(t *testing.T) {
 func TestJWTAuth_RejectsMFAChallengeToken(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	router := passwordChangeRouter(tokenMgr)
-	challenge, err := tokenMgr.CreateMFAChallengeToken("user-1")
+	challenge, err := tokenMgr.CreateMFAChallengeToken(uid("user-1"))
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/auth/me", nil)

@@ -205,7 +205,7 @@ func TestKirimHarga_AdvancesTaskProgressOncePerCommodity(t *testing.T) {
 	waktu := time.Now().Add(-time.Minute)
 	require.NoError(t, s.db.Exec(`
 		INSERT INTO tugas_lapangan (id, judul, pasar_id, petugas_id, komoditas, tipe, tenggat, status, target, dibuat_pada)
-		VALUES ('TGS-uji-progres', 'Uji progres', 'PSR-1174-01', 'mahasiswa_9', '{TMT,KTG}', 'KONSUMEN', ?, 'BELUM', 2, ?)`,
+		VALUES ('TGS-uji-progres', 'Uji progres', 'PSR-1174-01', garda_uuid_stabil('pengguna', 'mahasiswa_9'), '{TMT,KTG}', 'KONSUMEN', ?, 'BELUM', 2, ?)`,
 		time.Now().AddDate(-10, 0, 0), time.Now().AddDate(-11, 0, 0)).Error)
 	kirim := func(kunci, komoditas string) *httptest.ResponseRecorder {
 		body := entriBody(komoditas, 15000, waktu)

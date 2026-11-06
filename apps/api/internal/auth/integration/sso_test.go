@@ -35,17 +35,17 @@ func seedSSO(t *testing.T, db *gorm.DB) {
 			VALUES (?, ?, ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', ?`+placeholdersFor(args)+`)`,
 			append([]any{id, "Pengguna " + id, mail, status}, args...)...).Error)
 	}
-	insert("sso-ani", "ani@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-ulang", "ulang@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-replay", "replay@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-pkce", "pkce@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-nonce", "nonce@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-kedaluwarsa", "kedaluwarsa@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-belum", "belum@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-nonaktif", "nonaktif@kemenkeu.go.id", "NONAKTIF", "")
-	insert("sso-terkunci", "terkunci@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-hd", "hd@kemenkeu.go.id", "AKTIF", "")
-	insert("sso-bertaut", "bertaut@kemenkeu.go.id", "AKTIF", ", sso_provider, sso_subject", "google", "sub-pemilik-asli")
+	insert(uid("sso-ani"), "ani@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-ulang"), "ulang@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-replay"), "replay@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-pkce"), "pkce@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-nonce"), "nonce@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-kedaluwarsa"), "kedaluwarsa@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-belum"), "belum@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-nonaktif"), "nonaktif@kemenkeu.go.id", "NONAKTIF", "")
+	insert(uid("sso-terkunci"), "terkunci@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-hd"), "hd@kemenkeu.go.id", "AKTIF", "")
+	insert(uid("sso-bertaut"), "bertaut@kemenkeu.go.id", "AKTIF", ", sso_provider, sso_subject", "google", "sub-pemilik-asli")
 	// Kunci login dicatat per email (kunci_login, lihat 01-F), bukan dari login_attempts.
 	require.NoError(t, db.Exec(`INSERT INTO kunci_login (email_hash, gagal, jendela_mulai, terkunci_sampai, diperbarui_pada)
 		VALUES (?, 5, now(), now() + interval '15 minutes', now())`, usecase.HashEmailKunci("terkunci@kemenkeu.go.id")).Error)
@@ -191,36 +191,36 @@ func TestIntegration_SSO(t *testing.T) {
 	})
 
 	t.Run("masuk pertama menautkan akun lalu menerbitkan sesi yang bekerja", func(t *testing.T) {
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-ani")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-ani"))))
 
 		w := s.ssoLogin(t, idp, "sub-ani", identitas("ani@kemenkeu.go.id"))
 		data := s.ssoSession(t, w)
-		assert.Equal(t, "sso-ani", data.User.ID)
+		assert.Equal(t, uid("sso-ani"), data.User.ID)
 		assert.Equal(t, "OPS_MAHASISWA", data.User.Peran)
 		require.NotEmpty(t, data.AccessToken)
 		assert.NotEmpty(t, data.RefreshToken)
 
-		provider, subject := s.ssoLink(t, "sso-ani")
+		provider, subject := s.ssoLink(t, uid("sso-ani"))
 		require.NotNil(t, provider)
 		require.NotNil(t, subject)
 		assert.Equal(t, "google", *provider)
 		assert.Equal(t, "sub-ani", *subject)
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM pengguna WHERE id = 'sso-ani' AND sso_terhubung_pada IS NOT NULL AND terakhir_masuk IS NOT NULL"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'sso-ani') AND sso_terhubung_pada IS NOT NULL AND terakhir_masuk IS NOT NULL"))
 
 		me := s.serveRequest(t, http.MethodGet, "/v1/auth/me", nil, s.authHeader(data.AccessToken))
 		assert.Equal(t, http.StatusOK, me.Code, "token SSO diterima middleware JWT yang sama")
 
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = 'sso-ani' AND hasil = 'BERHASIL' AND metadata->>'metode' = 'sso_google'"))
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LINK' AND aktor_id = 'sso-ani' AND metadata->>'sso_subject' = 'sub-ani'"))
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM login_attempts WHERE user_id = 'sso-ani' AND success"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = garda_uuid_stabil('pengguna', 'sso-ani') AND hasil = 'BERHASIL' AND metadata->>'metode' = 'sso_google'"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LINK' AND aktor_id = garda_uuid_stabil('pengguna', 'sso-ani') AND metadata->>'sso_subject' = 'sub-ani'"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM login_attempts WHERE user_id = garda_uuid_stabil('pengguna', 'sso-ani') AND success"))
 	})
 
 	t.Run("masuk berikutnya mencocokkan subjek walau email di penyedia berubah", func(t *testing.T) {
 		w := s.ssoLogin(t, idp, "sub-ani", identitas("ani.ganti-nama@kemenkeu.go.id"))
 		data := s.ssoSession(t, w)
-		assert.Equal(t, "sso-ani", data.User.ID)
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LINK' AND aktor_id = 'sso-ani'"), "tidak ditautkan ulang")
-		assert.EqualValues(t, 2, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = 'sso-ani' AND metadata->>'metode' = 'sso_google'"))
+		assert.Equal(t, uid("sso-ani"), data.User.ID)
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LINK' AND aktor_id = garda_uuid_stabil('pengguna', 'sso-ani')"), "tidak ditautkan ulang")
+		assert.EqualValues(t, 2, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = garda_uuid_stabil('pengguna', 'sso-ani') AND metadata->>'metode' = 'sso_google'"))
 	})
 
 	t.Run("email tak dikenal ditolak tanpa membuat akun", func(t *testing.T) {
@@ -236,22 +236,22 @@ func TestIntegration_SSO(t *testing.T) {
 		w := s.ssoLogin(t, idp, "sub-penyerang", identitas("bertaut@kemenkeu.go.id"))
 		assert.Equal(t, http.StatusConflict, w.Code)
 		assert.Equal(t, "SSO_ACCOUNT_CONFLICT", errorCode(t, w))
-		_, subject := s.ssoLink(t, "sso-bertaut")
+		_, subject := s.ssoLink(t, uid("sso-bertaut"))
 		require.NotNil(t, subject)
 		assert.Equal(t, "sub-pemilik-asli", *subject, "tautan lama tidak tergeser")
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = 'sso-bertaut' AND hasil = 'DITOLAK' AND metadata->>'alasan' = 'sso_subjek_berbeda' AND metadata->>'sso_subject' = 'sub-penyerang'"))
-		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = 'sso-bertaut'"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = garda_uuid_stabil('pengguna', 'sso-bertaut') AND hasil = 'DITOLAK' AND metadata->>'alasan' = 'sso_subjek_berbeda' AND metadata->>'sso_subject' = 'sub-penyerang'"))
+		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = garda_uuid_stabil('pengguna', 'sso-bertaut')"))
 
 		// Pemilik asli tetap bisa masuk.
 		ok := s.ssoLogin(t, idp, "sub-pemilik-asli", identitas("bertaut@kemenkeu.go.id"))
-		assert.Equal(t, "sso-bertaut", s.ssoSession(t, ok).User.ID)
+		assert.Equal(t, uid("sso-bertaut"), s.ssoSession(t, ok).User.ID)
 	})
 
 	t.Run("email belum terverifikasi ditolak dan tidak menautkan", func(t *testing.T) {
 		w := s.ssoLogin(t, idp, "sub-belum", map[string]any{"email": "belum@kemenkeu.go.id", "email_verified": false})
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Equal(t, "SSO_EMAIL_UNVERIFIED", errorCode(t, w))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-belum")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-belum"))))
 
 		tanpaKlaim := s.ssoLogin(t, idp, "sub-belum", map[string]any{"email": "belum@kemenkeu.go.id"})
 		assert.Equal(t, "SSO_EMAIL_UNVERIFIED", errorCode(t, tanpaKlaim), "tanpa klaim email_verified = tidak terverifikasi")
@@ -261,8 +261,8 @@ func TestIntegration_SSO(t *testing.T) {
 		w := s.ssoLogin(t, idp, "sub-nonaktif", identitas("nonaktif@kemenkeu.go.id"))
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Equal(t, "SSO_ACCOUNT_INACTIVE", errorCode(t, w))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-nonaktif")))
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM login_attempts WHERE user_id = 'sso-nonaktif' AND NOT success AND failure_reason = 'account_inactive'"))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-nonaktif"))))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM login_attempts WHERE user_id = garda_uuid_stabil('pengguna', 'sso-nonaktif') AND NOT success AND failure_reason = 'account_inactive'"))
 	})
 
 	t.Run("akun terkunci ditolak seperti login kata sandi", func(t *testing.T) {
@@ -270,7 +270,7 @@ func TestIntegration_SSO(t *testing.T) {
 		assert.Equal(t, http.StatusLocked, w.Code)
 		assert.NotEmpty(t, w.Header().Get("Retry-After"))
 		assert.Equal(t, "SSO_ACCOUNT_LOCKED", errorCode(t, w))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-terkunci")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-terkunci"))))
 	})
 
 	t.Run("akun ber-MFA melanjutkan ke langkah OTP yang sama dengan login kata sandi", func(t *testing.T) {
@@ -280,7 +280,7 @@ func TestIntegration_SSO(t *testing.T) {
 		require.NotEmpty(t, data.MFAToken)
 		assert.Empty(t, data.AccessToken, "belum ada sesi sebelum OTP")
 		assert.Empty(t, data.RefreshToken)
-		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = 'test-user-mfa'"))
+		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = garda_uuid_stabil('pengguna', 'test-user-mfa')"))
 
 		tanpaSesi := s.serveRequest(t, http.MethodGet, "/v1/auth/me", nil, s.authHeader(data.MFAToken))
 		assert.Equal(t, http.StatusUnauthorized, tanpaSesi.Code, "token tantangan bukan kredensial sesi")
@@ -291,15 +291,15 @@ func TestIntegration_SSO(t *testing.T) {
 		valid := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate",
 			map[string]any{"mfa_token": data.MFAToken, "code": kodeOTP(t, mfaSecretUji, time.Now())}, nil)
 		sesi := s.ssoSession(t, valid)
-		assert.Equal(t, "test-user-mfa", sesi.User.ID)
+		assert.Equal(t, uid("test-user-mfa"), sesi.User.ID)
 		assert.NotEmpty(t, sesi.AccessToken)
 
-		_, subject := s.ssoLink(t, "test-user-mfa")
+		_, subject := s.ssoLink(t, uid("test-user-mfa"))
 		require.NotNil(t, subject)
 		assert.Equal(t, "sub-mfa", *subject)
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LOGIN' AND aktor_id = 'test-user-mfa' AND metadata->>'metode' = 'sso_google' AND metadata->>'tahap' = 'menunggu_mfa'"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LOGIN' AND aktor_id = garda_uuid_stabil('pengguna', 'test-user-mfa') AND metadata->>'metode' = 'sso_google' AND metadata->>'tahap' = 'menunggu_mfa'"))
 		// LOGIN akhir (sesi terbit setelah OTP) memuat metode masuk SSO bersama faktor keduanya, bukan hanya mfa=totp.
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND hasil = 'BERHASIL' AND aktor_id = 'test-user-mfa' AND metadata->>'metode' = 'sso_google' AND metadata->>'mfa' = 'totp'"))
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND hasil = 'BERHASIL' AND aktor_id = garda_uuid_stabil('pengguna', 'test-user-mfa') AND metadata->>'metode' = 'sso_google' AND metadata->>'mfa' = 'totp'"))
 	})
 
 	t.Run("state hanya sekali pakai: callback yang diulang ditolak", func(t *testing.T) {
@@ -312,7 +312,7 @@ func TestIntegration_SSO(t *testing.T) {
 		again := s.ssoCallback(t, code, state, binding)
 		assert.Equal(t, http.StatusBadRequest, again.Code)
 		assert.Equal(t, "SSO_STATE_INVALID", errorCode(t, again))
-		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = 'sso-replay'"), "tidak ada sesi kedua")
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = garda_uuid_stabil('pengguna', 'sso-replay')"), "tidak ada sesi kedua")
 	})
 
 	t.Run("binding salah (login CSRF) ditolak dan state hangus", func(t *testing.T) {
@@ -323,11 +323,11 @@ func TestIntegration_SSO(t *testing.T) {
 		serangan := s.ssoCallback(t, code, state, "binding-browser-korban")
 		assert.Equal(t, http.StatusBadRequest, serangan.Code)
 		assert.Equal(t, "SSO_STATE_INVALID", errorCode(t, serangan))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-ulang")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-ulang"))))
 
 		sah := s.ssoCallback(t, code, state, binding)
 		assert.Equal(t, http.StatusBadRequest, sah.Code, "state sudah hangus pada percobaan pertama")
-		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = 'sso-ulang'"))
+		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = garda_uuid_stabil('pengguna', 'sso-ulang')"))
 		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND hasil = 'DITOLAK' AND metadata->>'alasan' = 'binding_tidak_cocok'"))
 	})
 
@@ -339,7 +339,7 @@ func TestIntegration_SSO(t *testing.T) {
 		w := s.ssoCallback(t, code, state, binding)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.Equal(t, "SSO_STATE_INVALID", errorCode(t, w))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-kedaluwarsa")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-kedaluwarsa"))))
 	})
 
 	t.Run("state tak dikenal dan parameter tidak lengkap ditolak", func(t *testing.T) {
@@ -357,7 +357,7 @@ func TestIntegration_SSO(t *testing.T) {
 		w := s.ssoCallback(t, codeB, stateA, bindingA)
 		assert.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
 		assert.Equal(t, "SSO_EXCHANGE_FAILED", errorCode(t, w))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-pkce")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-pkce"))))
 	})
 
 	t.Run("nonce diverifikasi: ID token dengan nonce alur lain ditolak", func(t *testing.T) {
@@ -372,15 +372,15 @@ func TestIntegration_SSO(t *testing.T) {
 		w := s.ssoCallback(t, code, state, binding)
 		assert.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
 		assert.Equal(t, "SSO_EXCHANGE_FAILED", errorCode(t, w))
-		assert.Nil(t, firstOf(s.ssoLink(t, "sso-nonce")))
+		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-nonce"))))
 		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND hasil = 'DITOLAK' AND metadata->>'alasan' = 'sso_nonce_tidak_cocok'"))
 	})
 
 	t.Run("identitas yang sama tidak bisa menaut dua akun (UNIQUE sso_provider+sso_subject)", func(t *testing.T) {
-		err := s.db.Exec("UPDATE pengguna SET sso_provider = 'google', sso_subject = 'sub-ani' WHERE id = 'sso-hd'").Error
+		err := s.db.Exec("UPDATE pengguna SET sso_provider = 'google', sso_subject = 'sub-ani' WHERE id = garda_uuid_stabil('pengguna', 'sso-hd')").Error
 		require.Error(t, err)
 		assert.ErrorIs(t, err, gorm.ErrDuplicatedKey)
-		err = s.db.Exec("UPDATE pengguna SET sso_provider = 'google' WHERE id = 'sso-hd'").Error
+		err = s.db.Exec("UPDATE pengguna SET sso_provider = 'google' WHERE id = garda_uuid_stabil('pengguna', 'sso-hd')").Error
 		assert.Error(t, err, "provider tanpa subject melanggar CHECK pasangan")
 	})
 
@@ -396,7 +396,7 @@ func TestIntegration_SSO(t *testing.T) {
 			claims := identitas("hd@kemenkeu.go.id")
 			claims["hd"] = "kemenkeu.go.id"
 			w := s.ssoLogin(t, idp, "sub-hd", claims)
-			assert.Equal(t, "sso-hd", s.ssoSession(t, w).User.ID)
+			assert.Equal(t, uid("sso-hd"), s.ssoSession(t, w).User.ID)
 		})
 		t.Run("hd lain ditolak", func(t *testing.T) {
 			claims := identitas("ani@kemenkeu.go.id")
@@ -404,7 +404,7 @@ func TestIntegration_SSO(t *testing.T) {
 			w := s.ssoLogin(t, idp, "sub-hd-lain", claims)
 			assert.Equal(t, http.StatusForbidden, w.Code)
 			assert.Equal(t, "SSO_DOMAIN_NOT_ALLOWED", errorCode(t, w))
-			assert.Nil(t, firstOf(s.ssoLink(t, "sso-ani")))
+			assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-ani"))))
 		})
 		t.Run("akun pribadi tanpa hd ditolak", func(t *testing.T) {
 			w := s.ssoLogin(t, idp, "sub-pribadi", identitas("ani@kemenkeu.go.id"))

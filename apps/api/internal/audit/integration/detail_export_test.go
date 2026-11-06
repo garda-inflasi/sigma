@@ -17,7 +17,7 @@ func TestListAudit_AdvancedFilters(t *testing.T) {
 	s.seedLog(t, 12)
 	token := s.login(t, adminEmail)
 	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{
-		AktorID: "target-1", Aksi: "AKUI_EWS", Entitas: "ews_alert", EntitasID: "EWS-77", Hasil: audit.HasilBerhasil,
+		AktorID: uid("target-1"), Aksi: "AKUI_EWS", Entitas: "ews_alert", EntitasID: "EWS-77", Hasil: audit.HasilBerhasil,
 	}))
 
 	t.Run("entitas_id persis", func(t *testing.T) {
@@ -83,7 +83,7 @@ type detailBody struct {
 func TestGetAudit_DetailWithDiff(t *testing.T) {
 	s := newSuite(t, "audit_detail")
 	adminToken := s.login(t, adminEmail)
-	w := s.call(t, http.MethodPut, "/v1/users/target-1/roles", adminToken, map[string]string{"peran": "OPS_KOORDINATOR"})
+	w := s.call(t, http.MethodPut, "/v1/users/"+uid("target-1")+"/roles", adminToken, map[string]string{"peran": "OPS_KOORDINATOR"})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	var id string
 	require.NoError(t, s.db.Raw(`SELECT id FROM audit_log WHERE aksi = 'ASSIGN_ROLE'`).Scan(&id).Error)
@@ -161,7 +161,7 @@ func TestExportAudit_FollowsFilterAndIsAudited(t *testing.T) {
 
 	exports := s.rows(t, "EKSPOR_DATA")
 	require.Len(t, exports, 1, "ekspor tercatat tepat sekali")
-	assert.Equal(t, "admin-1", *exports[0].AktorID)
+	assert.Equal(t, uid("admin-1"), *exports[0].AktorID)
 	assert.Equal(t, "audit_log", exports[0].Entitas)
 }
 
@@ -169,7 +169,7 @@ func TestExportAudit_NeutralizesSpreadsheetFormulas(t *testing.T) {
 	s := newSuite(t, "audit_export_formula")
 	token := s.login(t, adminEmail)
 	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{
-		AktorID: "admin-1", Aksi: "UJI_RUMUS", Entitas: "uji", EntitasID: `=HYPERLINK("http://jahat")`, Hasil: audit.HasilBerhasil,
+		AktorID: uid("admin-1"), Aksi: "UJI_RUMUS", Entitas: "uji", EntitasID: `=HYPERLINK("http://jahat")`, Hasil: audit.HasilBerhasil,
 	}))
 
 	w := s.call(t, http.MethodGet, "/v1/audit/export?aksi=UJI_RUMUS", token, nil)

@@ -72,14 +72,14 @@ func TestNotifikasi_EngineAlertEnqueuesPerRecipientAndPreference(t *testing.T) {
 
 	got := s.outbox(t, "")
 	assert.ElementsMatch(t, []baris{
-		{alert, "manajer_data", "EMAIL", "manajer.data@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "manajer_data", "PUSH", "manajer_data", "MENUNGGU", 0},
-		{alert, "manajer_program", "EMAIL", "manajer.program@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "manajer_program", "PUSH", "manajer_program", "MENUNGGU", 0},
-		{alert, "manajer_risiko", "EMAIL", "manajer.risiko@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "koordinator_lapangan", "EMAIL", "koordinator.lapangan@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "user_mfa", "EMAIL", "mfa@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "user_mfa", "PUSH", "user_mfa", "MENUNGGU", 0},
+		{alert, uid("manajer_data"), "EMAIL", "manajer.data@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("manajer_data"), "PUSH", uid("manajer_data"), "MENUNGGU", 0},
+		{alert, uid("manajer_program"), "EMAIL", "manajer.program@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("manajer_program"), "PUSH", uid("manajer_program"), "MENUNGGU", 0},
+		{alert, uid("manajer_risiko"), "EMAIL", "manajer.risiko@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("koordinator_lapangan"), "EMAIL", "koordinator.lapangan@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("user_mfa"), "EMAIL", "mfa@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("user_mfa"), "PUSH", uid("user_mfa"), "MENUNGGU", 0},
 	}, got, "risiko tanpa push; koordinator hanya email; peran tanpa ews.akui (strategis, mahasiswa) tidak menerima")
 
 	assert.Zero(t, s.evaluasi(t).Dibuat)
@@ -299,11 +299,11 @@ func TestNotifikasi_PreferencesAndPushSubscriptionEndpoints(t *testing.T) {
 			SeverityMin string
 			Aktif       bool
 		}
-		require.NoError(t, s.db.Raw(`SELECT severity_min, aktif FROM preferensi_notifikasi WHERE pengguna_id = 'koordinator_lapangan' AND kanal = 'PUSH'`).Scan(&row).Error)
+		require.NoError(t, s.db.Raw(`SELECT severity_min, aktif FROM preferensi_notifikasi WHERE pengguna_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan') AND kanal = 'PUSH'`).Scan(&row).Error)
 		assert.Equal(t, "WASPADA", row.SeverityMin)
 		assert.False(t, row.Aktif)
 		var audited int
-		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'UBAH_PREFERENSI_NOTIFIKASI' AND aktor_id = 'koordinator_lapangan'`).Scan(&audited).Error)
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'UBAH_PREFERENSI_NOTIFIKASI' AND aktor_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan')`).Scan(&audited).Error)
 		assert.Equal(t, 1, audited)
 	})
 
@@ -323,7 +323,7 @@ func TestNotifikasi_PreferencesAndPushSubscriptionEndpoints(t *testing.T) {
 		require.Equal(t, http.StatusOK, s.call(t, http.MethodPut, pushPath, emailPenuh, langganan).Code, "endpoint yang sama berpindah ke pemilik baru")
 		var owner string
 		require.NoError(t, s.db.Raw(`SELECT pengguna_id FROM langganan_push WHERE endpoint = ?`, langganan["endpoint"]).Scan(&owner).Error)
-		assert.Equal(t, "manajer_risiko", owner)
+		assert.Equal(t, uid("manajer_risiko"), owner)
 
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPut, pushPath, emailAkui, map[string]any{"endpoint": "bukan-url", "p256dh": "k", "auth": "a"}).Code)
 		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodDelete, pushPath, emailAkui, map[string]any{"endpoint": langganan["endpoint"]}).Code, "bukan pemiliknya")

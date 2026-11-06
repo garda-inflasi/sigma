@@ -41,16 +41,16 @@ func TestUpdateAturan_SavesAndAuditsBeforeAndAfter(t *testing.T) {
 	uc, recorder := newTestUseCase(repo)
 	upd := domain.AturanUpdate{Versi: 1, AmbangWaspada: 8, AmbangSiaga: 12, AmbangKritis: 25, JendelaHari: 7, CooldownJam: 24, Kanal: domain.Kanal{"DASHBOARD"}, Aktif: true}
 	repo.On("GetAturan", mock.Anything, "ATR-LH-BWM").Return(aturanContoh(1, 18), nil)
-	repo.On("UpdateAturan", mock.Anything, "ATR-LH-BWM", upd, "user-001").Return(aturanContoh(2, 25), nil)
+	repo.On("UpdateAturan", mock.Anything, "ATR-LH-BWM", upd, uid("user-001")).Return(aturanContoh(2, 25), nil)
 
-	got, err := uc.UpdateAturan(context.Background(), "ATR-LH-BWM", upd, "user-001")
+	got, err := uc.UpdateAturan(context.Background(), "ATR-LH-BWM", upd, uid("user-001"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, got.Versi)
 	entry, ok := recorder.Last()
 	require.True(t, ok)
 	assert.Equal(t, "UBAH_AMBANG", entry.Aksi)
-	assert.Equal(t, "user-001", entry.AktorID)
+	assert.Equal(t, uid("user-001"), entry.AktorID)
 	assert.EqualValues(t, 18, entry.Sebelum.(map[string]any)["ambang_kritis"])
 	assert.EqualValues(t, 25, entry.Sesudah.(map[string]any)["ambang_kritis"])
 }
@@ -93,7 +93,7 @@ func TestEvaluasi_AuditsSummaryAndPropagatesErrors(t *testing.T) {
 	uc, recorder := newTestUseCase(new(mockRepository))
 	uc.evaluator = fakeEvaluator{ringkasan: domain.RingkasanEvaluasi{Aturan: 9, Dibuat: 2}}
 
-	got, err := uc.Evaluasi(context.Background(), "user-001")
+	got, err := uc.Evaluasi(context.Background(), uid("user-001"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, got.Dibuat)
@@ -102,7 +102,7 @@ func TestEvaluasi_AuditsSummaryAndPropagatesErrors(t *testing.T) {
 
 	uc, recorder = newTestUseCase(new(mockRepository))
 	uc.evaluator = fakeEvaluator{err: assert.AnError}
-	_, err = uc.Evaluasi(context.Background(), "user-001")
+	_, err = uc.Evaluasi(context.Background(), uid("user-001"))
 	assert.ErrorIs(t, err, assert.AnError)
 	assert.Empty(t, recorder.Entries())
 }

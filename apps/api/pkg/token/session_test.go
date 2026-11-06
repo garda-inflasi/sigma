@@ -23,7 +23,7 @@ func (s *stubChecker) Revoked(_ context.Context, jti, sid string) (bool, error) 
 
 func TestWithSession_PutsSidInClaims(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := m.CreateAccessToken("u1", "ADMIN_SISTEM", nil, WithSession("sesi-1"))
+	tokenStr, err := m.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil, WithSession("sesi-1"))
 	require.NoError(t, err)
 
 	claims, err := m.VerifyToken(tokenStr)
@@ -33,7 +33,7 @@ func TestWithSession_PutsSidInClaims(t *testing.T) {
 
 func TestAccessTokenWithoutSessionHasNoSidClaim(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := m.CreateAccessToken("u1", "ADMIN_SISTEM", nil)
+	tokenStr, err := m.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 
 	claims, err := m.VerifyToken(tokenStr)

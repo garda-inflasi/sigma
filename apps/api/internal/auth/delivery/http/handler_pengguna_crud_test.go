@@ -15,6 +15,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Tes pemetaan galat usecase → status HTTP untuk handler pengguna (buat, daftar, detail, ubah, hapus, reset
@@ -40,7 +41,7 @@ func tanpaBocor(t *testing.T, h hasil) {
 func TestCreateUser_ValidasiBindingDijawab400(t *testing.T) {
 	r, _ := routerPengguna(t, &repoUji{})
 	valid := map[string]any{
-		"id": "u-baru", "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
+		"id": uid("u-baru"), "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
 		"peran": "OPS_MAHASISWA", "lapis": "OPERASIONAL", "lembaga": "BPPSDMP",
 	}
 	ubah := func(k string, v any) string {
@@ -58,7 +59,6 @@ func TestCreateUser_ValidasiBindingDijawab400(t *testing.T) {
 	cases := map[string]string{
 		"JSON rusak":      `{"id":`,
 		"badan kosong":    ``,
-		"id hilang":       ubah("id", nil),
 		"nama hilang":     ubah("nama", nil),
 		"email tak valid": ubah("email", "bukan-email"),
 		"sandi pendek":    ubah("password", "pendek"),
@@ -92,7 +92,7 @@ func TestCreateUser_PemetaanGalat(t *testing.T) {
 		}, nethttp.StatusCreated},
 	}
 	body := js(map[string]any{
-		"id": "u-baru", "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
+		"id": uid("u-baru"), "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
 		"peran": "OPS_MAHASISWA", "lapis": "OPERASIONAL", "lembaga": "BPPSDMP",
 	})
 	for _, tc := range cases {
@@ -112,11 +112,127 @@ func TestCreateUser_PemetaanGalat(t *testing.T) {
 	}
 }
 
+// ID pengguna adalah UUID (000110). Klien tidak wajib mengirim id: server membuat UUID acak. Bila dikirim, id
+// harus UUID yang sah (dinormalkan ke huruf kecil), selain itu 400; id yang sudah dipakai 409.
+func TestCreateUser_IDOpsionalDanHarusUUID(t *testing.T) {
+	badan := func(id any) string {
+		m := map[string]any{
+			"nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
+			"peran": "OPS_MAHASISWA", "lapis": "OPERASIONAL", "lembaga": "BPPSDMP",
+		}
+		if id != nil {
+			m["id"] = id
+		}
+		return js(m)
+	}
+	baru := func(simpan *string) *repoUji {
+		return &repoUji{
+			byEmail: func(string) (*domain.Pengguna, error) { return nil, gorm.ErrRecordNotFound },
+			buat:    func(p *domain.Pengguna) error { *simpan = p.ID; return nil },
+		}
+	}
+
+	t.Run("tanpa id: server membuat UUID acak", func(t *testing.T) {
+		var disimpan string
+		r, rec := routerPengguna(t, baru(&disimpan))
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users", badan(nil))
+		require.Equal(t, nethttp.StatusCreated, h.Code, h.Body.String())
+		assert.True(t, idx.ValidUUID(disimpan), "id dibuat server: %q", disimpan)
+		e, ok := rec.Last()
+		require.True(t, ok)
+		assert.Equal(t, disimpan, e.EntitasID, "audit mencatat id yang dibuat")
+	})
+	t.Run("id kosong sama dengan tanpa id", func(t *testing.T) {
+		var disimpan string
+		r, _ := routerPengguna(t, baru(&disimpan))
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users", badan(""))
+		require.Equal(t, nethttp.StatusCreated, h.Code, h.Body.String())
+		assert.True(t, idx.ValidUUID(disimpan))
+	})
+	t.Run("id UUID sah dipakai apa adanya, huruf kecil", func(t *testing.T) {
+		var disimpan string
+		r, _ := routerPengguna(t, baru(&disimpan))
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users", badan(strings.ToUpper(uid("u-baru"))))
+		require.Equal(t, nethttp.StatusCreated, h.Code, h.Body.String())
+		assert.Equal(t, uid("u-baru"), disimpan)
+	})
+	t.Run("id bukan UUID: 400 tanpa menyentuh basis data", func(t *testing.T) {
+		for _, id := range []string{"u-baru", "USR-2024-0001", "superadmin", "123", "urn:uuid:" + uid("u-baru"), "{" + uid("u-baru") + "}", " " + uid("u-baru")} {
+			r, rec := routerPengguna(t, &repoUji{})
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users", badan(id))
+			assert.Equal(t, nethttp.StatusBadRequest, h.Code, "%q: %s", id, h.Body.String())
+			assert.Equal(t, "400", h.kode())
+			assert.Empty(t, rec.Entries())
+		}
+	})
+	t.Run("id sudah dipakai: 409", func(t *testing.T) {
+		r, rec := routerPengguna(t, &repoUji{
+			byEmail:  func(string) (*domain.Pengguna, error) { return nil, gorm.ErrRecordNotFound },
+			buat:     func(*domain.Pengguna) error { return fmt.Errorf("create: %w", gorm.ErrDuplicatedKey) },
+			pengguna: ada,
+		})
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users", badan(uid("u-baru")))
+		assert.Equal(t, nethttp.StatusConflict, h.Code, h.Body.String())
+		assert.Contains(t, h.Body.String(), "ID pengguna")
+		assert.Empty(t, rec.Entries())
+	})
+}
+
+// Semua rute /users/:id... memperlakukan id yang bukan UUID sebagai pengguna yang tidak ada (404), tanpa
+// menyentuh repositori (repoUji gagal bila dipanggil tanpa diharapkan) dan tanpa menulis audit.
+func TestRuteUserID_IDSalahBentukDijawab404TanpaKeBasisData(t *testing.T) {
+	rute := []struct{ metode, pola, badan string }{
+		{nethttp.MethodGet, "/users/%s", ""},
+		{nethttp.MethodPatch, "/users/%s", `{"nama":"Baru"}`},
+		{nethttp.MethodDelete, "/users/%s", ""},
+		{nethttp.MethodPost, "/users/%s/reset-password", `{"new_password":"Kata#Sandi1"}`},
+		{nethttp.MethodPost, "/users/%s/buka-kunci", ""},
+		{nethttp.MethodPost, "/users/%s/revoke-sessions", ""},
+		{nethttp.MethodPut, "/users/%s/roles", `{"peran":"OPS_MAHASISWA"}`},
+		{nethttp.MethodPost, "/users/%s/reset-mfa", ""},
+		{nethttp.MethodGet, "/users/%s/riwayat-peran", ""},
+		{nethttp.MethodGet, "/users/%s/permissions", ""},
+		{nethttp.MethodPost, "/users/%s/permissions", `{"izin":"harga.lihat","alasan":"uji"}`},
+		{nethttp.MethodDelete, "/users/%s/permissions/harga.lihat", ""},
+		{nethttp.MethodPost, "/users/%s/undang-ulang", ""},
+	}
+	for _, bentuk := range []string{"bukan-uuid", "superadmin", "USR-2024-0001", "123", "urn:uuid:" + uid("u-1"), "%7B" + uid("u-1") + "%7D"} {
+		for _, rt := range rute {
+			r, rec := routerPengguna(t, &repoUji{})
+			path := fmt.Sprintf(rt.pola, bentuk)
+			h := panggilJSON(t, r, rt.metode, path, rt.badan)
+			assert.Equal(t, nethttp.StatusNotFound, h.Code, "%s %s: %s", rt.metode, path, h.Body.String())
+			assert.Empty(t, rec.Entries(), "%s %s", rt.metode, path)
+		}
+	}
+}
+
+// Aksi massal menolak id yang bukan UUID (400) alih-alih membiarkannya jadi galat kolom uuid (500), dan merapikan
+// id (huruf kecil, ganda dibuang) sebelum sampai ke repositori.
+func TestBulkUser_IDHarusUUIDDanDirapikan(t *testing.T) {
+	var diterima []string
+	r, _ := routerPengguna(t, &repoUji{
+		bulk: func(ids []string, _ domain.BulkUserAction) (int64, error) {
+			diterima = ids
+			return int64(len(ids)), nil
+		},
+	})
+
+	h := panggilJSON(t, r, nethttp.MethodPost, "/users/bulk", js(map[string]any{"action": "nonaktifkan", "ids": []string{uid("u-1"), "u-2"}}))
+	assert.Equal(t, nethttp.StatusBadRequest, h.Code, h.Body.String())
+	assert.Nil(t, diterima, "tidak ada yang ditulis bila satu id salah")
+
+	h = panggilJSON(t, r, nethttp.MethodPost, "/users/bulk",
+		js(map[string]any{"action": "nonaktifkan", "ids": []string{strings.ToUpper(uid("u-1")), uid("u-2"), uid("u-1")}}))
+	require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
+	assert.Equal(t, []string{uid("u-1"), uid("u-2")}, diterima)
+}
+
 // ── GET /users ────────────────────────────────────────────────────────
 
 func TestListUsers_MenyertakanAkhirKunciHanyaUntukAkunTerkunci(t *testing.T) {
-	terkunci := penggunaAktif("u-kunci")
-	bebas := penggunaAktif("u-bebas")
+	terkunci := penggunaAktif(uid("u-kunci"))
+	bebas := penggunaAktif(uid("u-bebas"))
 	sampai := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Second)
 	repo := &repoUji{
 		daftar: func(domain.DaftarPenggunaQuery) ([]domain.Pengguna, int64, error) {
@@ -142,7 +258,7 @@ func TestListUsers_MenyertakanAkhirKunciHanyaUntukAkunTerkunci(t *testing.T) {
 func TestListUsers_GalatBacaKunciDijawab500(t *testing.T) {
 	repo := &repoUji{
 		daftar: func(domain.DaftarPenggunaQuery) ([]domain.Pengguna, int64, error) {
-			return []domain.Pengguna{*penggunaAktif("u-1")}, 1, nil
+			return []domain.Pengguna{*penggunaAktif(uid("u-1"))}, 1, nil
 		},
 		kunciAktif: func([]string) (map[string]time.Time, error) { return nil, galatDB() },
 	}
@@ -180,7 +296,7 @@ func TestListUsers_PeranDiluarKatalogDitolakUsecaseDengan400(t *testing.T) {
 
 func TestGetUser_PemetaanDanTanpaRahasia(t *testing.T) {
 	sandi, rahasia := "hash-bcrypt-rahasia", "v1:rahasia-mfa"
-	u := penggunaAktif("u-1")
+	u := penggunaAktif(uid("u-1"))
 	u.PasswordHash, u.MfaSecret, u.MfaAktif = &sandi, &rahasia, true
 	sampai := time.Now().Add(5 * time.Minute).UTC().Truncate(time.Second)
 
@@ -191,10 +307,10 @@ func TestGetUser_PemetaanDanTanpaRahasia(t *testing.T) {
 				return map[string]time.Time{usecase.HashEmailKunci(u.Email): sampai}, nil
 			},
 		})
-		h := panggilJSON(t, r, nethttp.MethodGet, "/users/u-1", "")
+		h := panggilJSON(t, r, nethttp.MethodGet, "/users/"+uid("u-1"), "")
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		d := h.data(t)
-		assert.Equal(t, "u-1", d["id"])
+		assert.Equal(t, uid("u-1"), d["id"])
 		assert.Equal(t, true, d["mfa_aktif"])
 		assert.Equal(t, sampai.Format(time.RFC3339), d["terkunci_sampai"])
 		assert.NotContains(t, h.Body.String(), sandi)
@@ -207,7 +323,7 @@ func TestGetUser_PemetaanDanTanpaRahasia(t *testing.T) {
 	})
 	t.Run("galat basis data bukan 404", func(t *testing.T) {
 		r, _ := routerPengguna(t, &repoUji{pengguna: func(string) (*domain.Pengguna, error) { return nil, galatDB() }})
-		h := panggilJSON(t, r, nethttp.MethodGet, "/users/u-1", "")
+		h := panggilJSON(t, r, nethttp.MethodGet, "/users/"+uid("u-1"), "")
 		assert.Equal(t, nethttp.StatusInternalServerError, h.Code)
 		tanpaBocor(t, h)
 	})
@@ -216,7 +332,7 @@ func TestGetUser_PemetaanDanTanpaRahasia(t *testing.T) {
 			pengguna:   ada,
 			kunciAktif: func([]string) (map[string]time.Time, error) { return nil, galatDB() },
 		})
-		h := panggilJSON(t, r, nethttp.MethodGet, "/users/u-1", "")
+		h := panggilJSON(t, r, nethttp.MethodGet, "/users/"+uid("u-1"), "")
 		assert.Equal(t, nethttp.StatusInternalServerError, h.Code)
 		tanpaBocor(t, h)
 	})
@@ -233,7 +349,7 @@ func TestUpdateUser_ValidasiBindingDijawab400(t *testing.T) {
 		"status huruf kecil": `{"status":"aktif"}`,
 		"tipe nama salah":    `{"nama":123}`,
 	} {
-		h := panggilJSON(t, r, nethttp.MethodPatch, "/users/u-1", badan)
+		h := panggilJSON(t, r, nethttp.MethodPatch, "/users/"+uid("u-1"), badan)
 		assert.Equal(t, nethttp.StatusBadRequest, h.Code, nama)
 		assert.Equal(t, "400", h.kode(), nama)
 	}
@@ -241,7 +357,7 @@ func TestUpdateUser_ValidasiBindingDijawab400(t *testing.T) {
 
 func TestUpdateUser_PemetaanGalat(t *testing.T) {
 	menunggu := func(string) (*domain.Pengguna, error) {
-		u := penggunaAktif("u-1")
+		u := penggunaAktif(uid("u-1"))
 		u.Status = domain.StatusMenunggu
 		return u, nil
 	}
@@ -294,7 +410,7 @@ func TestUpdateUser_PemetaanGalat(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
 			r, rec := routerPengguna(t, tc.repo)
-			h := panggilJSON(t, r, nethttp.MethodPatch, "/users/u-1", tc.badan)
+			h := panggilJSON(t, r, nethttp.MethodPatch, "/users/"+uid("u-1"), tc.badan)
 			assert.Equal(t, tc.status, h.Code, h.Body.String())
 			if tc.kode != "" {
 				assert.Equal(t, tc.kode, h.kode())
@@ -309,8 +425,8 @@ func TestUpdateUser_PemetaanGalat(t *testing.T) {
 }
 
 func TestUpdateUser_BerhasilDanGagalMencabutSesi(t *testing.T) {
-	sebelum := penggunaAktif("u-1")
-	sesudah := penggunaAktif("u-1")
+	sebelum := penggunaAktif(uid("u-1"))
+	sesudah := penggunaAktif(uid("u-1"))
 	sesudah.Peran, sesudah.Lapis = "ADMIN_SISTEM", "SISTEM"
 	patch := func(string, domain.PenggunaPatch) (*domain.Pengguna, *domain.Pengguna, error) {
 		return sebelum, sesudah, nil
@@ -322,10 +438,10 @@ func TestUpdateUser_BerhasilDanGagalMencabutSesi(t *testing.T) {
 			pengguna: ada, patch: patch,
 			cabutSemua: func(id string) error { dicabut = append(dicabut, id); return nil },
 		})
-		h := panggilJSON(t, r, nethttp.MethodPatch, "/users/u-1", `{"peran":"ADMIN_SISTEM"}`)
+		h := panggilJSON(t, r, nethttp.MethodPatch, "/users/"+uid("u-1"), `{"peran":"ADMIN_SISTEM"}`)
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		assert.Equal(t, "ADMIN_SISTEM", h.data(t)["peran"])
-		assert.Equal(t, []string{"u-1"}, dicabut)
+		assert.Equal(t, []string{uid("u-1")}, dicabut)
 		e, ok := rec.Last()
 		require.True(t, ok)
 		assert.Equal(t, "UPDATE_USER", e.Aksi)
@@ -337,7 +453,7 @@ func TestUpdateUser_BerhasilDanGagalMencabutSesi(t *testing.T) {
 			pengguna: ada, patch: patch,
 			cabutSemua: func(string) error { return galatDB() },
 		})
-		h := panggilJSON(t, r, nethttp.MethodPatch, "/users/u-1", `{"peran":"ADMIN_SISTEM"}`)
+		h := panggilJSON(t, r, nethttp.MethodPatch, "/users/"+uid("u-1"), `{"peran":"ADMIN_SISTEM"}`)
 		assert.Equal(t, nethttp.StatusInternalServerError, h.Code)
 		tanpaBocor(t, h)
 		e, ok := rec.Last()
@@ -356,13 +472,13 @@ func TestDeleteUser_PemetaanGalat(t *testing.T) {
 		status int
 		kode   string
 	}{
-		{"akun sendiri", "admin-1", &repoUji{}, 400, ""},
-		{"tidak ada", "hilang", &repoUji{pengguna: tidakAdaPengguna}, 404, ""},
+		{"akun sendiri", uid("admin-1"), &repoUji{}, 400, ""},
+		{"tidak ada", uid("hilang"), &repoUji{pengguna: tidakAdaPengguna}, 404, ""},
 		// Regresi: galat basis data saat memuat pengguna bukan "pengguna tidak ada".
-		{"galat basis data saat memuat", "u-1", &repoUji{pengguna: func(string) (*domain.Pengguna, error) { return nil, galatDB() }}, 500, ""},
-		{"masih dirujuk data lain", "u-1", &repoUji{pengguna: ada, hapus: func(string) error { return fmt.Errorf("hapus: %w", gorm.ErrForeignKeyViolated) }}, 409, "409"},
-		{"pemegang terakhir pengguna.kelola", "u-1", &repoUji{pengguna: ada, hapus: func(string) error { return fmt.Errorf("hapus: %w", domain.ErrPemegangTerakhir) }}, 409, "LAST_PERMISSION_HOLDER"},
-		{"galat basis data saat menghapus", "u-1", &repoUji{pengguna: ada, hapus: func(string) error { return galatDB() }}, 500, ""},
+		{"galat basis data saat memuat", uid("u-1"), &repoUji{pengguna: func(string) (*domain.Pengguna, error) { return nil, galatDB() }}, 500, ""},
+		{"masih dirujuk data lain", uid("u-1"), &repoUji{pengguna: ada, hapus: func(string) error { return fmt.Errorf("hapus: %w", gorm.ErrForeignKeyViolated) }}, 409, "409"},
+		{"pemegang terakhir pengguna.kelola", uid("u-1"), &repoUji{pengguna: ada, hapus: func(string) error { return fmt.Errorf("hapus: %w", domain.ErrPemegangTerakhir) }}, 409, "LAST_PERMISSION_HOLDER"},
+		{"galat basis data saat menghapus", uid("u-1"), &repoUji{pengguna: ada, hapus: func(string) error { return galatDB() }}, 500, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
@@ -383,21 +499,21 @@ func TestDeleteUser_BerhasilMengauditDanMenjawabId(t *testing.T) {
 		pengguna: ada, hapus: func(string) error { return nil }, cabutSemua: func(string) error { return nil },
 	})
 
-	h := panggilJSON(t, r, nethttp.MethodDelete, "/users/u-1", "")
+	h := panggilJSON(t, r, nethttp.MethodDelete, "/users/"+uid("u-1"), "")
 
 	require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
-	assert.Equal(t, "u-1", h.data(t)["id"])
+	assert.Equal(t, uid("u-1"), h.data(t)["id"])
 	e, ok := rec.Last()
 	require.True(t, ok)
 	assert.Equal(t, "DELETE_USER", e.Aksi)
-	assert.Equal(t, "admin-1", e.AktorID)
+	assert.Equal(t, uid("admin-1"), e.AktorID)
 }
 
 // ── POST /users/:id/reset-password ────────────────────────────────────
 
 func TestResetPasswordAdmin_Handler(t *testing.T) {
 	menunggu := func(string) (*domain.Pengguna, error) {
-		u := penggunaAktif("u-1")
+		u := penggunaAktif(uid("u-1"))
 		u.Status = domain.StatusMenunggu
 		return u, nil
 	}
@@ -427,7 +543,7 @@ func TestResetPasswordAdmin_Handler(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
 			r, rec := routerPengguna(t, tc.repo)
-			h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/reset-password", tc.badan)
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/reset-password", tc.badan)
 			assert.Equal(t, tc.status, h.Code, h.Body.String())
 			if tc.muat != "" {
 				assert.Contains(t, h.pesan(), tc.muat)
@@ -443,9 +559,9 @@ func TestResetPasswordAdmin_Handler(t *testing.T) {
 			pengguna: ada, setSandi: func(string) (bool, error) { return true, nil },
 			cabutSemua: func(string) error { return nil },
 		})
-		h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/reset-password", baik)
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/reset-password", baik)
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
-		assert.Equal(t, "u-1", h.data(t)["id"])
+		assert.Equal(t, uid("u-1"), h.data(t)["id"])
 		e, ok := rec.Last()
 		require.True(t, ok)
 		assert.Equal(t, "RESET_PASSWORD_ADMIN", e.Aksi)
@@ -456,7 +572,7 @@ func TestResetPasswordAdmin_Handler(t *testing.T) {
 // ── PUT /users/:id/roles ──────────────────────────────────────────────
 
 func TestAssignRole_Handler(t *testing.T) {
-	sebelum, sesudah := penggunaAktif("u-1"), penggunaAktif("u-1")
+	sebelum, sesudah := penggunaAktif(uid("u-1")), penggunaAktif(uid("u-1"))
 	sesudah.Peran, sesudah.Lapis = "MANAJER_DATA", "MANAJERIAL"
 	berhasil := func(string, domain.PenggunaPatch) (*domain.Pengguna, *domain.Pengguna, error) {
 		return sebelum, sesudah, nil
@@ -483,7 +599,7 @@ func TestAssignRole_Handler(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
 			r, _ := routerPengguna(t, tc.repo)
-			h := panggilJSON(t, r, nethttp.MethodPut, "/users/u-1/roles", tc.badan)
+			h := panggilJSON(t, r, nethttp.MethodPut, "/users/"+uid("u-1")+"/roles", tc.badan)
 			assert.Equal(t, tc.status, h.Code, h.Body.String())
 			assert.Equal(t, tc.kode, h.kode())
 			tanpaBocor(t, h)
@@ -493,12 +609,12 @@ func TestAssignRole_Handler(t *testing.T) {
 	t.Run("berhasil mencabut sesi dan mencatat sebelum/sesudah", func(t *testing.T) {
 		var dicabut []string
 		r, rec := routerPengguna(t, &repoUji{patch: berhasil, cabutSemua: func(id string) error { dicabut = append(dicabut, id); return nil }})
-		h := panggilJSON(t, r, nethttp.MethodPut, "/users/u-1/roles", `{"peran":"MANAJER_DATA"}`)
+		h := panggilJSON(t, r, nethttp.MethodPut, "/users/"+uid("u-1")+"/roles", `{"peran":"MANAJER_DATA"}`)
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		d := h.data(t)
 		assert.Equal(t, "MANAJER_DATA", d["peran"])
 		assert.Equal(t, "MANAJERIAL", d["lapis"])
-		assert.Equal(t, []string{"u-1"}, dicabut)
+		assert.Equal(t, []string{uid("u-1")}, dicabut)
 		e, ok := rec.Last()
 		require.True(t, ok)
 		assert.Equal(t, "ASSIGN_ROLE", e.Aksi)
@@ -526,7 +642,7 @@ func TestBulkUser_ValidasiBindingDijawab400(t *testing.T) {
 }
 
 func TestBulkUser_PemetaanGalatDanKeberhasilan(t *testing.T) {
-	badan := `{"action":"nonaktifkan","ids":["u-1","u-2"]}`
+	badan := js(map[string]any{"action": "nonaktifkan", "ids": []string{uid("u-1"), uid("u-2")}})
 
 	t.Run("pemegang terakhir ditolak seluruhnya", func(t *testing.T) {
 		r, rec := routerPengguna(t, &repoUji{bulk: func([]string, domain.BulkUserAction) (int64, error) {
@@ -619,19 +735,19 @@ func TestBukaKunci_Handler(t *testing.T) {
 				return &domain.KunciLogin{Gagal: 5, TerkunciSampai: &sampai}, nil
 			},
 		})
-		h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/buka-kunci", "")
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/buka-kunci", "")
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		d := h.data(t)
-		assert.Equal(t, "u-1", d["id"])
+		assert.Equal(t, uid("u-1"), d["id"])
 		assert.Equal(t, true, d["terkunci_sebelumnya"])
-		assert.Equal(t, usecase.HashEmailKunci("u-1@garda.test"), hash, "yang dihapus adalah kunci email akun, bukan id")
+		assert.Equal(t, usecase.HashEmailKunci(uid("u-1")+"@garda.test"), hash, "yang dihapus adalah kunci email akun, bukan id")
 		e, ok := rec.Last()
 		require.True(t, ok)
 		assert.Equal(t, "UNLOCK_USER", e.Aksi)
 	})
 	t.Run("idempoten untuk akun yang tidak terkunci", func(t *testing.T) {
 		r, _ := routerPengguna(t, &repoUji{pengguna: ada, hapusKunci: func(string) (*domain.KunciLogin, error) { return nil, nil }})
-		h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/buka-kunci", "")
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/buka-kunci", "")
 		require.Equal(t, nethttp.StatusOK, h.Code)
 		assert.Equal(t, false, h.data(t)["terkunci_sebelumnya"])
 	})
@@ -645,7 +761,7 @@ func TestBukaKunci_Handler(t *testing.T) {
 			"menghapus kunci": {pengguna: ada, hapusKunci: func(string) (*domain.KunciLogin, error) { return nil, galatDB() }},
 		} {
 			r, _ := routerPengguna(t, repo)
-			h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/buka-kunci", "")
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/buka-kunci", "")
 			assert.Equal(t, nethttp.StatusInternalServerError, h.Code, nama)
 			tanpaBocor(t, h)
 		}
@@ -655,7 +771,7 @@ func TestBukaKunci_Handler(t *testing.T) {
 func TestForceLogoutUser_Handler(t *testing.T) {
 	t.Run("berhasil", func(t *testing.T) {
 		r, rec := routerPengguna(t, &repoUji{pengguna: ada, cabutSesi: func(string) ([]string, error) { return []string{"f1", "f2"}, nil }})
-		h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/revoke-sessions", "")
+		h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/revoke-sessions", "")
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		assert.EqualValues(t, 2, h.data(t)["dicabut"])
 		e, ok := rec.Last()
@@ -672,7 +788,7 @@ func TestForceLogoutUser_Handler(t *testing.T) {
 			"mencabut sesi":   {pengguna: ada, cabutSesi: func(string) ([]string, error) { return nil, galatDB() }},
 		} {
 			r, _ := routerPengguna(t, repo)
-			h := panggilJSON(t, r, nethttp.MethodPost, "/users/u-1/revoke-sessions", "")
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users/"+uid("u-1")+"/revoke-sessions", "")
 			assert.Equal(t, nethttp.StatusInternalServerError, h.Code, nama)
 			tanpaBocor(t, h)
 		}
@@ -702,7 +818,7 @@ func TestJawabAkunTerkunci_DenganDanTanpaRincian(t *testing.T) {
 func TestCreateUser_PeranDanLapisDiluarKatalogDijawab400(t *testing.T) {
 	buat := func(peran, lapis string) string {
 		return js(map[string]any{
-			"id": "u-baru", "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
+			"id": uid("u-baru"), "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
 			"peran": peran, "lapis": lapis, "lembaga": "BPPSDMP",
 		})
 	}

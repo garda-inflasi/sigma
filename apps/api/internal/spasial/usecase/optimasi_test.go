@@ -162,13 +162,13 @@ func TestHitung_SaveWritesPlanRoutesCacheAndAudit(t *testing.T) {
 	}
 	opt, rec := newOpt(repo)
 
-	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", Simpan: true, ActorID: "manajer_program"})
+	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", Simpan: true, ActorID: uid("manajer_program")})
 
 	require.NoError(t, err)
 	require.NotNil(t, repo.rencana)
 	assert.Equal(t, out.OptimasiID, repo.rencana.ID)
 	assert.Regexp(t, `^OPT-[0-9A-F]{12}$`, out.OptimasiID)
-	assert.Equal(t, "manajer_program", *repo.rencana.DibuatOleh)
+	assert.Equal(t, uid("manajer_program"), *repo.rencana.DibuatOleh)
 	assert.Equal(t, 30.0, repo.rencana.TotalVolumeTon)
 	assert.JSONEq(t, `{"tarif_ton_km":4200,"faktor_jalan":1.35,"kecepatan_km":45,"maks_jam_tempuh":0}`, repo.rencana.Parameter)
 
@@ -189,7 +189,7 @@ func TestHitung_SaveWritesPlanRoutesCacheAndAudit(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "OPTIMASI_RUTE", last.Aksi)
 	assert.Equal(t, out.OptimasiID, last.EntitasID)
-	assert.Equal(t, "manajer_program", last.AktorID)
+	assert.Equal(t, uid("manajer_program"), last.AktorID)
 }
 
 func TestHitung_RejectsInvalidInputBeforeTouchingTheDatabase(t *testing.T) {

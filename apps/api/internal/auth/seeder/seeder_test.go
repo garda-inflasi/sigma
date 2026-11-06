@@ -8,7 +8,9 @@ import (
 
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"github.com/garda-inflasi/api/pkg/crypto"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -50,6 +52,23 @@ func TestAkunDemo_Shape(t *testing.T) {
 	assert.Equal(t, 1, mfa)
 }
 
+// ID akun demo adalah UUID stabil dari slug lamanya (seedkit.IDPengguna): sama dengan hasil migrasi 000110 atas
+// basis data lama, dan dengan yang dirujuk seeder modul lain. SlugDemo (dasar seedkit.SlugPengguna) harus memuat
+// persis slug akun demo ditambah admin awal.
+func TestAkunDemo_IDAdalahUUIDStabilDariSlug(t *testing.T) {
+	slug := []string{adminSlug}
+	for _, a := range akunDemoSeeds {
+		slug = append(slug, a.ID)
+	}
+	assert.ElementsMatch(t, slug, seedkit.SlugDemo, "seedkit.SlugDemo harus sama dengan akun yang dibuat seeder")
+
+	for i, a := range BuildDemoAkun() {
+		assert.True(t, idx.ValidUUID(a.ID), a.Email)
+		assert.Equal(t, seedkit.IDPengguna(akunDemoSeeds[i].ID), a.ID, akunDemoSeeds[i].ID)
+	}
+	assert.Equal(t, seedkit.IDPengguna("user_mfa"), DemoMFAAkunID)
+}
+
 // seedWilayahDemo mengisi master kabupaten yang dirujuk akun demo.
 func seedWilayahDemo(t *testing.T, db *gorm.DB) {
 	t.Helper()
@@ -71,7 +90,7 @@ func TestSeedDemo_IsIdempotentAndLoginable(t *testing.T) {
 
 	first, err := SeedDemo(t.Context(), db)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec("UPDATE pengguna SET nama = 'diubah' WHERE id = 'superadmin'").Error)
+	require.NoError(t, db.Exec("UPDATE pengguna SET nama = 'diubah' WHERE id = garda_uuid_stabil('pengguna', 'superadmin')").Error)
 	_, err = SeedDemo(t.Context(), db)
 	require.NoError(t, err)
 
@@ -79,7 +98,7 @@ func TestSeedDemo_IsIdempotentAndLoginable(t *testing.T) {
 	assert.EqualValues(t, 25, rowCount(t, db, "pengguna"))
 
 	var nama, hash string
-	require.NoError(t, db.Raw("SELECT nama, password_hash FROM pengguna WHERE id = 'superadmin'").Row().Scan(&nama, &hash))
+	require.NoError(t, db.Raw("SELECT nama, password_hash FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'superadmin')").Row().Scan(&nama, &hash))
 	assert.Equal(t, "Super Admin", nama, "seed demo mengembalikan akun ke keadaan awal")
 	assert.True(t, crypto.VerifyPassword(DemoPassword, hash))
 }
@@ -138,7 +157,7 @@ func TestSeedAdmin(t *testing.T) {
 		db := newDB(t, "auth_seed_admin_exists")
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga)
-			VALUES ('ada', 'Ada', 'ada@gardainflasi.id', 'ADMIN_SISTEM', 'SISTEM', 'X')`).Error)
+			VALUES (garda_uuid_stabil('pengguna', 'ada'), 'Ada', 'ada@gardainflasi.id', 'ADMIN_SISTEM', 'SISTEM', 'X')`).Error)
 
 		sum, err := SeedAdmin(t.Context(), db, AdminConfig{})
 
@@ -183,7 +202,7 @@ func TestSeedDemo_MFAAccountHasSealedSecretAndHashedBackupCodes(t *testing.T) {
 	require.NoError(t, err)
 
 	var secret string
-	require.NoError(t, db.Raw("SELECT mfa_secret FROM pengguna WHERE id = 'user_mfa'").Scan(&secret).Error)
+	require.NoError(t, db.Raw("SELECT mfa_secret FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'user_mfa')").Scan(&secret).Error)
 	assert.True(t, strings.HasPrefix(secret, "v1:"), secret)
 	assert.NotContains(t, secret, DemoMFASecret)
 	ring, err := crypto.KeyringFromEnv(os.Getenv)
@@ -193,13 +212,13 @@ func TestSeedDemo_MFAAccountHasSealedSecretAndHashedBackupCodes(t *testing.T) {
 	assert.Equal(t, DemoMFASecret, opened)
 
 	var hashes []string
-	require.NoError(t, db.Raw("SELECT kode_hash FROM mfa_kode_cadangan WHERE user_id = 'user_mfa' ORDER BY kode_hash").Scan(&hashes).Error)
+	require.NoError(t, db.Raw("SELECT kode_hash FROM mfa_kode_cadangan WHERE user_id = garda_uuid_stabil('pengguna', 'user_mfa') ORDER BY kode_hash").Scan(&hashes).Error)
 	assert.Len(t, hashes, len(DemoKodeCadangan), "seed ulang tidak menggandakan kode")
 	for _, h := range hashes {
 		assert.Len(t, h, 64)
 	}
 
 	var akunLain int64
-	require.NoError(t, db.Raw("SELECT count(*) FROM pengguna WHERE id <> 'user_mfa' AND (mfa_secret IS NOT NULL OR mfa_aktif)").Scan(&akunLain).Error)
+	require.NoError(t, db.Raw("SELECT count(*) FROM pengguna WHERE id <> garda_uuid_stabil('pengguna', 'user_mfa') AND (mfa_secret IS NOT NULL OR mfa_aktif)").Scan(&akunLain).Error)
 	assert.Zero(t, akunLain, "hanya satu akun demo ber-MFA")
 }

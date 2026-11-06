@@ -62,11 +62,11 @@ func newUseCase(repo *fakeRepo) *UseCase {
 }
 
 func TestWrite_SnapshotsActorAndOrigin(t *testing.T) {
-	repo := &fakeRepo{actors: map[string]*domain.Actor{"u1": {ID: "u1", Nama: "Rina", Email: "rina@gardainflasi.id", Peran: "MANAJER_PROGRAM"}}}
+	repo := &fakeRepo{actors: map[string]*domain.Actor{uid("u1"): {ID: uid("u1"), Nama: "Rina", Email: "rina@gardainflasi.id", Peran: "MANAJER_PROGRAM"}}}
 	ctx := domain.WithOrigin(context.Background(), domain.Origin{IP: "10.0.0.7", UserAgent: "uji", CorrelationID: "req-1"})
 
 	err := newUseCase(repo).Write(ctx, domain.Entry{
-		AktorID: "u1", Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: "u2", Hasil: domain.HasilBerhasil,
+		AktorID: uid("u1"), Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: uid("u2"), Hasil: domain.HasilBerhasil,
 		Sebelum: map[string]any{"peran": "A"}, Sesudah: map[string]any{"peran": "B"}, Metadata: map[string]any{"k": 1},
 	})
 
@@ -75,7 +75,7 @@ func TestWrite_SnapshotsActorAndOrigin(t *testing.T) {
 	row := repo.created[0]
 	assert.NotEmpty(t, row.ID)
 	assert.Equal(t, fixedNow, row.Waktu)
-	assert.Equal(t, "u1", *row.AktorID)
+	assert.Equal(t, uid("u1"), *row.AktorID)
 	assert.Equal(t, "Rina", *row.AktorNama)
 	assert.Equal(t, "rina@gardainflasi.id", *row.AktorEmail)
 	assert.Equal(t, "MANAJER_PROGRAM", *row.AktorPeran)

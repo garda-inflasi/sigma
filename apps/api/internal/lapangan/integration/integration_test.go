@@ -254,7 +254,7 @@ func TestBulk_TandaiSelesai(t *testing.T) {
 	assert.NotNil(t, selesaiPada)
 
 	var audit int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TUGAS_TANDAI_SELESAI' AND aktor_id = 'mahasiswa_1'").Scan(&audit).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TUGAS_TANDAI_SELESAI' AND aktor_id = garda_uuid_stabil('pengguna', 'mahasiswa_1')").Scan(&audit).Error)
 	assert.EqualValues(t, 1, audit, "aksi tercatat di audit trail")
 
 	// Sudah selesai: menutup lagi tidak mengubah apa pun.

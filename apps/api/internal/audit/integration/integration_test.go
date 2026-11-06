@@ -59,14 +59,14 @@ func newSuite(t *testing.T, name string) *suite {
 
 	hash, err := crypto.HashPassword(sandi)
 	require.NoError(t, err)
-	for _, u := range []struct{ id, email, peran, lapis string }{
+	for _, u := range []struct{ slug, email, peran, lapis string }{
 		{"admin-1", adminEmail, "ADMIN_SISTEM", "SISTEM"},
 		{"viewer-1", viewerEmail, "OPS_MAHASISWA", "OPERASIONAL"},
 		{"target-1", targetEmail, "OPS_MAHASISWA", "OPERASIONAL"},
 	} {
 		require.NoError(t, db.Exec(`
 			INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga)
-			VALUES (?, ?, ?, ?, ?, ?, 'Uji')`, u.id, "Nama "+u.id, u.email, hash, u.peran, u.lapis).Error)
+			VALUES (?, ?, ?, ?, ?, ?, 'Uji')`, uid(u.slug), "Nama "+u.slug, u.email, hash, u.peran, u.lapis).Error)
 	}
 
 	tokens := token.NewManager(jwtSecret)
@@ -148,7 +148,7 @@ func TestAuth_SensitiveActionsWriteExactlyOneRow(t *testing.T) {
 	t.Run("login berhasil mencatat aktor, origin, dan correlation id", func(t *testing.T) {
 		rows := s.rows(t, "LOGIN")
 		require.Len(t, rows, 1)
-		assert.Equal(t, "admin-1", *rows[0].AktorID)
+		assert.Equal(t, uid("admin-1"), *rows[0].AktorID)
 		assert.Equal(t, "Nama admin-1", *rows[0].AktorNama)
 		assert.Equal(t, adminEmail, *rows[0].AktorEmail)
 		assert.Equal(t, "ADMIN_SISTEM", *rows[0].AktorPeran)
@@ -165,7 +165,7 @@ func TestAuth_SensitiveActionsWriteExactlyOneRow(t *testing.T) {
 		var rows []auditRow
 		require.NoError(t, s.db.Raw(`SELECT aktor_id, hasil, entitas_id FROM audit_log WHERE aksi = 'LOGIN' AND hasil = 'GAGAL'`).Scan(&rows).Error)
 		require.Len(t, rows, 1)
-		assert.Equal(t, "target-1", *rows[0].AktorID)
+		assert.Equal(t, uid("target-1"), *rows[0].AktorID)
 	})
 
 	t.Run("login email tak dikenal dicatat tanpa aktor", func(t *testing.T) {
@@ -178,24 +178,24 @@ func TestAuth_SensitiveActionsWriteExactlyOneRow(t *testing.T) {
 	})
 
 	t.Run("ganti peran mencatat sebelum dan sesudah", func(t *testing.T) {
-		w := s.call(t, http.MethodPut, "/v1/users/target-1/roles", adminToken, map[string]string{"peran": "OPS_KOORDINATOR"})
+		w := s.call(t, http.MethodPut, "/v1/users/"+uid("target-1")+"/roles", adminToken, map[string]string{"peran": "OPS_KOORDINATOR"})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 		rows := s.rows(t, "ASSIGN_ROLE")
 		require.Len(t, rows, 1)
-		assert.Equal(t, "admin-1", *rows[0].AktorID)
-		assert.Equal(t, "target-1", rows[0].EntitasID)
+		assert.Equal(t, uid("admin-1"), *rows[0].AktorID)
+		assert.Equal(t, uid("target-1"), rows[0].EntitasID)
 		assert.JSONEq(t, `"OPS_MAHASISWA"`, jsonField(t, *rows[0].Sebelum, "peran"))
 		assert.JSONEq(t, `"OPS_KOORDINATOR"`, jsonField(t, *rows[0].Sesudah, "peran"))
 	})
 
 	t.Run("aksi massal pengguna mencatat pelaku", func(t *testing.T) {
-		w := s.call(t, http.MethodPost, "/v1/users/bulk", adminToken, map[string]any{"action": "nonaktifkan", "ids": []string{"viewer-1"}})
+		w := s.call(t, http.MethodPost, "/v1/users/bulk", adminToken, map[string]any{"action": "nonaktifkan", "ids": []string{uid("viewer-1")}})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 		rows := s.rows(t, "BULK_nonaktifkan")
 		require.Len(t, rows, 1)
-		assert.Equal(t, "admin-1", *rows[0].AktorID)
+		assert.Equal(t, uid("admin-1"), *rows[0].AktorID)
 	})
 
 	t.Run("logout mencatat satu baris", func(t *testing.T) {
@@ -217,7 +217,7 @@ func jsonField(t *testing.T, raw, key string) string {
 
 func TestAuditLog_IsAppendOnly(t *testing.T) {
 	s := newSuite(t, "audit_append_only")
-	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: "admin-1", Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
+	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: uid("admin-1"), Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
 
 	cases := map[string]string{
 		"UPDATE":   `UPDATE audit_log SET hasil = 'GAGAL'`,
@@ -240,9 +240,9 @@ func TestAuditLog_IsAppendOnly(t *testing.T) {
 
 func TestAuditLog_DeletingActorKeepsRowWithSnapshot(t *testing.T) {
 	s := newSuite(t, "audit_actor_deleted")
-	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: "target-1", Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
+	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: uid("target-1"), Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
 
-	require.NoError(t, s.db.Exec(`DELETE FROM pengguna WHERE id = 'target-1'`).Error, "menghapus pengguna yang punya jejak harus berhasil (SET NULL)")
+	require.NoError(t, s.db.Exec(`DELETE FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'target-1')`).Error, "menghapus pengguna yang punya jejak harus berhasil (SET NULL)")
 
 	rows := s.rows(t, "UJI")
 	require.Len(t, rows, 1)
@@ -253,7 +253,7 @@ func TestAuditLog_DeletingActorKeepsRowWithSnapshot(t *testing.T) {
 
 func TestAuditLog_DirectActorErasureIsRejected(t *testing.T) {
 	s := newSuite(t, "audit_actor_erasure")
-	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: "target-1", Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
+	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: uid("target-1"), Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
 
 	err := s.db.Exec(`UPDATE audit_log SET aktor_id = NULL`).Error
 
@@ -263,11 +263,27 @@ func TestAuditLog_DirectActorErasureIsRejected(t *testing.T) {
 func TestWriter_UnknownActorIsRecordedWithoutActor(t *testing.T) {
 	s := newSuite(t, "audit_unknown_actor")
 
-	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: "tidak-ada", Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
+	require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: uid("tidak-ada"), Aksi: "UJI", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}))
 
 	rows := s.rows(t, "UJI")
 	require.Len(t, rows, 1)
 	assert.Nil(t, rows[0].AktorID)
+}
+
+// Aktor yang bukan UUID (pengenal sistem, token lama bersub slug) tidak mungkin ada di pengguna.id yang bertipe uuid.
+// Baris tetap dicatat tanpa aktor alih-alih gagal dengan galat 22P02 dari PostgreSQL.
+func TestWriter_AktorBukanUUIDDicatatTanpaAktor(t *testing.T) {
+	s := newSuite(t, "audit_aktor_bukan_uuid")
+
+	for _, aktor := range []string{"sistem", "test-user-001", ""} {
+		require.NoError(t, s.writer.Write(t.Context(), audit.Entry{AktorID: aktor, Aksi: "UJI_BUKAN_UUID", Entitas: "uji", EntitasID: "1", Hasil: audit.HasilBerhasil}), "aktor %q", aktor)
+	}
+
+	rows := s.rows(t, "UJI_BUKAN_UUID")
+	require.Len(t, rows, 3)
+	for _, r := range rows {
+		assert.Nil(t, r.AktorID)
+	}
 }
 
 // ── GET /v1/audit ─────────────────────────────────────────────────────
@@ -287,7 +303,7 @@ func (s *suite) seedLog(t *testing.T, n int) {
 			hasil = audit.HasilDitolak
 		}
 		require.NoError(t, s.writer.Write(t.Context(), audit.Entry{
-			AktorID: "admin-1", Aksi: aksi, Entitas: "entri_harga", EntitasID: fmt.Sprintf("ENT-%02d", i),
+			AktorID: uid("admin-1"), Aksi: aksi, Entitas: "entri_harga", EntitasID: fmt.Sprintf("ENT-%02d", i),
 			Hasil: hasil, Waktu: base.Add(time.Duration(i) * time.Minute),
 		}))
 	}
@@ -384,11 +400,16 @@ func TestListAudit_ServerSideFilters(t *testing.T) {
 
 	t.Run("aktor menurut nama atau email", func(t *testing.T) {
 		_, byEmail := s.listAudit(t, token, "?aktor=ADMIN@garda&limit=200")
-		_, byID := s.listAudit(t, token, "?aktor=admin-1&limit=200")
-		_, none := s.listAudit(t, token, "?aktor=tidak-ada&limit=200")
+		_, byID := s.listAudit(t, token, "?aktor="+uid("admin-1")+"&limit=200")
+		codeTeks, none := s.listAudit(t, token, "?aktor=tidak-ada&limit=200")
+		codeUUID, hantu := s.listAudit(t, token, "?aktor="+uid("tidak-ada")+"&limit=200")
 		assert.NotEmpty(t, byEmail.Items)
-		assert.Equal(t, len(byID.Items), len(byEmail.Items))
+		assert.Equal(t, len(byID.Items), len(byEmail.Items), "UUID aktor mencocokkan aktor_id")
+		// Teks bebas tidak boleh dibandingkan dengan kolom uuid (22P02 => 500): hanya nama dan email yang dicari.
+		assert.Equal(t, http.StatusOK, codeTeks)
 		assert.Empty(t, none.Items)
+		assert.Equal(t, http.StatusOK, codeUUID)
+		assert.Empty(t, hantu.Items)
 	})
 
 	t.Run("rentang waktu", func(t *testing.T) {

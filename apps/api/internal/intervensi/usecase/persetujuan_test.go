@@ -85,16 +85,16 @@ func TestAjukan(t *testing.T) {
 		uc, repo, wf, rec := newWorkflowUseCase()
 		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		in := domain.AjukanInput{KartuID: "INT-301", Jenis: domain.JenisPindahTahap, TahapTujuan: "t-petakan", Oleh: "u1", Catatan: "siap"}
-		wf.On("Ajukan", mock.Anything, in).Return(permintaan(domain.PersetujuanMenunggu, 1, "u1"), nil)
+		in := domain.AjukanInput{KartuID: "INT-301", Jenis: domain.JenisPindahTahap, TahapTujuan: "t-petakan", Oleh: uid("u1"), Catatan: "siap"}
+		wf.On("Ajukan", mock.Anything, in).Return(permintaan(domain.PersetujuanMenunggu, 1, uid("u1")), nil)
 
-		p, err := uc.Ajukan(context.Background(), "INT-301", "t-petakan", "siap", "u1")
+		p, err := uc.Ajukan(context.Background(), "INT-301", "t-petakan", "siap", uid("u1"))
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), p.ID)
 		entry, _ := rec.Last()
 		assert.Equal(t, "AJUKAN_PERSETUJUAN", entry.Aksi)
-		assert.Equal(t, "u1", entry.AktorID)
+		assert.Equal(t, uid("u1"), entry.AktorID)
 		assert.Equal(t, 2, entry.Metadata["langkah"])
 	})
 
@@ -103,7 +103,7 @@ func TestAjukan(t *testing.T) {
 		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 
-		_, err := uc.Ajukan(context.Background(), "INT-301", "n-pantau", "", "u1")
+		_, err := uc.Ajukan(context.Background(), "INT-301", "n-pantau", "", uid("u1"))
 
 		assert.ErrorIs(t, err, ErrInvalidTahap)
 		wf.AssertNotCalled(t, "Ajukan", mock.Anything, mock.Anything)
@@ -112,7 +112,7 @@ func TestAjukan(t *testing.T) {
 	t.Run("kartu tidak ada", func(t *testing.T) {
 		uc, repo, _, _ := newWorkflowUseCase()
 		repo.On("GetByID", mock.Anything, "X").Return(nil, gorm.ErrRecordNotFound)
-		_, err := uc.Ajukan(context.Background(), "X", "t-petakan", "", "u1")
+		_, err := uc.Ajukan(context.Background(), "X", "t-petakan", "", uid("u1"))
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
 
@@ -123,7 +123,7 @@ func TestAjukan(t *testing.T) {
 			repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 			wf.On("Ajukan", mock.Anything, mock.Anything).Return(nil, bizErr)
 
-			_, err := uc.Ajukan(context.Background(), "INT-301", "t-petakan", "", "u1")
+			_, err := uc.Ajukan(context.Background(), "INT-301", "t-petakan", "", uid("u1"))
 
 			assert.ErrorIs(t, err, bizErr)
 			assert.Empty(t, rec.Entries())

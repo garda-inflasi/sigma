@@ -86,7 +86,7 @@ func TestBulk_TolakSetsReasonVisibleToTheSubmitter(t *testing.T) {
 		DitolakPada *string `json:"ditolak_pada"`
 	}](t, s.call(t, http.MethodGet, "/v1/harga/"+id, emailKoordinator, nil))
 	require.NotNil(t, detail.DitolakOleh)
-	assert.Equal(t, "koordinator_lapangan", *detail.DitolakOleh)
+	assert.Equal(t, uid("koordinator_lapangan"), *detail.DitolakOleh)
 	assert.NotNil(t, detail.DitolakPada)
 }
 
@@ -113,7 +113,7 @@ func TestBulk_PublikasiRespectsSeparationOfDuties(t *testing.T) {
 	require.Equal(t, 1, s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{id}}).Berhasil)
 	// Entri milik manajer data tidak boleh dipublikasikan olehnya sendiri.
 	manajerOwn := s.buat(t, emailMahasiswa)
-	require.NoError(t, s.db.Exec("UPDATE entri_harga SET petugas_id = 'manajer_data', status = 'DIVALIDASI', divalidasi_oleh = 'koordinator_lapangan' WHERE id = ?", manajerOwn).Error)
+	require.NoError(t, s.db.Exec("UPDATE entri_harga SET petugas_id = garda_uuid_stabil('pengguna', 'manajer_data'), status = 'DIVALIDASI', divalidasi_oleh = garda_uuid_stabil('pengguna', 'koordinator_lapangan') WHERE id = ?", manajerOwn).Error)
 
 	got := s.bulk(t, emailManajerData, map[string]any{"action": "publikasi", "ids": []string{manajerOwn, id}})
 
@@ -134,9 +134,9 @@ func TestRiwayat_RecordsEveryTransition(t *testing.T) {
 	assert.Nil(t, got[0].Dari)
 	assert.Equal(t, []string{"DIAJUKAN", "DIVALIDASI", "DIPUBLIKASI"}, []string{got[0].Ke, got[1].Ke, got[2].Ke})
 	assert.Equal(t, "DIAJUKAN", *got[1].Dari)
-	assert.Equal(t, "mahasiswa_1", *got[0].Oleh)
-	assert.Equal(t, "koordinator_lapangan", *got[1].Oleh)
-	assert.Equal(t, "manajer_data", *got[2].Oleh)
+	assert.Equal(t, uid("mahasiswa_1"), *got[0].Oleh)
+	assert.Equal(t, uid("koordinator_lapangan"), *got[1].Oleh)
+	assert.Equal(t, uid("manajer_data"), *got[2].Oleh)
 	require.NotNil(t, got[1].OlehNama)
 	assert.NotEmpty(t, *got[1].OlehNama)
 

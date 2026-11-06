@@ -228,10 +228,9 @@ type undanganFixture struct {
 	now   *time.Time
 }
 
-const (
-	adminUndangID = "admin-1"
-	baseURLUji    = "https://garda.test"
-)
+const baseURLUji = "https://garda.test"
+
+var adminUndangID = uid("admin-1")
 
 func adminPengguna() *domain.Pengguna {
 	return &domain.Pengguna{ID: adminUndangID, Nama: "Admin", Email: "admin@garda.test", Peran: "ADMIN_SISTEM", Lapis: "SISTEM", Lembaga: "BPPSDMP", Status: "AKTIF", DibuatPada: awalUji.Add(-24 * time.Hour)}

@@ -130,7 +130,7 @@ func TestGetAll_ResponseShape(t *testing.T) {
 		ringkasan: domain.RingkasanStok{TotalLot: 23, TotalVolumeTon: 812, RisikoTinggiLot: 4, RisikoTinggiTon: 172.7},
 	}
 
-	w := do(newRouter(repo, "u1", "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(repo, uid("u1"), "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
@@ -180,7 +180,7 @@ func TestGetAll_ResponseShape(t *testing.T) {
 }
 
 func TestGetAll_EmptyListsAreArraysNotNull(t *testing.T) {
-	w := do(newRouter(&fakeRepo{}, "u1", "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(&fakeRepo{}, uid("u1"), "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"fasilitas":[]`)
@@ -198,7 +198,7 @@ func TestGetAll_PassesQueryToUseCase(t *testing.T) {
 		"limit":           {"25"},
 	}
 
-	w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage?"+q.Encode(), nil)
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?"+q.Encode(), nil)
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, domain.StokQuery{
@@ -209,7 +209,7 @@ func TestGetAll_PassesQueryToUseCase(t *testing.T) {
 func TestGetAll_DefaultsWhenNoQuery(t *testing.T) {
 	repo := &fakeRepo{}
 
-	w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, domain.StokQuery{Sort: domain.SortSisaMasaSimpan, Page: 1, Limit: usecase.DefaultLimit}, repo.gotQuery)
@@ -233,7 +233,7 @@ func TestGetAll_InvalidQuery(t *testing.T) {
 	for name, qs := range cases {
 		t.Run(name, func(t *testing.T) {
 			repo := &fakeRepo{}
-			w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage?"+qs, nil)
+			w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?"+qs, nil)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 			assert.Contains(t, w.Body.String(), "Validasi gagal")
@@ -245,7 +245,7 @@ func TestGetAll_InvalidQuery(t *testing.T) {
 func TestGetAll_ZeroPageAndLimitFallBackToDefaults(t *testing.T) {
 	repo := &fakeRepo{}
 
-	w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage?page=0&limit=0", nil)
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?page=0&limit=0", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, 1, repo.gotQuery.Page)
@@ -253,7 +253,7 @@ func TestGetAll_ZeroPageAndLimitFallBackToDefaults(t *testing.T) {
 }
 
 func TestGetAll_InternalError(t *testing.T) {
-	w := do(newRouter(&fakeRepo{err: errors.New("db down")}, "u1"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(&fakeRepo{err: errors.New("db down")}, uid("u1")), http.MethodGet, "/cold-storage", nil)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "db down", "detail galat internal tidak boleh bocor")
@@ -263,7 +263,7 @@ func TestGetAll_InternalError(t *testing.T) {
 
 func TestBulk_Success(t *testing.T) {
 	repo := &fakeRepo{bulk: domain.BulkResult{Berhasil: 2, VolumeTon: 65.9}}
-	r := newRouter(repo, "manajer_program", "logistik.kelola")
+	r := newRouter(repo, uid("manajer_program"), "logistik.kelola")
 
 	w := do(r, http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rencanakan_distribusi", "ids": []string{"S1", "S2", "S3"}})
 
@@ -277,7 +277,7 @@ func TestBulk_Success(t *testing.T) {
 	assert.Equal(t, domain.BulkRencanakanDistribusi, repo.gotAction)
 	entry, ok := repo.audit.Last()
 	require.True(t, ok, "aksi massal tercatat di audit")
-	assert.Equal(t, "manajer_program", entry.AktorID)
+	assert.Equal(t, uid("manajer_program"), entry.AktorID)
 	assert.Equal(t, "BULK_rencanakan_distribusi", entry.Aksi)
 }
 
@@ -298,7 +298,7 @@ func TestBulk_PermissionPerAction(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeRepo{bulk: domain.BulkResult{Berhasil: 1}}
-			w := do(newRouter(repo, "u1", tc.perms...), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": tc.action, "ids": []string{"S1"}})
+			w := do(newRouter(repo, uid("u1"), tc.perms...), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": tc.action, "ids": []string{"S1"}})
 
 			assert.Equal(t, tc.want, w.Code, w.Body.String())
 			if tc.want == http.StatusForbidden {
@@ -328,7 +328,7 @@ func TestBulk_Validation(t *testing.T) {
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
 			repo := &fakeRepo{}
-			w := do(newRouter(repo, "u1", "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", body)
+			w := do(newRouter(repo, uid("u1"), "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", body)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 			assert.Nil(t, repo.gotIDs)
@@ -339,14 +339,14 @@ func TestBulk_Validation(t *testing.T) {
 func TestBulk_InternalError(t *testing.T) {
 	repo := &fakeRepo{err: errors.New("db down")}
 
-	w := do(newRouter(repo, "u1", "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rekomendasi_olahan", "ids": []string{"S1"}})
+	w := do(newRouter(repo, uid("u1"), "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rekomendasi_olahan", "ids": []string{"S1"}})
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "db down")
 }
 
 func TestHealth(t *testing.T) {
-	w := do(newRouter(&fakeRepo{}, "u1"), http.MethodGet, "/cold-storage/health", nil)
+	w := do(newRouter(&fakeRepo{}, uid("u1")), http.MethodGet, "/cold-storage/health", nil)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.JSONEq(t, `{"status":"ok"}`, w.Body.String())

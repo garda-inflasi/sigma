@@ -32,11 +32,11 @@ func sampleInput() Input {
 			{Kode: "TLR", Satuan: "kg", HargaAcuan: 29500},
 		},
 		Petugas: []Petugas{
-			{ID: "mahasiswa_1", KabupatenKode: "1171", PasarID: "PSR-1171-01", PasarLat: 5.5603, PasarLng: 95.3237, RadiusMeter: 400},
-			{ID: "mahasiswa_2", KabupatenKode: "1108", PasarID: "PSR-1108-01", PasarLat: 5.5085, PasarLng: 95.364, RadiusMeter: 600},
+			{ID: uid("mahasiswa_1"), KabupatenKode: "1171", PasarID: "PSR-1171-01", PasarLat: 5.5603, PasarLng: 95.3237, RadiusMeter: 400},
+			{ID: uid("mahasiswa_2"), KabupatenKode: "1108", PasarID: "PSR-1108-01", PasarLat: 5.5085, PasarLng: 95.364, RadiusMeter: 600},
 		},
-		Validator:  "koordinator_lapangan",
-		Publikator: "manajer_data",
+		Validator:  uid("koordinator_lapangan"),
+		Publikator: uid("manajer_data"),
 	}
 }
 

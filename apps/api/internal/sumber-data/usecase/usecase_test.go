@@ -145,7 +145,7 @@ func TestBulkAction_RejectsUnknownActions(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
 
-		_, err := uc.BulkAction(context.Background(), []string{"SRC-BPS"}, action, "u1")
+		_, err := uc.BulkAction(context.Background(), []string{"SRC-BPS"}, action, uid("u1"))
 
 		assert.ErrorIs(t, err, ErrInvalidAction, action)
 		repo.AssertNotCalled(t, "BulkAction")
@@ -159,7 +159,7 @@ func TestBulkAction_CountsFailuresAndWritesAudit(t *testing.T) {
 	// Id ganda dihitung sekali dan diurutkan; hanya satu dari dua yang berubah.
 	repo.On("BulkAction", mock.Anything, []string{"SRC-BI", "SRC-BPS"}, domain.BulkJeda).Return([]string{"SRC-BPS"}, nil)
 
-	res, err := uc.BulkAction(context.Background(), []string{"SRC-BPS", "SRC-BI", "SRC-BPS"}, "jeda", "u1")
+	res, err := uc.BulkAction(context.Background(), []string{"SRC-BPS", "SRC-BI", "SRC-BPS"}, "jeda", uid("u1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkResult{Berhasil: 1, Gagal: 1}, res)
@@ -167,7 +167,7 @@ func TestBulkAction_CountsFailuresAndWritesAudit(t *testing.T) {
 	require.True(t, ok, "aksi yang mengubah data harus diaudit")
 	assert.Equal(t, "BULK_jeda", entry.Aksi)
 	assert.Equal(t, "sumber_data", entry.Entitas)
-	assert.Equal(t, "u1", entry.AktorID)
+	assert.Equal(t, uid("u1"), entry.AktorID)
 	assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 	repo.AssertExpectations(t)
 }
@@ -177,7 +177,7 @@ func TestBulkAction_RepositoryErrorWritesNoAudit(t *testing.T) {
 	uc, recorder := newTestUseCase(repo)
 	repo.On("BulkAction", mock.Anything, []string{"SRC-BPS"}, domain.BulkLanjutkan).Return([]string(nil), errors.New("db down"))
 
-	_, err := uc.BulkAction(context.Background(), []string{"SRC-BPS"}, "lanjutkan", "u1")
+	_, err := uc.BulkAction(context.Background(), []string{"SRC-BPS"}, "lanjutkan", uid("u1"))
 
 	require.Error(t, err)
 	assert.Empty(t, recorder.Entries())
@@ -189,7 +189,7 @@ func TestBulkAction_AuditFailureDoesNotFailTheAction(t *testing.T) {
 	recorder.Err = errors.New("audit down")
 	repo.On("BulkAction", mock.Anything, []string{"SRC-BPS"}, domain.BulkJeda).Return([]string{"SRC-BPS"}, nil)
 
-	res, err := uc.BulkAction(context.Background(), []string{"SRC-BPS"}, "jeda", "u1")
+	res, err := uc.BulkAction(context.Background(), []string{"SRC-BPS"}, "jeda", uid("u1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Berhasil)
@@ -207,12 +207,12 @@ func TestJalankan_MencatatAuditDanMenjalankanDiLatarBelakang(t *testing.T) {
 	uc, recorder, ing := newTestUseCaseIngestion(repo)
 	repo.On("GetByID", mock.Anything, "SRC-BI").Return(&domain.SumberData{ID: "SRC-BI"}, nil)
 
-	e, err := uc.Jalankan(context.Background(), "SRC-BI", "u1")
+	e, err := uc.Jalankan(context.Background(), "SRC-BI", uid("u1"))
 
 	require.NoError(t, err)
 	assert.EqualValues(t, 42, e.ID)
 	assert.Equal(t, ingest.StatusBerjalan, e.Status, "respons tidak menunggu run selesai")
-	assert.Equal(t, []string{"SRC-BI/MANUAL/u1"}, ing.dimulai)
+	assert.Equal(t, []string{"SRC-BI/MANUAL/" + uid("u1")}, ing.dimulai)
 	select {
 	case <-ing.run.selesai:
 	case <-time.After(2 * time.Second):
@@ -222,7 +222,7 @@ func TestJalankan_MencatatAuditDanMenjalankanDiLatarBelakang(t *testing.T) {
 	require.True(t, ok, "aksi yang mengubah data harus diaudit")
 	assert.Equal(t, "JALANKAN_SUMBER", entry.Aksi)
 	assert.Equal(t, "SRC-BI", entry.EntitasID)
-	assert.Equal(t, "u1", entry.AktorID)
+	assert.Equal(t, uid("u1"), entry.AktorID)
 	assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 }
 
@@ -231,7 +231,7 @@ func TestJalankan_SumberTakAdaTidakMemulaiApaPun(t *testing.T) {
 	uc, recorder, ing := newTestUseCaseIngestion(repo)
 	repo.On("GetByID", mock.Anything, "SRC-X").Return(nil, domain.ErrNotFound)
 
-	_, err := uc.Jalankan(context.Background(), "SRC-X", "u1")
+	_, err := uc.Jalankan(context.Background(), "SRC-X", uid("u1"))
 
 	assert.ErrorIs(t, err, ErrNotFound)
 	assert.Empty(t, ing.dimulai)
@@ -245,7 +245,7 @@ func TestJalankan_PenolakanDicatatSebagaiDitolak(t *testing.T) {
 		ing.mulaiErr = galat
 		repo.On("GetByID", mock.Anything, "SRC-BI").Return(&domain.SumberData{ID: "SRC-BI"}, nil)
 
-		_, err := uc.Jalankan(context.Background(), "SRC-BI", "u1")
+		_, err := uc.Jalankan(context.Background(), "SRC-BI", uid("u1"))
 
 		assert.ErrorIs(t, err, galat)
 		entry, ok := recorder.Last()

@@ -24,10 +24,10 @@ var seedNow = time.Date(2026, 10, 16, 7, 30, 0, 0, time.UTC)
 func sampleInput() Input {
 	return Input{
 		Petugas: []Petugas{
-			{ID: "mahasiswa_1", PasarID: "PSR-1171-01", PasarNama: "Pasar Peunayong"},
-			{ID: "mahasiswa_2", PasarID: "PSR-1108-01", PasarNama: "Pasar Induk Lambaro"},
+			{ID: uid("mahasiswa_1"), PasarID: "PSR-1171-01", PasarNama: "Pasar Peunayong"},
+			{ID: uid("mahasiswa_2"), PasarID: "PSR-1108-01", PasarNama: "Pasar Induk Lambaro"},
 		},
-		Pembuat: "manajer_program",
+		Pembuat: uid("manajer_program"),
 	}
 }
 
@@ -50,8 +50,8 @@ func TestBuild_EveryPetugasHasAnActiveTask(t *testing.T) {
 			aktif[tugas.PetugasID]++
 		}
 	}
-	assert.GreaterOrEqual(t, aktif["mahasiswa_1"], 1)
-	assert.GreaterOrEqual(t, aktif["mahasiswa_2"], 1)
+	assert.GreaterOrEqual(t, aktif[uid("mahasiswa_1")], 1)
+	assert.GreaterOrEqual(t, aktif[uid("mahasiswa_2")], 1)
 }
 
 func TestBuild_MixOfStatusesWithRelativeDeadlines(t *testing.T) {

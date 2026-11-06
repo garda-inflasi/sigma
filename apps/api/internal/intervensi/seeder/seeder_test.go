@@ -225,13 +225,13 @@ func TestSeedDemo_ResetsAssigneesToTheirInitialState(t *testing.T) {
 	require.NoError(t, err)
 	_, err = SeedDemo(ctx, db, seedNow)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec(`INSERT INTO intervensi_pj (intervensi_id, pengguna_id) VALUES ('INT-301', 'strategis_bi')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO intervensi_pj (intervensi_id, pengguna_id) VALUES ('INT-301', garda_uuid_stabil('pengguna', 'strategis_bi'))`).Error)
 
 	_, err = SeedDemo(ctx, db, seedNow)
 	require.NoError(t, err)
 
 	var n int64
-	require.NoError(t, db.Table("intervensi_pj").Where("intervensi_id = 'INT-301' AND pengguna_id = 'strategis_bi'").Count(&n).Error)
+	require.NoError(t, db.Table("intervensi_pj").Where("intervensi_id = 'INT-301' AND pengguna_id = garda_uuid_stabil('pengguna', 'strategis_bi')").Count(&n).Error)
 	assert.Zero(t, n)
 }
 

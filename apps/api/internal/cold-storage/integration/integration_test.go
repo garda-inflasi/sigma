@@ -761,10 +761,10 @@ func TestBulk_ResultAuditAndNoSideEffectsOnStock(t *testing.T) {
 		require.NoError(t, s.db.Raw(`
 			SELECT aktor_id, aksi, entitas, entitas_id, hasil, metadata::text AS metadata
 			  FROM audit_log
-			 WHERE aksi = 'BULK_rekomendasi_olahan' AND aktor_id = 'manajer_mutu'
+			 WHERE aksi = 'BULK_rekomendasi_olahan' AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_mutu')
 			 ORDER BY waktu DESC LIMIT 1`).Scan(&row).Error)
 
-		assert.Equal(t, "manajer_mutu", row.AktorID)
+		assert.Equal(t, uid("manajer_mutu"), row.AktorID)
 		assert.Equal(t, "stok_cold_storage", row.Entitas)
 		assert.Equal(t, "2 lot", row.EntitasID)
 		assert.Equal(t, "BERHASIL", row.Hasil)

@@ -18,12 +18,12 @@ import (
 // fixtureSSOMFA adalah akun ber-MFA yang sudah tertaut, siap melewati Callback lalu ValidateMFALogin.
 func fixtureSSOMFA(t *testing.T) (*ssoFixture, string) {
 	t.Helper()
-	u := ssoUser("u1", "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
 	f := newSSOFixture(t, u)
 	secret := totp.GenerateSecret()
 	sealed, err := f.uc.cfg.MFAKey.Seal(secret)
 	require.NoError(t, err)
-	f.repo.users["u1"].MfaAktif, f.repo.users["u1"].MfaSecret = true, &sealed
+	f.repo.users[uid("u1")].MfaAktif, f.repo.users[uid("u1")].MfaSecret = true, &sealed
 	return f, secret
 }
 
@@ -48,13 +48,13 @@ func TestSSOMFA_TokenTantanganMembawaMetodeLogin(t *testing.T) {
 	require.True(t, res.MFARequired)
 	challenge, err := f.tokens.VerifyMFAChallenge(res.MFAToken)
 	require.NoError(t, err)
-	assert.Equal(t, "u1", challenge.UserID)
+	assert.Equal(t, uid("u1"), challenge.UserID)
 	assert.Equal(t, MetodeSSOGoogle, challenge.LoginMethod)
 }
 
 func TestSSOMFA_AuditLoginAkhirMemuatMetodeSSODanFaktorKedua(t *testing.T) {
 	f, secret := fixtureSSOMFA(t)
-	f.repo.On("AdvanceMFAStep", mock.Anything, "u1", mock.AnythingOfType("int64")).Return(true, nil)
+	f.repo.On("AdvanceMFAStep", mock.Anything, uid("u1"), mock.AnythingOfType("int64")).Return(true, nil)
 	res, err := f.masuk()
 	require.NoError(t, err)
 
@@ -64,12 +64,12 @@ func TestSSOMFA_AuditLoginAkhirMemuatMetodeSSODanFaktorKedua(t *testing.T) {
 	assert.NotEmpty(t, sesi.AccessToken)
 	entri := entriLoginBerhasil(t, f)
 	assert.Equal(t, map[string]any{"mfa": metodeTOTP, "metode": MetodeSSOGoogle}, entri.Metadata)
-	assert.Equal(t, "u1", entri.AktorID)
+	assert.Equal(t, uid("u1"), entri.AktorID)
 }
 
 func TestSSOMFA_KodeCadanganJugaMencatatMetodeSSO(t *testing.T) {
 	f, _ := fixtureSSOMFA(t)
-	f.repo.On("UseBackupCode", mock.Anything, "u1", mock.Anything, mock.Anything).Return(true, nil)
+	f.repo.On("UseBackupCode", mock.Anything, uid("u1"), mock.Anything, mock.Anything).Return(true, nil)
 	res, err := f.masuk()
 	require.NoError(t, err)
 
@@ -82,9 +82,9 @@ func TestSSOMFA_KodeCadanganJugaMencatatMetodeSSO(t *testing.T) {
 
 func TestSSOMFA_LoginKataSandiTidakMemilikiMetode(t *testing.T) {
 	f, secret := fixtureSSOMFA(t)
-	f.repo.On("AdvanceMFAStep", mock.Anything, "u1", mock.AnythingOfType("int64")).Return(true, nil)
+	f.repo.On("AdvanceMFAStep", mock.Anything, uid("u1"), mock.AnythingOfType("int64")).Return(true, nil)
 	// Tantangan dari alur kata sandi: tidak membawa metode.
-	challenge, err := f.tokens.CreateMFAChallengeToken("u1")
+	challenge, err := f.tokens.CreateMFAChallengeToken(uid("u1"))
 	require.NoError(t, err)
 
 	_, err = f.uc.ValidateMFALogin(context.Background(), challenge, kodeSekarang(t, secret), "10.0.0.1")

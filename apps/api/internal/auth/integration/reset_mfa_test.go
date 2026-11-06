@@ -19,7 +19,7 @@ import (
 // Reset MFA oleh admin (POST /v1/users/:id/reset-mfa). Admin: test-user-001 (ADMIN_SISTEM, tanpa MFA).
 // Korban: test-user-mfa (OPS_KOORDINATOR, MFA aktif, tiga kode cadangan) dan test-user-biasa (tanpa MFA).
 
-const idMFA = "test-user-mfa"
+var idMFA = uid("test-user-mfa")
 
 type hasilReset struct {
 	ID                 string `json:"id"`
@@ -120,7 +120,7 @@ func TestResetMFA_MenghapusSemuaBahanMFADanMencabutSemuaSesi(t *testing.T) {
 		require.NoError(t, s.db.Raw(`SELECT aktor_id, entitas_id, hasil, sebelum::text AS sebelum, sesudah::text AS sesudah, metadata::text AS metadata
 			FROM audit_log WHERE aksi = 'RESET_MFA'`).Scan(&baris).Error)
 		require.Len(t, baris, 1)
-		assert.Equal(t, "test-user-001", baris[0].AktorID)
+		assert.Equal(t, uid("test-user-001"), baris[0].AktorID)
 		assert.Equal(t, idMFA, baris[0].EntitasID)
 		assert.Equal(t, "BERHASIL", baris[0].Hasil)
 		assert.JSONEq(t, `{"mfa_aktif": true}`, baris[0].Sebelum)
@@ -209,7 +209,7 @@ func TestResetMFA_PenggunaTanpaMFATidakDiganggu(t *testing.T) {
 	assert.Equal(t, hasilReset{ID: userBiasa, MFAAktifSebelumnya: false, SesiDicabut: 0}, hasil)
 	assert.Equal(t, http.StatusOK, s.status(t, biasa.access), "tanpa MFA yang dilepas, sesi tidak dicabut")
 	assert.Equal(t, sebelum, s.keadaanMFA(t, userBiasa))
-	assert.EqualValues(t, 1, s.auditCount(t, "RESET_MFA", "test-user-001", userBiasa))
+	assert.EqualValues(t, 1, s.auditCount(t, "RESET_MFA", uid("test-user-001"), userBiasa))
 }
 
 func TestResetMFA_SetupYangBelumDiverifikasiDibersihkan(t *testing.T) {
@@ -245,16 +245,16 @@ func TestResetMFA_MenolakAkunSendiriTanpaMengubahApaPun(t *testing.T) {
 	require.NoError(t, err)
 	sealed, err := ring.Seal(mfaSecretUji)
 	require.NoError(t, err)
-	require.NoError(t, s.db.Exec("UPDATE pengguna SET mfa_aktif = true, mfa_secret = ? WHERE id = 'test-user-001'", sealed).Error)
-	require.NoError(t, s.db.Exec("INSERT INTO mfa_kode_cadangan (user_id, kode_hash) VALUES ('test-user-001', 'h1')").Error)
+	require.NoError(t, s.db.Exec("UPDATE pengguna SET mfa_aktif = true, mfa_secret = ? WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')", sealed).Error)
+	require.NoError(t, s.db.Exec("INSERT INTO mfa_kode_cadangan (user_id, kode_hash) VALUES (garda_uuid_stabil('pengguna', 'test-user-001'), 'h1')").Error)
 	admin := s.validasiMFA(t, emailAdmin, kodeOTP(t, mfaSecretUji, time.Now()))
-	sebelum := s.keadaanMFA(t, "test-user-001")
+	sebelum := s.keadaanMFA(t, uid("test-user-001"))
 
-	w := s.resetMFA(t, admin.access, "test-user-001")
+	w := s.resetMFA(t, admin.access, uid("test-user-001"))
 
 	assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 	assert.Contains(t, s.parseResponse(t, w)["message"], "akun sendiri")
-	assert.Equal(t, sebelum, s.keadaanMFA(t, "test-user-001"), "tidak ada yang berubah")
+	assert.Equal(t, sebelum, s.keadaanMFA(t, uid("test-user-001")), "tidak ada yang berubah")
 	assert.Equal(t, http.StatusOK, s.status(t, admin.access), "sesi admin tetap hidup")
 	assert.Zero(t, s.hitung(t, "SELECT count(*) FROM audit_log WHERE aksi = 'RESET_MFA'"), "penolakan tidak tercatat sebagai reset")
 }
@@ -264,7 +264,7 @@ func TestResetMFA_PenggunaTidakAdaDanOtorisasi(t *testing.T) {
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	biasa := s.mulaiSesi(t, emailBiasa, uaIPhone)
 
-	assert.Equal(t, http.StatusNotFound, s.resetMFA(t, admin.access, "tidak-ada").Code)
+	assert.Equal(t, http.StatusNotFound, s.resetMFA(t, admin.access, uid("tidak-ada")).Code)
 	assert.Equal(t, http.StatusForbidden, s.resetMFA(t, biasa.access, idMFA).Code, "tanpa pengguna.kelola")
 	assert.Equal(t, http.StatusUnauthorized, s.resetMFA(t, "", idMFA).Code, "tanpa token")
 	assert.True(t, s.keadaanMFA(t, idMFA).MfaAktif, "korban tidak tersentuh oleh permintaan yang ditolak")
@@ -306,10 +306,10 @@ func TestResetMFA_PermintaanSerentakHanyaSatuYangMelepas(t *testing.T) {
 func seedDuaAdminMFA(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	seedData(t, db)
-	for _, id := range []string{"adm-a", "adm-b"} {
+	for _, slug := range []string{"adm-a", "adm-b"} {
 		require.NoError(t, db.Exec(`INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret)
-			SELECT ?, ?, ?, password_hash, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', 'AKTIF', true, mfa_secret FROM pengguna WHERE id = 'test-user-mfa'`,
-			id, "Admin "+id, id+"@gardainflasi.id").Error)
+			SELECT ?, ?, ?, password_hash, 'ADMIN_SISTEM', 'SISTEM', 'BPPSDMP', 'AKTIF', true, mfa_secret FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-mfa')`,
+			uid(slug), "Admin "+slug, slug+"@gardainflasi.id").Error)
 	}
 }
 
@@ -321,7 +321,7 @@ func TestResetMFA_PeranWajibMFAMasukSetupSaatLoginBerikutnya(t *testing.T) {
 	korban := s.validasiMFA(t, "adm-b@gardainflasi.id", kodeOTP(t, mfaSecretUji, time.Now()))
 	require.Equal(t, http.StatusOK, s.panggil(t, http.MethodGet, "/v1/users", nil, korban.access).Code, "korban admin penuh sebelum reset")
 
-	hasil := s.resetMFAOk(t, pelaku.access, "adm-b")
+	hasil := s.resetMFAOk(t, pelaku.access, uid("adm-b"))
 	assert.True(t, hasil.MFAAktifSebelumnya)
 	assert.Equal(t, http.StatusUnauthorized, s.status(t, korban.access))
 

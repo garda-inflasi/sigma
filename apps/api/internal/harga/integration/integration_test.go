@@ -327,7 +327,7 @@ func TestSaya_OnlyOwnEntries(t *testing.T) {
 	require.NotEmpty(t, rows)
 	for _, e := range rows {
 		require.NotNil(t, e.PetugasID)
-		assert.Equal(t, "mahasiswa_1", *e.PetugasID)
+		assert.Equal(t, uid("mahasiswa_1"), *e.PetugasID)
 	}
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/harga/saya", emailLihatSaja, nil).Code, "tanpa harga.input")
 }
@@ -349,7 +349,7 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, "kg", detail.Satuan, "satuan diambil dari master komoditas")
 	assert.Equal(t, 43500, detail.Harga)
 	require.NotNil(t, detail.PetugasID)
-	assert.Equal(t, "mahasiswa_1", *detail.PetugasID)
+	assert.Equal(t, uid("mahasiswa_1"), *detail.PetugasID)
 
 	var audit int64
 	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_INPUT' AND entitas_id = ?", id).Scan(&audit).Error)
@@ -404,7 +404,7 @@ func TestBulk_ValidasiThenPublikasi(t *testing.T) {
 	assert.Equal(t, "DIVALIDASI", s.status(t, a))
 
 	var audit int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_VALIDASI' AND aktor_id = 'koordinator_lapangan'").Scan(&audit).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_VALIDASI' AND aktor_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan')").Scan(&audit).Error)
 	assert.Positive(t, audit, "aksi massal tercatat di audit trail")
 
 	// Validasi ulang: sudah DIVALIDASI, tidak ada yang berubah.

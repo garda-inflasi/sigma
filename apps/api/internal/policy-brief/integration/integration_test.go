@@ -324,7 +324,7 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 		assert.Greater(t, len(snapshot.Fakta), len(d.Konten.Lampiran), "snapshot memuat semua fakta, lampiran hanya yang dipakai")
 
 		var jumlah int64
-		require.NoError(t, s.db.Table("policy_brief_versi").Where("brief_id = 'PB-2026-11' AND versi = 1 AND oleh = 'manajer_kebijakan'").Count(&jumlah).Error)
+		require.NoError(t, s.db.Table("policy_brief_versi").Where("brief_id = 'PB-2026-11' AND versi = 1 AND oleh = garda_uuid_stabil('pengguna', 'manajer_kebijakan')").Count(&jumlah).Error)
 		assert.EqualValues(t, 1, jumlah)
 		var job struct{ Status string }
 		require.NoError(t, s.db.Raw(`SELECT status FROM brief_job WHERE brief_id = 'PB-2026-11'`).Scan(&job).Error)
@@ -336,7 +336,7 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 			assert.Equal(t, "policy_brief", trail.Entitas)
 			assert.Equal(t, hasil, trail.Hasil)
 			require.NotNil(t, trail.AktorID)
-			assert.Equal(t, "manajer_kebijakan", *trail.AktorID)
+			assert.Equal(t, uid("manajer_kebijakan"), *trail.AktorID)
 		}
 	})
 
@@ -509,7 +509,7 @@ func TestPolicyBrief_GenerateRejectsDuplicateAndInvalidPeriod(t *testing.T) {
 
 	t.Run("brief yang sedang diproses tidak disusun ganda", func(t *testing.T) {
 		require.NoError(t, s.db.Exec(`INSERT INTO policy_brief (id, periode, judul, status, ringkasan, rekomendasi, halaman, disusun_oleh_id)
-			VALUES ('PB-2027-06', 'Juni 2027', 'x', 'DIPROSES', 'x', '[]', 1, 'manajer_kebijakan')`).Error)
+			VALUES ('PB-2027-06', 'Juni 2027', 'x', 'DIPROSES', 'x', '[]', 1, garda_uuid_stabil('pengguna', 'manajer_kebijakan'))`).Error)
 
 		w := s.call(t, http.MethodPost, "/v1/policy-brief/generate", emailPenyusun, map[string]string{"periode": "2027-06"})
 
@@ -521,7 +521,7 @@ func TestPolicyBrief_GenerateRejectsDuplicateAndInvalidPeriod(t *testing.T) {
 
 	t.Run("brief diproses yang prosesnya mati boleh diulang", func(t *testing.T) {
 		require.NoError(t, s.db.Exec(`INSERT INTO policy_brief (id, periode, judul, status, ringkasan, rekomendasi, halaman, disusun_oleh_id, diperbarui)
-			VALUES ('PB-2027-07', 'Juli 2027', 'x', 'DIPROSES', 'x', '[]', 1, 'manajer_kebijakan', now() - interval '10 minutes')`).Error)
+			VALUES ('PB-2027-07', 'Juli 2027', 'x', 'DIPROSES', 'x', '[]', 1, garda_uuid_stabil('pengguna', 'manajer_kebijakan'), now() - interval '10 minutes')`).Error)
 
 		w := s.call(t, http.MethodPost, "/v1/policy-brief/generate", emailPenyusun, map[string]string{"periode": "2027-07"})
 
@@ -593,7 +593,7 @@ func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
 	})
 
 	t.Run("setiap perubahan tercatat tepat sekali", func(t *testing.T) {
-		for aksi, aktor := range map[string]string{"BRIEF_TELAAH": "manajer_kebijakan", "BRIEF_SETUJUI": "strategis_djpb"} {
+		for aksi, aktor := range map[string]string{"BRIEF_TELAAH": uid("manajer_kebijakan"), "BRIEF_SETUJUI": uid("strategis_djpb")} {
 			var rows []auditdomain.AuditLog
 			require.NoError(t, s.db.Where("aksi = ? AND entitas_id = ?", aksi, "PB-2027-02").Find(&rows).Error)
 			require.Len(t, rows, 1, aksi)

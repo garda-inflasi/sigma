@@ -609,7 +609,8 @@ test("dua tab menyegarkan sesi bersamaan dengan cookie yang sama: keduanya berha
     const lagi = await segarkan(tab2);
     expect(lagi).toEqual({
       status: 200,
-      body: { success: true, diputar: true },
+      // izin_berubah (02-C): refresh ini tidak mengubah izin, jadi false.
+      body: { success: true, diputar: true, izin_berubah: false },
     });
   } finally {
     await tab2.close();

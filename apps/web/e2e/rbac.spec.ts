@@ -33,6 +33,7 @@ import {
   test,
   tungguTenang,
 } from "./fixtures";
+import { cariPengguna } from "./pengguna-helpers";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
 
@@ -478,9 +479,8 @@ test("admin: dialog Izin langsung memberi izin dengan masa berlaku dan alasan, m
   const u = await penggunaSiap();
   await masukSebagai(page, "superadmin");
   await buka(page, "/pengguna");
-  await page
-    .getByPlaceholder("Cari nama, email, peran, atau lembaga")
-    .fill(u.email);
+  // Tunggu jawaban server: baris lama yang masih tampil diganti saat hasil pencarian tiba.
+  await cariPengguna(page, u.email);
   const baris = page.getByRole("row").filter({ hasText: u.email });
   await baris.getByRole("button", { name: /^Aksi untuk/ }).click();
   await page.getByRole("menuitem", { name: "Ubah data" }).click();

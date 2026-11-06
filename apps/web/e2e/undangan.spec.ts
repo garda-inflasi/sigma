@@ -41,6 +41,7 @@ import {
   tungguTenang,
   type PantauGalat,
 } from "./fixtures";
+import { cariPengguna as cariDiTabel } from "./pengguna-helpers";
 
 // Tes yang menunggu jendela laju BFF bisa berjalan lebih dari semenit.
 test.describe.configure({ mode: "serial", timeout: 180_000 });
@@ -55,7 +56,6 @@ const namaUlang = `Pengguna Ulang ${stempel}`;
 const namaImpor = `Pengguna Impor ${stempel}`;
 
 const alertForm = (page: Page) => page.locator('form [role="alert"]');
-const kotakCari = (page: Page) => page.getByPlaceholder(/^Cari nama, email/);
 
 /** Mengizinkan satu respons HTTP gagal yang memang diharapkan, beserta baris console bawaan browser untuknya. */
 function izinkanHttp(
@@ -77,9 +77,13 @@ async function bukaPengguna(page: Page): Promise<void> {
   await tungguTenang(page);
 }
 
-/** Baris tabel pengguna untuk satu email (mencari dulu supaya baris ada di halaman tabel). */
+/**
+ * Baris tabel pengguna untuk satu email (mencari dulu supaya baris ada di halaman tabel). Menunggu jawaban
+ * server: baris lama dari halaman sebelumnya bisa masih tampil, lalu diganti (dan pilihan dibersihkan) saat
+ * hasil pencarian tiba.
+ */
 async function barisPengguna(page: Page, email: string) {
-  await kotakCari(page).fill(email);
+  await cariDiTabel(page, email);
   const baris = page.getByRole("row").filter({ hasText: email });
   await expect(baris).toHaveCount(1);
   return baris;

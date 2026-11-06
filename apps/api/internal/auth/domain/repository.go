@@ -13,6 +13,9 @@ type Repository interface {
 	GetUserByEmail(ctx context.Context, email string) (*Pengguna, error)
 	CreateUser(ctx context.Context, user *Pengguna) error
 	UpdateUser(ctx context.Context, user *Pengguna) error
+	// TouchLastLogin hanya menulis terakhir_masuk. Login memakainya alih-alih UpdateUser (Save seluruh baris)
+	// agar tidak menimpa perubahan admin yang terjadi selama pemeriksaan kata sandi.
+	TouchLastLogin(ctx context.Context, userID string, at time.Time) error
 	DeleteUser(ctx context.Context, id string) error
 	ListUsers(ctx context.Context, page, limit int, search string) ([]Pengguna, int64, error)
 	CreateRefreshToken(ctx context.Context, token *RefreshToken) error

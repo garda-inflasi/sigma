@@ -41,7 +41,7 @@ func siapLogin(repo *mockRepository, user *domain.Pengguna) {
 	repo.On("GetUserByEmail", mock.Anything, mock.Anything).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
-	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 }
 
 func login(uc *UseCase, email, sandi string) error {

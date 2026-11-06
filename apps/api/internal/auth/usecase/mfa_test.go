@@ -85,7 +85,7 @@ func TestLogin_MandatoryRoleWithoutMFAGetsSetupOnlySession(t *testing.T) {
 			repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 			repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 			repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
-			repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+			repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
 
 			result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -263,7 +263,7 @@ func siapMFALogin(t *testing.T, repo *mockRepository) (*UseCase, *audittest.Reco
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
-	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
 	return uc, recorder, user, secret, challenge
 }
 

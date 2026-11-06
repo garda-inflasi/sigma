@@ -224,9 +224,12 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 
 	if err := h.uc.CreateUser(audit.RequestContext(c), user, req.Password, c.GetString("user_id")); err != nil {
-		switch err {
-		case usecase.ErrEmailExists:
+		switch {
+		case errors.Is(err, usecase.ErrEmailExists):
 			response.Conflict(c, "Email sudah terdaftar")
+		case errors.Is(err, usecase.ErrWeakPassword):
+			// Masukan pengguna yang salah, bukan galat server (usecase membungkusnya dengan alasan).
+			response.BadRequest(c, err.Error())
 		default:
 			response.InternalError(c, "Gagal membuat pengguna")
 		}
@@ -442,7 +445,12 @@ func (h *Handler) BulkUser(c *gin.Context) {
 
 	count, err := h.uc.BulkUserAction(audit.RequestContext(c), req.IDs, req.Action, c.GetString("user_id"))
 	if err != nil {
-		response.BadRequest(c, err.Error())
+		// Hanya aksi tak dikenal yang salah masukan; galat basis data tidak boleh bocor ke klien sebagai 400.
+		if errors.Is(err, usecase.ErrInvalidAction) {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		response.InternalError(c, "Gagal memproses aksi massal")
 		return
 	}
 

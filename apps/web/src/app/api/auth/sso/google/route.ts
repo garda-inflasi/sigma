@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
   try {
     const { authorize_url, binding } = await ssoApi.authorize(
       request.headers.get("x-forwarded-for"),
+      request.headers.get("user-agent"),
     );
     const tujuan = tujuanPenyedia(authorize_url);
     if (!tujuan || !binding) {

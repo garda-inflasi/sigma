@@ -236,8 +236,13 @@ func (uc *UseCase) completeLogin(ctx context.Context, user *domain.Pengguna, ip,
 	uc.recordLoginAttempt(ctx, &user.ID, ip, true, "")
 	uc.resetKunci(ctx, user.Email)
 
+	// Hanya kolom terakhir_masuk. Menyimpan seluruh baris (Save) dari salinan yang dibaca sebelum bcrypt
+	// membatalkan perubahan admin yang terjadi di sela-selanya: penonaktifan, reset kata sandi, atau
+	// pergantian peran akan tertimpa kembali ke nilai lama oleh login yang sedang berjalan.
 	user.TerakhirMasuk = &now
-	_ = uc.repo.UpdateUser(ctx, user)
+	if err := uc.repo.TouchLastLogin(ctx, user.ID, now); err != nil {
+		uc.log.Warn("login: gagal mencatat waktu masuk terakhir", map[string]interface{}{"user_id": user.ID, "error": err.Error()})
+	}
 
 	entry := audit.Entry{AktorID: user.ID, Aksi: "LOGIN", Entitas: "pengguna", EntitasID: user.ID, Hasil: audit.HasilBerhasil}
 	if metodeMFA != "" {
@@ -347,13 +352,20 @@ func (uc *UseCase) ForgotPassword(ctx context.Context, email string) error {
 	uc.recordAudit(ctx, user.ID, "FORGOT_PASSWORD", user.ID)
 	uc.log.Info("forgot password: token created", map[string]interface{}{"user_id": user.ID, "email": email})
 
-	// Send email with reset link
-	if err := uc.emailSender.SendResetPassword(email, resetToken); err != nil {
-		uc.log.Error("forgot password: failed to send email", map[string]interface{}{"user_id": user.ID, "error": err.Error()})
-		return fmt.Errorf("send reset email: %w", err)
-	}
+	// Email dikirim di latar belakang. SMTP tanpa batas waktu menahan permintaan selama berdetik-detik atau
+	// sampai timeout TCP, dan hanya email terdaftar yang sampai ke langkah ini: menunggunya menjadikan lama
+	// jawaban penanda bahwa email itu terdaftar (enumerasi) dan menggantung permintaan saat SMTP bermasalah.
+	// Jawabannya sama untuk semua email; kegagalan kirim hanya tercatat di log.
+	go uc.kirimEmailReset(user.ID, email, resetToken)
 
 	return nil
+}
+
+// kirimEmailReset mengirim tautan atur ulang; dipanggil di goroutine sendiri oleh ForgotPassword.
+func (uc *UseCase) kirimEmailReset(userID, to, resetToken string) {
+	if err := uc.emailSender.SendResetPassword(to, resetToken); err != nil {
+		uc.log.Error("forgot password: failed to send email", map[string]interface{}{"user_id": userID, "error": err.Error()})
+	}
 }
 
 // ResetPassword resets the password using a reset token.
@@ -487,6 +499,7 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 	}
 
 	sebelum := userSnapshot(user)
+	peranSebelum := user.Peran
 
 	if patch.Email != nil && *patch.Email != user.Email {
 		if existing, _ := uc.repo.GetUserByEmail(ctx, *patch.Email); existing != nil && existing.ID != id {
@@ -526,8 +539,9 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
-	// Deactivating an account must also terminate its active sessions.
-	if patch.Status != nil && *patch.Status != "AKTIF" {
+	// Menonaktifkan akun dan mengganti peran sama-sama harus mengakhiri sesi aktifnya: access token lama
+	// masih membawa izin peran sebelumnya (AssignRole sudah begitu; PATCH tidak boleh menjadi jalan pintas).
+	if (patch.Status != nil && *patch.Status != "AKTIF") || user.Peran != peranSebelum {
 		if err := uc.revokeAllSessions(ctx, user.ID); err != nil {
 			return nil, err
 		}
@@ -550,15 +564,20 @@ func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID string) error {
 		return ErrUserNotFound
 	}
 
-	_ = uc.repo.RevokeAllUserRefreshTokens(ctx, id)
-
 	if err := uc.repo.DeleteUser(ctx, id); err != nil {
 		// Baris terkait (tugas lapangan, entri harga, audit log, dsb.) memakai
 		// ON DELETE NO ACTION, sehingga penghapusan gagal di level basis data.
+		// Sesi tidak dicabut lebih dulu: penghapusan yang ditolak tidak boleh mengeluarkan pengguna yang tetap ada.
 		if errors.Is(err, gorm.ErrForeignKeyViolated) {
 			return ErrUserHasReferences
 		}
 		return fmt.Errorf("delete user: %w", err)
+	}
+
+	// refresh_tokens ikut terhapus (ON DELETE CASCADE) sehingga sesinya mati lewat sid; pencabutan ini hanya
+	// jaring pengaman bila kaskade itu tidak ada.
+	if err := uc.repo.RevokeAllUserRefreshTokens(ctx, id); err != nil {
+		uc.log.Warn("delete user: gagal mencabut sesi sesudah penghapusan", map[string]interface{}{"user_id": id, "error": err.Error()})
 	}
 
 	uc.recordAudit(ctx, actorID, "DELETE_USER", id)

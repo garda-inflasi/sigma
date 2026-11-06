@@ -328,7 +328,7 @@ func (s *SSOUseCase) link(ctx context.Context, user *domain.Pengguna, identity *
 		return fresh, nil
 	}
 
-	// UpdateUser (completeLogin) menyimpan seluruh baris: tautan yang baru ditulis harus ikut di struct.
+	// LinkSSO sudah menulis tautannya di basis data; struct disamakan agar pengguna yang dikembalikan lengkap.
 	provider, subject := s.name, identity.Subject
 	user.SSOProvider, user.SSOSubject, user.SSOTerhubungPada = &provider, &subject, &now
 	s.uc.writeAudit(ctx, audit.Entry{

@@ -997,6 +997,260 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Mengubah sebagian data pengguna
+      description: |
+        Memerlukan izin `pengguna.kelola`. Hanya kolom yang dikirim yang ditulis. Mengganti `peran` (lapis ikut
+        diturunkan dari peran kecuali `lapis` dikirim) atau menonaktifkan akun mengakhiri semua sesinya. Tercatat
+        di audit (`UPDATE_USER`, sebelum/sesudah; perubahan peran masuk ke riwayat peran).
+
+        **Akun `MENUNGGU`** (undangan): `status` tidak dapat diubah lewat endpoint ini (409; aktivasi hanya lewat
+        tautan undangan, membatalkan undangan = menghapus akun), dan `MENUNGGU` tidak dapat dipasang pada akun lain
+        (400). Mengubah `email` akun `MENUNGGU` menghanguskan tautan yang terlanjur dikirim ke alamat lama.
+
+        **Pemegang terakhir** `pengguna.kelola`: mengganti peran atau menonaktifkan pengguna aktif terakhir yang
+        memegang izin itu lewat perannya dijawab 409 `LAST_PERMISSION_HOLDER`. Galat basis data dijawab 500
+        (bukan 404).
+      operationId: updateUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Pengguna diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Validasi gagal, peran tidak dikenal, atau status `MENUNGGU` dipasang manual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email sudah terdaftar, status akun `MENUNGGU` diubah, atau perubahan menghapus pemegang terakhir `pengguna.kelola` (`LAST_PERMISSION_HOLDER`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Menghapus pengguna
+      description: |
+        Memerlukan izin `pengguna.kelola`. Menghapus akun beserta sesinya (juga untuk membatalkan undangan akun
+        `MENUNGGU`). Tercatat di audit (`DELETE_USER`).
+
+        Akun sendiri ditolak (400). Pengguna yang masih dirujuk data lain (tugas, entri harga, audit) dijawab 409:
+        nonaktifkan sebagai gantinya. Menghapus pemegang terakhir `pengguna.kelola` dijawab 409
+        `LAST_PERMISSION_HOLDER`.
+      operationId: deleteUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: Pengguna dihapus
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Menghapus akun sendiri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Pengguna masih dirujuk data lain, atau menghapus pemegang terakhir `pengguna.kelola` (`LAST_PERMISSION_HOLDER`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/reset-password:
+    post:
+      summary: Mengatur ulang kata sandi pengguna (oleh admin)
+      description: |
+        Memerlukan izin `pengguna.kelola`. Menetapkan kata sandi sementara tanpa tahu yang lama: akun wajib
+        menggantinya saat masuk dan semua sesinya diakhiri. Tercatat di audit (`RESET_PASSWORD_ADMIN`, tanpa kata
+        sandi). Akun `MENUNGGU` ditolak (409): gunakan `POST /v1/users/{id}/undang-ulang`.
+      operationId: resetUserPassword
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordAdminRequest"
+      responses:
+        "200":
+          description: Kata sandi diatur ulang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Kata sandi tidak memenuhi kebijakan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Akun masih menunggu aktivasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/roles:
+    put:
+      summary: Mengganti peran pengguna
+      description: |
+        Memerlukan izin `pengguna.kelola`. Mengganti peran (lapis ikut diturunkan) dan mengakhiri semua sesi
+        pengguna supaya izin baru berlaku. Tercatat di audit (`ASSIGN_ROLE`, sebelum/sesudah) dan masuk ke
+        `GET /v1/users/{id}/riwayat-peran`. Mengganti peran pemegang terakhir `pengguna.kelola` dijawab 409
+        `LAST_PERMISSION_HOLDER`.
+      operationId: assignUserRole
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignRoleRequest"
+      responses:
+        "200":
+          description: Peran diganti
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Peran hilang atau tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Perubahan menghapus pemegang terakhir `pengguna.kelola` (`LAST_PERMISSION_HOLDER`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/users/{id}/buka-kunci:
     post:
@@ -1543,6 +1797,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "Aksi `nonaktifkan` ditolak seluruhnya karena akan menghapus pemegang terakhir `pengguna.kelola` (`LAST_PERMISSION_HOLDER`)"
           content:
             application/json:
               schema:
@@ -6753,16 +7013,21 @@ components:
 
     CreateUserRequest:
       type: object
+      description: |
+        Membuat akun dengan kata sandi sementara (jalur kedua; cara utama adalah `POST /v1/users/undang`). `id` dan
+        `password` wajib; akun wajib mengganti kata sandi saat masuk pertama.
       required:
+        - id
         - nama
         - email
+        - password
         - peran
         - lapis
         - lembaga
       properties:
         id:
           type: string
-          description: ID opsional (akan digenerate jika kosong)
+          example: USR-0001
         nama:
           type: string
           example: John Doe
@@ -6774,7 +7039,7 @@ components:
           type: string
           format: password
           minLength: 8
-          description: "Password opsional (default: random)"
+          description: Kata sandi sementara; harus memenuhi kebijakan kata sandi
         peran:
           type: string
           example: OPS_MAHASISWA
@@ -6784,6 +7049,51 @@ components:
         lembaga:
           type: string
           example: BPPSDMP
+
+    UpdateUserRequest:
+      type: object
+      description: Semua kolom opsional; hanya yang dikirim yang ditulis.
+      properties:
+        nama:
+          type: string
+        email:
+          type: string
+          format: email
+        peran:
+          type: string
+          example: MANAJER_DATA
+        lapis:
+          type: string
+          description: Bila kosong, lapis diturunkan dari `peran` yang baru.
+        lembaga:
+          type: string
+        kabupaten_kode:
+          type: string
+          example: "1171"
+        status:
+          type: string
+          enum: [AKTIF, NONAKTIF, MENUNGGU]
+          description: |
+            `MENUNGGU` tidak dapat dipasang manual (400) dan status akun `MENUNGGU` tidak dapat diubah (409).
+
+    AssignRoleRequest:
+      type: object
+      required:
+        - peran
+      properties:
+        peran:
+          type: string
+          example: MANAJER_DATA
+
+    ResetPasswordAdminRequest:
+      type: object
+      required:
+        - new_password
+      properties:
+        new_password:
+          type: string
+          format: password
+          minLength: 8
 
     UserListResponse:
       type: object

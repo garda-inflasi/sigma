@@ -87,6 +87,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		public.POST("/refresh", handler.Refresh)
 		public.POST("/forgot-password", batasKredensial, handler.ForgotPassword)
 		public.POST("/reset-password", batasKredensial, handler.ResetPassword)
+		// Aktivasi akun dari tautan undangan (kata sandi pertama): token 256-bit sekali pakai, satu ember dengan login.
+		public.POST("/aktivasi", batasKredensial, handler.AktivasiAkun)
 		// Menukar token tantangan dari login dan kode OTP dengan sesi; belum ada sesi, jadi publik.
 		public.POST("/mfa/validate", batasKredensial, handler.ValidateMFA)
 	}
@@ -120,6 +122,11 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.POST("", handler.CreateUser)
 			users.GET("", handler.ListUsers)
 			users.POST("/bulk", handler.BulkUser)
+			// Undang, impor, dan ekspor CSV pengguna (02-D).
+			users.POST("/undang", handler.UndangPengguna)
+			users.POST("/impor", handler.ImporPengguna)
+			users.GET("/ekspor", handler.EksporPengguna)
+			users.POST("/:id/undang-ulang", handler.UndangUlang)
 			users.GET("/:id", handler.GetUser)
 			users.PATCH("/:id", handler.UpdateUser)
 			users.DELETE("/:id", handler.DeleteUser)

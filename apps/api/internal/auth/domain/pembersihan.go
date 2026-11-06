@@ -21,6 +21,9 @@ type PembersihanRepository interface {
 	// HapusResetTokenMati menghapus password_reset_tokens yang kedaluwarsa (expires_at < sebelum) atau
 	// sudah dipakai (used_at < sebelum). Token yang belum dipakai dan belum kedaluwarsa tidak disentuh.
 	HapusResetTokenMati(ctx context.Context, sebelum time.Time, batas int) (int64, error)
+	// HapusUndanganMati menghapus undangan_pengguna yang kedaluwarsa (expires_at < sebelum), sudah dipakai
+	// (used_at < sebelum), atau dicabut (dicabut_pada < sebelum). Undangan hidup tidak disentuh.
+	HapusUndanganMati(ctx context.Context, sebelum time.Time, batas int) (int64, error)
 	// HapusLoginAttemptLama menghapus login_attempts dengan attempted_at < sebelum.
 	HapusLoginAttemptLama(ctx context.Context, sebelum time.Time, batas int) (int64, error)
 	// HapusKunciLoginUsang menghapus kunci_login yang terakhir diperbarui sebelum `sebelum` dan tidak sedang

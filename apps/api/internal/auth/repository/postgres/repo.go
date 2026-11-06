@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
@@ -113,15 +112,8 @@ func (r *Repository) ListUsers(ctx context.Context, page, limit int, search stri
 
 	offset := (page - 1) * limit
 
-	query := r.db.WithContext(ctx).Model(&domain.Pengguna{})
-	if search != "" {
-		pattern := "%" + strings.ToLower(search) + "%"
-		// peran bertipe enum PostgreSQL, jadi harus di-cast ke text sebelum LOWER().
-		query = query.Where(
-			"LOWER(nama) LIKE ? OR LOWER(email) LIKE ? OR LOWER(peran::text) LIKE ? OR LOWER(lembaga) LIKE ?",
-			pattern, pattern, pattern, pattern,
-		)
-	}
+	// Penyaring yang sama dipakai ekspor CSV (filter_pengguna.go).
+	query := terapkanFilterPengguna(r.db.WithContext(ctx).Model(&domain.Pengguna{}), domain.FilterPengguna{Search: search})
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count users: %w", err)
@@ -336,9 +328,12 @@ func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action d
 
 	switch action {
 	case domain.BulkAktifkan:
-		tx = tx.Update("status", "AKTIF")
+		// Akun MENUNGGU (undangan) tidak boleh diaktifkan tanpa kata sandi: hanya aktivasi oleh pemiliknya.
+		tx = tx.Where("status <> ?", domain.StatusMenunggu).Update("status", "AKTIF")
 	case domain.BulkNonaktifkan:
-		tx = tx.Update("status", "NONAKTIF")
+		// Akun MENUNGGU dibatalkan dengan menghapusnya, bukan dinonaktifkan: akun tanpa kata sandi tidak punya
+		// jalan kembali ke AKTIF selain undangan.
+		tx = tx.Where("status <> ?", domain.StatusMenunggu).Update("status", "NONAKTIF")
 		// Akun nonaktif tidak boleh meneruskan sesinya: access token mati seketika lewat sid.
 		if tx.Error == nil {
 			if err := r.db.WithContext(ctx).Model(&domain.RefreshToken{}).

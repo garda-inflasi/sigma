@@ -168,6 +168,15 @@ func langkahBawaan(repo domain.PembersihanRepository, cfg KonfigPembersihan) []L
 		},
 	}
 	langkah = append(langkah, Langkah{
+		Nama: "undangan_pengguna",
+		// Sama seperti token reset: yang kedaluwarsa, terpakai, atau dicabut disimpan RetensiResetToken lagi
+		// (Aktivasi membedakan "kedaluwarsa" dari "tidak valid" bagi tautan yang masih ditemukan); undangan
+		// hidup tidak pernah dihapus. Akun MENUNGGU yang undangannya habis tetap ada: admin mengirim ulang.
+		HapusBatch: func(ctx context.Context, now time.Time, batas int) (int64, error) {
+			return repo.HapusUndanganMati(ctx, now.Add(-cfg.RetensiResetToken), batas)
+		},
+	})
+	langkah = append(langkah, Langkah{
 		Nama: "sso_login_state",
 		// State yang belum kedaluwarsa bisa sedang menunggu callback penyedia SSO; hanya yang lewat dihapus.
 		HapusBatch: func(ctx context.Context, now time.Time, batas int) (int64, error) {

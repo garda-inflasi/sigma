@@ -5979,6 +5979,27 @@ components:
         type: string
 
   schemas:
+    # ── Kunci primer (docs/SKEMA-DATABASE.md) ──────────────────────────
+    IdBigint:
+      type: string
+      pattern: "^[1-9][0-9]{0,18}$"
+      description: >-
+        ID BIGINT (identity) yang ditulis sebagai string desimal, agar nilai di atas 2^53 tetap utuh di
+        JavaScript. Server juga menerima angka JSON di body. Path parameter yang bukan ID sah dijawab 404.
+      example: "1024"
+    IdUuid:
+      type: string
+      format: uuid
+      description: ID UUID kanonik (huruf kecil). Path parameter yang bukan UUID sah dijawab 404.
+      example: "f2356c7b-bb80-3d01-84c3-ba32f27a2910"
+    KodeTampilan:
+      type: string
+      nullable: true
+      maxLength: 64
+      description: >-
+        Kode tampilan atau ID lama sebelum standardisasi kunci primer (mis. INT-1000, EWS-0901). Unik; rute
+        entitas yang punya kode juga menerimanya sebagai alias ID.
+      example: "INT-1000"
     # ── Response Envelope ──────────────────────────────────────────────
     Envelope:
       type: object

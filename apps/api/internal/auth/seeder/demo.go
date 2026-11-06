@@ -83,6 +83,12 @@ var DemoKodeCadangan = []string{"BACKUP01", "BACKUP02", "BACKUP03"}
 // untuk pengembangan; kata sandi seluruh akun adalah DemoPassword. Rahasia MFA akun demo
 // disegel dengan AES_KEY (lingkungan, atau kunci pengembangan bila kosong) dan kode cadangannya di-hash.
 func SeedDemo(ctx context.Context, db *gorm.DB) (DemoSummary, error) {
+	// Akun demo tidak berguna tanpa matriks izin (Opsi B: izin dibaca dari basis data). SeedRBAC idempoten dan
+	// tidak menimpa perubahan admin, jadi aman dipanggil lagi di sini; tes modul lain yang hanya memanggil SeedDemo
+	// tetap mendapat matriks bawaan.
+	if _, err := SeedRBAC(ctx, db); err != nil {
+		return DemoSummary{}, err
+	}
 	ring, err := crypto.KeyringFromEnv(os.Getenv)
 	if err != nil {
 		return DemoSummary{}, fmt.Errorf("kunci enkripsi MFA: %w", err)

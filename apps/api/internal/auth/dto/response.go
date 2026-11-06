@@ -82,13 +82,24 @@ type BulkUserResponse struct {
 
 // ── RBAC Responses ────────────────────────────────────────────────────
 
+// RoleResponse adalah satu peran dengan izinnya yang berlaku (basis data). Bawaan adalah matriks bawaan di
+// kode (pembanding "pulihkan bawaan"); Versi adalah kunci optimistis penyuntingan matriks.
 type RoleResponse struct {
-	ID          string   `json:"id"`
-	Permissions []string `json:"permissions"`
+	ID             string     `json:"id"`
+	Label          string     `json:"label"`
+	Lapis          string     `json:"lapis"`
+	Permissions    []string   `json:"permissions"`
+	Bawaan         []string   `json:"bawaan"`
+	Versi          int64      `json:"versi"`
+	DiperbaruiPada *time.Time `json:"diperbarui_pada,omitempty"`
+	DiperbaruiOleh *string    `json:"diperbarui_oleh,omitempty"`
 }
 
+// PermissionResponse adalah satu izin di katalog (didefinisikan di kode; UI tidak dapat menciptakan izin baru).
 type PermissionResponse struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	Deskripsi string `json:"deskripsi"`
+	Kelompok  string `json:"kelompok"`
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
+	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
@@ -74,6 +75,9 @@ func newSuiteBatas(t *testing.T, seed func(*testing.T, *gorm.DB), batasAuth int,
 
 	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
 	pgtest.MigrateUp(t, db)
+	// Izin dibaca dari basis data (02-C): tanpa referensi RBAC tidak ada peran yang punya izin apa pun.
+	_, err := authseeder.SeedRBAC(t.Context(), db)
+	require.NoError(t, err)
 	seed(t, db)
 
 	tokenMgr := token.NewManager(jwtSecret)

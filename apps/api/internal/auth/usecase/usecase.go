@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -114,6 +113,10 @@ type Config struct {
 	// RefreshGraceWindow adalah jendela setelah rotasi saat refresh token lama yang disajikan lagi dianggap
 	// permintaan serentak yang sah (mis. dua tab), bukan pemakaian ulang. 0 mematikan toleransi. Lihat sesi.go.
 	RefreshGraceWindow time.Duration
+	// IzinCacheTTL adalah umur maksimum cache izin efektif per pengguna (lihat izin.go): batas atas keterlambatan
+	// perubahan izin yang dibuat di luar proses ini. 0 memakai DefaultIzinCacheTTL; negatif mematikan cache
+	// (setiap request membaca basis data).
+	IzinCacheTTL time.Duration
 }
 
 func DefaultConfig() Config {
@@ -125,6 +128,7 @@ func DefaultConfig() Config {
 		ResetTokenTTL:     30 * time.Minute,
 
 		RefreshGraceWindow: DefaultRefreshGraceWindow,
+		IzinCacheTTL:       DefaultIzinCacheTTL,
 	}
 }
 
@@ -137,17 +141,33 @@ type UseCase struct {
 	log         *logger.Logger
 	emailSender *email.Sender
 	audit       audit.Writer
+	// izin adalah penyimpanan RBAC berbasis basis data (02-C); nil hanya pada tes unit dengan repositori tiruan,
+	// yang lalu memakai matriks bawaan. izinCache selalu ada bersamanya.
+	izin      domain.IzinRepository
+	izinCache *izinCache
+	// sekarang adalah jam usecase (masa berlaku izin langsung); tes menggantinya.
+	sekarang func() time.Time
 }
 
 func New(repo domain.Repository, tokenMgr *token.Manager, cfg Config, log *logger.Logger, emailSender *email.Sender, auditWriter audit.Writer) *UseCase {
-	return &UseCase{
+	uc := &UseCase{
 		repo:        repo,
 		token:       tokenMgr,
 		cfg:         cfg,
 		log:         log,
 		emailSender: emailSender,
 		audit:       auditWriter,
+		sekarang:    time.Now,
 	}
+	if izin, ok := repo.(domain.IzinRepository); ok {
+		ttl := cfg.IzinCacheTTL
+		if ttl == 0 {
+			ttl = DefaultIzinCacheTTL
+		}
+		uc.izin = izin
+		uc.izinCache = newIzinCache(izin, ttl, nil)
+	}
+	return uc
 }
 
 // ── Auth Use Cases ────────────────────────────────────────────────────
@@ -431,10 +451,17 @@ type UserPatch struct {
 	Status        *string
 }
 
-// RoleInfo describes a role and the permissions granted to it.
+// RoleInfo describes a role and the permissions granted to it. Bawaan adalah izin dari matriks bawaan di kode
+// (pembanding untuk "pulihkan bawaan"); Versi adalah kunci optimistis penyuntingan matriks.
 type RoleInfo struct {
-	ID          string   `json:"id"`
-	Permissions []string `json:"permissions"`
+	ID             string     `json:"id"`
+	Label          string     `json:"label"`
+	Lapis          string     `json:"lapis"`
+	Permissions    []string   `json:"permissions"`
+	Bawaan         []string   `json:"bawaan"`
+	Versi          int64      `json:"versi"`
+	DiperbaruiPada *time.Time `json:"diperbarui_pada,omitempty"`
+	DiperbaruiOleh *string    `json:"diperbarui_oleh,omitempty"`
 }
 
 // CreateUser creates a new user.
@@ -527,9 +554,13 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 			return nil, ErrUserNotFound
 		case errors.Is(err, gorm.ErrDuplicatedKey):
 			return nil, ErrEmailExists
+		case errors.Is(err, domain.ErrPemegangTerakhir):
+			return nil, ErrPemegangTerakhir
 		}
 		return nil, fmt.Errorf("update user: %w", err)
 	}
+	// Peran dan status menentukan izin efektif: buang cache izin supaya berlaku pada request berikutnya.
+	uc.bersihkanCacheIzin(sesudah.ID)
 
 	// Menonaktifkan akun dan mengganti peran sama-sama harus mengakhiri sesi aktifnya: access token lama
 	// masih membawa izin peran sebelumnya (AssignRole sudah begitu; PATCH tidak boleh menjadi jalan pintas).
@@ -565,8 +596,12 @@ func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID string) error {
 		if errors.Is(err, gorm.ErrForeignKeyViolated) {
 			return ErrUserHasReferences
 		}
+		if errors.Is(err, domain.ErrPemegangTerakhir) {
+			return ErrPemegangTerakhir
+		}
 		return fmt.Errorf("delete user: %w", err)
 	}
+	uc.bersihkanCacheIzin(id)
 
 	// refresh_tokens ikut terhapus (ON DELETE CASCADE) sehingga sesinya mati lewat sid; pencabutan ini hanya
 	// jaring pengaman bila kaskade itu tidak ada.
@@ -619,8 +654,12 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID string) (*d
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
+		if errors.Is(err, domain.ErrPemegangTerakhir) {
+			return nil, ErrPemegangTerakhir
+		}
 		return nil, fmt.Errorf("assign role: %w", err)
 	}
+	uc.bersihkanCacheIzin(sesudah.ID)
 
 	if err := uc.revokeAllSessions(ctx, sesudah.ID); err != nil {
 		return nil, err
@@ -631,35 +670,6 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID string) (*d
 		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
 	})
 	return sesudah, nil
-}
-
-// ListRoles returns the hardcoded RBAC role catalogue.
-func (uc *UseCase) ListRoles() []RoleInfo {
-	roles := make([]RoleInfo, 0, len(rolePermissions))
-	for _, r := range roleOrder {
-		perms, ok := rolePermissions[r]
-		if !ok {
-			continue
-		}
-		roles = append(roles, RoleInfo{ID: r, Permissions: perms})
-	}
-	return roles
-}
-
-// ListPermissions returns every permission known to the RBAC matrix.
-func (uc *UseCase) ListPermissions() []string {
-	seen := make(map[string]bool)
-	perms := make([]string, 0, 64)
-	for _, r := range roleOrder {
-		for _, p := range rolePermissions[r] {
-			if !seen[p] {
-				seen[p] = true
-				perms = append(perms, p)
-			}
-		}
-	}
-	sort.Strings(perms)
-	return perms
 }
 
 // BulkUserAction processes a bulk action on users.
@@ -673,6 +683,9 @@ func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action, act
 	}
 
 	count, err := uc.repo.BulkUpdateUsers(ctx, ids, domainAction)
+	if errors.Is(err, domain.ErrPemegangTerakhir) {
+		return 0, ErrPemegangTerakhir
+	}
 	if err != nil {
 		uc.log.Error("bulk user action failed", map[string]interface{}{
 			"action": action,
@@ -682,6 +695,7 @@ func (uc *UseCase) BulkUserAction(ctx context.Context, ids []string, action, act
 		return 0, fmt.Errorf("bulk user action: %w", err)
 	}
 
+	uc.bersihkanCacheIzin(ids...)
 	uc.writeAudit(ctx, audit.Entry{
 		AktorID: actorID, Aksi: "BULK_" + string(domainAction), Entitas: "pengguna", EntitasID: fmt.Sprintf("%d pengguna", count),
 		Hasil: audit.HasilBerhasil, Metadata: map[string]any{"ids": ids},

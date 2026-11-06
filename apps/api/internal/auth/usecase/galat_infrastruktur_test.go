@@ -240,7 +240,7 @@ func TestMintAccess_MembawaProfilTampilanDanWilayahTugas(t *testing.T) {
 	kab := "1171"
 	user.KabupatenKode, user.Lembaga = &kab, "BPS Aceh"
 
-	tk, err := uc.mintAccess(user, sidA)
+	tk, err := uc.mintAccess(context.Background(), user, sidA)
 
 	require.NoError(t, err)
 	claims, err := uc.token.VerifyToken(tk)
@@ -253,7 +253,7 @@ func TestMintAccess_MembawaProfilTampilanDanWilayahTugas(t *testing.T) {
 	assert.Equal(t, uc.getPermissionsForRole("OPS_MAHASISWA"), claims.Permissions)
 
 	user.KabupatenKode = nil
-	tk, err = uc.mintAccess(user, sidA)
+	tk, err = uc.mintAccess(context.Background(), user, sidA)
 	require.NoError(t, err)
 	claims, err = uc.token.VerifyToken(tk)
 	require.NoError(t, err)

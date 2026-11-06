@@ -64,6 +64,7 @@ type Manager struct {
 	issuer      string
 	audience    string
 	revocation  atomic.Pointer[RevocationChecker]
+	permissions atomic.Pointer[PermissionResolver]
 }
 
 // NewManager creates a new token manager.

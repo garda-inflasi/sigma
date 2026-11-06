@@ -32,19 +32,66 @@ type permissionsContract struct {
 
 func currentContract() permissionsContract {
 	contract := permissionsContract{Permissions: []string{}, Roles: map[string][]string{}}
-	seen := map[string]bool{}
 	for role, perms := range rolePermissions {
-		sorted := slices.Sorted(slices.Values(perms))
-		contract.Roles[role] = sorted
-		for _, p := range perms {
-			if !seen[p] {
-				seen[p] = true
-				contract.Permissions = append(contract.Permissions, p)
-			}
-		}
+		contract.Roles[role] = slices.Sorted(slices.Values(perms))
+	}
+	// Katalog izin didefinisikan di kode (rbac_katalog.go); matriks di berkas ini hanyalah bawaannya.
+	for _, d := range katalogIzin {
+		contract.Permissions = append(contract.Permissions, d.Nama)
 	}
 	sort.Strings(contract.Permissions)
 	return contract
+}
+
+func TestKatalogIzin_LengkapUnikDanKonsistenDenganMatriksBawaan(t *testing.T) {
+	assert.Len(t, katalogIzin, 35)
+	nama := regexp.MustCompile(`^[a-z]+\.[a-z_]+$`)
+	seen := map[string]bool{}
+	for _, d := range katalogIzin {
+		assert.Regexp(t, nama, d.Nama)
+		assert.False(t, seen[d.Nama], "duplikat di katalog: %s", d.Nama)
+		assert.NotEmpty(t, d.Deskripsi, d.Nama)
+		assert.NotEmpty(t, d.Kelompok, d.Nama)
+		seen[d.Nama] = true
+	}
+
+	dimiliki := map[string]bool{}
+	for role, perms := range rolePermissions {
+		for _, p := range perms {
+			assert.True(t, seen[p], "izin bawaan %s milik %s tidak ada di katalog", p, role)
+			dimiliki[p] = true
+		}
+	}
+	for p := range seen {
+		assert.True(t, dimiliki[p], "izin katalog %s tidak dimiliki peran manapun secara bawaan", p)
+	}
+}
+
+func TestDaftarPeran_EmpatBelasPeranBerurutanDenganLabelDanLapis(t *testing.T) {
+	peran := DaftarPeran()
+	require.Len(t, peran, 14)
+	for i, p := range peran {
+		assert.Equal(t, roleOrder[i], p.Kunci)
+		assert.Equal(t, i+1, p.Urutan)
+		assert.NotEmpty(t, p.Label, p.Kunci)
+		assert.Equal(t, roleLapis[p.Kunci], p.Lapis)
+		assert.True(t, PeranDikenal(p.Kunci))
+	}
+	assert.False(t, PeranDikenal("SUPERADMIN"))
+}
+
+func TestIzinBawaan_SalinanDanPeranTakDikenalNil(t *testing.T) {
+	bawaan := IzinBawaan("ADMIN_SISTEM")
+	require.NotEmpty(t, bawaan)
+	bawaan[0] = "diubah.tes"
+	assert.NotEqual(t, "diubah.tes", rolePermissions["ADMIN_SISTEM"][0], "pemanggil tidak boleh mengubah matriks bawaan")
+	assert.Nil(t, IzinBawaan("SUPERADMIN"))
+
+	katalog := KatalogIzin()
+	katalog[0].Nama = "diubah.tes"
+	assert.NotEqual(t, "diubah.tes", katalogIzin[0].Nama)
+	assert.True(t, IzinDikenal("pengguna.kelola"))
+	assert.False(t, IzinDikenal("izin.palsu"))
 }
 
 func TestPermissionsContractFileMatchesRolePermissions(t *testing.T) {

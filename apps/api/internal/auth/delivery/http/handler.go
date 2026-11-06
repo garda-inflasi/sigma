@@ -327,6 +327,8 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			response.Conflict(c, "Email sudah terdaftar")
 		case usecase.ErrRoleNotFound:
 			response.BadRequest(c, "Peran tidak dikenal")
+		case usecase.ErrPemegangTerakhir:
+			jawabPemegangTerakhir(c)
 		default:
 			response.InternalError(c, "Gagal memperbarui pengguna")
 		}
@@ -349,6 +351,8 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 			response.BadRequest(c, "Tidak dapat menghapus akun sendiri")
 		case usecase.ErrUserHasReferences:
 			response.Conflict(c, "Pengguna masih memiliki data terkait (tugas, entri harga, atau audit). Nonaktifkan akun sebagai gantinya.")
+		case usecase.ErrPemegangTerakhir:
+			jawabPemegangTerakhir(c)
 		default:
 			response.InternalError(c, "Gagal menghapus pengguna")
 		}
@@ -408,6 +412,8 @@ func (h *Handler) AssignRole(c *gin.Context) {
 			response.NotFound(c, "Pengguna tidak ditemukan")
 		case usecase.ErrRoleNotFound:
 			response.BadRequest(c, "Peran tidak dikenal")
+		case usecase.ErrPemegangTerakhir:
+			jawabPemegangTerakhir(c)
 		default:
 			response.InternalError(c, "Gagal mengubah peran")
 		}
@@ -419,20 +425,28 @@ func (h *Handler) AssignRole(c *gin.Context) {
 
 // GET /v1/roles
 func (h *Handler) ListRoles(c *gin.Context) {
-	roles := h.uc.ListRoles()
+	roles, err := h.uc.ListRoles(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil peran")
+		return
+	}
 	items := make([]dto.RoleResponse, len(roles))
 	for i, r := range roles {
-		items[i] = dto.RoleResponse{ID: r.ID, Permissions: r.Permissions}
+		items[i] = roleResponse(r)
 	}
 	response.Success(c, items)
 }
 
 // GET /v1/permissions
 func (h *Handler) ListPermissions(c *gin.Context) {
-	perms := h.uc.ListPermissions()
+	perms, err := h.uc.ListPermissions(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil izin")
+		return
+	}
 	items := make([]dto.PermissionResponse, len(perms))
 	for i, p := range perms {
-		items[i] = dto.PermissionResponse{ID: p}
+		items[i] = dto.PermissionResponse{ID: p.ID, Deskripsi: p.Deskripsi, Kelompok: p.Kelompok}
 	}
 	response.Success(c, items)
 }
@@ -450,6 +464,10 @@ func (h *Handler) BulkUser(c *gin.Context) {
 		// Hanya aksi tak dikenal yang salah masukan; galat basis data tidak boleh bocor ke klien sebagai 400.
 		if errors.Is(err, usecase.ErrInvalidAction) {
 			response.BadRequest(c, err.Error())
+			return
+		}
+		if errors.Is(err, usecase.ErrPemegangTerakhir) {
+			jawabPemegangTerakhir(c)
 			return
 		}
 		response.InternalError(c, "Gagal memproses aksi massal")

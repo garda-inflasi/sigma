@@ -5,5 +5,6 @@ import (
 )
 
 func init() {
-	registerModels("auth", &authdomain.Pengguna{}, &authdomain.RefreshToken{}, &authdomain.LoginAttempt{}, &authdomain.ResetToken{}, &authdomain.KodeCadanganMFA{}, &authdomain.KunciLogin{}, &authdomain.SSOLoginState{})
+	registerModels("auth", &authdomain.Pengguna{}, &authdomain.RefreshToken{}, &authdomain.LoginAttempt{}, &authdomain.ResetToken{}, &authdomain.KodeCadanganMFA{}, &authdomain.KunciLogin{}, &authdomain.SSOLoginState{},
+		&authdomain.Peran{}, &authdomain.Izin{}, &authdomain.PeranIzin{}, &authdomain.IzinLangsung{})
 }

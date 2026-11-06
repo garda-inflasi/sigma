@@ -9,6 +9,9 @@
 
 import "server-only";
 
+// eslint-disable-next-line no-control-regex
+const KARAKTER_KONTROL = /[\u0000-\u001f\u007f]/;
+
 const ALLOWED_EXTERNAL_HOSTS = new Set<string>([
   // Add any allowed external redirect targets here
 ]);
@@ -22,8 +25,15 @@ export function validateRedirectUrl(url: string | null): string | null {
 
   // Allow relative URLs
   if (url.startsWith("/")) {
-    // Prevent path traversal
-    if (url.includes("//") && !url.startsWith("//")) {
+    // Satu garis miring di depan saja yang berarti "path di origin ini". `//host` (protocol-relative),
+    // `/\host` (peramban menganggap "\" sama dengan "/"), dan karakter kontrol (peramban membuang tab/
+    // newline sehingga `/<TAB>/host` menjadi `//host`) semuanya mengalihkan ke origin lain. Garis miring
+    // ganda di tengah path juga ditolak (tidak pernah dibutuhkan tujuan internal).
+    if (
+      url.includes("//") ||
+      url.includes("\\") ||
+      KARAKTER_KONTROL.test(url)
+    ) {
       return null;
     }
     return url;

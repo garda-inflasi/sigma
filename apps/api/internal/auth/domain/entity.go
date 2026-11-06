@@ -57,7 +57,7 @@ type RefreshToken struct {
 	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	UserID    string     `gorm:"column:user_id;index:idx_rt_user"`
 	TokenHash string     `gorm:"column:token_hash;uniqueIndex:idx_rt_hash"`
-	FamilyID  string     `gorm:"column:family_id;index:idx_rt_family"`
+	FamilyID  string     `gorm:"column:family_id;type:uuid;index:idx_rt_family"`
 	IP        *string    `gorm:"column:ip"`
 	ExpiresAt time.Time  `gorm:"column:expires_at"`
 	RevokedAt *time.Time `gorm:"column:revoked_at"`

@@ -44,7 +44,7 @@ test/api/integration: ## Run Go integration tests (requires Docker)
 test/ml: ## Jalankan tes unit layanan ML (Python, tanpa dependensi)
 	cd apps/ml && python3 -m unittest discover -s tests -t .
 
-test/web: ## Run web unit + component tests (node:test + tsx; component tests use happy-dom + Testing Library)
+test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test
 
 # Stack harus dinyalakan lewat `make docker/demo/up`: e2e login ke API Go langsung (/api/v1/auth/login) ratusan kali

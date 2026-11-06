@@ -20,6 +20,17 @@ describe("isPasswordChangeExempt", () => {
     assert.equal(isPasswordChangeExempt("/api/pengguna"), false);
     assert.equal(isPasswordChangeExempt("/api/v1/harga"), false);
   });
+
+  it("mencocokkan menurut batas segmen: anak path terbuka, awalan tanpa garis miring tidak", () => {
+    assert.equal(isPasswordChangeExempt("/ganti-password/"), true);
+    assert.equal(isPasswordChangeExempt("/ganti-password/lanjut"), true);
+    assert.equal(isPasswordChangeExempt("/ganti-passwordX"), false);
+    assert.equal(isPasswordChangeExempt("/ganti-password-apa-saja"), false);
+    assert.equal(isPasswordChangeExempt("/ganti-passwords/x"), false);
+    assert.equal(isPasswordChangeExempt("/api/authX"), false);
+    assert.equal(isPasswordChangeExempt("/api/auth-lain/x"), false);
+    assert.equal(isPasswordChangeExempt("/api/authentik"), false);
+  });
 });
 
 describe("postLoginDestination", () => {

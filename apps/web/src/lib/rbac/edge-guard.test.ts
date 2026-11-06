@@ -136,6 +136,18 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
     }
   });
 
+  it("awalan tanpa batas segmen tidak ikut terbuka bagi akun wajib ganti sandi", () => {
+    const t = tokenFor("ADMIN_SISTEM", { wajib_ganti_password: true });
+    assert.deepEqual(decide("/ganti-passwordX", t), {
+      kind: "redirect",
+      path: "/ganti-password",
+      query: { lanjut: "/ganti-passwordX" },
+    });
+    const api = decide("/api/authX/me", t);
+    assert.equal(api.kind === "json" && api.status, 403);
+    assert.equal(api.kind === "json" && api.body.code, "PASSWORD_CHANGE_REQUIRED");
+  });
+
   it("/api/auth/me dan /api/auth/change-password tetap terbuka bagi akun wajib ganti sandi", () => {
     const t = tokenFor("ADMIN_SISTEM", { wajib_ganti_password: true });
     assert.deepEqual(decide("/api/auth/change-password", t), { kind: "next" });
@@ -299,6 +311,21 @@ describe("wajib setup MFA", () => {
     for (const path of ["/mfa", "/ganti-password", "/api/auth/mfa/setup", "/api/auth/me"]) {
       assert.deepEqual(decide(path, t), { kind: "next" }, path);
     }
+  });
+  it("awalan tanpa batas segmen tidak ikut terbuka bagi akun wajib setup MFA", () => {
+    assert.deepEqual(decide("/mfaX", t), {
+      kind: "redirect",
+      path: "/mfa",
+      query: { lanjut: "/mfaX" },
+    });
+    assert.deepEqual(decide("/ganti-passwordX", t), {
+      kind: "redirect",
+      path: "/mfa",
+      query: { lanjut: "/ganti-passwordX" },
+    });
+    const api = decide("/api/auth-lain/x", t);
+    assert.equal(api.kind === "json" && api.status, 403);
+    assert.equal(api.kind === "json" && api.body.code, "MFA_SETUP_REQUIRED");
   });
   it("ganti kata sandi didahulukan bila keduanya diwajibkan", () => {
     const keduanya = tokenFor("STRATEGIS_BI", { wajib_setup_mfa: true, wajib_ganti_password: true });

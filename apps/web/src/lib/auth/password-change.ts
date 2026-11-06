@@ -4,14 +4,17 @@
  * ganti kata sandi supaya tidak berhadapan dengan galat 403 di setiap halaman.
  */
 
+import { diBawahPath } from "./path-segmen";
+
 export const PASSWORD_CHANGE_PATH = "/ganti-password";
 export const PASSWORD_CHANGE_REQUIRED_CODE = "PASSWORD_CHANGE_REQUIRED";
 
-/** Prefiks rute yang tetap terbuka bagi akun yang wajib mengganti kata sandi. */
-const EXEMPT_PREFIXES = [PASSWORD_CHANGE_PATH, "/api/auth/"];
+/** Path (beserta anak path-nya) yang tetap terbuka bagi akun yang wajib mengganti kata sandi. */
+const EXEMPT_PATHS = [PASSWORD_CHANGE_PATH, "/api/auth"];
 
+/** Cocok menurut batas segmen: `/ganti-password` dan `/ganti-password/...`, bukan `/ganti-passwordX`. */
 export function isPasswordChangeExempt(pathname: string): boolean {
-  return EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return EXEMPT_PATHS.some((path) => diBawahPath(pathname, path));
 }
 
 

@@ -4,6 +4,7 @@
  * pengguna ke halaman yang tepat dan merapikan masukan.
  */
 import { galatAuth, type GalatAuth } from "./pesan-login";
+import { diBawahPath } from "./path-segmen";
 import { PASSWORD_CHANGE_PATH, postLoginDestination } from "./password-change";
 
 export const MFA_SETUP_PATH = "/mfa";
@@ -14,11 +15,12 @@ export const MFA_CHALLENGE_COOKIE = "garda_mfa";
 /** Umur token tantangan di server (5 menit). */
 export const MFA_CHALLENGE_MAX_AGE = 5 * 60;
 
-/** Prefiks rute yang tetap terbuka bagi akun yang wajib setup MFA. */
-const EXEMPT_PREFIXES = [MFA_SETUP_PATH, PASSWORD_CHANGE_PATH, "/api/auth/"];
+/** Path (beserta anak path-nya) yang tetap terbuka bagi akun yang wajib setup MFA. */
+const EXEMPT_PATHS = [MFA_SETUP_PATH, PASSWORD_CHANGE_PATH, "/api/auth"];
 
+/** Cocok menurut batas segmen: `/mfa` dan `/mfa/...`, bukan `/mfa-lain` atau `/mfaX`. */
 export function isMfaSetupExempt(pathname: string): boolean {
-  return EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return EXEMPT_PATHS.some((path) => diBawahPath(pathname, path));
 }
 
 

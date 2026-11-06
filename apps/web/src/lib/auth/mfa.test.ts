@@ -31,6 +31,23 @@ describe("isMfaSetupExempt", () => {
       assert.equal(isMfaSetupExempt(path), false, path);
     }
   });
+
+  it("mencocokkan menurut batas segmen: anak path terbuka, awalan tanpa garis miring tidak", () => {
+    for (const path of ["/mfa/", "/mfa/lanjut", "/ganti-password/x", "/api/auth/me"]) {
+      assert.equal(isMfaSetupExempt(path), true, path);
+    }
+    for (const path of [
+      "/mfaX",
+      "/mfa-lain",
+      "/mfasetup/x",
+      "/ganti-passwordX",
+      "/ganti-password-apa-saja",
+      "/api/authX",
+      "/api/auth-lain/x",
+    ]) {
+      assert.equal(isMfaSetupExempt(path), false, path);
+    }
+  });
 });
 
 describe("destinasiSetelahMasuk", () => {

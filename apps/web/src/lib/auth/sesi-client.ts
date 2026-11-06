@@ -3,6 +3,7 @@
  * (Web Locks), catatan refresh terakhir di localStorage, dan pengalihan ke /masuk saat sesi benar-benar berakhir.
  * Aman diimpor di server (tidak menyentuh global browser saat dimuat); `fetchSesi` dipakai klien API.
  */
+import { umumkanIzinBerubah } from "./izin-berubah";
 import {
   buatPemulih,
   fetchDenganPemulihan,
@@ -51,12 +52,19 @@ let pemulih: ReturnType<typeof buatPemulih> | null = null;
 /** Pemulih tunggal per tab: `POST /api/auth/refresh` bersama untuk semua permintaan yang 401 bersamaan. */
 export function pulihkanSesi(sejak?: number): Promise<HasilPulih> {
   pemulih ??= buatPemulih({
-    refresh: () =>
-      fetch("/api/auth/refresh", {
+    refresh: async () => {
+      const res = await fetch("/api/auth/refresh", {
         method: "POST",
         credentials: "same-origin",
         headers: { Accept: "application/json" },
-      }),
+      });
+      // Refresh yang mengubah izin (izin langsung/matriks peran diubah admin): UI semua tab membaca ulang sesi.
+      if (res.ok) {
+        const badan = (await res.clone().json().catch(() => null)) as { izin_berubah?: unknown } | null;
+        if (badan?.izin_berubah === true) umumkanIzinBerubah();
+      }
+      return res;
+    },
     kunci: denganKunci,
     baca: bacaCatatan,
     tulis: tulisCatatan,

@@ -5,6 +5,11 @@
  *
  * Daftar halaman diturunkan dari tabel yang sama dengan penjaga rute, jadi peran atau halaman baru
  * otomatis ikut teruji, termasuk widget yang memanggil API di luar izin peran (403).
+ *
+ * Sejak 02-C izin yang berlaku dibaca dari basis data, dan tabel statis di atas adalah matriks BAWAAN. Spesifikasi
+ * ini benar selama matriks demo tidak diubah; rbac.spec.ts memulihkan matriks bawaan di `finally` dan afterAll, dan
+ * tes pertamanya memastikan server tidak menyimpang dari bawaan. Penolakan di rute halaman kini melewati satu
+ * pemulihan token (GET /api/auth/refresh) sebelum /akses-ditolak, jadi URL akhirnya sama.
  */
 import { canAccessRoute } from "../src/lib/rbac/routes";
 import { ROLE_IDS, type Role } from "../src/lib/rbac/roles";

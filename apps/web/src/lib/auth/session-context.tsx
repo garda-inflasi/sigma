@@ -20,11 +20,12 @@ export function useOptionalSession() {
   return useContext(SessionCtx);
 }
 
+/** Apakah pengguna sesi memiliki izin (izin efektif dari token; matriks bawaan bila klaim tidak ada). */
 export function useCan(perm: Permission) {
-  return can(useContext(SessionCtx)?.role, perm);
+  return can(useContext(SessionCtx), perm);
 }
 
-/** Render anak hanya bila peran memiliki izin. */
+/** Render anak hanya bila pengguna memiliki izin. */
 export function Can({ perm, children, fallback = null }: { perm: Permission; children: ReactNode; fallback?: ReactNode }) {
   return useCan(perm) ? <>{children}</> : <>{fallback}</>;
 }

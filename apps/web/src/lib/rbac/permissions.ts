@@ -47,7 +47,10 @@ const BACA_STRATEGIS: Permission[] = [
 const KEPUTUSAN_STRATEGIS: Permission[] = ["intervensi.setujui", "brief.setujui"];
 
 /**
- * Matriks peran → izin. Prinsip:
+ * Matriks peran → izin BAWAAN (katalog + seed). Sejak 02-C (Opsi B) izin yang berlaku dibaca dari basis data dan
+ * dibawa token sebagai klaim `permissions` (peran + izin langsung); matriks ini hanya fallback untuk mode mock dan
+ * token tanpa klaim (lihat `can`), serta cermin matriks bawaan di API (dijaga sama oleh permissions.test.ts).
+ * Prinsip matriks bawaan:
  * - Least privilege: tiap peran hanya izin yang dibutuhkan tugasnya.
  * - Pemisahan tugas (SoD): penginput ≠ validator ≠ publisher; admin tanpa hak persetujuan.
  * - Persetujuan dukungan fiskal khusus Kanwil DJPb.
@@ -102,8 +105,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 };
 
 const cache = new Map<Role, Set<Permission>>();
-export function can(role: Role | undefined, perm: Permission): boolean {
-  if (!role) return false;
+function izinBawaan(role: Role, perm: Permission): boolean {
   let set = cache.get(role);
   if (!set) {
     set = new Set(ROLE_PERMISSIONS[role]);
@@ -112,6 +114,37 @@ export function can(role: Role | undefined, perm: Permission): boolean {
   return set.has(perm);
 }
 
-export function canAll(role: Role | undefined, perms: Permission[]) {
-  return perms.every((p) => can(role, p));
+/**
+ * Pemegang izin: peran beserta daftar izin efektif dari klaim token (peran + izin langsung yang berlaku saat
+ * token terbit). `permissions` kosong/undefined berarti klaim tidak ada (mode mock, token lama): pakai matriks bawaan.
+ * `permissions: []` berarti sungguh tanpa izin, bukan "tidak ada klaim".
+ */
+export interface PemegangIzin {
+  role: Role;
+  permissions?: readonly string[] | null;
+}
+
+const setKlaim = new WeakMap<readonly string[], ReadonlySet<string>>();
+function izinKlaim(permissions: readonly string[]): ReadonlySet<string> {
+  let set = setKlaim.get(permissions);
+  if (!set) {
+    set = new Set(permissions);
+    setKlaim.set(permissions, set);
+  }
+  return set;
+}
+
+/**
+ * Apakah subjek memiliki izin. Subjek berupa pengguna sesi (`{ role, permissions }`) memakai izin efektif dari token;
+ * berupa peran saja (mode mock, pemanggil tanpa sesi) memakai matriks bawaan. API Go tetap otoritatif.
+ */
+export function can(subject: Role | PemegangIzin | null | undefined, perm: Permission): boolean {
+  if (!subject) return false;
+  if (typeof subject === "string") return izinBawaan(subject, perm);
+  if (subject.permissions) return izinKlaim(subject.permissions).has(perm);
+  return izinBawaan(subject.role, perm);
+}
+
+export function canAll(subject: Role | PemegangIzin | null | undefined, perms: Permission[]) {
+  return perms.every((p) => can(subject, p));
 }

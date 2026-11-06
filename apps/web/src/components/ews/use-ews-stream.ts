@@ -25,7 +25,9 @@ import { notifyEws } from "./ews-toast";
 export function useEwsStream() {
   const qc = useQueryClient();
   const router = useRouter();
-  const { role } = useSession();
+  const sesi = useSession();
+  const bolehLihat = can(sesi, "ews.lihat");
+  const bolehAkui = can(sesi, "ews.akui");
   const catat = useEwsStore((s) => s.catat);
   const setStatus = useEwsStore((s) => s.setStatus);
   const ack = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), patch: (r) => ({ ...r, status: "DIAKUI" }) });
@@ -33,7 +35,7 @@ export function useEwsStream() {
   ackRef.current = ack.mutate;
 
   useEffect(() => {
-    if (!can(role, "ews.lihat")) return;
+    if (!bolehLihat) return;
 
     const handle = (a: EwsAlert) => {
       const diumumkan = layakDiumumkan(qc.getQueryData<EwsAlert[]>(qk.ews.list()), a);
@@ -43,7 +45,7 @@ export function useEwsStream() {
       if (severityMeta[a.severity].rank >= 2) {
         notifyEws(a, {
           onView: () => router.push(`/ews?id=${a.id}`),
-          onAck: can(role, "ews.akui") ? () => ackRef.current({ aksi: "akui", ids: [a.id], label: "Alert diakui" }) : undefined,
+          onAck: bolehAkui ? () => ackRef.current({ aksi: "akui", ids: [a.id], label: "Alert diakui" }) : undefined,
         });
       }
     };
@@ -81,7 +83,7 @@ export function useEwsStream() {
       // Perubahan status (diakui pengguna lain, dst.) dan event yang terlewat tidak lewat aliran: segarkan daftar.
       saatTersambungUlang: () => qc.invalidateQueries({ queryKey: qk.ews.list() }),
     });
-  }, [role, qc, router, catat, setStatus]);
+  }, [bolehLihat, bolehAkui, qc, router, catat, setStatus]);
 }
 
 export function EwsStreamMount() {

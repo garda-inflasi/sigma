@@ -217,6 +217,17 @@ export function decideEdge({
           body: { error: true, message: "Forbidden" },
         };
       }
+      // Salinan izin di token bisa saja basi: admin baru memberi izin langsung atau mengubah matriks peran
+      // (02-C), sedangkan access token membawa izin saat terbit. Sekali saja, tukar refresh token (token baru
+      // membawa izin terkini) lalu coba rute yang sama; penanda pulihBaru (20 detik) memutus loop, jadi pengguna
+      // yang memang tidak berhak hanya menempuh satu pengalihan tambahan sebelum /akses-ditolak.
+      if (!pulihBaru) {
+        return {
+          kind: "redirect",
+          path: RESUME_PATH,
+          query: { lanjut: tujuanSemula(pathname, search) },
+        };
+      }
       return {
         kind: "redirect",
         path: ACCESS_DENIED_PATH,

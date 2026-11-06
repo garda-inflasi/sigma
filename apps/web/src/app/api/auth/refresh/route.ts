@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authApi } from "@/lib/bff/api-client";
-import { clearTokenCookies, getRefreshToken } from "@/lib/bff/cookies";
+import { clearTokenCookies, getAccessToken, getRefreshToken } from "@/lib/bff/cookies";
+import { izinBerubah } from "@/lib/auth/izin-berubah";
 import { tujuanPemulihan, tukarRefreshToken } from "@/lib/bff/refresh-session";
 import { urlPublik } from "@/lib/bff/public-url";
 import { applySecurityHeaders } from "@/lib/bff/security-headers";
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const tokenLama = await getAccessToken();
   const hasil = await tukarRefreshToken(refreshToken, authApi);
   if (!hasil.ok) {
     const resp = NextResponse.json(
@@ -40,6 +42,9 @@ export async function POST(request: NextRequest) {
     success: true,
     // False pada pemutaran ulang yang ditoleransi: cookie refresh dari tab pemenang tetap dipakai.
     diputar: Boolean(hasil.refreshToken),
+    // True bila izin efektif pada token baru berbeda dari token lama (izin langsung/matriks peran diubah
+    // admin, 02-C): klien membaca ulang sesi di layout root supaya menu dan tombol ikut menyusul.
+    izin_berubah: izinBerubah(tokenLama, hasil.accessToken),
   });
   await pasangSesiBaru(response, hasil, csrfSudahAda(request));
   return applySecurityHeaders(response);

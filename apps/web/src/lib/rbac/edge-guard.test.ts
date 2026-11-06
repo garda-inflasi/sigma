@@ -27,7 +27,8 @@ const decide = (
   pathname: string,
   accessToken?: string,
   refreshToken?: string,
-) => decideEdge({ pathname, accessToken, refreshToken, nowSeconds: NOW });
+  pulihBaru?: boolean,
+) => decideEdge({ pathname, accessToken, refreshToken, pulihBaru, nowSeconds: NOW });
 
 describe("klaim edge", () => {
   it("membaca role, permissions, exp, wajib_ganti_password, wajib_setup_mfa", () => {
@@ -338,12 +339,44 @@ describe("wajib setup MFA", () => {
 });
 
 describe("izin rute", () => {
-  it("peran tanpa izin dialihkan ke /akses-ditolak membawa asal rute", () => {
-    assert.deepEqual(decide("/pengguna", tokenFor("MANAJER_PROGRAM")), {
+  it("peran tanpa izin dialihkan ke /akses-ditolak membawa asal rute (setelah pemulihan izin dicoba)", () => {
+    assert.deepEqual(decide("/pengguna", tokenFor("MANAJER_PROGRAM"), undefined, true), {
       kind: "redirect",
       path: "/akses-ditolak",
       query: { dari: "/pengguna" },
     });
+  });
+
+  it("penolakan pertama menyegarkan token dulu: izin langsung/matriks yang baru diubah admin ikut terbawa", () => {
+    assert.deepEqual(
+      decideEdge({
+        pathname: "/kpi",
+        search: "?periode=2026&_rsc=x",
+        accessToken: tokenFor("OPS_MAHASISWA"),
+        nowSeconds: NOW,
+      }),
+      {
+        kind: "redirect",
+        path: "/api/auth/refresh",
+        query: { lanjut: "/kpi?periode=2026" },
+      },
+      "bukan clearAccessCookie: token lama tetap dipakai bila pemulihan gagal",
+    );
+  });
+
+  it("setelah pemulihan, token baru yang kini berizin lolos; yang tetap tanpa izin ditolak tanpa loop", () => {
+    const sesudahDiberi = jwt({ role: "OPS_MAHASISWA", permissions: ["kpi.lihat"], exp: NOW + 600 });
+    assert.deepEqual(decide("/kpi", sesudahDiberi, undefined, true), { kind: "next" });
+    assert.deepEqual(decide("/kpi", tokenFor("OPS_MAHASISWA"), undefined, true), {
+      kind: "redirect",
+      path: "/akses-ditolak",
+      query: { dari: "/kpi" },
+    });
+  });
+
+  it("penolakan untuk API tidak memicu pemulihan halaman (403 langsung)", () => {
+    // /api/* tidak punya aturan izin halaman; rute yang butuh izin dijawab 403 oleh API Go.
+    assert.deepEqual(decide("/api/pengguna", tokenFor("OPS_MAHASISWA")), { kind: "next" });
   });
 
   it("sub-rute mewarisi izin prefiks", () => {

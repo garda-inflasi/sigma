@@ -49,7 +49,7 @@ const SIKLUS_PILL: Record<Siklus, string> = { normal: "bg-normal", tekanan: "bg-
 
 /** Kanban intervensi 3 siklus — warna adaptif per siklus, drag-drop sadar izin, aksi massal. */
 export function KanbanBoard() {
-  const { role } = useSession();
+  const sesi = useSession();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -57,7 +57,7 @@ export function KanbanBoard() {
   const [view, setView] = useState<"papan" | "tabel">("papan");
   const { data, isLoading } = useIntervensi();
   const tahapQ = useTahapIntervensi();
-  const alurQ = useAlurPersetujuan(can(role, "intervensi.lihat"));
+  const alurQ = useAlurPersetujuan(can(sesi, "intervensi.lihat"));
   const [detailId, setDetailId] = useState<string | null>(null);
   const [tambahBuka, setTambahBuka] = useState(false);
   const qc = useQueryClient();
@@ -87,8 +87,8 @@ export function KanbanBoard() {
     const alur = alurQ.data ? alurUntukTahap(alurQ.data, tahapId) : undefined;
     return alur ? `Butuh persetujuan berjenjang: ${ringkasRantai(alur)}` : IZIN_LABEL[izinMasuk(tahapId)];
   };
-  const bolehMasuk = (tahapId: string) => can(role, izinMasuk(tahapId));
-  const bisaSeret = can(role, "intervensi.kelola") || can(role, "intervensi.setujui") || can(role, "intervensi.setujui_fiskal");
+  const bolehMasuk = (tahapId: string) => can(sesi, izinMasuk(tahapId));
+  const bisaSeret = can(sesi, "intervensi.kelola") || can(sesi, "intervensi.setujui") || can(sesi, "intervensi.setujui_fiskal");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -139,7 +139,7 @@ export function KanbanBoard() {
       // Pemegang kelola dapat meminta persetujuan alih-alih memindahkan langsung (alur berjenjang di server).
       toast.error("Tidak dapat dipindahkan", {
         description: labelIzin(target),
-        action: can(role, "intervensi.kelola") ? { label: "Ajukan persetujuan", onClick: () => ajukan.mutate({ id, tahap: target }) } : undefined,
+        action: can(sesi, "intervensi.kelola") ? { label: "Ajukan persetujuan", onClick: () => ajukan.mutate({ id, tahap: target }) } : undefined,
       });
       return;
     }

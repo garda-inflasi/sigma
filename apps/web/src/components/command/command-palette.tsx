@@ -32,7 +32,7 @@ export function CommandPalette() {
   const open = useUi((s) => s.commandOpen);
   const setOpen = useUi((s) => s.setCommandOpen);
   const router = useRouter();
-  const { role } = useSession();
+  const sesi = useSession();
   const { resolvedTheme, setTheme } = useTheme();
   const groups = useVisibleNav();
 
@@ -69,7 +69,7 @@ export function CommandPalette() {
       { id: "simulasi", label: "Simulasikan alert EWS kritis", icon: Zap, perm: "ews.lihat", keywords: ["demo", "uji"], run: () => window.dispatchEvent(new CustomEvent("garda:simulasi-ews")) },
       { id: "tema", label: gelap ? "Beralih ke mode terang" : "Beralih ke mode gelap", icon: gelap ? Sun : Moon, keywords: ["tema", "dark"], run: () => setTheme(gelap ? "light" : "dark") },
     ] satisfies Aksi[]
-  ).filter((a) => !a.perm || can(role, a.perm));
+  ).filter((a) => !a.perm || can(sesi, a.perm));
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title="Palet perintah" description="Cari halaman, komoditas, wilayah, atau jalankan aksi cepat" className="overflow-hidden rounded-xl sm:max-w-xl">
@@ -99,7 +99,7 @@ export function CommandPalette() {
           </CommandGroup>
         ))}
 
-        {can(role, "prediksi.lihat") && (
+        {can(sesi, "prediksi.lihat") && (
           <>
             <CommandSeparator />
             <CommandGroup heading="Komoditas">
@@ -114,7 +114,7 @@ export function CommandPalette() {
           </>
         )}
 
-        {can(role, "spasial.lihat") && (
+        {can(sesi, "spasial.lihat") && (
           <>
             <CommandSeparator />
             <CommandGroup heading="Wilayah">

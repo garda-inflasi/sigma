@@ -61,7 +61,7 @@ export async function headerKlien(): Promise<Record<string, string>> {
  * Internal fetch to the Go backend.
  * This is server-to-server, no cookies or CSRF needed.
  */
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {

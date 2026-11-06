@@ -14,6 +14,16 @@ export interface SessionUser {
   role: Role;
   lembaga: string;
   kabupatenKode?: string;
+  /**
+   * Izin efektif dari klaim `permissions` token (izin peran dari basis data + izin langsung yang berlaku saat
+   * terbit). Undefined bila klaim tidak ada (mode mock/dev): pemeriksaan izin jatuh ke matriks bawaan peran.
+   */
+  permissions?: readonly string[];
+}
+
+/** Klaim `permissions` token → daftar izin; undefined bila bukan larik string. */
+export function izinDariKlaim(klaim: unknown): readonly string[] | undefined {
+  return Array.isArray(klaim) && klaim.every((p) => typeof p === "string") ? (klaim as string[]) : undefined;
 }
 
 export const DEV_ROLE_COOKIE = "garda_dev_role";
@@ -51,6 +61,7 @@ export async function resolveSession(getCookie: (name: string) => string | undef
           role: payload.role,
           lembaga: String(payload.org ?? ""),
           kabupatenKode: typeof payload.kab === "string" ? payload.kab : undefined,
+          permissions: izinDariKlaim(payload.permissions),
         };
       }
     } catch {

@@ -217,12 +217,20 @@ describe("middleware: kewajiban sesudah masuk", () => {
 });
 
 describe("middleware: izin rute", () => {
-  it("peran tanpa izin dialihkan ke /akses-ditolak membawa asal rute", () => {
-    const res = middleware(
+  it("penolakan pertama menyegarkan token dulu (izin bisa saja baru diberikan), lalu ke /akses-ditolak membawa asal rute", () => {
+    const pertama = middleware(
       minta("/pengguna", { [ACCESS_COOKIE]: token("OPS_MAHASISWA") }),
     );
-    assert.equal(res.status, 307);
-    const tujuan = new URL(lokasi(res)!);
+    assert.equal(pertama.status, 307);
+    const pemulihan = new URL(lokasi(pertama)!);
+    assert.equal(pemulihan.pathname, "/api/auth/refresh");
+    assert.equal(pemulihan.searchParams.get("lanjut"), "/pengguna");
+
+    const kedua = middleware(
+      minta("/pengguna", { [ACCESS_COOKIE]: token("OPS_MAHASISWA"), [RESUME_COOKIE]: "1" }),
+    );
+    assert.equal(kedua.status, 307);
+    const tujuan = new URL(lokasi(kedua)!);
     assert.equal(tujuan.pathname, "/akses-ditolak");
     assert.equal(tujuan.searchParams.get("dari"), "/pengguna");
   });

@@ -11,6 +11,13 @@ import (
 // satu IP publik, jadi batasnya jauh di atas pemakaian wajar satu orang.
 const DefaultAPIRateLimit = 600
 
+// DefaultAuthRateLimit adalah batas bawaan percobaan per menit per alamat klien ke endpoint auth publik di
+// Go (login, validasi OTP, lupa/atur ulang kata sandi, SSO). Sengaja jauh di bawah DefaultAPIRateLimit:
+// ini pagar penebakan kredensial lintas email di jalur /api/v1/* yang melewati batas laju BFF (5/menit/IP).
+// Tidak ada pemakaian wajar yang membutuhkan lebih dari segelintir per menit dari satu IP; kantor yang berbagi
+// satu IP publik tetap dilayani karena batas BFF yang sama sudah memperlakukan IP sebagai kunci.
+const DefaultAuthRateLimit = 10
+
 // DefaultTrustedProxies adalah jaringan proxy yang dipercaya mengisi X-Forwarded-For:
 // loopback dan alamat privat (Caddy di jaringan Docker). Header dari alamat lain diabaikan
 // sehingga klien tidak dapat memalsukan IP-nya untuk mengelak dari pembatasan laju atau

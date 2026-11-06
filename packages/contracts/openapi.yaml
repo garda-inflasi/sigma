@@ -14,6 +14,16 @@ info:
     JWT Bearer token yang dikirim via header `Authorization: Bearer <token>`.
 
     Token diperoleh dari endpoint `POST /v1/auth/login`.
+
+    ## Batas laju endpoint auth publik
+
+    `POST /v1/auth/login`, `/v1/auth/mfa/validate`, `/v1/auth/forgot-password`, `/v1/auth/reset-password`
+    (satu ember) dan `/v1/auth/sso/google/authorize` + `/callback` (ember sendiri) dibatasi per IP klien
+    (`AUTH_RATE_LIMIT_PER_MENIT`, bawaan 10 per menit), selain batas global API. Kelebihan dijawab 429 dengan
+    kode `RATE_LIMITED`, header `Retry-After`, dan `data.sisa_detik` (kontrak yang sama dengan batas laju
+    BFF web, yang meneruskannya tanpa diubah). Permintaan yang ditolak tidak diperiksa dan tidak dihitung
+    sebagai percobaan lockout akun. IP klien diambil dari `X-Forwarded-For` hanya bila berasal dari proxy
+    tepercaya (`TRUSTED_PROXIES`).
   version: "1.0.0"
   contact:
     name: FMIPA USK × Kanwil DJPb
@@ -53,7 +63,8 @@ paths:
         **Lockout akun (satu mekanisme).** Kegagalan dihitung per email ternormalisasi (huruf kecil, tanpa spasi tepi),
         bukan per akun, jadi email terdaftar dan tidak terdaftar mendapat jawaban yang sama persis (anti-enumerasi).
         Lima kegagalan berturut-turut dalam satu jendela 15 menit — kata sandi login, kode OTP login, kode setup MFA,
-        dan kata sandi lama saat ganti kata sandi memakai hitungan yang sama — mengunci akun selama 15 menit sejak
+        kata sandi lama saat ganti kata sandi, dan konfirmasi kata sandi di nonaktifkan-MFA / kode-cadangan-baru memakai
+        hitungan yang sama — mengunci akun selama 15 menit sejak
         kegagalan kelima. Selama terkunci semua percobaan (juga dengan kata sandi benar) dijawab 423 `ACCOUNT_LOCKED`
         tanpa diperiksa dan tanpa memperpanjang kunci. Hitungan dihapus saat login berhasil lengkap (kata sandi dan,
         bila ada, OTP) atau saat admin membuka kunci (`POST /v1/users/{id}/buka-kunci`). Akun nonaktif baru
@@ -94,6 +105,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "423":
           $ref: "#/components/responses/AkunTerkunci"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
 
   /v1/auth/sso/status:
     get:
@@ -133,6 +146,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SSOAuthorizeResponse"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
         "503":
           description: |
             `SSO_NOT_CONFIGURED` (SSO_GOOGLE_* belum diisi) atau `SSO_UNAVAILABLE` (penerbit tidak terjangkau)
@@ -157,7 +172,8 @@ paths:
         diaudit. Akun tidak aktif atau terkunci ditolak dengan aturan yang sama dengan login kata sandi.
 
         Hasil sama dengan `POST /v1/auth/login`: sesi penuh, atau `mfa_required` dan `mfa_token` untuk akun
-        ber-MFA (ditukar di `POST /v1/auth/mfa/validate`). Audit LOGIN memuat `metadata.metode = sso_google`.
+        ber-MFA (ditukar di `POST /v1/auth/mfa/validate`). Audit LOGIN memuat `metadata.metode = sso_google`; untuk
+        akun ber-MFA metode itu dibawa token tantangan sehingga entri LOGIN setelah OTP memuat `metode` dan `mfa`.
       operationId: authSSOGoogleCallback
       tags:
         - Authentication
@@ -200,12 +216,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "429":
-          description: "`SSO_ACCOUNT_LOCKED`: akun terkunci karena terlalu banyak percobaan"
+        "423":
+          description: "`SSO_ACCOUNT_LOCKED`: akun terkunci karena terlalu banyak percobaan (header `Retry-After` memuat sisa kunci)"
+          headers:
+            Retry-After:
+              description: Sisa kunci dalam detik
+              schema:
+                type: integer
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
         "503":
           description: "`SSO_NOT_CONFIGURED` atau `SSO_UNAVAILABLE`"
           content:
@@ -472,6 +495,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            Password akun berubah di sela verifikasi password lama dan penyimpanan password baru (mis. reset oleh
+            admin atau penggantian serentak). Tidak ada yang ditimpa; muat ulang lalu coba lagi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "423":
           $ref: "#/components/responses/AkunTerkunci"
 
@@ -502,6 +533,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
 
   /v1/auth/reset-password:
     post:
@@ -539,6 +572,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
 
   /v1/auth/mfa/setup:
     post:
@@ -546,6 +581,8 @@ paths:
       description: |
         Rahasia disimpan bersegel AES (versi kunci tertera) dan belum aktif sampai `/v1/auth/mfa/verify`.
         Memanggil ulang sebelum verifikasi mengganti rahasia. Terbuka juga bagi sesi yang wajib setup MFA.
+        Rahasia hanya ditulis bila MFA belum aktif (409 bila permintaan lain sudah mengaktifkannya): MFA yang baru
+        diaktifkan tidak dimatikan oleh setup yang berjalan serentak.
       operationId: authMFASetup
       tags:
         - Multi-Factor Authentication
@@ -614,7 +651,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: MFA sudah aktif
+          description: |
+            MFA sudah aktif (mis. diaktifkan permintaan lain), atau rahasia setup diganti permintaan lain setelah
+            kode diverifikasi (mulai ulang setup). MFA hanya diaktifkan bila rahasia yang tersimpan masih yang
+            kodenya diverifikasi, sehingga aktivasi serentak tidak menerbitkan dua set kode cadangan.
           content:
             application/json:
               schema:
@@ -628,7 +668,9 @@ paths:
       description: |
         Publik (belum ada sesi). `code` adalah kode TOTP enam digit atau kode cadangan (huruf besar/kecil dan
         tanda hubung diabaikan). Kode TOTP hanya berlaku sekali per langkah waktu 30 detik; kode cadangan sekali
-        pakai. Kode salah dihitung terhadap batas kunci akun yang sama dengan kata sandi salah.
+        pakai. Kode salah dihitung terhadap batas kunci akun yang sama dengan kata sandi salah. Bila token
+        tantangan berasal dari masuk dengan Google, audit LOGIN yang ditulis di sini memuat `metode: sso_google`
+        selain `mfa`.
       operationId: authMFAValidate
       tags:
         - Multi-Factor Authentication
@@ -661,11 +703,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "423":
           $ref: "#/components/responses/AkunTerkunci"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
 
   /v1/auth/mfa/backup-codes:
     post:
       summary: Menerbitkan kode cadangan baru
-      description: Kode lama hangus. Memerlukan konfirmasi kata sandi. Kode polos hanya tampil sekali.
+      description: |
+        Kode lama hangus. Memerlukan konfirmasi kata sandi, yang dihitung lockout akun seperti ganti kata sandi:
+        kata sandi salah terhitung, akun terkunci dijawab 423 tanpa memeriksa kata sandi. Kode polos hanya tampil
+        sekali.
       operationId: authMFABackupCodes
       tags:
         - Multi-Factor Authentication
@@ -696,13 +743,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          $ref: "#/components/responses/AkunTerkunci"
 
   /v1/auth/mfa/disable:
     post:
       summary: Menonaktifkan MFA
       description: |
-        Memerlukan konfirmasi kata sandi. Rahasia dan semua kode cadangan dihapus. Ditolak (403) untuk akun
-        yang MFA-nya diwajibkan.
+        Memerlukan konfirmasi kata sandi, yang dihitung lockout akun seperti ganti kata sandi: kata sandi salah
+        terhitung, akun terkunci dijawab 423 tanpa memeriksa kata sandi. Rahasia dan semua kode cadangan dihapus.
+        Ditolak (403) untuk akun yang MFA-nya diwajibkan.
       operationId: authMFADisable
       tags:
         - Multi-Factor Authentication
@@ -733,6 +783,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          $ref: "#/components/responses/AkunTerkunci"
 
   /v1/users:
     get:
@@ -4810,6 +4862,21 @@ components:
           schema:
             $ref: "#/components/schemas/AkunTerkunciResponse"
 
+    BatasLaju:
+      description: |
+        Terlalu banyak percobaan dari IP klien ini (kode `RATE_LIMITED`; `AUTH_RATE_LIMIT_PER_MENIT`, bawaan 10 per
+        menit). Header `Retry-After` dan `data.sisa_detik` memuat lama tunggu. Permintaan yang ditolak tidak
+        diperiksa dan tidak dihitung sebagai percobaan lockout akun.
+      headers:
+        Retry-After:
+          description: Lama tunggu dalam detik
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BatasLajuResponse"
+
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -4902,6 +4969,24 @@ components:
               type: integer
               description: Sisa kunci dibulatkan ke atas
               example: 900
+
+    BatasLajuResponse:
+      type: object
+      description: Galat 429 `RATE_LIMITED` dari batas laju endpoint auth publik. Header `Retry-After` berisi `sisa_detik`.
+      properties:
+        code:
+          type: string
+          example: RATE_LIMITED
+        message:
+          type: string
+          example: Terlalu banyak percobaan dari perangkat ini. Coba lagi nanti.
+        data:
+          type: object
+          properties:
+            sisa_detik:
+              type: integer
+              description: Lama tunggu sampai percobaan berikutnya diizinkan, dibulatkan ke atas (minimal 1)
+              example: 42
 
     BukaKunciResponse:
       type: object

@@ -3,6 +3,7 @@ package routes
 import (
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/delivery/http"
@@ -22,6 +23,11 @@ type Dependencies struct {
 	DB     *gorm.DB
 	Token  *token.Manager
 	Logger *logger.Logger
+	// AuthRateLimitPerMenit membatasi percobaan per menit per IP klien ke endpoint auth publik (login, validasi
+	// OTP, lupa dan atur ulang kata sandi, mulai dan selesai SSO). 0 atau negatif berarti tanpa pembatas: itu
+	// nilai tes yang membuat puluhan login per paket. cmd/api mengisinya dari AUTH_RATE_LIMIT_PER_MENIT
+	// (bawaan middleware.DefaultAuthRateLimit).
+	AuthRateLimitPerMenit int
 }
 
 type Options struct {
@@ -66,17 +72,25 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 	uc := usecase.New(repo, deps.Token, cfg, deps.Logger, emailSender, audit.NewWriter(deps.DB))
 	handler := http.New(uc)
 
+	// Caddy membuka /api/v1/* langsung ke Go, melewati batas laju BFF (5/menit/IP). Endpoint publik yang
+	// menerima tebakan rahasia atau memicu email/penyimpanan dibatasi per IP klien di sini juga. Login,
+	// validasi OTP, lupa dan atur ulang kata sandi berbagi satu ember (seperti di BFF); SSO punya ember sendiri
+	// supaya mulai/selesai SSO tidak menghabiskan jatah login. Refresh tidak dibatasi: dipanggil otomatis
+	// oleh klien dan butuh refresh token yang sah.
+	batasKredensial := batasAuth(deps.AuthRateLimitPerMenit)
+	batasSSO := batasAuth(deps.AuthRateLimitPerMenit)
+
 	// Public routes — no auth middleware
 	public := engine.Group("/auth")
 	{
-		public.POST("/login", handler.Login)
+		public.POST("/login", batasKredensial, handler.Login)
 		public.POST("/refresh", handler.Refresh)
-		public.POST("/forgot-password", handler.ForgotPassword)
-		public.POST("/reset-password", handler.ResetPassword)
+		public.POST("/forgot-password", batasKredensial, handler.ForgotPassword)
+		public.POST("/reset-password", batasKredensial, handler.ResetPassword)
 		// Menukar token tantangan dari login dan kode OTP dengan sesi; belum ada sesi, jadi publik.
-		public.POST("/mfa/validate", handler.ValidateMFA)
+		public.POST("/mfa/validate", batasKredensial, handler.ValidateMFA)
 	}
-	registerSSO(public, repo, uc, deps.Logger, ssoSettings(opts, os.Getenv))
+	registerSSO(public, repo, uc, deps.Logger, ssoSettings(opts, os.Getenv), batasSSO)
 
 	// Protected routes — require valid JWT
 	protected := engine.Group("")
@@ -123,6 +137,14 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			rbac.GET("/permissions", handler.ListPermissions)
 		}
 	}
+}
+
+// batasAuth membuat pembatas laju per IP untuk endpoint auth publik; n <= 0 berarti tanpa pembatas.
+func batasAuth(n int) gin.HandlerFunc {
+	if n <= 0 {
+		return func(c *gin.Context) { c.Next() }
+	}
+	return middleware.AuthRateLimit(n, time.Minute)
 }
 
 // ConfigFromEnv membangun konfigurasi usecase dari lingkungan. MFA_ENFORCE ("true"/"false") menentukan

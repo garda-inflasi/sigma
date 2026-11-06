@@ -233,8 +233,8 @@ func TestRateLimit_WindowReset(t *testing.T) {
 	require.True(t, rl.Allow("192.168.1.1"))
 }
 
-func TestLoginRateLimit(t *testing.T) {
-	handler := LoginRateLimit()
+func TestAuthRateLimit(t *testing.T) {
+	handler := AuthRateLimit(5, time.Minute)
 
 	// First 5 requests should be allowed
 	for i := 0; i < 5; i++ {

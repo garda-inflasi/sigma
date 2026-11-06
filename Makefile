@@ -47,6 +47,9 @@ test/ml: ## Jalankan tes unit layanan ML (Python, tanpa dependensi)
 test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test
 
+# Stack harus dinyalakan lewat `make docker/demo/up`: e2e login ke API Go langsung (/api/v1/auth/login) ratusan kali
+# per putaran, sedangkan bawaan API membatasi 10 percobaan auth per menit per IP (AUTH_RATE_LIMIT_PER_MENIT).
+# Demo menyetelnya ke $(DEMO_AUTH_RATE_LIMIT_PER_MENIT); stack lain harus menyetelnya setinggi itu juga.
 test/e2e: ## Uji e2e Playwright terhadap stack Docker yang berjalan (E2E_BASE_URL, bawaan http://localhost:8090)
 	cd apps/web && pnpm exec playwright install chromium && pnpm exec playwright test
 
@@ -158,6 +161,10 @@ DEMO_MAILPIT_PORT ?= 8025
 # Mock OIDC (profil sso-mock) untuk "Masuk dengan Google" di demo/e2e. Penerbit http://sso.localhost:<port>/default
 # harus sama bagi browser (loopback host) dan container api (alias jaringan); lihat compose.yaml.
 DEMO_SSO_MOCK_PORT ?= 8089
+# Batas percobaan auth per menit per IP di API Go (login, OTP, lupa/atur ulang kata sandi, SSO; bawaan produksi 10).
+# e2e (make test/e2e) login ke /api/v1/auth/login langsung ratusan kali per putaran dari satu IP: demo wajib
+# memakai nilai tinggi ini, atau e2e kena 429. Jangan dipakai di produksi.
+DEMO_AUTH_RATE_LIMIT_PER_MENIT ?= 100000
 # Profil mailpit dan sso-mock ditambahkan ke profil yang sudah disetel (mis. backup), bukan menggantinya.
 comma := ,
 DEMO_PROFILES = $(if $(COMPOSE_PROFILES),$(COMPOSE_PROFILES)$(comma))mailpit$(comma)sso-mock
@@ -170,7 +177,8 @@ DEMO_ENV = POSTGRES_VOLUME=$(DEMO_POSTGRES_VOLUME) REDIS_VOLUME=$(DEMO_REDIS_VOL
 	SSO_MOCK_PORT=$(DEMO_SSO_MOCK_PORT) SSO_GOOGLE_CLIENT_ID=garda-demo SSO_GOOGLE_CLIENT_SECRET=garda-demo-secret \
 	SSO_GOOGLE_ISSUER=http://sso.localhost:$(DEMO_SSO_MOCK_PORT)/default SSO_GOOGLE_HOSTED_DOMAIN= \
 	SSO_GOOGLE_REDIRECT_URL=http://localhost:$(DEMO_CADDY_HTTP_PORT)/api/auth/sso/google/callback \
-	COOKIE_SECURE=false
+	COOKIE_SECURE=false \
+	AUTH_RATE_LIMIT_PER_MENIT=$(DEMO_AUTH_RATE_LIMIT_PER_MENIT)
 
 docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu aplikasi
 	$(DEMO_ENV) docker compose -f compose.infra.yaml up -d --wait

@@ -9,7 +9,9 @@
  *  - Sesi "perangkat lain" dibuat langsung ke API Go dengan User-Agent berbeda, supaya daftar sesi
  *    membedakannya ("Chrome di macOS" untuk sesi browser, "Chrome di Android" untuk sesi lain). Cookie
  *    browser ditanam menyerupai produksi (refresh: path /api/auth, httpOnly, SameSite=Strict).
- *  - Login lewat API Go tidak berbatas laju BFF; tidak ada form login yang disubmit di sini.
+ *  - Login lewat API Go tidak berbatas laju BFF; tidak ada form login yang disubmit di sini. API Go sendiri
+ *    membatasi percobaan auth per IP (AUTH_RATE_LIMIT_PER_MENIT, bawaan 10/menit) dan suite ini membuat banyak
+ *    sesi: stack harus dinyalakan lewat `make docker/demo/up`, yang menyetelnya tinggi.
  *  - Tes yang memakai jendela toleransi refresh (10 detik) menunggu sungguhan, tanpa mengubah waktu.
  *  - Tes yang sengaja membuat access token hilang mengizinkan 401 sementara sebelum klien memulihkan sesi.
  */
@@ -26,6 +28,7 @@ import {
   buka,
   expect,
   masukSebagai,
+  PETUNJUK_BATAS_LAJU,
   test,
   tungguTenang,
 } from "./fixtures";
@@ -99,7 +102,9 @@ async function masukApi(
     data?: { access_token?: string; refresh_token?: string };
   };
   if (!res.ok || !json.data?.access_token || !json.data.refresh_token)
-    throw new Error(`Login ${email} gagal (${res.status})`);
+    throw new Error(
+      `Login ${email} gagal (${res.status})${res.status === 429 ? ` — ${PETUNJUK_BATAS_LAJU}` : ""}`,
+    );
   const sid = String(klaim(json.data.access_token).sid ?? "");
   expect(sid, "access token membawa klaim sid").not.toBe("");
   return {

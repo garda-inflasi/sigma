@@ -53,7 +53,9 @@ Demo memakai volume sendiri (`garda_demo_postgres_data`, `garda_demo_redis_data`
 menyentuh database dev. Untuk mengulang dari data awal: `make docker/demo/down` lalu
 `docker volume rm garda_demo_postgres_data garda_demo_redis_data` dan `make docker/demo/up`.
 Login: `superadmin@gardainflasi.id` / `Garda2024!` (semua akun demo memakai kata sandi itu).
-Login lewat web dibatasi 5 percobaan per menit per IP.
+Login lewat web dibatasi 5 percobaan per menit per IP (BFF). API Go yang dijangkau langsung lewat `/api/v1/*`
+membatasi percobaan auth (login, OTP, lupa/atur ulang kata sandi, SSO) per IP juga: `AUTH_RATE_LIMIT_PER_MENIT`, bawaan 10
+di produksi dan `100000` di demo (`DEMO_AUTH_RATE_LIMIT_PER_MENIT`), karena e2e login ke API Go langsung ratusan kali per putaran.
 
 Email (reset kata sandi, notifikasi EWS) di demo tidak keluar ke internet: `make docker/demo/up` ikut
 menyalakan [Mailpit](https://mailpit.axllent.org) (service `mailpit`, profil compose `mailpit`) dan
@@ -100,7 +102,9 @@ make test/e2e                          # Playwright terhadap stack demo yang sed
 ```
 
 E2E (`apps/web/e2e`) berjalan terhadap stack Docker yang hidup, bukan server sementara: nyalakan
-`make docker/demo/up` dulu (termasuk Mailpit, mock OIDC `sso-mock`, dan layanan ML). Alamat web diatur `E2E_BASE_URL`
+`make docker/demo/up` dulu (termasuk Mailpit, mock OIDC `sso-mock`, dan layanan ML). Stack itu wajib: e2e login ke API Go
+langsung (`/api/v1/auth/login`) ratusan kali per putaran, dan hanya demo yang menyetel `AUTH_RATE_LIMIT_PER_MENIT` tinggi;
+stack dengan bawaan (10/menit/IP) membuat e2e gagal dengan 429 `RATE_LIMITED`. Alamat web diatur `E2E_BASE_URL`
 (bawaan `http://localhost:8090`), Mailpit `E2E_MAILPIT_URL` (bawaan `http://localhost:8025`), container
 Postgres `E2E_PG_CONTAINER` (bawaan `garda-postgres`). Tes berjalan berurutan, memulihkan data yang
 diubahnya, dan aman diulang. Data uji yang tidak punya endpoint hapus dibersihkan lewat SQL.

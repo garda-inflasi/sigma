@@ -661,6 +661,7 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | `SSO_GOOGLE_ISSUER` / `SSO_GOOGLE_HOSTED_DOMAIN` | Penerbit OIDC (kosong = `https://accounts.google.com`) dan pembatas domain Workspace (opsional) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM` | Relay email produksi. `SMTP_HOST` kosong = email tidak dikirim. `SMTP_USERNAME` kosong = tanpa autentikasi (relay internal tepercaya); isi untuk memakai AUTH PLAIN. **Jangan** memakai `COMPOSE_PROFILES=mailpit` di VM: Mailpit hanya untuk dev/demo (`make docker/demo/up`, UI di `127.0.0.1:${MAILPIT_PORT:-8025}`) |
 | `API_RATE_LIMIT_PER_MENIT` | Batas permintaan API per menit per IP klien (bawaan 600) |
+| `AUTH_RATE_LIMIT_PER_MENIT` | Batas percobaan per menit per IP klien ke endpoint auth publik di Go: login, validasi OTP, lupa/atur ulang kata sandi (satu ember) dan mulai/selesai SSO (ember sendiri). Bawaan `10`. Caddy membuka `/api/v1/*` langsung ke Go sehingga jalur itu melewati batas laju login BFF (5/menit/IP); ini pagar penebakan kredensial lintas email di sana. Kelebihan dijawab 429 `RATE_LIMITED` + `Retry-After` (BFF meneruskannya tanpa diubah). IP klien = `X-Forwarded-For` hanya dari `TRUSTED_PROXIES`. Jangan dinaikkan di produksi (stack demo memakai `100000` hanya untuk e2e) |
 | `TRUSTED_PROXIES` | CIDR proxy tepercaya untuk `X-Forwarded-For` (bawaan jaringan privat tempat Caddy berada) |
 | `GO_API_BASE_URL` | `http://api:8080/v1` (internal) |
 | `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` | Port publik Caddy |

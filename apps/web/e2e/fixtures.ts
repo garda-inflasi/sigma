@@ -51,6 +51,14 @@ type Sesi = { accessToken: string; refreshToken: string };
 const emailDari = (akun: Akun | string) =>
   akun in AKUN ? AKUN[akun as Akun] : akun;
 
+/**
+ * Petunjuk saat login langsung ke API Go ditolak 429: API membatasi percobaan auth per IP
+ * (AUTH_RATE_LIMIT_PER_MENIT, bawaan 10/menit) dan e2e login ke sana ratusan kali per putaran. Stack demo
+ * (`make docker/demo/up`) menyetelnya tinggi; stack lain tidak.
+ */
+export const PETUNJUK_BATAS_LAJU =
+  "API menolak karena batas laju auth per IP (429 RATE_LIMITED). e2e butuh AUTH_RATE_LIMIT_PER_MENIT tinggi: nyalakan stack lewat `make docker/demo/up` (lihat README, bagian Tes).";
+
 /** Masuk ke API Go dan mengembalikan token sesi. Gagal bila akun meminta OTP. */
 export async function sesiApi(
   akun: Akun | string,
@@ -66,7 +74,9 @@ export async function sesiApi(
   };
   if (!res.ok || !body.data?.access_token) {
     throw new Error(
-      `Login ${emailDari(akun)} gagal (${res.status}): ${JSON.stringify(body).slice(0, 200)}`,
+      `Login ${emailDari(akun)} gagal (${res.status}): ${JSON.stringify(body).slice(0, 200)}${
+        res.status === 429 ? ` — ${PETUNJUK_BATAS_LAJU}` : ""
+      }`,
     );
   }
   return {

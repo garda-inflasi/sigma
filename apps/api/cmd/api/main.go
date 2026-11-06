@@ -76,6 +76,11 @@ func main() {
 	if err != nil {
 		log.Warn("memakai batas laju bawaan", map[string]interface{}{"error": err.Error()})
 	}
+	// Batas percobaan per menit per IP untuk endpoint auth publik (login, OTP, lupa/atur ulang kata sandi, SSO).
+	authRateLimit, err := middleware.RateLimitFromEnv(os.Getenv, "AUTH_RATE_LIMIT_PER_MENIT", middleware.DefaultAuthRateLimit)
+	if err != nil {
+		log.Warn("memakai batas laju auth bawaan", map[string]interface{}{"error": err.Error()})
+	}
 
 	// ── Global middleware chain ──────────────────────────────────────
 	router.Use(
@@ -104,9 +109,10 @@ func main() {
 
 	// Register auth module
 	routes.Register(v1, &routes.Dependencies{
-		DB:     db,
-		Token:  tokenMgr,
-		Logger: log,
+		DB:                    db,
+		Token:                 tokenMgr,
+		Logger:                log,
+		AuthRateLimitPerMenit: authRateLimit,
 	})
 
 	// Register all other modules

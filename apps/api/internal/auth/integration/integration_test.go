@@ -61,7 +61,15 @@ func setupSuiteWith(t *testing.T, seed func(*testing.T, *gorm.DB)) *Suite {
 }
 
 // newSuite seperti setupSuiteWith; opts (bila ada) menggantikan konfigurasi usecase dari lingkungan.
+// Tanpa pembatas laju auth dan tanpa daftar proxy tepercaya khusus (seperti hampir semua tes).
 func newSuite(t *testing.T, seed func(*testing.T, *gorm.DB), opts ...routes.Options) *Suite {
+	t.Helper()
+	return newSuiteBatas(t, seed, 0, nil, opts...)
+}
+
+// newSuiteBatas seperti newSuite dengan pembatas laju auth per IP (batasAuth permintaan per menit; 0 = mati) dan,
+// bila proxies tidak nil, daftar proxy tepercaya untuk X-Forwarded-For (kosong tetapi tidak nil = tak seorang pun).
+func newSuiteBatas(t *testing.T, seed func(*testing.T, *gorm.DB), batasAuth int, proxies []string, opts ...routes.Options) *Suite {
 	t.Helper()
 
 	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
@@ -72,6 +80,9 @@ func newSuite(t *testing.T, seed func(*testing.T, *gorm.DB), opts ...routes.Opti
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	if proxies != nil {
+		require.NoError(t, router.SetTrustedProxies(proxies))
+	}
 	router.Use(
 		middleware.RequestID(),
 		middleware.SecurityHeaders(false),
@@ -89,9 +100,10 @@ func newSuite(t *testing.T, seed func(*testing.T, *gorm.DB), opts ...routes.Opti
 	log := logger.NewDefault()
 
 	routes.Register(v1, &routes.Dependencies{
-		DB:     db,
-		Token:  tokenMgr,
-		Logger: log,
+		DB:                    db,
+		Token:                 tokenMgr,
+		Logger:                log,
+		AuthRateLimitPerMenit: batasAuth,
 	}, opts...)
 
 	modules.RegisterAll(v1, db, log, tokenMgr)

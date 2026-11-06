@@ -25,8 +25,10 @@ func ssoSettings(opts []Options, getenv func(string) string) *sso.Config {
 // registerSSO memasang rute SSO publik. Rute selalu terpasang: tanpa konfigurasi (atau konfigurasi yang
 // salah) authorize dan callback menjawab 503 SSO_NOT_CONFIGURED dan status melaporkan google=false.
 // Pembuatan provider tidak menghubungi penyedia; penemuan dilakukan malas pada permintaan pertama,
-// sehingga API tetap start walau penerbit tidak terjangkau.
-func registerSSO(public *gin.RouterGroup, repo *postgres.Repository, uc *usecase.UseCase, log *logger.Logger, cfg *sso.Config) {
+// sehingga API tetap start walau penerbit tidak terjangkau. batas membatasi authorize dan callback per IP
+// (authorize menulis satu baris state per panggilan; callback menukar kode ke penyedia); status tidak
+// dibatasi karena hanya membaca dan dipanggil halaman masuk di setiap render.
+func registerSSO(public *gin.RouterGroup, repo *postgres.Repository, uc *usecase.UseCase, log *logger.Logger, cfg *sso.Config, batas gin.HandlerFunc) {
 	var provider usecase.SSOProvider
 	if cfg != nil {
 		p, err := sso.New(*cfg)
@@ -40,6 +42,6 @@ func registerSSO(public *gin.RouterGroup, repo *postgres.Repository, uc *usecase
 
 	handler := http.NewSSO(usecase.NewSSO(uc, repo, usecase.SSOConfig{Provider: provider}))
 	public.GET("/sso/status", handler.Status)
-	public.POST("/sso/google/authorize", handler.Authorize)
-	public.POST("/sso/google/callback", handler.Callback)
+	public.POST("/sso/google/authorize", batas, handler.Authorize)
+	public.POST("/sso/google/callback", batas, handler.Callback)
 }

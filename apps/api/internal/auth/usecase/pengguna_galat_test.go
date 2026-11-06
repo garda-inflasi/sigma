@@ -337,3 +337,33 @@ func TestGrantUserPermission_PenolakanPenyimpanan(t *testing.T) {
 		require.ErrorIs(t, err, ErrUserNotFound)
 	})
 }
+
+func TestCreateUser_PeranDanLapisHarusDikenalSebelumMenyentuhRepositori(t *testing.T) {
+	ctx := context.Background()
+	t.Run("peran di luar katalog", func(t *testing.T) {
+		repo := new(mockRepository) // GetUserByEmail/CreateUser tidak diharapkan: mock panik bila dipanggil
+		uc := newTestUseCase(repo)
+		u := penggunaBaruUji()
+		u.Peran = "SUPERADMIN"
+		require.ErrorIs(t, uc.CreateUser(ctx, u, "Baru#Sandi123", "admin-1"), ErrRoleNotFound)
+	})
+	t.Run("lapis di luar enum", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc := newTestUseCase(repo)
+		u := penggunaBaruUji()
+		u.Lapis = "OPS"
+		err := uc.CreateUser(ctx, u, "Baru#Sandi123", "admin-1")
+		var validasi *GalatValidasi
+		require.ErrorAs(t, err, &validasi)
+		assert.Contains(t, validasi.Pesan, "Lapis tidak dikenal")
+	})
+	t.Run("lapis eksplisit yang sah boleh berbeda dari lapis bawaan peran", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc := newTestUseCase(repo)
+		repo.On("GetUserByEmail", mock.Anything, "baru@garda.test").Return(nil, gorm.ErrRecordNotFound)
+		repo.On("CreateUser", mock.Anything, mock.Anything).Return(nil)
+		u := penggunaBaruUji()
+		u.Lapis = "SISTEM"
+		require.NoError(t, uc.CreateUser(ctx, u, "Baru#Sandi123", "admin-1"))
+	})
+}

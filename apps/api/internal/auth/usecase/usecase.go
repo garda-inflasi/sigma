@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -474,6 +475,17 @@ type RoleInfo struct {
 func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, password, actorID string) error {
 	if err := ValidatePassword(password); err != nil {
 		return err
+	}
+	// Peran dan lapis adalah enum basis data: nilai di luarnya masukan yang salah (400), bukan galat penyimpanan
+	// (500). Lapis boleh berbeda dari lapis bawaan peran (sama dengan UpdateUser yang menerima lapis eksplisit).
+	if !peranDikenal(user.Peran) {
+		return ErrRoleNotFound
+	}
+	if user.Lapis == "" {
+		user.Lapis = lapisPeran(user.Peran) // tidak diisi: turunan peran, seperti UpdateUser
+	}
+	if !slices.Contains(domain.LapisPengguna, user.Lapis) {
+		return galatValidasi("Lapis tidak dikenal: %q (pilihan: %s).", user.Lapis, strings.Join(domain.LapisPengguna, ", "))
 	}
 
 	existing, _ := uc.repo.GetUserByEmail(ctx, user.Email)

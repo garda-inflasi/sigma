@@ -226,12 +226,17 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 
 	if err := h.uc.CreateUser(audit.RequestContext(c), user, req.Password, c.GetString("user_id")); err != nil {
+		if jawabGalatAkunMenunggu(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, usecase.ErrEmailExists):
 			response.Conflict(c, "Email sudah terdaftar")
 		case errors.Is(err, usecase.ErrWeakPassword):
 			// Masukan pengguna yang salah, bukan galat server (usecase membungkusnya dengan alasan).
 			response.BadRequest(c, err.Error())
+		case errors.Is(err, usecase.ErrRoleNotFound):
+			response.BadRequest(c, "Peran tidak dikenal")
 		default:
 			response.InternalError(c, "Gagal membuat pengguna")
 		}

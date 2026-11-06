@@ -696,3 +696,32 @@ func TestJawabAkunTerkunci_DenganDanTanpaRincian(t *testing.T) {
 	assert.Empty(t, h.Header().Get("Retry-After"), "tanpa rincian: tidak ada Retry-After yang bisa dipercaya")
 	assert.False(t, strings.Contains(h.Body.String(), "sisa_detik"))
 }
+
+// Regresi: peran atau lapis di luar enum dulu lolos validasi, lalu ditolak basis data (enum PostgreSQL) dan
+// dijawab 500 "Gagal membuat pengguna" untuk kesalahan klien. UpdateUser dan AssignRole sudah menjawab 400.
+func TestCreateUser_PeranDanLapisDiluarKatalogDijawab400(t *testing.T) {
+	buat := func(peran, lapis string) string {
+		return js(map[string]any{
+			"id": "u-baru", "nama": "Baru", "email": "baru@garda.test", "password": "Kata#Sandi1",
+			"peran": peran, "lapis": lapis, "lembaga": "BPPSDMP",
+		})
+	}
+	repo := &repoUji{
+		byEmail: func(string) (*domain.Pengguna, error) { return nil, gorm.ErrRecordNotFound },
+		buat:    func(*domain.Pengguna) error { t.Error("pengguna tidak boleh disimpan"); return nil },
+	}
+	for nama, tc := range map[string]struct{ badan, muat string }{
+		"peran tak dikenal": {buat("SUPERADMIN", "SISTEM"), "Peran"},
+		"peran huruf kecil": {buat("admin_sistem", "SISTEM"), "Peran"},
+		"lapis tak dikenal": {buat("OPS_MAHASISWA", "OPS"), "Lapis"},
+		"lapis huruf kecil": {buat("OPS_MAHASISWA", "operasional"), "Lapis"},
+	} {
+		t.Run(nama, func(t *testing.T) {
+			r, rec := routerPengguna(t, repo)
+			h := panggilJSON(t, r, nethttp.MethodPost, "/users", tc.badan)
+			assert.Equal(t, nethttp.StatusBadRequest, h.Code, h.Body.String())
+			assert.Contains(t, h.pesan(), tc.muat)
+			assert.Empty(t, rec.Entries())
+		})
+	}
+}

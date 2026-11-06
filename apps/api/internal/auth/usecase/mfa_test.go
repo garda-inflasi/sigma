@@ -118,16 +118,18 @@ func TestSetupMFA_StoresSealedSecretAndReturnsProvisioningData(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser()
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	var tersimpan string
+	repo.On("SetMFASecret", mock.Anything, "user-123", mock.Anything).
+		Run(func(args mock.Arguments) { tersimpan = args.String(2) }).Return(nil)
 
 	setup, err := uc.SetupMFA(context.Background(), "user-123")
 
 	require.NoError(t, err)
 	assert.Contains(t, setup.ProvisioningURI, "otpauth://totp/")
 	assert.Contains(t, setup.ProvisioningURI, setup.Secret)
-	require.NotNil(t, user.MfaSecret)
-	assert.NotContains(t, *user.MfaSecret, setup.Secret, "rahasia tidak tersimpan polos")
-	opened, err := uc.cfg.MFAKey.Open(*user.MfaSecret)
+	require.NotEmpty(t, tersimpan)
+	assert.NotContains(t, tersimpan, setup.Secret, "rahasia tidak tersimpan polos")
+	opened, err := uc.cfg.MFAKey.Open(tersimpan)
 	require.NoError(t, err)
 	assert.Equal(t, setup.Secret, opened)
 	assert.False(t, user.MfaAktif, "belum aktif sampai verifikasi")
@@ -163,7 +165,7 @@ func TestSetupMFA_Rejections(t *testing.T) {
 		_, err := uc.SetupMFA(context.Background(), "user-123")
 
 		assert.ErrorIs(t, err, ErrMFAUnavailable)
-		repo.AssertNotCalled(t, "UpdateUser", mock.Anything, mock.Anything)
+		repo.AssertNotCalled(t, "SetMFASecret", mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 
@@ -179,7 +181,7 @@ func TestVerifyMFA_ActivatesIssuesBackupCodesAndReplacesSession(t *testing.T) {
 	user.MfaSecret = &sealed
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	var tersimpan []string
-	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything).
+	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) { tersimpan = args.Get(2).([]string) }).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
@@ -216,7 +218,7 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 		_, err := uc.VerifyMFA(context.Background(), "user-123", "000000", "10.0.0.1")
 
 		assert.ErrorIs(t, err, ErrMFACodeInvalid)
-		repo.AssertNotCalled(t, "ActivateMFA", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		repo.AssertNotCalled(t, "ActivateMFA", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 	t.Run("setup belum dimulai", func(t *testing.T) {
 		repo := new(mockRepository)

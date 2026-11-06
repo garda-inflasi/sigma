@@ -85,7 +85,7 @@ func TestVerifyMFA_GagalMengaktifkanTidakMenghitungDanTidakMenerbitkanSesi(t *te
 	require.NoError(t, err)
 	user.MfaSecret = &sealed
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything).Return(errDB)
+	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything, mock.Anything).Return(errDB)
 
 	_, err = uc.VerifyMFA(context.Background(), "user-123", kodeSekarang(t, secret), "10.0.0.1")
 
@@ -167,7 +167,7 @@ func TestMFAStatus_GalatHitungKodeCadanganDiteruskan(t *testing.T) {
 
 func siapGantiSandi(repo *mockRepository) {
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 }
 
 func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t *testing.T) {

@@ -153,6 +153,8 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 			response.BadRequest(c, err.Error())
 		case errors.Is(err, usecase.ErrPasswordReuse):
 			response.BadRequest(c, "Password baru tidak boleh sama dengan password lama")
+		case errors.Is(err, usecase.ErrPenggunaBerubah):
+			response.Conflict(c, "Password akun berubah saat diproses. Muat ulang lalu coba lagi.")
 		default:
 			response.InternalError(c, "Gagal mengubah password")
 		}
@@ -474,7 +476,7 @@ func mfaError(c *gin.Context, err error) bool {
 		response.Error(c, http.StatusBadRequest, dto.KodeMFAKodeSalah, dto.PesanMFAKodeSalah)
 	case errors.Is(err, usecase.ErrMFANotSetup):
 		response.BadRequest(c, err.Error())
-	case errors.Is(err, usecase.ErrMFAAlreadyActive):
+	case errors.Is(err, usecase.ErrMFAAlreadyActive), errors.Is(err, usecase.ErrMFASetupBerubah):
 		response.Conflict(c, err.Error())
 	case errors.Is(err, usecase.ErrMFAMandatory):
 		response.Forbidden(c, err.Error())

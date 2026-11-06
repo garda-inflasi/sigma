@@ -8,6 +8,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Repository struct {
@@ -40,8 +41,62 @@ func (r *Repository) CreateUser(ctx context.Context, user *domain.Pengguna) erro
 	return r.db.WithContext(ctx).Create(user).Error
 }
 
-func (r *Repository) UpdateUser(ctx context.Context, user *domain.Pengguna) error {
-	return r.db.WithContext(ctx).Save(user).Error
+func (r *Repository) PatchUser(ctx context.Context, id string, patch domain.PenggunaPatch) (*domain.Pengguna, *domain.Pengguna, error) {
+	var sebelum, sesudah *domain.Pengguna
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var saat domain.Pengguna
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&saat).Error; err != nil {
+			return fmt.Errorf("get user for update: %w", err)
+		}
+		lama := saat
+		kolom := patch.Kolom()
+		if len(kolom) == 0 {
+			sebelum, sesudah = &lama, &saat
+			return nil
+		}
+		kolom["diupdate_pada"] = gorm.Expr("now()")
+		if err := tx.Model(&domain.Pengguna{}).Where("id = ?", id).Updates(kolom).Error; err != nil {
+			return fmt.Errorf("patch user: %w", err)
+		}
+		var baru domain.Pengguna
+		if err := tx.Where("id = ?", id).First(&baru).Error; err != nil {
+			return fmt.Errorf("reload user: %w", err)
+		}
+		sebelum, sesudah = &lama, &baru
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return sebelum, sesudah, nil
+}
+
+func (r *Repository) SetPassword(ctx context.Context, userID string, p domain.GantiPassword) (bool, error) {
+	q := r.db.WithContext(ctx).Model(&domain.Pengguna{}).Where("id = ?", userID)
+	if p.HashSebelumnya != nil {
+		q = q.Where("password_hash = ?", *p.HashSebelumnya)
+	}
+	res := q.Updates(map[string]any{
+		"password_hash":        p.Hash,
+		"wajib_ganti_password": p.WajibGanti,
+		"password_diubah_pada": p.At,
+		"diupdate_pada":        gorm.Expr("now()"),
+	})
+	if res.Error != nil {
+		return false, fmt.Errorf("set password: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
+}
+
+func (r *Repository) SetMFASecret(ctx context.Context, userID, secretTersegel string) (bool, error) {
+	res := r.db.WithContext(ctx).Exec(
+		"UPDATE pengguna SET mfa_secret = ?, mfa_langkah_terakhir = 0, diupdate_pada = now() WHERE id = ? AND mfa_aktif = false",
+		secretTersegel, userID,
+	)
+	if res.Error != nil {
+		return false, fmt.Errorf("simpan rahasia mfa: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
 }
 
 func (r *Repository) TouchLastLogin(ctx context.Context, userID string, at time.Time) error {
@@ -186,16 +241,26 @@ func (r *Repository) RevokeAllUserRefreshTokens(ctx context.Context, userID stri
 
 // ── MFA ───────────────────────────────────────────────────────────────
 
-func (r *Repository) ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(
-			"UPDATE pengguna SET mfa_aktif = true, mfa_langkah_terakhir = ?, diupdate_pada = now() WHERE id = ?",
-			langkah, userID,
-		).Error; err != nil {
-			return fmt.Errorf("aktifkan mfa: %w", err)
+func (r *Repository) ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64, secretTersegel string) (bool, error) {
+	var aktif bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Exec(
+			"UPDATE pengguna SET mfa_aktif = true, mfa_langkah_terakhir = ?, diupdate_pada = now() WHERE id = ? AND mfa_aktif = false AND mfa_secret = ?",
+			langkah, userID, secretTersegel,
+		)
+		if res.Error != nil {
+			return fmt.Errorf("aktifkan mfa: %w", res.Error)
 		}
+		if res.RowsAffected != 1 {
+			return nil
+		}
+		aktif = true
 		return replaceBackupCodes(tx, userID, kodeHash)
 	})
+	if err != nil {
+		return false, err
+	}
+	return aktif, nil
 }
 
 func (r *Repository) ReplaceBackupCodes(ctx context.Context, userID string, kodeHash []string) error {

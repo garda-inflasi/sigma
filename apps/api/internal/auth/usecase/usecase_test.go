@@ -49,9 +49,50 @@ func (m *mockRepository) CreateUser(ctx context.Context, user *domain.Pengguna) 
 	return args.Error(0)
 }
 
-func (m *mockRepository) UpdateUser(ctx context.Context, user *domain.Pengguna) error {
-	args := m.Called(ctx, user)
-	return args.Error(0)
+// errTidakCocok adalah galat tiruan yang membuat penulisan bersyarat (SetPassword, SetMFASecret, ActivateMFA)
+// menjawab "tidak ada baris yang cocok" (false, nil) alih-alih galat basis data.
+var errTidakCocok = errors.New("syarat penulisan tidak terpenuhi")
+
+// penggunaTerdaftar mencari pengguna yang dijanjikan GetUserByID untuk id ini (harapan yang dipasang tes).
+func (m *mockRepository) penggunaTerdaftar(id string) *domain.Pengguna {
+	for _, c := range m.ExpectedCalls {
+		if c.Method != "GetUserByID" || len(c.ReturnArguments) == 0 {
+			continue
+		}
+		if u, ok := c.ReturnArguments.Get(0).(*domain.Pengguna); ok && u != nil && u.ID == id {
+			return u
+		}
+	}
+	return &domain.Pengguna{ID: id}
+}
+
+// PatchUser meniru penulisan per kolom: baris yang dijanjikan GetUserByID menjadi "sebelum", lalu hanya kolom
+// pada patch yang berubah ("sesudah"). Galat tiruan (Return(err)) mengembalikan galat itu.
+func (m *mockRepository) PatchUser(ctx context.Context, id string, patch domain.PenggunaPatch) (*domain.Pengguna, *domain.Pengguna, error) {
+	if err := m.Called(ctx, id, patch).Error(0); err != nil {
+		return nil, nil, err
+	}
+	dasar := m.penggunaTerdaftar(id)
+	sebelum := *dasar
+	patch.Terapkan(dasar)
+	sesudah := *dasar
+	return &sebelum, &sesudah, nil
+}
+
+func (m *mockRepository) SetPassword(ctx context.Context, userID string, p domain.GantiPassword) (bool, error) {
+	err := m.Called(ctx, userID, p).Error(0)
+	if errors.Is(err, errTidakCocok) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (m *mockRepository) SetMFASecret(ctx context.Context, userID, secretTersegel string) (bool, error) {
+	err := m.Called(ctx, userID, secretTersegel).Error(0)
+	if errors.Is(err, errTidakCocok) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (m *mockRepository) ListUsers(ctx context.Context, page, limit int, search string) ([]domain.Pengguna, int64, error) {
@@ -125,8 +166,12 @@ func (m *mockRepository) ConsumeResetToken(ctx context.Context, id int64, now ti
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *mockRepository) ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64) error {
-	return m.Called(ctx, userID, kodeHash, langkah).Error(0)
+func (m *mockRepository) ActivateMFA(ctx context.Context, userID string, kodeHash []string, langkah int64, secretTersegel string) (bool, error) {
+	err := m.Called(ctx, userID, kodeHash, langkah, secretTersegel).Error(0)
+	if errors.Is(err, errTidakCocok) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (m *mockRepository) ReplaceBackupCodes(ctx context.Context, userID string, kodeHash []string) error {
@@ -476,7 +521,7 @@ func TestChangePassword_Success(t *testing.T) {
 	user := activeUser()
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 
@@ -497,7 +542,7 @@ func TestChangePassword_ClearsMandatoryChangeFlagAndIssuesCleanToken(t *testing.
 	user.WajibGantiPassword = true
 
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 
@@ -636,7 +681,7 @@ func TestResetPassword_Success(t *testing.T) {
 
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 
@@ -713,7 +758,7 @@ func TestResetPassword_TokenClaimedByConcurrentRequest(t *testing.T) {
 	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
 
 	assert.ErrorIs(t, err, ErrResetTokenInvalid)
-	repo.AssertNotCalled(t, "UpdateUser", mock.Anything, mock.Anything)
+	repo.AssertNotCalled(t, "SetPassword", mock.Anything, mock.Anything, mock.Anything)
 	repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
 }
 
@@ -736,7 +781,7 @@ func TestResetPassword_SessionRevocationFailureIsReported(t *testing.T) {
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
 	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
-	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db mati"))
 
 	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")

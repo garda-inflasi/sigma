@@ -119,10 +119,14 @@ func (uc *UseCase) SetupMFA(ctx context.Context, userID string) (*MFASetup, erro
 	if err != nil {
 		return nil, fmt.Errorf("segel rahasia MFA: %w", err)
 	}
-	user.MfaSecret = &sealed
-	user.MfaLangkahTerakhir = 0
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+	// Hanya rahasia setup yang ditulis, dan hanya bila MFA belum aktif: menyimpan seluruh baris dari salinan
+	// yang dibaca di atas akan mematikan MFA yang diaktifkan serentak oleh VerifyMFA.
+	ok, err := uc.repo.SetMFASecret(ctx, user.ID, sealed)
+	if err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
+	}
+	if !ok {
+		return nil, ErrMFAAlreadyActive
 	}
 
 	uc.recordAudit(ctx, userID, "MFA_SETUP", userID)
@@ -157,8 +161,15 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code, ip string) (*MFA
 	uc.kembalikanPercobaan(ctx, kunci)
 
 	kode := totp.GenerateBackupCodes(JumlahKodeCadangan)
-	if err := uc.repo.ActivateMFA(ctx, user.ID, hashKode(user.ID, kode), langkah); err != nil {
+	// Aktivasi bersyarat: MFA belum aktif dan rahasia tersimpan masih yang kodenya baru diverifikasi. Tanpa itu
+	// dua verifikasi serentak sama-sama menerbitkan kode cadangan (yang pertama langsung hangus), dan setup yang
+	// diulang di tab lain mengaktifkan rahasia baru yang belum pernah dipindai pengguna.
+	aktif, err := uc.repo.ActivateMFA(ctx, user.ID, hashKode(user.ID, kode), langkah, *user.MfaSecret)
+	if err != nil {
 		return nil, fmt.Errorf("aktifkan MFA: %w", err)
+	}
+	if !aktif {
+		return nil, uc.alasanAktivasiDitolak(ctx, user.ID)
 	}
 	user.MfaAktif, user.MfaLangkahTerakhir = true, langkah
 
@@ -169,6 +180,19 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code, ip string) (*MFA
 
 	uc.recordAudit(ctx, userID, "MFA_VERIFY", userID)
 	return &MFAActivation{AccessToken: accessToken, RefreshToken: refreshToken, KodeCadangan: kode}, nil
+}
+
+// alasanAktivasiDitolak menjelaskan aktivasi MFA bersyarat yang tidak menulis apa pun: MFA sudah aktif, atau
+// rahasia setup diganti setelah kode diverifikasi.
+func (uc *UseCase) alasanAktivasiDitolak(ctx context.Context, userID string) error {
+	fresh, err := uc.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("muat ulang pengguna: %w", err)
+	}
+	if fresh.MfaAktif {
+		return ErrMFAAlreadyActive
+	}
+	return ErrMFASetupBerubah
 }
 
 // ValidateMFALogin menukar token tantangan (dari Login) dan kode OTP atau kode cadangan dengan sesi.

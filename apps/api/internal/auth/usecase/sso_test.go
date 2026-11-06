@@ -24,8 +24,7 @@ import (
 // ── Penyimpanan dalam memori ──────────────────────────────────────────────
 //
 // memRepo menggantikan basis data untuk seluruh jalur SSO: pengguna (dengan aturan UNIQUE(sso_provider,
-// sso_subject) dan UpdateUser yang menimpa seluruh baris seperti GORM Save), sesi, percobaan masuk, dan
-// state SSO. Metode lain milik mockRepository dibiarkan: bila terpanggil tanpa diharapkan, tes gagal.
+// sso_subject) dan penulisan per kolom seperti repositori Postgres), sesi, percobaan masuk, dan state SSO. Metode lain milik mockRepository dibiarkan: bila terpanggil tanpa diharapkan, tes gagal.
 
 type memRepo struct {
 	*mockRepository
@@ -71,11 +70,60 @@ func (r *memRepo) GetUserByEmail(_ context.Context, mail string) (*domain.Penggu
 	return nil, fmt.Errorf("get user by email: %w", gorm.ErrRecordNotFound)
 }
 
-func (r *memRepo) UpdateUser(_ context.Context, u *domain.Pengguna) error {
+// PatchUser menulis hanya kolom pada patch, seperti UPDATE kolom tertentu di Postgres, dan mengembalikan
+// baris sebelum/sesudah.
+func (r *memRepo) PatchUser(_ context.Context, id string, patch domain.PenggunaPatch) (*domain.Pengguna, *domain.Pengguna, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.users[u.ID] = r.clone(u) // seperti GORM Save: seluruh kolom ditimpa
-	return nil
+	u, ok := r.users[id]
+	if !ok {
+		return nil, nil, fmt.Errorf("get user for update: %w", gorm.ErrRecordNotFound)
+	}
+	sebelum := r.clone(u)
+	patch.Terapkan(u)
+	return sebelum, r.clone(u), nil
+}
+
+// SetPassword hanya mengubah tiga kolom kata sandi dan, bila HashSebelumnya diisi, hanya bila hash tersimpan
+// masih sama (compare-and-swap).
+func (r *memRepo) SetPassword(_ context.Context, userID string, p domain.GantiPassword) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.users[userID]
+	if !ok {
+		return false, nil
+	}
+	if p.HashSebelumnya != nil && (u.PasswordHash == nil || *u.PasswordHash != *p.HashSebelumnya) {
+		return false, nil
+	}
+	hash, at := p.Hash, p.At
+	u.PasswordHash, u.WajibGantiPassword, u.PasswordDiubahPada = &hash, p.WajibGanti, &at
+	return true, nil
+}
+
+// SetMFASecret hanya mengubah rahasia setup dan langkah TOTP, dan hanya bila MFA belum aktif.
+func (r *memRepo) SetMFASecret(_ context.Context, userID, secretTersegel string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.users[userID]
+	if !ok || u.MfaAktif {
+		return false, nil
+	}
+	sealed := secretTersegel
+	u.MfaSecret, u.MfaLangkahTerakhir = &sealed, 0
+	return true, nil
+}
+
+// ActivateMFA mengaktifkan MFA hanya bila belum aktif dan rahasia tersimpan masih secretTersegel.
+func (r *memRepo) ActivateMFA(_ context.Context, userID string, _ []string, langkah int64, secretTersegel string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.users[userID]
+	if !ok || u.MfaAktif || u.MfaSecret == nil || *u.MfaSecret != secretTersegel {
+		return false, nil
+	}
+	u.MfaAktif, u.MfaLangkahTerakhir = true, langkah
+	return true, nil
 }
 
 // TouchLastLogin hanya mengubah terakhir_masuk, seperti UPDATE kolom tunggal di Postgres.

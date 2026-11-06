@@ -120,7 +120,7 @@ func TestAssignRole_AuditsBeforeAndAfter(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser()
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 
 	_, err := uc.AssignRole(context.Background(), "user-123", "MANAJER_DATA", "admin-1")
@@ -139,7 +139,7 @@ func TestUpdateUser_AuditsBeforeAndAfter(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser()
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	nama := "Nama Baru"
 
 	_, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Nama: &nama}, "admin-1")

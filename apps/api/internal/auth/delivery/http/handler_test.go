@@ -145,3 +145,22 @@ func TestBulkUser_AksiTakDikenalDanIdKosongDitolak400(t *testing.T) {
 	w, _ = kirim(t, r, "/users/bulk", map[string]any{"action": "aktifkan", "ids": []string{}})
 	assert.Equal(t, nethttp.StatusBadRequest, w.Code)
 }
+
+// Penulisan bersyarat yang kalah balapan dijawab 409 (bukan 500): setup MFA yang diganti permintaan lain dan
+// aktivasi yang sudah dilakukan permintaan lain adalah konflik yang bisa diulang pengguna.
+func TestMFAError_KonflikPenulisanSerentakDijawab409(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, err := range []error{usecase.ErrMFASetupBerubah, usecase.ErrMFAAlreadyActive, errors.Join(usecase.ErrMFASetupBerubah, errors.New("lain"))} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+
+		jawab := mfaError(c, err)
+
+		assert.True(t, jawab)
+		assert.Equal(t, nethttp.StatusConflict, w.Code, err.Error())
+	}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	assert.True(t, mfaError(c, errors.New("db putus")))
+	assert.Equal(t, nethttp.StatusInternalServerError, w.Code, "galat lain tetap 500")
+}

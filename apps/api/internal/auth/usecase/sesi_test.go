@@ -416,7 +416,7 @@ func TestChangePassword_KeepsCurrentSessionAndRevokesOthers(t *testing.T) {
 	cur := liveToken(5, sidA)
 	cur.SessionStartedAt = started
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return([]domain.RefreshToken{*cur, *liveToken(6, sidB)}, nil)
 	repo.On("RevokeSessions", mock.Anything, "user-123", sidA, mock.Anything).Return([]string{sidB}, nil)
 	var row *domain.RefreshToken
@@ -442,7 +442,7 @@ func TestChangePassword_SessionNoLongerLiveStartsFreshSessionAfterRevokingAll(t 
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-	repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return([]domain.RefreshToken{*liveToken(6, sidB)}, nil)
 	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
 	var row *domain.RefreshToken
@@ -464,7 +464,7 @@ func TestRevocationFailuresAreNotSwallowed(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-		repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+		repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(boom)
 		status := "NONAKTIF"
 
@@ -476,7 +476,7 @@ func TestRevocationFailuresAreNotSwallowed(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-		repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+		repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(boom)
 
 		err := uc.ResetPasswordAdmin(context.Background(), "user-123", "NewTest1@", "admin-1")
@@ -487,7 +487,7 @@ func TestRevocationFailuresAreNotSwallowed(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-		repo.On("UpdateUser", mock.Anything, mock.Anything).Return(nil)
+		repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 		repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(boom)
 
 		_, err := uc.AssignRole(context.Background(), "user-123", "ADMIN_SISTEM", "admin-1")

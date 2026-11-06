@@ -41,6 +41,9 @@ var (
 	ErrRoleNotFound       = errors.New("peran tidak dikenal")
 	ErrCannotDeleteSelf   = errors.New("tidak dapat menghapus akun sendiri")
 	ErrUserHasReferences  = errors.New("pengguna masih memiliki data terkait")
+	// ErrPenggunaBerubah: keadaan akun yang dipakai sebagai dasar aksi berubah sebelum aksi sempat ditulis
+	// (mis. kata sandi diganti pihak lain di tengah ganti kata sandi). Tidak ada yang ditimpa; ulangi aksinya.
+	ErrPenggunaBerubah = errors.New("data akun berubah saat diproses, coba lagi")
 
 	ErrMFAChallengeInvalid = errors.New("sesi verifikasi MFA tidak valid atau sudah kedaluwarsa, masuk ulang")
 	ErrMFACodeInvalid      = errors.New("kode MFA tidak valid")
@@ -48,6 +51,7 @@ var (
 	ErrMFANotSetup         = errors.New("MFA belum disiapkan, mulai setup lebih dulu")
 	ErrMFAMandatory        = errors.New("MFA wajib untuk akun Anda dan tidak dapat dinonaktifkan")
 	ErrMFAUnavailable      = errors.New("kunci enkripsi MFA belum dikonfigurasi")
+	ErrMFASetupBerubah     = errors.New("setup MFA diganti permintaan lain, mulai ulang setup")
 )
 
 // ── Password Policy ───────────────────────────────────────────────────
@@ -301,7 +305,7 @@ func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newP
 		return "", "", ErrPasswordReuse
 	}
 
-	if err := uc.setPassword(ctx, user, newPassword, false); err != nil {
+	if err := uc.setPassword(ctx, user, newPassword, false, true); err != nil {
 		return "", "", err
 	}
 
@@ -398,7 +402,7 @@ func (uc *UseCase) ResetPassword(ctx context.Context, resetTokenStr, newPassword
 		return ErrResetTokenInvalid
 	}
 
-	if err := uc.setPassword(ctx, user, newPassword, false); err != nil {
+	if err := uc.setPassword(ctx, user, newPassword, false, false); err != nil {
 		uc.log.Error("reset password: gagal menyimpan kata sandi setelah token dipakai", map[string]interface{}{"user_id": user.ID, "error": err.Error()})
 		return err
 	}
@@ -487,60 +491,61 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 		return nil, ErrUserNotFound
 	}
 
-	sebelum := userSnapshot(user)
-	peranSebelum := user.Peran
-
+	// Hanya kolom yang diminta yang ditulis (PatchUser): perubahan serentak pada kolom lain, mis. penonaktifan
+	// atau reset kata sandi oleh admin lain, tidak tertimpa salinan pengguna yang dibaca di atas.
+	var ubah domain.PenggunaPatch
 	if patch.Email != nil && *patch.Email != user.Email {
 		if existing, _ := uc.repo.GetUserByEmail(ctx, *patch.Email); existing != nil && existing.ID != id {
 			return nil, ErrEmailExists
 		}
-		user.Email = *patch.Email
+		ubah.Email = patch.Email
 	}
-	if patch.Nama != nil {
-		user.Nama = *patch.Nama
-	}
+	ubah.Nama = patch.Nama
 	if patch.Peran != nil {
 		if _, ok := rolePermissions[*patch.Peran]; !ok {
 			return nil, ErrRoleNotFound
 		}
-		user.Peran = *patch.Peran
+		ubah.Peran = patch.Peran
 		// Keep lapis consistent with peran unless the caller overrides it.
 		if patch.Lapis == nil {
 			if lapis, ok := roleLapis[*patch.Peran]; ok {
-				user.Lapis = lapis
+				ubah.Lapis = &lapis
 			}
 		}
 	}
 	if patch.Lapis != nil {
-		user.Lapis = *patch.Lapis
+		ubah.Lapis = patch.Lapis
 	}
-	if patch.Lembaga != nil {
-		user.Lembaga = *patch.Lembaga
-	}
-	if patch.KabupatenKode != nil {
-		user.KabupatenKode = patch.KabupatenKode
-	}
-	if patch.Status != nil {
-		user.Status = *patch.Status
-	}
+	ubah.Lembaga = patch.Lembaga
+	ubah.KabupatenKode = patch.KabupatenKode
+	ubah.Status = patch.Status
 
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+	sebelum, sesudah, err := uc.repo.PatchUser(ctx, id, ubah)
+	if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			return nil, ErrUserNotFound
+		case errors.Is(err, gorm.ErrDuplicatedKey):
+			return nil, ErrEmailExists
+		}
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
 	// Menonaktifkan akun dan mengganti peran sama-sama harus mengakhiri sesi aktifnya: access token lama
 	// masih membawa izin peran sebelumnya (AssignRole sudah begitu; PATCH tidak boleh menjadi jalan pintas).
-	if (patch.Status != nil && *patch.Status != "AKTIF") || user.Peran != peranSebelum {
-		if err := uc.revokeAllSessions(ctx, user.ID); err != nil {
+	if (patch.Status != nil && *patch.Status != "AKTIF") || sesudah.Peran != sebelum.Peran {
+		if err := uc.revokeAllSessions(ctx, sesudah.ID); err != nil {
 			return nil, err
 		}
 	}
 
+	// Snapshot dari baris yang dibaca PatchUser sendiri: selisih sebelum/sesudah hanya berisi apa yang ditulis
+	// permintaan ini, bukan perubahan serentak pihak lain.
 	uc.writeAudit(ctx, audit.Entry{
-		AktorID: actorID, Aksi: "UPDATE_USER", Entitas: "pengguna", EntitasID: user.ID,
-		Hasil: audit.HasilBerhasil, Sebelum: sebelum, Sesudah: userSnapshot(user),
+		AktorID: actorID, Aksi: "UPDATE_USER", Entitas: "pengguna", EntitasID: sesudah.ID,
+		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
 	})
-	return user, nil
+	return sesudah, nil
 }
 
 // DeleteUser removes a user and terminates all of its sessions.
@@ -584,7 +589,7 @@ func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, acto
 		return ErrUserNotFound
 	}
 
-	if err := uc.setPassword(ctx, user, newPassword, true); err != nil {
+	if err := uc.setPassword(ctx, user, newPassword, true, false); err != nil {
 		return err
 	}
 
@@ -604,29 +609,28 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID string) (*d
 		return nil, ErrRoleNotFound
 	}
 
-	user, err := uc.repo.GetUserByID(ctx, id)
-	if err != nil {
-		return nil, ErrUserNotFound
-	}
-
-	sebelum := userSnapshot(user)
-	user.Peran = role
+	// Hanya peran (dan lapis turunannya) yang ditulis; kolom lain tidak disentuh.
+	ubah := domain.PenggunaPatch{Peran: &role}
 	if lapis, ok := roleLapis[role]; ok {
-		user.Lapis = lapis
+		ubah.Lapis = &lapis
 	}
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+	sebelum, sesudah, err := uc.repo.PatchUser(ctx, id, ubah)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
 		return nil, fmt.Errorf("assign role: %w", err)
 	}
 
-	if err := uc.revokeAllSessions(ctx, user.ID); err != nil {
+	if err := uc.revokeAllSessions(ctx, sesudah.ID); err != nil {
 		return nil, err
 	}
 
 	uc.writeAudit(ctx, audit.Entry{
-		AktorID: actorID, Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: user.ID,
-		Hasil: audit.HasilBerhasil, Sebelum: sebelum, Sesudah: userSnapshot(user),
+		AktorID: actorID, Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: sesudah.ID,
+		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
 	})
-	return user, nil
+	return sesudah, nil
 }
 
 // ListRoles returns the hardcoded RBAC role catalogue.
@@ -759,18 +763,33 @@ func (uc *UseCase) issueSession(ctx context.Context, user *domain.Pengguna, fami
 
 // setPassword menyimpan kata sandi baru. wajibGanti true untuk kata sandi yang
 // ditetapkan pihak lain (reset admin): pemilik akun harus menggantinya sendiri.
-func (uc *UseCase) setPassword(ctx context.Context, user *domain.Pengguna, password string, wajibGanti bool) error {
+//
+// Hanya tiga kolom kata sandi yang ditulis (SetPassword). bandingkanHash true mensyaratkan hash tersimpan masih
+// sama dengan yang dibaca user (ganti kata sandi memverifikasi kata sandi lama terhadap hash itu): bila pihak
+// lain mengubahnya di sela-sela, tidak ada yang ditimpa dan hasilnya ErrPenggunaBerubah. Reset (token atau
+// admin) menimpa tanpa syarat, karena memang itu tujuannya.
+func (uc *UseCase) setPassword(ctx context.Context, user *domain.Pengguna, password string, wajibGanti, bandingkanHash bool) error {
 	hash, err := crypto.HashPassword(password)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
 	now := time.Now()
-	user.PasswordHash = &hash
-	user.WajibGantiPassword = wajibGanti
-	user.PasswordDiubahPada = &now
-	if err := uc.repo.UpdateUser(ctx, user); err != nil {
+	ubah := domain.GantiPassword{Hash: hash, WajibGanti: wajibGanti, At: now}
+	if bandingkanHash {
+		ubah.HashSebelumnya = user.PasswordHash
+	}
+	ok, err := uc.repo.SetPassword(ctx, user.ID, ubah)
+	if err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
+	if !ok {
+		if bandingkanHash {
+			return ErrPenggunaBerubah
+		}
+		return ErrUserNotFound
+	}
+	// Salinan di memori disamakan dengan yang sudah tertulis: token sesi baru membaca penanda wajib ganti darinya.
+	user.PasswordHash, user.WajibGantiPassword, user.PasswordDiubahPada = &hash, wajibGanti, &now
 	return nil
 }
 

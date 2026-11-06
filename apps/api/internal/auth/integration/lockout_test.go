@@ -516,3 +516,78 @@ func TestIntegration_Lockout_PembersihanHanyaKunciUsang(t *testing.T) {
 	assert.NotNil(t, s.kunciDi(t, emailBiasa), "baris yang baru diperbarui tetap")
 	assert.NotNil(t, s.kunciDi(t, "masih.terkunci@gardainflasi.id"), "kunci yang masih berlaku tidak dihapus walau usang")
 }
+
+// sesiMFA masuk sebagai akun uji ber-MFA lewat langkah kata sandi dan OTP, lalu mengembalikan access token.
+// Login lengkap menghapus hitungan lockout, jadi tes mulai dari nol.
+func (s *Suite) sesiMFA(t *testing.T) string {
+	t.Helper()
+	challenge := s.mulaiLoginMFA(t, emailMFA)
+	w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate",
+		map[string]any{"mfa_token": challenge, "code": kodeOTP(t, mfaSecretUji, time.Now())}, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var data struct {
+		AccessToken string `json:"access_token"`
+	}
+	s.decodeData(t, w.Body.Bytes(), &data)
+	require.NotEmpty(t, data.AccessToken)
+	return data.AccessToken
+}
+
+// Regresi: konfirmasi kata sandi di nonaktifkan-MFA dan kode-cadangan-baru tidak lewat lockout, sehingga
+// pemegang access token curian bisa menebak kata sandi tanpa batas selain batas laju API.
+func TestIntegration_Lockout_KonfirmasiKataSandiMFA(t *testing.T) {
+	endpoints := []struct {
+		nama, path string
+		body       func(sandi string) map[string]any
+	}{
+		{"nonaktifkan MFA", "/v1/auth/mfa/disable", func(sandi string) map[string]any { return map[string]any{"password": sandi} }},
+		{"kode cadangan baru", "/v1/auth/mfa/backup-codes", func(sandi string) map[string]any { return map[string]any{"password": sandi} }},
+	}
+	for _, ep := range endpoints {
+		t.Run(ep.nama+": kata sandi salah berulang mengunci, aksi tidak jalan", func(t *testing.T) {
+			s := setupSuite(t)
+			access := s.sesiMFA(t)
+
+			for i := 1; i <= 5; i++ {
+				w := s.serveRequest(t, http.MethodPost, ep.path, ep.body(sandiSalahUji), s.authHeader(access))
+				require.Equal(t, http.StatusUnauthorized, w.Code, "percobaan %d: %s", i, w.Body.String())
+			}
+			assert.Equal(t, 5, s.kunciDi(t, emailMFA).Gagal)
+
+			// Kata sandi yang benar pun ditolak 423 ACCOUNT_LOCKED dengan Retry-After; MFA tetap aktif.
+			w := s.serveRequest(t, http.MethodPost, ep.path, ep.body(sandiBenarUji), s.authHeader(access))
+			require.Equal(t, http.StatusLocked, w.Code, w.Body.String())
+			g := s.galatDari(t, w)
+			assert.Equal(t, "ACCOUNT_LOCKED", g.Code)
+			require.NotNil(t, g.Data)
+			assert.InDelta(t, 900, g.Data.SisaDetik, 5)
+			assert.Equal(t, strconv.Itoa(g.Data.SisaDetik), w.Header().Get("Retry-After"))
+			assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM pengguna WHERE id = 'test-user-mfa' AND mfa_aktif = true"), "MFA tidak dinonaktifkan")
+			assert.EqualValues(t, len(kodeCadanganUji), s.hitung(t, "SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = 'test-user-mfa'"), "kode cadangan tidak diganti")
+
+			// Kunci yang sama dengan login: akun ikut terkunci di jalur kata sandi.
+			assert.Equal(t, http.StatusLocked, s.coba(t, emailMFA, sandiBenarUji).Code)
+			assert.EqualValues(t, 5, s.hitung(t, "SELECT count(*) FROM login_attempts WHERE failure_reason = 'wrong_password_confirm' AND user_id = 'test-user-mfa'"))
+		})
+	}
+
+	t.Run("kata sandi benar tidak dihitung; kunci dipakai bersama login", func(t *testing.T) {
+		s := setupSuite(t)
+		access := s.sesiMFA(t)
+		s.gagalkan(t, emailMFA, 3)
+
+		// Dua tebakan salah lewat konfirmasi menggenapi lima bersama tiga dari login.
+		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/backup-codes", map[string]any{"password": sandiSalahUji}, s.authHeader(access))
+		require.Equal(t, http.StatusUnauthorized, w.Code)
+		// Kata sandi benar menerbitkan kode baru dan tidak mengubah hitungan.
+		w = s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/backup-codes", map[string]any{"password": sandiBenarUji}, s.authHeader(access))
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, 4, s.kunciDi(t, emailMFA).Gagal)
+
+		w = s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/backup-codes", map[string]any{"password": sandiSalahUji}, s.authHeader(access))
+		require.Equal(t, http.StatusUnauthorized, w.Code)
+		w = s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/disable", map[string]any{"password": sandiBenarUji}, s.authHeader(access))
+		require.Equal(t, http.StatusLocked, w.Code, w.Body.String())
+		assert.Equal(t, http.StatusLocked, s.coba(t, emailMFA, sandiBenarUji).Code)
+	})
+}

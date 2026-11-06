@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
-	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/totp"
 )
 
@@ -241,9 +240,10 @@ func (uc *UseCase) verifySecondFactor(ctx context.Context, user *domain.Pengguna
 	return metodeKodeCadangan, nil
 }
 
-// RegenerateBackupCodes menerbitkan kode cadangan baru (yang lama hangus) setelah konfirmasi kata sandi.
-// Kode polos hanya dikembalikan di sini.
-func (uc *UseCase) RegenerateBackupCodes(ctx context.Context, userID, password string) ([]string, error) {
+// RegenerateBackupCodes menerbitkan kode cadangan baru (yang lama hangus) setelah konfirmasi kata sandi,
+// yang dihitung lockout seperti ganti kata sandi (lihat periksaKataSandiPemilik). Kode polos hanya
+// dikembalikan di sini.
+func (uc *UseCase) RegenerateBackupCodes(ctx context.Context, userID, password, ip string) ([]string, error) {
 	user, err := uc.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, ErrUserNotFound
@@ -251,7 +251,7 @@ func (uc *UseCase) RegenerateBackupCodes(ctx context.Context, userID, password s
 	if !user.MfaAktif {
 		return nil, ErrMFANotSetup
 	}
-	if err := uc.confirmPassword(user, password); err != nil {
+	if err := uc.confirmPassword(ctx, user, password, ip); err != nil {
 		return nil, err
 	}
 
@@ -263,13 +263,14 @@ func (uc *UseCase) RegenerateBackupCodes(ctx context.Context, userID, password s
 	return kode, nil
 }
 
-// DisableMFA menonaktifkan MFA setelah konfirmasi kata sandi. Ditolak untuk akun yang MFA-nya diwajibkan.
-func (uc *UseCase) DisableMFA(ctx context.Context, userID, password string) error {
+// DisableMFA menonaktifkan MFA setelah konfirmasi kata sandi, yang dihitung lockout seperti ganti kata
+// sandi (lihat periksaKataSandiPemilik). Ditolak untuk akun yang MFA-nya diwajibkan.
+func (uc *UseCase) DisableMFA(ctx context.Context, userID, password, ip string) error {
 	user, err := uc.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return ErrUserNotFound
 	}
-	if err := uc.confirmPassword(user, password); err != nil {
+	if err := uc.confirmPassword(ctx, user, password, ip); err != nil {
 		return err
 	}
 	if uc.mfaWajib(user) {
@@ -283,11 +284,10 @@ func (uc *UseCase) DisableMFA(ctx context.Context, userID, password string) erro
 	return nil
 }
 
-func (uc *UseCase) confirmPassword(user *domain.Pengguna, password string) error {
-	if user.PasswordHash == nil || !crypto.VerifyPassword(password, *user.PasswordHash) {
-		return ErrWrongPassword
-	}
-	return nil
+// confirmPassword meminta kata sandi pemilik sebelum aksi sensitif MFA. Memakai lockout yang sama dengan
+// ganti kata sandi: tanpa itu pemegang access token curian dapat menebak kata sandi di sini tanpa batas.
+func (uc *UseCase) confirmPassword(ctx context.Context, user *domain.Pengguna, password, ip string) error {
+	return uc.periksaKataSandiPemilik(ctx, user, password, ip, "wrong_password_confirm")
 }
 
 func hashKode(userID string, kode []string) []string {

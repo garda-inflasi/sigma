@@ -117,8 +117,9 @@ func TestRegenerateBackupCodes_KataSandiSalahTidakMenyentuhKodeLama(t *testing.T
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user, _ := userMFA(t, uc)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 
-	_, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "SalahSandi1!")
+	_, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "SalahSandi1!", "10.0.0.1")
 
 	require.ErrorIs(t, err, ErrWrongPassword)
 	repo.AssertNotCalled(t, "ReplaceBackupCodes", mock.Anything, mock.Anything, mock.Anything)
@@ -132,7 +133,7 @@ func TestRegenerateBackupCodes_GagalMenyimpanTidakMengembalikanKodeYangTidakTers
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("ReplaceBackupCodes", mock.Anything, "user-123", mock.Anything).Return(errDB)
 
-	kode, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "Test1234!")
+	kode, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "Test1234!", "10.0.0.1")
 
 	require.Error(t, err)
 	assert.Empty(t, kode, "kode polos yang tidak pernah tersimpan tidak boleh sampai ke pengguna")
@@ -146,7 +147,7 @@ func TestDisableMFA_GagalMenghapusTidakDiauditBerhasil(t *testing.T) {
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
 	repo.On("ClearMFA", mock.Anything, "user-123").Return(errDB)
 
-	require.Error(t, uc.DisableMFA(context.Background(), "user-123", "Test1234!"))
+	require.Error(t, uc.DisableMFA(context.Background(), "user-123", "Test1234!", "10.0.0.1"))
 	assert.Empty(t, recorder.Entries())
 }
 

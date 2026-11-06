@@ -15,7 +15,8 @@ import (
 )
 
 // Lockout akun: satu mekanisme untuk semua tempat yang memeriksa rahasia (kata sandi login, kode OTP
-// login, kode pertama setup MFA, kata sandi lama saat ganti kata sandi).
+// login, kode pertama setup MFA, kata sandi lama saat ganti kata sandi, dan konfirmasi kata sandi di
+// nonaktifkan-MFA / kode-cadangan baru).
 //
 //   - Kunci per email ternormalisasi, bukan per pengguna: email terdaftar dan tak terdaftar mendapat
 //     jawaban yang sama persis (anti-enumerasi), termasuk waktu jawab (lihat perlambatPalsu).
@@ -149,6 +150,32 @@ func (uc *UseCase) auditTerkunci(ctx context.Context, email string) {
 		aktorID = user.ID
 	}
 	uc.recordFailedLogin(ctx, aktorID, email, alasanAkunTerkunci)
+}
+
+// periksaKataSandiPemilik memeriksa kata sandi pemilik sesi yang sedang masuk (kata sandi lama saat ganti
+// kata sandi, konfirmasi di nonaktifkan-MFA dan kode-cadangan baru) lewat lockout yang sama dengan login.
+// Pemegang access token curian tidak boleh bisa menebak kata sandi di endpoint-endpoint itu tanpa batas:
+//
+//   - akun terkunci: *AkunTerkunciError, kata sandi tidak diperiksa;
+//   - kata sandi salah: ErrWrongPassword dan percobaan tetap terhitung;
+//   - kata sandi benar: percobaan dikembalikan (bukan tebakan), hitungan lain tidak dihapus;
+//   - galat penyimpanan: ditolak (gagal tertutup) dan tidak dihitung.
+//
+// alasan dicatat di login_attempts untuk kata sandi yang salah.
+func (uc *UseCase) periksaKataSandiPemilik(ctx context.Context, user *domain.Pengguna, password, ip, alasan string) error {
+	if user.PasswordHash == nil {
+		return ErrWrongPassword
+	}
+	kunci, err := uc.mulaiPercobaan(ctx, user.Email)
+	if err != nil {
+		return err
+	}
+	if !crypto.VerifyPassword(password, *user.PasswordHash) {
+		uc.recordLoginAttempt(ctx, &user.ID, ip, false, alasan)
+		return ErrWrongPassword
+	}
+	uc.kembalikanPercobaan(ctx, kunci)
+	return nil
 }
 
 // perlambatPalsu membandingkan kata sandi dengan hash tak bertuan: biayanya sama dengan memeriksa kata

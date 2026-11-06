@@ -289,20 +289,9 @@ func (uc *UseCase) ChangePassword(ctx context.Context, userID, oldPassword, newP
 		return "", "", ErrUserNotFound
 	}
 
-	if user.PasswordHash == nil {
-		return "", "", ErrWrongPassword
-	}
-
-	kunci, err := uc.mulaiPercobaan(ctx, user.Email)
-	if err != nil {
+	if err := uc.periksaKataSandiPemilik(ctx, user, oldPassword, ip, "wrong_password_change"); err != nil {
 		return "", "", err
 	}
-
-	if !crypto.VerifyPassword(oldPassword, *user.PasswordHash) {
-		uc.recordLoginAttempt(ctx, &userID, ip, false, "wrong_password_change")
-		return "", "", ErrWrongPassword
-	}
-	uc.kembalikanPercobaan(ctx, kunci)
 
 	if err := ValidatePassword(newPassword); err != nil {
 		return "", "", err

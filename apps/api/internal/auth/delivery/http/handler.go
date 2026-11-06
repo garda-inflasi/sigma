@@ -552,7 +552,7 @@ func (h *Handler) RegenerateBackupCodes(c *gin.Context) {
 		return
 	}
 
-	kode, err := h.uc.RegenerateBackupCodes(audit.RequestContext(c), c.GetString("user_id"), req.Password)
+	kode, err := h.uc.RegenerateBackupCodes(audit.RequestContext(c), c.GetString("user_id"), req.Password, c.ClientIP())
 	if mfaError(c, err) {
 		return
 	}
@@ -568,7 +568,7 @@ func (h *Handler) DisableMFA(c *gin.Context) {
 		return
 	}
 
-	if mfaError(c, h.uc.DisableMFA(audit.RequestContext(c), c.GetString("user_id"), req.Password)) {
+	if mfaError(c, h.uc.DisableMFA(audit.RequestContext(c), c.GetString("user_id"), req.Password, c.ClientIP())) {
 		return
 	}
 

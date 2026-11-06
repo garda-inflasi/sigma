@@ -17,6 +17,15 @@
 - **Detail pengguna (✅, terhubung):** dialog "Ubah pengguna" memuat `GET /v1/users/:id` lewat BFF (`penggunaApi.get`, hook `usePenggunaDetail`, tanpa cache agar formulir selalu segar) sebelum formulir tampil, dan menampilkan rincian akun (ID, cakupan, status, MFA, terakhir masuk, dibuat). Bila gagal dimuat, formulir memakai baris daftar. Perbaikan backend: `GetUser` tidak lagi menjawab 404 untuk galat basis data (hanya "tidak ada" yang 404, selain itu 500); tes usecase dan integrasi `get_user_test.go` (200 tanpa rahasia, 404, 403 tanpa `pengguna.kelola`, 401).
 - **Undang, impor, dan ekspor (02-D, ✅):** `POST /v1/users/undang`, `POST /v1/users/:id/undang-ulang`, publik `POST /v1/auth/aktivasi` (halaman `/aktivasi`), `POST /v1/users/impor`, `GET /v1/users/ekspor`; rancangannya di [02-D](#02-d--undang-pengguna-lewat-email-impor-dan-ekspor-csv).
 
+### Kunci primer UUID (000110, ✅)
+
+- `pengguna.id` kini `uuid DEFAULT gen_random_uuid()`; ID lama (slug `superadmin`, `mahasiswa_9`, `USR-…`) dipetakan ke `garda_uuid_stabil('pengguna', id_lama)` dan disimpan di `pengguna_id_lama`. Seed memakai nilai yang sama (`seedkit.IDPengguna(slug)`), jadi basis data lama dan baru bertemu di UUID yang sama. Rujukan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md).
+- **Rute `:id`** (`/v1/users/:id` dan semua anaknya: `reset-password`, `roles`, `buka-kunci`, `reset-mfa`, `riwayat-peran`, `revoke-sessions`, `permissions[/:izin]`, `undang-ulang`) membaca id lewat `idx.ParamUUID`: ID yang bukan UUID dijawab **404** tanpa menyentuh basis data. UUID huruf besar dinormalkan; "akun sendiri" dibandingkan dalam bentuk kanonik.
+- `POST /v1/users`: `id` opsional (kosong = server membuat UUID acak; diisi = harus UUID sah, selain itu 400; sudah dipakai = 409). Form `/pengguna` tidak lagi mengirim `id`. Undangan dan impor CSV selalu membuat UUID acak. `ids` pada aksi massal wajib UUID (400); `ids` ekspor yang bukan UUID diabaikan (semua terbuang = 400).
+- `DELETE /v1/users/:id` untuk akun yang masih tercatat sebagai bukti asal data (penginput/validator/penerbit entri harga, petugas atau pembuat tugas, pembuat kartu intervensi, penyusun brief, pemromosi model, pembuat skenario, pengaju perubahan master) dijawab **409** dengan saran menonaktifkan akun (FK `RESTRICT`). Milik akun (sesi, token, kode MFA, izin langsung, undangan, preferensi, push, notifikasi, penugasan PJ) ikut terhapus (`CASCADE`); jejak pelaku opsional (audit, log eksekusi, riwayat EWS dan intervensi, pengubah izin/peran) dilepas (`SET NULL`).
+- **Token lama:** access token yang terbit sebelum migrasi membawa slug sebagai `sub`/`user_id`; `JWTAuth` menjawab 401 `PERMISSIONS_CHANGED` (klien web menyegarkan sesi dengan refresh token yang sudah dimigrasi dan mendapat token ber-UUID), bukan 500. Token tantangan MFA lama gagal sebagai `MFA_CHALLENGE_INVALID`.
+- **Kode cadangan MFA** lama di-hash dari `"<id lama>:<kode>"` dan tidak bisa dihitung ulang; `verifySecondFactor` mencocokkannya dengan ID lama dari `pengguna_id_lama` sebelum menolak. Kode yang diterbitkan ulang memakai UUID.
+
 ### Daftar pengguna sisi server (✅)
 
 - **Kontrak** `GET /v1/users` (`pengguna.kelola`): `search` (nama, email, peran sebagai id atau dengan spasi, lembaga; metakarakter `%`/`_`/`\` dicari apa adanya, maks 100 karakter), filter `peran`, `status`, `lapis`, `mfa=true|false`, `terkunci=true|false`, urutan `sort` ∈ `nama|email|peran|lembaga|status|terakhir_masuk|dibuat_pada` + `arah=asc|desc`, `page`, `limit` (1-100, bawaan 20). Mengembalikan `{items,total,page,limit}`. Nilai tak dikenal, boolean selain `true`/`false`, atau `limit` > 100 dijawab **400**; parameter kosong sama dengan tidak ada.
@@ -79,9 +88,14 @@ Go: unit (`domain`, `dto`, `usecase`, `delivery/http`) dan integrasi dockertest 
 **Tujuan:** aturan RBAC yang dijanjikan dokumen ditegakkan di backend, bukan hanya UI.
 
 - [ ] **Row scope:** Koordinator dan Agregator hanya kabupatennya, Mahasiswa hanya entrinya sendiri. Terapkan di `harga`, `lapangan`, `dashboard`, `ews` (kolom `pengguna.kabupaten_kode` sudah ada). Dikerjakan bersama slice tiap modul.
+  - **Cara memfilter:** kabupaten dari `pengguna.kabupaten_kode` (kode BPS, FK `RESTRICT` ke `kabupaten`, berindeks `idx_pengguna_kabupaten_kode`; klaim token `kab`), kepemilikan baris dari `pengguna.id` (UUID kanonik huruf kecil; klaim token `user_id`, dibaca middleware `JWTAuth` yang menolak `sub` bukan UUID dengan 401). Mahasiswa: `WHERE petugas_id = :user_id` (kolom uuid, FK `RESTRICT`, berindeks); Koordinator/Agregator: `WHERE kabupaten_kode = :kab`. Jangan mengambil ID pengguna dari body atau query untuk menentukan cakupan.
+  - **Mengubah cakupan seseorang** lewat `PATCH /v1/users/:id` (`kabupaten_kode`, `peran`); `:id` adalah UUID pengguna, ID salah bentuk dijawab 404 (`idx.ParamUUID`) tanpa menyentuh basis data. Perubahan peran atau status mengakhiri sesi dan membersihkan cache izin.
+  - **Tes:** satu akun per peran dengan `seedkit.IDPengguna(slug)` / `uid(slug)`; asersi memakai UUID, bukan slug.
 - [ ] **Pemisahan tugas:** validator tidak boleh memvalidasi entrinya sendiri; penginput ≠ validator ≠ publisher; Admin Sistem tanpa hak persetujuan bisnis (kaitan: CHECK di 06-B).
+  - Pelaku dibandingkan sebagai UUID kanonik: `entri_harga.petugas_id`, `divalidasi_oleh`, `dipublikasi_oleh` (uuid, FK `RESTRICT`: bukti asal data, akun yang masih tercatat tidak bisa dihapus; `DELETE /v1/users/:id` menjawab 409 dan menyarankan menonaktifkan akun via `PATCH /v1/users/:id` `status: NONAKTIF`). CHECK `chk_entri_harga_pemisahan_tugas` (`NOT VALID`) dibuat ulang oleh 000110 pada kolom uuid.
 - [ ] **Persetujuan berjenjang** intervensi ditegakkan di `UpdateTahap` (kaitan: 14-B).
-- [ ] Tes integrasi RBAC per peran untuk tiap aturan di atas.
+  - Pengaju (`intervensi_persetujuan.diajukan_oleh`) dan pemutus langkah (`intervensi_persetujuan_langkah.oleh`) adalah UUID pengguna dan `SET NULL` bila akunnya dihapus; bila aturan melarang pengaju memutus permintaannya sendiri, bandingkan UUID kanonik dengan klaim `user_id`. Penanggung jawab kartu dikirim sebagai `penanggung_jawab_ids` (UUID; yang bukan UUID dijawab 400).
+- [ ] Tes integrasi RBAC per peran untuk tiap aturan di atas. Akun uji diberi ID lewat `uid("<slug>")` (UUID stabil, sama dengan seed dan migrasi); rute pengguna memakai `/v1/users/:id` dengan UUID itu.
 
 ---
 

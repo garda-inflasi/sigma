@@ -933,7 +933,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
         "400":
-          description: Validasi gagal
+          description: Validasi gagal, termasuk `id` yang bukan UUID
           content:
             application/json:
               schema:
@@ -951,7 +951,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Email sudah terdaftar
+          description: Email atau `id` sudah terdaftar
           content:
             application/json:
               schema:
@@ -971,7 +971,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Detail pengguna
@@ -992,7 +993,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1022,7 +1023,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1055,7 +1057,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1086,7 +1088,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Pengguna dihapus
@@ -1113,13 +1116,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Pengguna masih dirujuk data lain, atau menghapus pemegang terakhir `pengguna.kelola` (`LAST_PERMISSION_HOLDER`)
+          description: |
+            Pengguna masih tercatat sebagai pelaku data yang tidak boleh kehilangan asalnya (penginput, validator,
+            atau penerbit entri harga; petugas atau pembuat tugas; pembuat kartu intervensi; penyusun brief;
+            pemromosi model; pembuat skenario; pengaju perubahan master). Nonaktifkan akun sebagai gantinya
+            (`PATCH /v1/users/{id}` dengan `status: NONAKTIF`). Juga dijawab 409 bila menghapus pemegang terakhir
+            `pengguna.kelola` (`LAST_PERMISSION_HOLDER`). Sesi, token, kode MFA, izin langsung, undangan, dan
+            preferensi notifikasi ikut terhapus; jejak audit dan log eksekusi dilepas dari akun (aktor menjadi kosong).
           content:
             application/json:
               schema:
@@ -1143,7 +1152,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1176,7 +1186,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1207,7 +1217,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1240,7 +1251,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1271,7 +1282,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Kunci dibuka (atau akun memang tidak terkunci)
@@ -1292,7 +1304,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1326,7 +1338,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: MFA direset (atau pengguna memang tanpa MFA)
@@ -1353,7 +1366,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1382,7 +1395,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
         - name: limit
           in: query
           schema:
@@ -1417,7 +1431,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1440,7 +1454,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Jumlah sesi yang dicabut
@@ -1461,7 +1476,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1617,7 +1632,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Ringkasan izin pengguna
@@ -1663,7 +1679,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1725,7 +1742,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
         - name: izin
           in: path
           required: true
@@ -1752,7 +1770,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: "Tidak ada izin langsung itu (`DIRECT_PERMISSION_NOT_FOUND`)"
+          description: "Tidak ada izin langsung itu (`DIRECT_PERMISSION_NOT_FOUND`), atau `id` pengguna bukan UUID"
           content:
             application/json:
               schema:
@@ -1814,7 +1832,7 @@ paths:
       description: |
         Memerlukan izin `pengguna.kelola`. Membuat akun berstatus `MENUNGGU` tanpa kata sandi beserta satu undangan
         (token acak 256-bit, hanya hash-nya disimpan, berlaku 72 jam) dalam satu transaksi, lalu mengirim email
-        berisi tautan `/aktivasi?token=...`. `id` dibuat server (`USR-` + 16 heksadesimal). Email dirapikan ke huruf
+        berisi tautan `/aktivasi?token=...`. `id` dibuat server (UUID acak). Email dirapikan ke huruf
         kecil dan unik tanpa peduli huruf besar-kecil. Akun yang menunggu berperilaku seperti email tak terdaftar di
         login dan lupa kata sandi (tidak ada celah enumerasi). Kegagalan mengirim email (SMTP tidak dikonfigurasi,
         menolak, atau tidak menjawab dalam 10 detik) tidak membatalkan akun: `email_terkirim` bernilai `false` dan
@@ -1881,7 +1899,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Undangan baru dibuat (periksa `email_terkirim`)
@@ -1902,7 +1921,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -2012,8 +2031,8 @@ paths:
           in: query
           schema:
             type: string
-          description: Id pengguna dipisah koma (maksimal 500)
-          example: USR-0001,USR-0002
+          description: ID pengguna (UUID) dipisah koma (maksimal 500). Entri yang bukan UUID diabaikan; bila tidak ada yang tersisa, 400.
+          example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11,0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34
       responses:
         "200":
           description: Berkas CSV
@@ -6209,7 +6228,8 @@ components:
           properties:
             id:
               type: string
-              example: test-user-001
+              format: uuid
+              example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11
             terkunci_sebelumnya:
               type: boolean
               description: True bila akun memang sedang terkunci ketika dibuka
@@ -6245,6 +6265,7 @@ components:
           format: date-time
         diperbarui_oleh:
           type: string
+          format: uuid
           nullable: true
           description: ID admin yang terakhir mengubah matriks peran
 
@@ -6335,6 +6356,7 @@ components:
           type: string
         diberikan_oleh:
           type: string
+          format: uuid
           nullable: true
         diberikan_oleh_nama:
           type: string
@@ -6435,7 +6457,8 @@ components:
           properties:
             id:
               type: string
-              example: test-user-mfa
+              format: uuid
+              example: 0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34
             mfa_aktif_sebelumnya:
               type: boolean
               description: False berarti pengguna memang tanpa MFA; tidak ada yang berubah dan sesinya tidak dicabut
@@ -6925,7 +6948,8 @@ components:
       properties:
         id:
           type: string
-          example: test-user-001
+          format: uuid
+          example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11
         nama:
           type: string
           example: Test User
@@ -7014,10 +7038,10 @@ components:
     CreateUserRequest:
       type: object
       description: |
-        Membuat akun dengan kata sandi sementara (jalur kedua; cara utama adalah `POST /v1/users/undang`). `id` dan
-        `password` wajib; akun wajib mengganti kata sandi saat masuk pertama.
+        Membuat akun dengan kata sandi sementara (jalur kedua; cara utama adalah `POST /v1/users/undang`). `password`
+        wajib; akun wajib mengganti kata sandi saat masuk pertama. `id` opsional: kosong berarti server membuat UUID
+        acak; bila dikirim harus UUID yang sah (selain itu 400) dan belum dipakai (selain itu 409).
       required:
-        - id
         - nama
         - email
         - password
@@ -7027,7 +7051,9 @@ components:
       properties:
         id:
           type: string
-          example: USR-0001
+          format: uuid
+          description: Opsional. UUID akun; kosong = dibuat server (gen_random_uuid). Dinormalkan ke huruf kecil.
+          example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11
         nama:
           type: string
           example: John Doe
@@ -7151,9 +7177,11 @@ components:
         ids:
           type: array
           minItems: 1
+          description: ID pengguna (UUID). Satu saja yang bukan UUID membuat seluruh permintaan ditolak (400).
           items:
             type: string
-          example: ["user-001", "user-002"]
+            format: uuid
+          example: ["6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11", "0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34"]
 
     BulkSumberDataRequest:
       type: object
@@ -8020,6 +8048,7 @@ components:
           enum: [PREMIUM, MEDIUM, ASALAN]
         petugas_id:
           type: string
+          format: uuid
           nullable: true
         petugas_nama:
           type: string
@@ -8108,6 +8137,7 @@ components:
                 enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
               oleh:
                 type: string
+                format: uuid
                 nullable: true
               oleh_nama:
                 type: string
@@ -8149,6 +8179,7 @@ components:
                   nullable: true
                 divalidasi_oleh:
                   type: string
+                  format: uuid
                   nullable: true
                 divalidasi_pada:
                   type: string
@@ -8156,6 +8187,7 @@ components:
                   nullable: true
                 dipublikasi_oleh:
                   type: string
+                  format: uuid
                   nullable: true
                 dipublikasi_pada:
                   type: string
@@ -8165,6 +8197,7 @@ components:
                   $ref: "#/components/schemas/FlagValidasi"
                 ditolak_oleh:
                   type: string
+                  format: uuid
                   nullable: true
                 ditolak_pada:
                   type: string
@@ -8610,7 +8643,9 @@ components:
           maxItems: 20
           items:
             type: string
-          example: [manajer_data]
+            format: uuid
+          description: ID pengguna (UUID). Yang bukan UUID dijawab 400.
+          example: ["0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34"]
 
     CreateIntervensiResponse:
       type: object
@@ -8716,6 +8751,7 @@ components:
           example: intervensi.setujui
         diajukan_oleh_id:
           type: string
+          format: uuid
           nullable: true
           description: Kosong bila diajukan sistem (eskalasi SLA)
         diajukan_oleh_nama:
@@ -8747,6 +8783,7 @@ components:
                 enum: [SETUJU, TOLAK]
               oleh_id:
                 type: string
+                format: uuid
                 nullable: true
               oleh_nama:
                 type: string
@@ -8891,6 +8928,7 @@ components:
                 nullable: true
               oleh_id:
                 type: string
+                format: uuid
                 nullable: true
               oleh_nama:
                 type: string
@@ -9062,6 +9100,7 @@ components:
           format: date-time
         diakui_oleh_id:
           type: string
+          format: uuid
           nullable: true
         diakui_pada:
           type: string
@@ -9151,6 +9190,7 @@ components:
           description: Naik tiap perubahan; dikirim kembali saat menyimpan (optimistic locking)
         diubah_oleh_id:
           type: string
+          format: uuid
           nullable: true
         diubah_pada:
           type: string
@@ -9218,6 +9258,7 @@ components:
           enum: [BARU, DIAKUI, DIESKALASI, SELESAI]
         oleh_id:
           type: string
+          format: uuid
           nullable: true
         oleh_nama:
           type: string
@@ -9571,6 +9612,7 @@ components:
           format: date-time
         aktor_id:
           type: string
+          format: uuid
           description: Kosong bila tanpa pelaku terautentikasi atau akunnya sudah dihapus
         aktor_nama:
           type: string
@@ -9943,6 +9985,7 @@ components:
                 format: double
               dibuat_oleh:
                 type: string
+                format: uuid
                 nullable: true
               dibuat_pada:
                 type: string

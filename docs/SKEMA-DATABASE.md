@@ -99,6 +99,11 @@ Baris yang dibuat aplikasi tanpa makna kode boleh berisi `kode NULL`, karena ind
    - Semua kolom FK anak diperbarui lewat pemetaan yang sama di dalam satu transaksi.
    - ID lama disimpan di `kode` untuk entitas berkode.
    - Untuk `pengguna`, ID lama disimpan di tabel pemetaan `pengguna_id_lama` supaya Down bisa memulihkannya.
+   - Rujukan lunak (kolom teks tanpa FK) yang berisi ID lama ikut dipetakan bila ia identitas yang dicari aplikasi, mis.
+     `audit_log.entitas_id` pada baris `entitas = 'pengguna'` (riwayat peran dan filter audit). Snapshot JSON historis
+     (`audit_log.sebelum/sesudah/metadata`) dibiarkan sebagai sejarah.
+   - Nilai turunan yang tidak bisa dihitung ulang (hash kode cadangan MFA dari `"<id>:<kode>"`) tidak diubah: aplikasi
+     mencocokkannya dengan ID lama dari `pengguna_id_lama`.
 2. **VARCHAR → BIGINT**:
    - ID baru diberikan berurutan menurut waktu pembuatan, lalu ID lama sebagai pemutus seri.
    - Kolom dijadikan `GENERATED ALWAYS AS IDENTITY` dan urutannya diset ke `max(id) + 1`.
@@ -114,4 +119,18 @@ lengkap FK dan indeks selalu bisa diturunkan dari katalog (`\d+ <tabel>` atau ku
 
 | Tabel                                       | PK  | Alasan | FK utama | Indeks utama |
 | ------------------------------------------- | --- | ------ | -------- | ------------ |
-| _diisi bertahap oleh migrasi 000110–000115_ |     |        |          |              |
+| `pengguna` | UUID | Identitas akun yang terlihat klien (path `/v1/users/:id`, token `sub`). ID lama berupa slug (`superadmin`, `mahasiswa_9`, `USR-…`) dipetakan stabil: `garda_uuid_stabil('pengguna', id_lama)` = `seedkit.IDPengguna(slug)`. | `kabupaten_kode` → `kabupaten` RESTRICT | `pengguna_pkey`, `uq email`, `idx_pengguna_kabupaten_kode`, `idx_pengguna_peran`, `ux_pengguna_sso (sso_provider, sso_subject)` |
+| `pengguna_id_lama` | KODE | 1:1 dengan `pengguna`: pemetaan ID lama untuk Down 000110. Aplikasi memakainya hanya agar kode cadangan MFA yang di-hash dengan ID lama tetap berlaku. | `id` → `pengguna` CASCADE | `pengguna_id_lama_pkey`, `UNIQUE (id_lama)` |
+| `user_permissions` | KOMPOSIT `(pengguna_id, permission_nama)` | Satu izin langsung per pasangan pengguna dan izin. | `pengguna_id` → `pengguna` CASCADE; `permission_nama` → `permissions` CASCADE; `diberikan_oleh` → `pengguna` SET NULL | PK (awalan `pengguna_id`), `idx_user_permissions_permission`, `idx_user_permissions_diberikan_oleh`, `idx_user_permissions_berlaku` (parsial) |
+| `undangan_pengguna` | BIGINT | Operasional: satu baris per undangan, token hanya hash. | `user_id` → `pengguna` CASCADE; `diundang_oleh` → `pengguna` SET NULL | `idx_undangan_pengguna_user`, `uq_undangan_pengguna_aktif` (parsial), `UNIQUE (token_hash)`, `idx_undangan_pengguna_diundang_oleh` |
+| `roles` | KODE (`kunci` enum `peran`) | Katalog 14 peran; identitasnya enum itu sendiri. | `diperbarui_oleh` → `pengguna` SET NULL | PK, `idx_roles_diperbarui_oleh` |
+| `refresh_tokens` | BIGINT | Sesi milik pengguna; baris ikut hilang bersama akun. | `user_id` → `pengguna` CASCADE | `idx_rt_user`, `idx_rt_user_revoked (user_id, revoked_at)`, `UNIQUE (token_hash)`, `idx_rt_family` |
+| `login_attempts` | BIGINT | Log percobaan masuk; `user_id` NULL untuk email tak dikenal, dan baris bertahan walau akunnya dihapus. | `user_id` → `pengguna` SET NULL | `idx_la_user_time (user_id, attempted_at)` |
+| `mfa_kode_cadangan` | BIGINT | Satu baris per kode cadangan (hash), milik akun. | `user_id` → `pengguna` CASCADE | `UNIQUE (user_id, kode_hash)` (awalan `user_id`) |
+| `password_reset_tokens` | BIGINT | Token sekali pakai milik akun. | `user_id` → `pengguna` CASCADE | `idx_prt_user`, `UNIQUE (token_hash)` |
+| `kunci_login` | HASH `email_hash` | Lockout per email: kuncinya SHA-256 email, bukan ID pengguna. | tanpa FK | PK, `idx_kunci_login_diperbarui` |
+| `jwt_blacklist` | HASH `jti` | Daftar cabut token: kuncinya `jti` token. | tanpa FK | PK, `idx_jwt_blacklist_expires` |
+| `sso_login_state` | HASH `state_hash` | Keadaan satu alur SSO (≤ 10 menit), kuncinya hash `state`. | tanpa FK | PK, `idx_sso_login_state_expires` |
+| `preferensi_notifikasi` | KOMPOSIT `(pengguna_id, kanal)` | Satu baris per pengguna dan kanal. | `pengguna_id` → `pengguna` CASCADE | PK (awalan `pengguna_id`) |
+| `langganan_push` | BIGINT | Satu langganan push per endpoint, milik akun. | `pengguna_id` → `pengguna` CASCADE | `idx_langganan_push_pengguna`, `UNIQUE (endpoint)` |
+| _diisi bertahap oleh migrasi 000111–000115_ |     |        |          |              |

@@ -35,7 +35,7 @@ function fetchMenjawab(buat: () => Response): Panggilan[] {
 
 const undanganWire: UndanganWire = {
   user: {
-    id: "USR-1",
+    id: "ef45e253-50b5-3808-9710-90ed1484f293",
     nama: "Budi",
     email: "budi@garda.test",
     peran: "OPS_MAHASISWA",
@@ -53,7 +53,7 @@ const undanganWire: UndanganWire = {
 describe("toHasilUndangan", () => {
   it("memetakan akun menjadi baris tabel berstatus MENUNGGU beserta masa berlaku dan status email", () => {
     const h = toHasilUndangan(undanganWire);
-    assert.equal(h.pengguna.id, "USR-1");
+    assert.equal(h.pengguna.id, "ef45e253-50b5-3808-9710-90ed1484f293");
     assert.equal(h.pengguna.status, "MENUNGGU");
     assert.equal(h.pengguna.role, "OPS_MAHASISWA");
     assert.equal(h.berlakuSampai, "2026-11-09T00:00:00Z");
@@ -188,7 +188,7 @@ describe("undanganApi", () => {
 
     assert.equal(p[0].url, "/api/pengguna/USR%2F1%20%3Fx/undang-ulang");
     assert.equal(p[0].init.method, "POST");
-    assert.equal(h.pengguna.id, "USR-1");
+    assert.equal(h.pengguna.id, "ef45e253-50b5-3808-9710-90ed1484f293");
   });
 
   it("impor: POST /api/pengguna/impor dengan csv dan dry_run, hasil dipetakan", async () => {
@@ -273,7 +273,7 @@ describe("unduhEksporPengguna", () => {
     const unduhan = pasangDocument();
     const p = fetchMenjawab(
       () =>
-        new Response("\ufeffid;nama\r\nUSR-1;Budi\r\n", {
+        new Response("\ufeffid;nama\r\nef45e253-50b5-3808-9710-90ed1484f293;Budi\r\n", {
           headers: {
             "content-type": "text/csv; charset=utf-8",
             "content-disposition":
@@ -283,9 +283,9 @@ describe("unduhEksporPengguna", () => {
         }),
     );
 
-    const hasil = await unduhEksporPengguna({ ids: ["USR-1"] });
+    const hasil = await unduhEksporPengguna({ ids: ["ef45e253-50b5-3808-9710-90ed1484f293"] });
 
-    assert.equal(p[0].url, "/api/pengguna/ekspor?ids=USR-1");
+    assert.equal(p[0].url, "/api/pengguna/ekspor?ids=ef45e253-50b5-3808-9710-90ed1484f293");
     assert.deepEqual(hasil, { baris: 1, terpotong: false });
     assert.equal(unduhan.length, 1);
     assert.equal(unduhan[0].download, "pengguna-2026-11-06.csv");

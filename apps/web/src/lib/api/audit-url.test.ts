@@ -6,9 +6,9 @@ const dariQuery = (qs: string) => filterAuditDariQuery(new URLSearchParams(qs));
 
 describe("filterAuditDariQuery", () => {
   it("tautan riwayat peran menyaring audit pada satu pengguna", () => {
-    assert.deepEqual(dariQuery("entitas=pengguna&entitas_id=e2e_1"), {
+    assert.deepEqual(dariQuery("entitas=pengguna&entitas_id=e823793e-a1c6-3b7e-be84-9d5ded2769af"), {
       entitas: "pengguna",
-      entitas_id: "e2e_1",
+      entitas_id: "e823793e-a1c6-3b7e-be84-9d5ded2769af",
     });
   });
 
@@ -46,13 +46,13 @@ describe("filterAuditDariQuery", () => {
   });
 
   it("hasilnya menjadi kueri API yang sama dengan filter yang dipasang manual", () => {
-    const f = dariQuery("entitas=pengguna&entitas_id=e2e_1");
+    const f = dariQuery("entitas=pengguna&entitas_id=e823793e-a1c6-3b7e-be84-9d5ded2769af");
     assert.equal(
       toAuditQuery(f),
-      toAuditQuery({ entitas: "pengguna", entitas_id: "e2e_1" }),
+      toAuditQuery({ entitas: "pengguna", entitas_id: "e823793e-a1c6-3b7e-be84-9d5ded2769af" }),
     );
     assert.match(toAuditQuery(f), /entitas=pengguna/);
-    assert.match(toAuditQuery(f), /entitas_id=e2e_1/);
+    assert.match(toAuditQuery(f), /entitas_id=e823793e-a1c6-3b7e-be84-9d5ded2769af/);
   });
 });
 

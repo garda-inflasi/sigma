@@ -35,7 +35,7 @@ const respons: RiwayatPeranResponse = {
       aksi: "CREATE_USER",
       dari: null,
       ke: "OPS_MAHASISWA",
-      aktor: { id: "test-user-001", nama: "Test User" },
+      aktor: { id: "2dd0fc3b-a8e1-3708-907e-35aa3d7363ac", nama: "Test User" },
     },
   ],
 };
@@ -124,8 +124,8 @@ describe("judulAksiPeran", () => {
 describe("tautanAuditPengguna", () => {
   it("menyaring audit pada entitas pengguna dengan id yang di-encode", () => {
     assert.equal(
-      tautanAuditPengguna("e2e_123"),
-      "/audit?entitas=pengguna&entitas_id=e2e_123",
+      tautanAuditPengguna("841c8e22-0f6f-35ed-a0d8-7ca42d78188e"),
+      "/audit?entitas=pengguna&entitas_id=841c8e22-0f6f-35ed-a0d8-7ca42d78188e",
     );
     assert.equal(
       tautanAuditPengguna("a b&c"),

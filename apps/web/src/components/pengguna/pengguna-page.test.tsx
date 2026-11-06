@@ -952,10 +952,34 @@ describe("PenggunaPage: dialog ubah pengguna", () => {
     await user.click(within(undang).getByRole("button", { name: /kata sandi sementara/i }));
 
     const dialog = await screen.findByRole("dialog", { name: "Tambah pengguna" });
-    for (const label of ["ID pengguna", "Nama lengkap", "Email", "Kata sandi sementara", "Lembaga"]) {
+    for (const label of ["Nama lengkap", "Email", "Kata sandi sementara", "Lembaga"]) {
       assert.ok(within(dialog).getByLabelText(label), label);
     }
     assert.ok(within(dialog).getByRole("combobox", { name: "Peran" }));
+  });
+
+  // pengguna.id adalah UUID yang dibuat server (POST /v1/users tidak lagi mewajibkan id dari klien).
+  it("dialog 'Tambah pengguna': tanpa isian ID dan permintaan tidak membawa id", async () => {
+    const { user } = renderHalaman(<PenggunaPage />);
+    await tungguBaris();
+    await user.click(screen.getByRole("button", { name: /Undang pengguna/ }));
+    const undang = await screen.findByRole("dialog");
+    await user.click(within(undang).getByRole("button", { name: /kata sandi sementara/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Tambah pengguna" });
+    assert.equal(within(dialog).queryByLabelText("ID pengguna"), null);
+
+    fetchPalsu.atur("POST /api/pengguna", { success: true });
+    await user.type(within(dialog).getByLabelText("Nama lengkap"), "Baru Uji");
+    await user.type(within(dialog).getByLabelText("Email"), "baru@garda.test");
+    await user.type(within(dialog).getByLabelText("Kata sandi sementara"), "Kata#Sandi1");
+    await user.type(within(dialog).getByLabelText("Lembaga"), "BPPSDMP");
+    await user.click(within(dialog).getByRole("button", { name: "Buat pengguna" }));
+
+    await waitFor(() => assert.equal(fetchPalsu.ke("POST", "/api/pengguna").length, 1));
+    const badan = fetchPalsu.ke("POST", "/api/pengguna")[0].body as Record<string, unknown>;
+    assert.equal("id" in badan, false, "id dibuat server");
+    assert.equal(badan.email, "baru@garda.test");
+    assert.equal(badan.nama, "Baru Uji");
   });
 
   it("validasi klien: nama kosong menahan kiriman dan menampilkan pesan di field", async () => {

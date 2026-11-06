@@ -128,49 +128,65 @@ export interface UserRef {
   kabupatenKode?: string;
 }
 
-/** Akun demo (fiktif). Domain .test agar tidak pernah tertukar dengan alamat nyata. */
+/** ID mahasiswa mock (usr-mhs-01..12). Berbentuk UUID seperti ID pengguna dari API (pengguna.id adalah UUID). */
+const ID_MAHASISWA_MOCK = [
+  "74c906a1-7eda-3d79-a635-d548d432ce6d",
+  "5e7b9058-147b-3eb0-9e4b-8868f7a44702",
+  "3563e432-480f-3273-a61f-dcd6188baa2f",
+  "48dd522f-7ea9-31a4-960a-75de2a6b79d8",
+  "257f57b2-b9d6-3b5a-870c-28a18f5ce1a6",
+  "3b5630bd-5002-332c-8318-b0b63cbefef1",
+  "fd7fd542-5b00-3bcf-82ee-8ecfec5d9da4",
+  "440be722-a259-3c61-8b84-c3a6ce1bcaa8",
+  "78baeece-20b6-33fe-bc8b-3fd69ddc02e9",
+  "86cab032-9d63-3e9b-9ba1-9be594800be3",
+  "7d815054-a1e5-3b50-9389-ab055dfe22e8",
+  "c9ff4322-0502-30e1-9005-e723ced17749",
+];
+
+/** Akun demo (fiktif). Domain .test agar tidak pernah tertukar dengan alamat nyata. ID berbentuk UUID. */
 export const USERS: UserRef[] = [
   // ===== PIMPINAN FMIPA USK (Update 2026) =====
-  { id: "usr-str-01", nama: "Prof. Dr.rer.nat. Ilham Maulana, S.Si.", email: "ilham.maulana@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
+  { id: "c9e36ebe-8a90-32ae-930c-34a32b9d46a9" /* usr-str-01 */, nama: "Prof. Dr.rer.nat. Ilham Maulana, S.Si.", email: "ilham.maulana@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
   // Wakil Dekan Bidang Akademik
-  { id: "usr-str-05", nama: "Prof. Dr. Eng. Elin Yusibani, S.Si., M.Eng.", email: "elin.yusibani@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
+  { id: "778edd8b-2ebd-3799-9a9b-d936e0799648" /* usr-str-05 */, nama: "Prof. Dr. Eng. Elin Yusibani, S.Si., M.Eng.", email: "elin.yusibani@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
   // Wakil Dekan Bidang SDM dan Keuangan
-  { id: "usr-str-06", nama: "Dr. Munawar, S.Si., M.App.Stats.", email: "munawar@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
+  { id: "4bcf930b-dd0b-3d80-9731-e4bd1de08d76" /* usr-str-06 */, nama: "Dr. Munawar, S.Si., M.App.Stats.", email: "munawar@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
   // Wakil Dekan Bidang Kemahasiswaan, Alumni, dan Kemitraan
-  { id: "usr-str-07", nama: "Dr. Meutia Faradilla, S.Si., M.Si., Apt.", email: "meutia.faradilla@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
+  { id: "d68efe1e-a1aa-3b81-8df5-200474a014d1" /* usr-str-07 */, nama: "Dr. Meutia Faradilla, S.Si., M.Si., Apt.", email: "meutia.faradilla@fmipa.garda.test", role: "STRATEGIS_FMIPA", lembaga: "FMIPA USK" },
 
   // ===== STAKEHOLDER EKSTERNAL (Tidak Berubah) =====
-  { id: "usr-str-02", nama: "Nadia Safitri", email: "nadia.safitri@bi.garda.test", role: "STRATEGIS_BI", lembaga: "Bank Indonesia" },
-  { id: "usr-str-03", nama: "Iskandar Muda Putra", email: "iskandar.putra@bps.garda.test", role: "STRATEGIS_BPS", lembaga: "BPS Provinsi Aceh" },
-  { id: "usr-str-04", nama: "Maulana Akbar", email: "maulana.akbar@djpb.garda.test", role: "STRATEGIS_DJPB", lembaga: "Kanwil DJPb Aceh" },
+  { id: "2789ea41-edf9-3aa1-9228-38c0c8f8b2f2" /* usr-str-02 */, nama: "Nadia Safitri", email: "nadia.safitri@bi.garda.test", role: "STRATEGIS_BI", lembaga: "Bank Indonesia" },
+  { id: "7b9e54e8-cd40-3871-8bf4-79f4819891f4" /* usr-str-03 */, nama: "Iskandar Muda Putra", email: "iskandar.putra@bps.garda.test", role: "STRATEGIS_BPS", lembaga: "BPS Provinsi Aceh" },
+  { id: "200e7e7d-81e5-3345-ab40-2d77e50c7336" /* usr-str-04 */, nama: "Maulana Akbar", email: "maulana.akbar@djpb.garda.test", role: "STRATEGIS_DJPB", lembaga: "Kanwil DJPb Aceh" },
 
   // ===== MANAJER PROGRAM & DATA (Internal FMIPA) =====
-  { id: "usr-man-01", nama: "Cut Rina Mayasari", email: "rina.mayasari@fmipa.garda.test", role: "MANAJER_PROGRAM", lembaga: "FMIPA USK" },
-  { id: "usr-man-02", nama: "Fajar Ramadhan", email: "fajar.ramadhan@fmipa.garda.test", role: "MANAJER_DATA", lembaga: "FMIPA USK" },
-  { id: "usr-man-03", nama: "Siti Humaira", email: "siti.humaira@fmipa.garda.test", role: "MANAJER_KEBIJAKAN", lembaga: "FMIPA USK" },
-  { id: "usr-man-04", nama: "Teuku Arif Hidayat", email: "arif.hidayat@fmipa.garda.test", role: "MANAJER_PEMBIAYAAN", lembaga: "FMIPA USK" },
-  { id: "usr-man-05", nama: "Dewi Kartika", email: "dewi.kartika@fmipa.garda.test", role: "MANAJER_RISIKO", lembaga: "FMIPA USK" },
-  { id: "usr-man-06", nama: "Zulfikar Hamdani", email: "zulfikar.hamdani@fmipa.garda.test", role: "MANAJER_MUTU", lembaga: "FMIPA USK" },
+  { id: "da2697ed-0ad0-3e9b-826c-6b3973b7f0ff" /* usr-man-01 */, nama: "Cut Rina Mayasari", email: "rina.mayasari@fmipa.garda.test", role: "MANAJER_PROGRAM", lembaga: "FMIPA USK" },
+  { id: "02b36476-9b47-31d3-8afa-d3c2aaaf5415" /* usr-man-02 */, nama: "Fajar Ramadhan", email: "fajar.ramadhan@fmipa.garda.test", role: "MANAJER_DATA", lembaga: "FMIPA USK" },
+  { id: "108910c9-3d05-31fd-9615-7eb45c02bd69" /* usr-man-03 */, nama: "Siti Humaira", email: "siti.humaira@fmipa.garda.test", role: "MANAJER_KEBIJAKAN", lembaga: "FMIPA USK" },
+  { id: "1c84ee40-a895-3dce-9c6f-15344dd25d22" /* usr-man-04 */, nama: "Teuku Arif Hidayat", email: "arif.hidayat@fmipa.garda.test", role: "MANAJER_PEMBIAYAAN", lembaga: "FMIPA USK" },
+  { id: "5e894d1d-be2d-321d-a40f-abf3aab58bb3" /* usr-man-05 */, nama: "Dewi Kartika", email: "dewi.kartika@fmipa.garda.test", role: "MANAJER_RISIKO", lembaga: "FMIPA USK" },
+  { id: "6504c8c9-5ef2-3e44-ac6d-1a0f7b839ea6" /* usr-man-06 */, nama: "Zulfikar Hamdani", email: "zulfikar.hamdani@fmipa.garda.test", role: "MANAJER_MUTU", lembaga: "FMIPA USK" },
 
   // ===== OPERASIONAL LAPANGAN =====
-  { id: "usr-ops-01", nama: "Rizki Maulana", email: "rizki.maulana@lapangan.garda.test", role: "OPS_KOORDINATOR", lembaga: "FMIPA USK", kabupatenKode: "1171" },
-  { id: "usr-ops-02", nama: "Aulia Rahmah", email: "aulia.rahmah@lapangan.garda.test", role: "OPS_KOORDINATOR", lembaga: "FMIPA USK", kabupatenKode: "1174" },
-  { id: "usr-ops-03", nama: "Hendra Saputra", email: "hendra.saputra@lapangan.garda.test", role: "OPS_KOORDINATOR", lembaga: "FMIPA USK", kabupatenKode: "1106" },
-  { id: "usr-ops-04", nama: "Koperasi Tani Gayo Makmur", email: "admin@gayomakmur.garda.test", role: "OPS_AGREGATOR", lembaga: "Mitra Agregator", kabupatenKode: "1106" },
-  { id: "usr-ops-05", nama: "CV Lambaro Segar", email: "gudang@lambarosegar.garda.test", role: "OPS_AGREGATOR", lembaga: "Mitra Agregator", kabupatenKode: "1108" },
+  { id: "4f899c33-c158-3a6f-9a91-1559d17cb66f" /* usr-ops-01 */, nama: "Rizki Maulana", email: "rizki.maulana@lapangan.garda.test", role: "OPS_KOORDINATOR", lembaga: "FMIPA USK", kabupatenKode: "1171" },
+  { id: "a2bc343c-4103-3865-b5bd-f65358c4e7d1" /* usr-ops-02 */, nama: "Aulia Rahmah", email: "aulia.rahmah@lapangan.garda.test", role: "OPS_KOORDINATOR", lembaga: "FMIPA USK", kabupatenKode: "1174" },
+  { id: "bd8e618f-c6c6-38c2-bfc1-742ba572ca0f" /* usr-ops-03 */, nama: "Hendra Saputra", email: "hendra.saputra@lapangan.garda.test", role: "OPS_KOORDINATOR", lembaga: "FMIPA USK", kabupatenKode: "1106" },
+  { id: "83c931e9-9091-3520-959a-0db43243e02d" /* usr-ops-04 */, nama: "Koperasi Tani Gayo Makmur", email: "admin@gayomakmur.garda.test", role: "OPS_AGREGATOR", lembaga: "Mitra Agregator", kabupatenKode: "1106" },
+  { id: "480de64b-052e-36dc-9d5b-ffa4e8c01e7b" /* usr-ops-05 */, nama: "CV Lambaro Segar", email: "gudang@lambarosegar.garda.test", role: "OPS_AGREGATOR", lembaga: "Mitra Agregator", kabupatenKode: "1108" },
   ...[
     ["Annisa Putri", "1171"], ["Muhammad Ikhsan", "1171"], ["Rahmi Yanti", "1108"], ["Fadli Akbar", "1174"],
     ["Nurul Hidayah", "1110"], ["Agus Salim", "1109"], ["Intan Permata", "1107"], ["Dimas Pratama", "1106"],
     ["Liza Ananda", "1173"], ["Yusuf Haikal", "1103"], ["Mutia Sari", "1104"], ["Rafi Alfarizi", "1101"],
   ].map(([nama, kab], i) => ({
-    id: `usr-mhs-${String(i + 1).padStart(2, "0")}`,
+    id: ID_MAHASISWA_MOCK[i],
     nama,
     email: `${nama.toLowerCase().replace(/\s+/g, ".")}@mhs.garda.test`,
     role: "OPS_MAHASISWA" as Role,
     lembaga: "FMIPA USK",
     kabupatenKode: kab,
   })),
-  { id: "usr-sys-01", nama: "Admin Sistem Garda", email: "admin@garda.test", role: "ADMIN_SISTEM", lembaga: "FMIPA USK" },
+  { id: "093660ad-65a2-3123-a66e-71d6188e3743" /* usr-sys-01 */, nama: "Admin Sistem Garda", email: "admin@garda.test", role: "ADMIN_SISTEM", lembaga: "FMIPA USK" },
 ];
 
 export const kabupatenByKode = Object.fromEntries(KABUPATEN.map((k) => [k.kode, k])) as Record<string, Kabupaten>;

@@ -116,7 +116,7 @@ const wire: ImporWire = {
       kabupaten_kode: "",
       status: "dibuat",
       galat: null,
-      id: "USR-1",
+      id: "ef45e253-50b5-3808-9710-90ed1484f293",
     },
   ],
 };
@@ -152,7 +152,7 @@ describe("toHasilImpor", () => {
   it("galat null atau hilang menjadi larik kosong; id akun dibawa untuk baris yang dibuat", () => {
     const h = toHasilImpor(wire);
     assert.deepEqual(h.baris[2].galat, []);
-    assert.equal(h.baris[2].id, "USR-1");
+    assert.equal(h.baris[2].id, "ef45e253-50b5-3808-9710-90ed1484f293");
     assert.deepEqual(toHasilImpor({ ...wire, baris: null }).baris, []);
     assert.deepEqual(toHasilImpor({ ...wire, baris: undefined }).baris, []);
   });

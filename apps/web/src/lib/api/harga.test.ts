@@ -25,7 +25,7 @@ const respons: EntriHargaResponse = {
   harga: 61500,
   satuan: "kg",
   kualitas: "MEDIUM",
-  petugas_id: "mahasiswa_2",
+  petugas_id: "e3461775-ad20-374a-931e-cf99dd9b8424",
   petugas_nama: "Cut Nanda",
   dicatat_pada: "2026-10-16T05:12:00Z",
   status: "DIAJUKAN",
@@ -49,7 +49,7 @@ describe("toEntriHarga", () => {
       harga: 61500,
       satuan: "kg",
       kualitas: "MEDIUM",
-      petugasId: "mahasiswa_2",
+      petugasId: "e3461775-ad20-374a-931e-cf99dd9b8424",
       petugasNama: "Cut Nanda",
       dicatatPada: "2026-10-16T05:12:00Z",
       status: "DIAJUKAN",
@@ -164,7 +164,7 @@ describe("ringkasSebab", () => {
 describe("toRiwayatStatus", () => {
   it("memetakan perpindahan status dan membuang null", () => {
     assert.deepEqual(
-      toRiwayatStatus({ dari: null, ke: "DIAJUKAN", oleh: "mahasiswa_1", oleh_nama: "Aulia Rahman", waktu: "2026-10-16T02:00:00Z", alasan: null }),
+      toRiwayatStatus({ dari: null, ke: "DIAJUKAN", oleh: "03dc79aa-484b-322e-a0ae-3937fb4f3a23", oleh_nama: "Aulia Rahman", waktu: "2026-10-16T02:00:00Z", alasan: null }),
       { dari: undefined, ke: "DIAJUKAN", olehNama: "Aulia Rahman", waktu: "2026-10-16T02:00:00Z", alasan: undefined },
     );
     assert.equal(toRiwayatStatus({ dari: "DIAJUKAN", ke: "DITOLAK", oleh: null, oleh_nama: null, waktu: "w", alasan: "bukti kurang" }).alasan, "bukti kurang");

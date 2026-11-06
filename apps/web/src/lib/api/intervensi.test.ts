@@ -39,7 +39,7 @@ const kartu: KartuResponse = {
   rekomendasi_ai: true,
   progres: { selesai: 1, total: 5 },
   penanggung_jawab: [
-    { id: "manajer_program", nama: "Rina Safitri, S.T., M.T." },
+    { id: "e810ffa6-9117-330a-aee6-f281fa031dfe", nama: "Rina Safitri, S.T., M.T." },
   ],
   ews_alert_id: "EWS-1000",
   dibuat_pada: "2026-10-10T08:00:00Z",
@@ -385,7 +385,7 @@ const masukan: BuatIntervensiInput = {
   komoditasKode: "BRS-MED",
   kabupatenKode: "1171",
   tenggat: "2026-12-01",
-  penanggungJawabIds: ["manajer_kebijakan"],
+  penanggungJawabIds: ["4a5595b3-31f9-3231-97cc-91bb5aa27394"],
 };
 
 describe("membuat intervensi (POST /v1/intervensi)", () => {
@@ -433,7 +433,7 @@ describe("membuat intervensi (POST /v1/intervensi)", () => {
       komoditas_kode: "BRS-MED",
       kabupaten_kode: "1171",
       tenggat: "2026-12-01T16:59:00.000Z",
-      penanggung_jawab_ids: ["manajer_kebijakan"],
+      penanggung_jawab_ids: ["4a5595b3-31f9-3231-97cc-91bb5aa27394"],
     });
   });
 });
@@ -479,7 +479,7 @@ const permintaan: PersetujuanResponse = {
   status: "MENUNGGU",
   langkah_kini: 2,
   izin_langkah_kini: "intervensi.setujui_fiskal",
-  diajukan_oleh_id: "manajer_program",
+  diajukan_oleh_id: "e810ffa6-9117-330a-aee6-f281fa031dfe",
   diajukan_oleh_nama: "Rina Safitri, S.T., M.T.",
   diajukan_pada: "2026-11-05T05:00:00Z",
   catatan: "",
@@ -489,7 +489,7 @@ const permintaan: PersetujuanResponse = {
       label: "Persetujuan Dewan Pengarah",
       izin_dibutuhkan: "intervensi.setujui",
       keputusan: "SETUJU",
-      oleh_id: "strategis_bi",
+      oleh_id: "96815d37-8076-3986-aae4-c350a1bb14cd",
       oleh_nama: "Dr. Muhammad Rizal",
       catatan: "",
     },
@@ -528,24 +528,24 @@ describe("toPersetujuan", () => {
 describe("bisaMemutus", () => {
   const p = toPersetujuan(permintaan);
   it("pemegang izin langkah yang belum terlibat boleh memutus", () => {
-    assert.equal(bisaMemutus(p, "strategis_djpb", true), true);
+    assert.equal(bisaMemutus(p, "9e93356e-ae55-3f97-8aab-8dd459c17f0d", true), true);
   });
   it("tanpa izin langkah tidak boleh", () => {
-    assert.equal(bisaMemutus(p, "strategis_bi", false), false);
+    assert.equal(bisaMemutus(p, "96815d37-8076-3986-aae4-c350a1bb14cd", false), false);
   });
   it("pengaju tidak menyetujui sendiri, dan pemutus langkah lain tidak memutus lagi", () => {
-    assert.equal(bisaMemutus(p, "manajer_program", true), false);
-    assert.equal(bisaMemutus(p, "strategis_bi", true), false);
+    assert.equal(bisaMemutus(p, "e810ffa6-9117-330a-aee6-f281fa031dfe", true), false);
+    assert.equal(bisaMemutus(p, "96815d37-8076-3986-aae4-c350a1bb14cd", true), false);
   });
   it("permintaan yang sudah diputuskan tidak dapat diputus", () => {
     assert.equal(
-      bisaMemutus({ ...p, status: "DISETUJUI" }, "strategis_djpb", true),
+      bisaMemutus({ ...p, status: "DISETUJUI" }, "9e93356e-ae55-3f97-8aab-8dd459c17f0d", true),
       false,
     );
   });
   it("permintaan buatan sistem dapat diputus siapa pun yang berizin", () => {
     assert.equal(
-      bisaMemutus({ ...p, diajukanOlehId: undefined }, "strategis_djpb", true),
+      bisaMemutus({ ...p, diajukanOlehId: undefined }, "9e93356e-ae55-3f97-8aab-8dd459c17f0d", true),
       true,
     );
   });

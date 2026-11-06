@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 const dasar: UserResponse = {
-  id: "USR-1",
+  id: "ef45e253-50b5-3808-9710-90ed1484f293",
   nama: "Siti Rahma",
   email: "siti@gardainflasi.id",
   peran: "MANAJER_DATA",
@@ -62,7 +62,7 @@ describe("penggunaApi.daftar", () => {
     assert.equal(halaman.page, 2);
     assert.equal(halaman.limit, 10);
     assert.equal(halaman.rows.length, 1);
-    assert.equal(halaman.rows[0].id, "USR-1");
+    assert.equal(halaman.rows[0].id, "ef45e253-50b5-3808-9710-90ed1484f293");
     assert.equal(halaman.rows[0].mfa, true);
     assert.equal(halaman.rows[0].dibuatPada, "2026-01-05T08:00:00Z");
   });

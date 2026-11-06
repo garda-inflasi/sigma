@@ -141,7 +141,8 @@ export interface ResetMfaResult {
 }
 
 export interface CreatePenggunaInput {
-  id: string;
+  /** Opsional: kosong berarti API membuat UUID acak (pengguna.id adalah UUID). Form tidak mengirimnya. */
+  id?: string;
   nama: string;
   email: string;
   password: string;

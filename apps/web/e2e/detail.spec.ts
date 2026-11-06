@@ -8,7 +8,7 @@
  * endpoint palsu berpenanda "e2e" dan dihapus lewat API. Tidak ada tes yang menyimpan perubahan
  * pengguna atau menjalankan ingestion.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   apiSebagai,
   buka,
@@ -18,6 +18,7 @@ import {
   test,
   tungguTenang,
 } from "./fixtures";
+import { idPenggunaSeed } from "./auth-helpers";
 import { cariPengguna } from "./pengguna-helpers";
 
 const ALERT_ID = "EWS-E2E-1";
@@ -434,7 +435,7 @@ test.describe("detail tugas lapangan", () => {
 });
 
 test.describe("detail pengguna", () => {
-  const ID = "mahasiswa_1";
+  const ID = idPenggunaSeed("mahasiswa_1"); // pengguna.id adalah UUID stabil dari slug seed
 
   test("dialog ubah memuat data segar dari GET /users/:id", async ({
     page,
@@ -479,7 +480,9 @@ test.describe("detail pengguna", () => {
 
   test("API: id tidak dikenal 404 dan tanpa pengguna.kelola 403", async () => {
     const admin = await apiSebagai("superadmin");
+    // ID yang bukan UUID dijawab 404 tanpa menyentuh basis data, sama dengan UUID yang sah tetapi tidak ada.
     expect((await admin.get("users/TIDAK-ADA")).status()).toBe(404);
+    expect((await admin.get(`users/${randomUUID()}`)).status()).toBe(404);
     const ok = await admin.get(`users/${ID}`);
     expect(ok.status()).toBe(200);
     expect(JSON.stringify(await ok.json())).not.toContain("password_hash");

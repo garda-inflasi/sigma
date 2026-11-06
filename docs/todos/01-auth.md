@@ -10,7 +10,7 @@
 - **Middleware edge** ([middleware.ts](../../apps/web/src/middleware.ts)): proteksi rute, refresh token otomatis, header keamanan, RBAC tingkat rute.
 - **API Go:** `POST /v1/auth/{login,refresh,forgot-password,reset-password,logout,change-password}`, `GET /v1/auth/me`, MFA `/v1/auth/mfa/{setup,verify,validate,disable}`.
 - **Skema:** entity auth cocok dengan migrasi (dicek skrip + integration test lolos). Tabel: `pengguna` (+ `mfa_secret`, `mfa_backup_codes`, `mfa_wajib` dari 000004), `refresh_tokens`, `login_attempts`, `password_reset_tokens`, `jwt_blacklist`, `password_history` (dibuang di 01-A karena tidak dirujuk kode).
-- **Tes:** [integration_test.go](../../apps/api/internal/auth/integration/integration_test.go) dan [usecase_test.go](../../apps/api/internal/auth/usecase/usecase_test.go) (coverage 63%).
+- **Tes:** [integration_test.go](../../apps/api/internal/auth/integration/integration_test.go) dan [usecase_test.go](../../apps/api/internal/auth/usecase/usecase_test.go) (coverage 96,9% sejak penutupan backlog; lihat "Penutupan backlog auth").
 
 ---
 
@@ -160,7 +160,7 @@ Login mencatat IP dan user agent; refresh memperbarui `last_used_at`, IP, dan us
    - **Satu kunci untuk:** login (kata sandi), validasi OTP login, kode pertama setup MFA, dan kata sandi lama pada ganti kata sandi. Konfirmasi kata sandi di nonaktifkan-MFA/kode-cadangan butuh sesi sah dan memang tidak pernah dihitung; tidak diubah.
    - **Anti-enumerasi:** kunci diperiksa sebelum akun dicari; email tak terdaftar, akun tanpa kata sandi (SSO), dan akun terdaftar mendapat urutan jawaban identik (401 ×5, lalu 423 dengan akhir kunci yang sama), dan email tak terdaftar tetap membandingkan bcrypt dengan hash tak bertuan (`hashPalsu`) supaya waktu jawab sama. `ACCOUNT_INACTIVE` (403) sebelumnya dijawab **sebelum** kata sandi diperiksa (membocorkan akun nonaktif); kini hanya setelah kata sandi benar, kata sandi salah tetap 401 dan dihitung. Galat basis data saat mencari akun atau memesan percobaan ditolak (500) dan tidak dihitung.
    - **Kompromi yang disadari:** pihak ketiga yang tahu sebuah email bisa mengunci akun itu 15 menit per 5 tebakan (standar lockout per akun, sama dengan PRD §6.1 #5); penawarnya kunci otomatis berakhir, buka-kunci admin, dan batas laju per IP (BFF 5/menit, API 600/menit). Hash email tanpa garam (bukan rahasia: email ada polos di `pengguna`).
-   - **Pembersihan:** `UseCase.BersihkanKunciKedaluwarsa` memangkas baris yang tak diperbarui lebih dari 2× durasi; dipanggil acak (1%) saat login dan bisa dipasang ke job pembersihan.
+   - **Pembersihan:** baris yang tak diperbarui lebih dari 2× durasi dan tidak sedang terkunci dipangkas oleh langkah `kunci_login` job `auth_pembersihan` (lihat "Pembersihan tabel auth"); tidak ada pemangkasan acak saat login.
 2. **Admin:** `POST /v1/users/:id/buka-kunci` (`pengguna.kelola`, audit `UNLOCK_USER` dengan `terkunci_sebelumnya`; idempoten, 404 bila pengguna tak ada). Daftar dan detail pengguna memuat `terkunci_sampai` selama terkunci. `/pengguna` menampilkan lencana "Terkunci · sisa waktu" (berdetak) dan aksi "Buka kunci" di menu baris. OpenAPI disinkronkan.
 3. **Kontrak galat (Go → BFF → UI).** Kode di kolom `code` amplop, diteruskan BFF tanpa diubah; satu tabel pesan di [pesan-login.ts](../../apps/web/src/lib/auth/pesan-login.ts).
 
@@ -237,9 +237,57 @@ rute SSO), dan e2e `apps/web/e2e/sso.spec.ts`.
 - [x] Job pembersihan baris kedaluwarsa `jwt_blacklist`, `refresh_tokens`, `password_reset_tokens` (+ `login_attempts`). Lihat "Pembersihan tabel auth" di bawah.
 - [x] Pesan error login konsisten (akun terkunci, password kedaluwarsa, 429). _(selesai: lihat 01-F)_
 - [x] Logout membersihkan store offline lapangan (IndexedDB). Lihat "Logout dan data offline lapangan" di bawah. Cache TanStack Query sudah bersih karena logout memuat ulang halaman penuh (lihat 01-D).
-- [ ] Coverage usecase auth dari 63% ke ≥ 80% (MFA, reset, lockout).
-- [ ] Tes `lib/bff/*` (cookies, csrf, rate-limit, safe-redirect), tes middleware. (E2E halaman auth sudah ada: 01-D.)
+- [x] Coverage usecase auth dari 63% ke ≥ 80% (MFA, reset, lockout). _(selesai: 96,9%; lihat "Penutupan backlog auth")_
+- [x] Tes `lib/bff/*` (cookies, csrf, rate-limit, safe-redirect), tes middleware. (E2E halaman auth sudah ada: 01-D.) _(selesai: tes web `lib/bff/*` dan `middleware.ts`, tes Go `pkg/middleware`; lihat "Penutupan backlog auth")_
 - [x] Satukan tiga salinan OpenAPI (lihat [18 §B](18-platform-lintas-fitur.md)).
+
+---
+
+## Penutupan backlog auth (coverage, tes middleware, audit akhir)
+
+### Coverage usecase auth
+
+`cd apps/api && go test ./internal/auth/usecase/ -coverprofile=/tmp/c.out && go tool cover -func=/tmp/c.out`
+
+| Berkas | Sebelum (setelah merge 01-E/F/G) | Sesudah |
+|---|---|---|
+| `lockout.go` | 95,9% | 100,0% |
+| `mfa.go` | 90,3% | 96,3% |
+| `pembersihan.go` | 98,7% | 98,7% |
+| `sesi.go` | 85,7% | 96,4% |
+| `sso.go` | 94,3% | 96,5% |
+| `usecase.go` | 74,9% | 96,4% |
+| **Total paket** | **86,2%** (dari 63% sebelum 01-E) | **96,9%** |
+
+Tes baru memeriksa akibat, bukan sekadar bahwa fungsinya terpanggil: [admin_test.go](../../apps/api/internal/auth/usecase/admin_test.go) (ubah/hapus/reset/aksi massal oleh admin, katalog peran, login yang tidak menimpa perubahan admin, jalur galat reset/ganti kata sandi, `ForgotPassword` yang tidak menunggu SMTP) dan [galat_infrastruktur_test.go](../../apps/api/internal/auth/usecase/galat_infrastruktur_test.go) (kegagalan basis data/kunci pada MFA, pergantian sesi, refresh, logout, lockout, SSO: tidak dihitung sebagai tebakan salah, tidak dijawab "token tidak sah", gagal-tutup, tidak jatuh ke jalur yang lebih lemah).
+
+### Tes middleware dan `lib/bff/*`
+
+- **Web** (`pnpm test`, node:test): `cookies.test.ts` (atribut tiap cookie: HttpOnly/SameSite/Path/umur/Secure, cookie penghapus memakai path yang sama), `csrf.test.ts` (double-submit, Origin/Referer, daftar izin, host penyerupa), `handler.test.ts` (urutan CSRF → sesi, pemetaan galat tanpa membocorkan pesan internal), `safe-redirect.test.ts`, `session-response.test.ts`, `security-headers.test.ts`, tambahan di `cookie-policy.test.ts` dan `rate-limit.test.ts`, serta `src/middleware.test.ts` (terjemahan keputusan edge menjadi respons: Location, cookie dihapus, JSON galat, header keamanan, `config.matcher`). `lib/bff/request-scope-testing.ts` memasang request scope Next agar `cookies()` dapat dipakai di tes.
+- **Go** (`pkg/middleware`, 94,4%): `auth_sumber_token_test.go` menambah sumber token (header vs cookie BFF, tanpa jatuh ke cookie bila bearer rusak), pencabutan diperiksa sebelum kewajiban ganti kata sandi/MFA, rute sesi baru tertutup bagi sesi setengah-jadi, pengecualian dicocokkan dengan pola rute (bukan URL mentah), serta batas laju serentak dan IP klien di belakang proxy (X-Forwarded-For palsu dari klien langsung tidak membuka ember baru).
+
+### Cacat yang ditemukan audit akhir dan sudah diperbaiki
+
+| # | Tingkat | Lokasi | Cacat | Perbaikan | Tes regresi |
+|---|---|---|---|---|---|
+| 1 | Sedang | `apps/web/src/lib/bff/safe-redirect.ts` `validateRedirectUrl` | Kondisi `includes("//") && !startsWith("//")` justru **meloloskan** `//evil.com` (juga `/\evil.com`, `/<TAB>/evil.com`). `/mfa?lanjut=//evil.com` dan `/ganti-password?lanjut=//evil.com` mengalihkan pengguna keluar situs lewat `window.location.assign` begitu formulir selesai. Rute SSO tidak terdampak karena menyaringnya lagi lewat `safeInternalPath`. | Hanya path dengan satu garis miring depan tanpa `//`, `\`, atau karakter kontrol yang lolos. | `safe-redirect.test.ts` (32 kasus; 12 gagal pada kode lama) |
+| 2 | Sedang | `usecase.go` `completeLogin` | Login menyimpan ulang **seluruh baris** pengguna (`UpdateUser` = GORM `Save`) dari salinan yang dibaca sebelum bcrypt. Penonaktifan, reset kata sandi (hash lama kembali), atau ganti peran oleh admin yang terjadi selama login berjalan tertimpa nilai lama; penyerang yang terus-menerus login dapat membuat penonaktifan akun tidak pernah berlaku. | `domain.Repository.TouchLastLogin` menulis hanya `terakhir_masuk`. | `TestLogin_PerubahanAdminSelamaLoginTidakTertimpa`, `TestLogin_MencatatTerakhirMasukTanpaMenyentuhKolomLain` (integrasi) |
+| 3 | Sedang | `usecase.go` `UpdateUser` | `PATCH /v1/users/:id` dengan `peran` baru tidak mencabut sesi (hanya `PUT /roles` yang mencabut, padahal 01-E menyatakan "ganti peran: semua sesi dicabut"): access token lama membawa izin peran sebelumnya sampai 15 menit. | Sesi dicabut bila peran berubah atau status bukan AKTIF. | `TestUpdateUser_*`, `TestAdmin_PatchGantiPeranMencabutSesiSeketika` |
+| 4 | Sedang | `usecase.go` `ForgotPassword` | Email dikirim sinkron lewat `smtp.SendMail` (tanpa batas waktu). Hanya email terdaftar yang sampai ke langkah itu, jadi lama jawaban menandai email terdaftar (enumerasi) dan SMTP yang macet menggantung permintaan. | Pengiriman di latar belakang (goroutine); kegagalan hanya dilog. | `TestForgotPassword_PengirimanEmailTidakMenahanPermintaan` (menggantung pada kode lama) |
+| 5 | Rendah | `usecase.go` `DeleteUser` | Sesi dicabut **sebelum** penghapusan; bila penghapusan ditolak FK ("masih memiliki data terkait") pengguna yang tetap ada ikut dikeluarkan dari semua perangkat. | Pencabutan dipindah ke sesudah penghapusan (kaskade `refresh_tokens` sudah mematikan sesi). | `TestDeleteUser_PenghapusanDitolakTidakMencabutSesi` |
+| 6 | Rendah | `delivery/http/handler.go` `CreateUser`, `BulkUser` | Kata sandi lemah saat membuat pengguna dijawab **500**; galat basis data pada aksi massal dijawab **400** berisi teks galat mentah (`bulk user action: …`). | `errors.Is(ErrWeakPassword)` → 400; hanya `ErrInvalidAction` → 400, selain itu 500 generik. | `handler_test.go` (2 gagal pada kode lama), `TestAdmin_BuatPenggunaKataSandiLemahDijawab400` |
+| 7 | Rendah | `apps/web/src/lib/bff/sso-api.ts` | Rute SSO hanya meneruskan `X-Forwarded-For`; sesi hasil masuk Google tercatat dengan user agent `node` sehingga `/keamanan` menampilkan perangkat yang salah. | `User-Agent` peramban ikut diteruskan di `authorize` dan `callback`. | `sso-api.test.ts`, `route.test.ts` rute SSO |
+
+Tidak ada migration yang berubah; tidak ada perubahan kontrak API (`make openapi/check` tidak perlu dijalankan ulang).
+
+### Kompromi yang dibiarkan, dan catatan
+
+- **Konfirmasi kata sandi di nonaktifkan-MFA/kode-cadangan tidak dihitung lockout** (01-F, disengaja). Tetap dibiarkan, tetapi tidak konsisten dengan `ChangePassword` yang menghitungnya: pemegang access token curian (15 menit) dapat menebak kata sandi lewat dua endpoint itu hanya dibatasi batas laju API (600/menit/IP) dan biaya bcrypt. Bila ingin menyatukannya, panggil `mulaiPercobaan`/`kembalikanPercobaan` di `confirmPassword`.
+- **Jalur langsung `/api/v1/*` (Caddy → Go) melewati batas laju login BFF (5/menit/IP).** Lockout per email tetap berlaku di Go, tetapi credential stuffing lintas email hanya dibatasi batas global API. `middleware.LoginRateLimit()` ada tetapi tidak terpasang di rute `/v1/auth/login`, `/v1/auth/mfa/validate`, dan `/v1/auth/forgot-password`.
+- **Penguncian akun juga menolak masuk SSO** (disengaja, 01-G): pihak ketiga yang menebak kata sandi sebuah email dapat menutup jalur SSO akun itu selama kunci berlaku.
+- **Edge guard (`isPasswordChangeExempt`, `isMfaSetupExempt`) mencocokkan awalan tanpa batas segmen** (`/ganti-password-apa-saja` ikut terbuka). Hanya lapisan UX; API Go menolak dengan rute persis.
+- **Pola `Save` seluruh baris pada `SetupMFA`, `ChangePassword`, `ResetPassword`, dan `UpdateUser`** masih membaca-lalu-menulis salinan penuh. Login (jalur terpanas dan yang bisa dipicu penyerang) sudah diperbaiki di atas; yang lain dipicu aksi pemilik sesi atau admin dan jendelanya kecil, tetapi pola yang sama berlaku bila kelak ada aksi serentak.
+- **Audit `LOGIN` untuk SSO + OTP** hanya memuat `mfa: totp` (tanpa `metode: sso_google`); jejak lengkap ada pada pasangan `SSO_LOGIN` (menunggu_mfa) dan `LOGIN`.
 
 ---
 

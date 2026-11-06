@@ -462,16 +462,19 @@ test("garda_access hilang di tengah sesi: aksi data berikutnya pulih senyap tanp
   await expect(butir).toHaveCount(2);
 
   const awalRefresh = (await cookieBrowser(page, "garda_refresh"))?.value;
+  // Ditunggu sejak sebelum cookie dihapus. Sesi bisa pulih lewat dua jalur yang sama sahnya: klik memanggil
+  // BFF → 401 → POST /api/auth/refresh, atau prefetch tautan halaman (mis. "Kembali ke beranda") lebih dulu
+  // melewati edge → GET /api/auth/refresh?lanjut=… yang memutar token lalu mengalihkan. Yang diuji adalah
+  // pemulihan senyapnya, bukan jalur mana yang menang.
+  const refreshBerhasil = page.waitForResponse((r) => {
+    const { pathname } = new URL(r.url());
+    if (pathname !== "/api/auth/refresh") return false;
+    return r.request().method() === "POST" ? r.status() === 200 : r.status() >= 300 && r.status() < 400;
+  });
   await page.context().clearCookies({ name: "garda_access" });
   expect(await cookieBrowser(page, "garda_access")).toBeUndefined();
 
   // Aksi mutasi lewat BFF: 401 → POST /api/auth/refresh → diulang dengan cookie baru.
-  const refreshBerhasil = page.waitForResponse(
-    (r) =>
-      r.url().endsWith("/api/auth/refresh") &&
-      r.request().method() === "POST" &&
-      r.status() === 200,
-  );
   await page
     .getByRole("button", { name: "Keluar dari perangkat lain" })
     .click();
@@ -565,7 +568,20 @@ test("dua tab menyegarkan sesi bersamaan dengan cookie yang sama: keduanya berha
           body: (await res.json()) as { diputar?: boolean },
         };
       });
-    const [a, b] = await Promise.all([segarkan(page), segarkan(tab2)]);
+    // Dua evaluate di dua tab dikirim Playwright berurutan, jadi tab kedua bisa saja sudah membawa cookie
+    // baru. Agar kedua permintaan pasti membawa refresh token yang SAMA (seperti dua tab yang menyegarkan
+    // pada detik yang sama), keduanya dilepas pada tick yang sama dari satu halaman; jar cookie dipakai
+    // bersama oleh semua tab di konteks ini.
+    const [a, b] = await page.evaluate(async () => {
+      const satu = async () => {
+        const res = await fetch("/api/auth/refresh", { method: "POST" });
+        return {
+          status: res.status,
+          body: (await res.json()) as { diputar?: boolean },
+        };
+      };
+      return Promise.all([satu(), satu()]);
+    });
 
     expect([a.status, b.status]).toEqual([200, 200]);
     expect(

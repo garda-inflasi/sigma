@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { userApi } from "@/lib/bff/api-client";
+import { PARAM_DAFTAR_PENGGUNA, userApi, type ListUsersParams } from "@/lib/bff/api-client";
 import { handleRouteError, requireSession } from "@/lib/bff/handler";
 import { jsonResponse, errorResponse } from "@/lib/bff/security-headers";
 
@@ -11,12 +11,18 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const page = Number(params.get("page")) || 1;
     const limit = Number(params.get("limit")) || 100;
-    const search = params.get("search") ?? undefined;
+
+    // Filter dan urutan diteruskan apa adanya; API Go yang memvalidasi (400 untuk nilai tak dikenal).
+    const saringan: ListUsersParams = {};
+    for (const kunci of PARAM_DAFTAR_PENGGUNA) {
+      const nilai = params.get(kunci);
+      if (nilai) saringan[kunci] = nilai;
+    }
 
     const result = await userApi.list(session.accessToken, {
       page,
       limit,
-      search,
+      ...saringan,
     });
     return jsonResponse(result);
   } catch (error) {

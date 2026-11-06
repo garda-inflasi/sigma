@@ -20,6 +20,7 @@ import { unduhProyeksiCsv } from "@/lib/api/prediksi-ekspor";
 import type { StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
+import { kunciCachePengguna, type StateTabelPengguna } from "@/lib/pengguna/tabel";
 import { qk } from "./keys";
 
 const LIVE = 30_000;
@@ -348,6 +349,19 @@ export const usePengguna = (search?: string) =>
     queryKey: qk.pengguna.list(search),
     queryFn: () => (MODE_MOCK ? api.pengguna.list() : penggunaApi.list({ search })),
   });
+/**
+ * Satu halaman daftar pengguna yang dicari, disaring, diurutkan, dan dipaginasi server. Halaman sebelumnya tetap
+ * tampil selama halaman baru dimuat (tabel tidak berkedip), dan `isPlaceholderData` menandainya.
+ */
+export const usePenggunaHalaman = (state: StateTabelPengguna) =>
+  useQuery({
+    queryKey: qk.pengguna.halaman(kunciCachePengguna(state)),
+    queryFn: () => (MODE_MOCK ? api.pengguna.halaman(state) : penggunaApi.daftar(state)),
+    placeholderData: keepPreviousData,
+  });
+/** Riwayat perubahan peran satu pengguna dari audit trail; mati bila `id` kosong. Tanpa cache agar selalu segar. */
+export const useRiwayatPeran = (id: string | null) =>
+  useQuery({ queryKey: qk.pengguna.riwayatPeran(id ?? ""), queryFn: () => api.pengguna.riwayatPeran(id!), enabled: !!id, retry: false, gcTime: 0 });
 /** Pengguna lengkap dari server untuk dialog ubah; mati bila `id` kosong. Tanpa cache (gcTime 0): formulir selalu memakai data terbaru. */
 export const usePenggunaDetail = (id: string | null) =>
   useQuery({ queryKey: qk.pengguna.detail(id ?? ""), queryFn: () => api.pengguna.detail(id!), enabled: !!id, retry: false, gcTime: 0 });
@@ -603,6 +617,27 @@ export function useBukaKunciPengguna() {
     },
     onError: (err) => {
       toast.error("Gagal membuka kunci", {
+        description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    },
+  });
+}
+
+/** Reset MFA oleh admin lalu menyegarkan daftar (kolom MFA) dan riwayat; toast gagal datang dari sini. */
+export function useResetMfaPengguna() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string; nama: string }) => (MODE_MOCK ? mockDelay({ id, mfa_aktif_sebelumnya: true, sesi_dicabut: 1 }, 300, 700) : penggunaApi.resetMfa(id)),
+    onSuccess: (res, { nama }) => {
+      qc.invalidateQueries({ queryKey: qk.pengguna.all() });
+      toast.success("MFA direset", {
+        description: res.mfa_aktif_sebelumnya
+          ? `${nama} masuk dengan kata sandi dan mendaftarkan autentikator baru. ${res.sesi_dicabut.toLocaleString("id-ID")} sesi diakhiri. Tercatat di audit trail.`
+          : `${nama} memang belum memakai MFA, tidak ada yang berubah. Tercatat di audit trail.`,
+      });
+    },
+    onError: (err) => {
+      toast.error("Gagal mereset MFA", {
         description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
       });
     },

@@ -1,8 +1,9 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, Download, KeyRound, LockOpen, LogOut, MoreHorizontal, Pencil, ShieldCheck, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Check, Download, KeyRound, LockOpen, LogOut, MoreHorizontal, Pencil, ShieldCheck, ShieldOff, Trash2, UserCheck, UserPlus, UserX } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
 import { Segmented } from "@/components/garda/segmented";
@@ -18,10 +19,17 @@ import { exportCsv } from "@/lib/csv";
 import type { PenggunaRow } from "@/lib/data/types";
 import { formatRelatif, formatTanggal } from "@/lib/format";
 import { masihTerkunci, type PenggunaDetail } from "@/lib/api/pengguna";
-import { useCan } from "@/lib/auth/session-context";
+import { useCan, useOptionalSession } from "@/lib/auth/session-context";
+import { FilterPengguna } from "./filter-pengguna";
 import { LencanaTerkunci } from "./lencana-terkunci";
+import { ResetMfaDialog } from "./reset-mfa-dialog";
+import { RiwayatPeran } from "./riwayat-peran";
 import {
-  useAssignRolePengguna, useBukaKunciPengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePengguna, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
+  adalahKolomUrut, koreksiHalaman, kunciCachePengguna, parseStateTabel, queryUrlPengguna, resetFilter, toSortingState, ubahCari, ubahFilter, ubahHalaman,
+  ubahUkuran, ubahUrut, type StateTabelPengguna,
+} from "@/lib/pengguna/tabel";
+import {
+  useAssignRolePengguna, useBukaKunciPengguna, useCreatePengguna, useDeletePengguna, useKatalogAkses, usePenggunaHalaman, usePenggunaBulk, useResetPasswordPengguna, useUpdatePengguna, usePenggunaDetail,
 } from "@/lib/query/hooks";
 import { usePaksaKeluarPengguna } from "@/lib/query/sesi-hooks";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
@@ -169,7 +177,7 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
           </div>
           {kiriman.galat && <p role="alert" className="text-sm text-destructive">{kiriman.galat.pesan}</p>}
           {user && gagalMuat && <p className="text-xs text-muted-foreground">Data terbaru gagal dimuat; formulir memakai data dari daftar.</p>}
-          {user && "dibuatPada" in user && (
+          {user && "dibuatPada" in user && user.dibuatPada && (
             <dl aria-label="Rincian akun" className="grid gap-1.5 rounded-xl bg-mist-100/70 p-3 text-sm dark:bg-white/5">
               <div className="flex justify-between gap-4"><dt className="text-muted-foreground">ID pengguna</dt><dd className="num">{user.id}</dd></div>
               <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Cakupan</dt><dd>{user.wilayah}</dd></div>
@@ -179,6 +187,7 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
               <div className="flex justify-between gap-4"><dt className="text-muted-foreground">Dibuat</dt><dd>{formatTanggal(user.dibuatPada)}</dd></div>
             </dl>
           )}
+          {user && <RiwayatPeran userId={user.id} />}
         </div>
 
         <DialogFooter>
@@ -197,7 +206,7 @@ function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null
   const siap = !user || detail.isSuccess || detail.isError;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         {siap ? (
           <FormPengguna user={user ? (detail.data ?? user) : null} gagalMuat={detail.isError} onOpenChange={onOpenChange} />
         ) : (
@@ -267,7 +276,11 @@ function ResetPasswordDialog({ user, open, onOpenChange }: { user: PenggunaRow |
 
 export function PenggunaPage() {
   const [tab, setTab] = useState<"daftar" | "matriks">("daftar");
-  const { data, isLoading } = usePengguna();
+  // Keadaan tabel hidup di URL (pencarian, filter, urutan, halaman): muat ulang dan tombol kembali memulihkannya.
+  const searchParams = useSearchParams();
+  const tabelState = useMemo(() => parseStateTabel(searchParams), [searchParams]);
+  const { data, isLoading, isPlaceholderData } = usePenggunaHalaman(tabelState);
+  const idSendiri = useOptionalSession()?.id;
   const bulkMut = usePenggunaBulk();
   const hapus = useDeletePengguna();
   const assignRole = useAssignRolePengguna();
@@ -275,18 +288,33 @@ export function PenggunaPage() {
   const bolehKelola = useCan("pengguna.kelola");
   const paksaKeluar = usePaksaKeluarPengguna();
 
-  const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset"; user: PenggunaRow | null } | null>(null);
+  const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset" | "mfa"; user: PenggunaRow | null } | null>(null);
+
+  // push untuk perubahan yang layak jadi langkah "kembali" (halaman, urutan, filter); replace untuk pencarian.
+  const ubahTabel = useCallback((berikut: StateTabelPengguna, mode: "push" | "replace" = "push") => {
+    const qs = queryUrlPengguna(berikut);
+    if (qs === queryUrlPengguna(parseStateTabel(new URLSearchParams(window.location.search)))) return;
+    window.history[mode === "push" ? "pushState" : "replaceState"](null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  }, []);
+
+  // Halaman di luar jangkauan (baris terakhir dihapus, URL lama): pindah ke halaman terakhir yang ada.
+  const total = data?.total;
+  useEffect(() => {
+    if (isPlaceholderData || total === undefined) return;
+    const halaman = koreksiHalaman(tabelState, total);
+    if (halaman !== null) ubahTabel(ubahHalaman(tabelState, halaman), "replace");
+  }, [isPlaceholderData, total, tabelState, ubahTabel]);
 
   const kolom = useMemo<ColumnDef<PenggunaRow>[]>(() => [
     // Nilai kolom memuat email juga supaya kotak cari ("Cari nama, email, …") menemukan pengguna lewat email.
     { id: "nama", accessorFn: (u) => `${u.nama} ${u.email}`, header: "Nama", cell: ({ row: { original: u } }) => <div><p className="font-medium">{u.nama}</p><p className="text-xs text-muted-foreground">{u.email}</p></div> },
     { id: "peran", accessorFn: (u) => ROLES[u.role].label, header: "Peran", cell: ({ row: { original: u } }) => <div><p>{ROLES[u.role].label}</p><p className="text-xs text-muted-foreground">{LAPIS_META[ROLES[u.role].lapis].label.split(" — ")[0]}</p></div> },
-    { id: "lapis", accessorFn: (u) => ROLES[u.role].lapis, header: "Lapis", filterFn: "equals" },
     { accessorKey: "lembaga", header: "Lembaga" },
-    { accessorKey: "wilayah", header: "Cakupan", cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{getValue<string>()}</span> },
-    { accessorKey: "mfa", header: "MFA", cell: ({ getValue }) => (getValue<boolean>() ? <ShieldCheck className="size-4 text-normal" aria-label="MFA aktif" /> : <span className="text-xs text-waspada-ink">Belum</span>) },
-    { accessorKey: "terakhirMasuk", header: "Terakhir masuk", cell: ({ getValue }) => { const v = getValue<string>(); return <span className="whitespace-nowrap text-muted-foreground">{v ? formatRelatif(v) : "Belum pernah"}</span>; } },
-    { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ row: { original: u }, getValue }) => { const s = STATUS[getValue<PenggunaRow["status"]>()]; return <div className="flex flex-wrap items-center gap-1.5"><StatusBadge tone={s.tone}>{s.label}</StatusBadge><LencanaTerkunci sampai={u.terkunciSampai} /></div>; } },
+    { accessorKey: "wilayah", header: "Cakupan", enableSorting: false, cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{getValue<string>()}</span> },
+    { accessorKey: "mfa", header: "MFA", enableSorting: false, cell: ({ getValue }) => (getValue<boolean>() ? <ShieldCheck className="size-4 text-normal" aria-label="MFA aktif" /> : <span className="text-xs text-waspada-ink">Belum</span>) },
+    { id: "terakhir_masuk", accessorFn: (u) => u.terakhirMasuk, header: "Terakhir masuk", cell: ({ getValue }) => { const v = getValue<string>(); return <span className="whitespace-nowrap text-muted-foreground">{v ? formatRelatif(v) : "Belum pernah"}</span>; } },
+    { accessorKey: "status", header: "Status", cell: ({ row: { original: u }, getValue }) => { const s = STATUS[getValue<PenggunaRow["status"]>()]; return <div className="flex flex-wrap items-center gap-1.5"><StatusBadge tone={s.tone}>{s.label}</StatusBadge><LencanaTerkunci sampai={u.terkunciSampai} /></div>; } },
+    { id: "dibuat_pada", accessorFn: (u) => u.dibuatPada ?? "", header: "Dibuat", cell: ({ getValue }) => { const v = getValue<string>(); return <span className="whitespace-nowrap text-muted-foreground">{v ? formatTanggal(v) : "–"}</span>; } },
     {
       id: "_aksi", header: "", enableSorting: false, size: 48,
       cell: ({ row: { original: u } }) => (
@@ -301,6 +329,9 @@ export function PenggunaPage() {
               <DropdownMenuItem onSelect={() => bukaKunci.mutate({ id: u.id, nama: u.nama })}><LockOpen /> Buka kunci</DropdownMenuItem>
             )}
             <DropdownMenuItem onSelect={() => paksaKeluar.mutate({ id: u.id, nama: u.nama })}><LogOut /> Paksa keluar</DropdownMenuItem>
+            {bolehKelola && u.mfa && u.id !== idSendiri && (
+              <DropdownMenuItem onSelect={() => setDialog({ mode: "mfa", user: u })}><ShieldOff /> Reset MFA</DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => assignRole.mutate({ id: u.id, peran: u.role === "ADMIN_SISTEM" ? "OPS_MAHASISWA" : "ADMIN_SISTEM" })}>
               <ShieldCheck /> {u.role === "ADMIN_SISTEM" ? "Cabut admin sistem" : "Jadikan admin sistem"}
@@ -311,23 +342,33 @@ export function PenggunaPage() {
         </DropdownMenu>
       ),
     },
-  ], [assignRole, hapus, bukaKunci, bolehKelola, paksaKeluar]);
+  ], [assignRole, hapus, bukaKunci, bolehKelola, paksaKeluar, idSendiri]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader title="Pengguna & peran" description="RBAC tiga lapis dengan SSO, MFA, dan prinsip least privilege. Perubahan akun tercatat di audit trail."
         actions={<Segmented layoutId="pengguna-tab" size="sm" value={tab} onChange={setTab} options={[{ value: "daftar", label: "Daftar pengguna" }, { value: "matriks", label: "Matriks akses" }]} />} />
       {tab === "matriks" ? <MatriksAkses /> : (
-        <DataTable data={data} isLoading={isLoading} columns={kolom} getRowId={(r) => r.id} entityLabel="pengguna" hiddenColumns={["lapis"]} searchPlaceholder="Cari nama, email, peran, atau lembaga"
+        <DataTable data={data?.rows} isLoading={isLoading} columns={kolom} getRowId={(r) => r.id} entityLabel="pengguna" searchPlaceholder="Cari nama, email, peran, atau lembaga"
+          server={{
+            total: data?.total ?? 0,
+            page: tabelState.page,
+            pageSize: tabelState.limit,
+            onPageChange: (p) => ubahTabel(ubahHalaman(tabelState, p)),
+            onPageSizeChange: (n) => ubahTabel(ubahUkuran(tabelState, n)),
+            search: tabelState.search,
+            onSearchChange: (q) => ubahTabel(ubahCari(tabelState, q), "replace"),
+            sorting: toSortingState(tabelState),
+            onSortToggle: (id) => adalahKolomUrut(id) && ubahTabel(ubahUrut(tabelState, id)),
+            kunciKueri: kunciCachePengguna(tabelState),
+            isFetching: isPlaceholderData,
+          }}
+          filterBar={<FilterPengguna state={tabelState} onFilter={(kunci, nilai) => ubahTabel(ubahFilter(tabelState, kunci, nilai))} onReset={() => ubahTabel(resetFilter(tabelState))} />}
           toolbar={
             <SpringButton variant="primary" size="sm" onClick={() => setDialog({ mode: "buat", user: null })}>
               <UserPlus /> Tambah pengguna
             </SpringButton>
           }
-          facets={[
-            { columnId: "lapis", label: "Lapis", options: Object.entries(LAPIS_META).map(([value, v]) => ({ value, label: v.label.split(" — ")[0] })) },
-            { columnId: "status", label: "Status", options: Object.entries(STATUS).map(([value, v]) => ({ value, label: v.label })) },
-          ]}
           bulkActions={[
             { id: "aktifkan", label: "Aktifkan", icon: UserCheck, perm: "pengguna.kelola", tone: "data", enabled: (r) => r.every((u) => u.status !== "AKTIF"), run: (r) => bulkMut.mutateAsync({ aksi: "aktifkan", ids: r.map((u) => u.id), label: "Aktifkan" }) },
             { id: "nonaktifkan", label: "Nonaktifkan", icon: UserX, perm: "pengguna.kelola", tone: "danger", enabled: (r) => r.every((u) => u.status === "AKTIF"), confirm: { title: "Nonaktifkan akun terpilih?", description: (n) => `${n} akun tidak dapat masuk dan seluruh sesinya diakhiri. Data yang pernah diinput tetap tersimpan.`, actionLabel: "Nonaktifkan" }, run: (r) => bulkMut.mutateAsync({ aksi: "nonaktifkan", ids: r.map((u) => u.id), label: "Nonaktifkan" }) },
@@ -338,6 +379,7 @@ export function PenggunaPage() {
       )}
       <p className={cn("text-xs text-muted-foreground", tab === "matriks" ? "block" : "hidden")}>Matriks ini dibaca dari API (GET /v1/roles dan /v1/permissions), sumber izin yang sama dengan penegakan di backend.</p>
 
+      {dialog?.mode === "mfa" && <ResetMfaDialog user={dialog.user} open onOpenChange={(v) => !v && setDialog(null)} />}
       {dialog?.mode === "reset" ? (
         <ResetPasswordDialog user={dialog.user} open onOpenChange={(v) => !v && setDialog(null)} />
       ) : (

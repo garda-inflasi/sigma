@@ -230,7 +230,18 @@ export interface ListUsersParams {
   page?: number;
   limit?: number;
   search?: string;
+  /** Filter dan urutan daftar pengguna; nilainya divalidasi API (400 bila tak dikenal). */
+  peran?: string;
+  status?: string;
+  lapis?: string;
+  mfa?: string;
+  terkunci?: string;
+  sort?: string;
+  arah?: string;
 }
+
+/** Parameter kueri daftar pengguna yang diteruskan BFF ke API; yang lain dibuang. */
+export const PARAM_DAFTAR_PENGGUNA = ["search", "peran", "status", "lapis", "mfa", "terkunci", "sort", "arah"] as const;
 
 export interface ListUsersResponse {
   items: UserResponse[];
@@ -408,7 +419,10 @@ export const userApi = {
     const qs = new URLSearchParams();
     if (params.page) qs.set("page", String(params.page));
     if (params.limit) qs.set("limit", String(params.limit));
-    if (params.search) qs.set("search", params.search);
+    for (const kunci of PARAM_DAFTAR_PENGGUNA) {
+      const nilai = params[kunci];
+      if (nilai) qs.set(kunci, nilai);
+    }
     const query = qs.toString();
     return apiFetch<ListUsersResponse>(`/users${query ? `?${query}` : ""}`, {
       method: "GET",
@@ -461,6 +475,23 @@ export const userApi = {
         body: JSON.stringify({ new_password: newPassword }),
       }
     ),
+
+  /** Reset MFA seorang pengguna oleh admin (izin pengguna.kelola): MFA mati dan semua sesinya berakhir. */
+  resetMfa: (accessToken: string, id: string) =>
+    apiFetch<{ id: string; mfa_aktif_sebelumnya: boolean; sesi_dicabut: number }>(
+      `/users/${encodeURIComponent(id)}/reset-mfa`,
+      {
+        method: "POST",
+        headers: bearer(accessToken),
+      }
+    ),
+
+  /** Riwayat perubahan peran seorang pengguna dari audit trail (izin pengguna.kelola). */
+  riwayatPeran: (accessToken: string, id: string) =>
+    apiFetch<unknown>(`/users/${encodeURIComponent(id)}/riwayat-peran`, {
+      method: "GET",
+      headers: bearer(accessToken),
+    }),
 
   /** Membuka kunci login (lockout) satu pengguna. */
   bukaKunci: (accessToken: string, id: string) =>

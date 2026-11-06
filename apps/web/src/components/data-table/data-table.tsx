@@ -14,6 +14,7 @@ import { toneClass, type Tone } from "@/lib/design/tokens";
 import { fadeIn } from "@/lib/motion/presets";
 import { cn } from "@/lib/utils";
 import { BulkActionBar, type BulkAction } from "./bulk-action-bar";
+import { catatanPilihanHalaman, jumlahHalamanTabel, rentangBaris, type ServerTable } from "./server-mode";
 
 export interface Facet {
   columnId: string;
@@ -40,6 +41,13 @@ interface DataTableProps<T> {
   empty?: { title: string; description: string; action?: ReactNode };
   /** Kolom yang hanya dipakai untuk filter/facet, tidak ditampilkan */
   hiddenColumns?: string[];
+  /**
+   * Mode server: `data` adalah SATU halaman dari server, dan pencarian, urutan, filter, serta paginasi dijalankan
+   * di sana (lihat ServerTable). Tanpa ini tabel bekerja di klien atas seluruh `data`, seperti biasa.
+   */
+  server?: ServerTable;
+  /** Baris tambahan di bawah toolbar, mis. kontrol filter khusus halaman (mode server). */
+  filterBar?: ReactNode;
   className?: string;
 }
 
@@ -52,7 +60,7 @@ interface DataTableProps<T> {
  */
 export function DataTable<T>({
   data, columns, getRowId, entityLabel, bulkActions = [], isLoading, searchPlaceholder = "Cari…", facets = [],
-  initialFilters = [], initialSorting = [], toolbar, pageSize = 25, rowTone, onRowClick, empty, hiddenColumns = [], className,
+  initialFilters = [], initialSorting = [], toolbar, pageSize = 25, rowTone, onRowClick, empty, hiddenColumns = [], server, filterBar, className,
 }: DataTableProps<T>) {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => Object.fromEntries(hiddenColumns.map((c) => [c, false])));
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -60,6 +68,41 @@ export function DataTable<T>({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(initialFilters);
   const [globalFilter, setGlobalFilter] = useState("");
   const lastIndex = useRef<number | null>(null);
+
+  // Mode server: kotak cari memegang draft ketikan; kata kunci dikirim ke server setelah jeda ketik atau Enter.
+  const adaServer = !!server;
+  const searchServer = server?.search;
+  const jedaCari = server?.searchDelayMs ?? 300;
+  const [draftCari, setDraftCari] = useState(searchServer ?? "");
+  const cariDikirim = useRef(searchServer ?? "");
+  const kirimCari = useRef(server?.onSearchChange);
+  useEffect(() => {
+    kirimCari.current = server?.onSearchChange;
+  });
+  // Kata kunci berubah dari luar (tombol kembali, tautan): kotak cari ikut.
+  useEffect(() => {
+    if (searchServer === undefined || searchServer === cariDikirim.current) return;
+    cariDikirim.current = searchServer;
+    setDraftCari(searchServer);
+  }, [searchServer]);
+  useEffect(() => {
+    if (!adaServer) return;
+    const kata = draftCari.trim();
+    if (kata === searchServer) return;
+    const timer = setTimeout(() => {
+      cariDikirim.current = kata;
+      kirimCari.current?.(kata);
+    }, jedaCari);
+    return () => clearTimeout(timer);
+  }, [adaServer, draftCari, searchServer, jedaCari]);
+
+  // Mode server: pilihan baris hanya berlaku untuk halaman yang tampil, jadi dibersihkan begitu kueri (halaman,
+  // urutan, pencarian, filter) berubah. Aksi massal tidak boleh mengenai baris yang sudah tidak terlihat.
+  const [kunciTampil, setKunciTampil] = useState(server?.kunciKueri);
+  if (server && server.kunciKueri !== kunciTampil) {
+    setKunciTampil(server.kunciKueri);
+    setRowSelection({});
+  }
 
   const selectColumn = useMemo<ColumnDef<T>>(
     () => ({
@@ -83,7 +126,14 @@ export function DataTable<T>({
     data: data ?? [],
     columns: useMemo(() => (bulkActions.length ? [selectColumn, ...columns] : columns), [bulkActions.length, selectColumn, columns]),
     getRowId: (r) => getRowId(r),
-    state: { rowSelection, sorting, columnFilters, globalFilter, columnVisibility },
+    state: {
+      rowSelection, sorting: server ? server.sorting : sorting, columnFilters, globalFilter: server ? "" : globalFilter, columnVisibility,
+      ...(server ? { pagination: { pageIndex: server.page - 1, pageSize: server.pageSize } } : {}),
+    },
+    manualPagination: adaServer,
+    manualSorting: adaServer,
+    manualFiltering: adaServer,
+    rowCount: server?.total,
     onColumnVisibilityChange: setColumnVisibility,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -139,8 +189,12 @@ export function DataTable<T>({
   const allPageSelected = table.getIsAllPageRowsSelected();
   const allFilteredSelected = filteredRows.length > 0 && filteredRows.every((r) => rowSelection[r.id]);
   const { pageIndex, pageSize: ps } = table.getState().pagination;
-  const from = filteredRows.length ? pageIndex * ps + 1 : 0;
-  const to = Math.min(filteredRows.length, (pageIndex + 1) * ps);
+  const totalBaris = server ? server.total : filteredRows.length;
+  const { from, to } = server
+    ? rentangBaris(server.total, server.page, server.pageSize)
+    : { from: filteredRows.length ? pageIndex * ps + 1 : 0, to: Math.min(filteredRows.length, (pageIndex + 1) * ps) };
+  const jumlahHal = server ? jumlahHalamanTabel(server.total, server.pageSize) : Math.max(1, table.getPageCount());
+  const catatanServer = server ? catatanPilihanHalaman(selectedRows.length, pageRows.length, server.total, entityLabel) : null;
 
   return (
     <div className={cn("glass overflow-hidden rounded-xl", className)}>
@@ -149,8 +203,17 @@ export function DataTable<T>({
         <label className="relative flex-1 lg:max-w-sm">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
+            value={server ? draftCari : globalFilter}
+            onChange={(e) => (server ? setDraftCari(e.target.value) : setGlobalFilter(e.target.value))}
+            onKeyDown={(e) => {
+              // Enter mengirim kata kunci tanpa menunggu jeda ketik.
+              if (!server || e.key !== "Enter") return;
+              const kata = draftCari.trim();
+              if (kata !== server.search) {
+                cariDikirim.current = kata;
+                server.onSearchChange(kata);
+              }
+            }}
             placeholder={searchPlaceholder}
             className="h-10 w-full rounded-md border border-input bg-white/70 pr-3 pl-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:shadow-glow-data dark:bg-white/5"
           />
@@ -175,6 +238,7 @@ export function DataTable<T>({
           {toolbar}
         </div>
       </div>
+      {filterBar && <div className="border-b border-border/70 px-4 py-3">{filterBar}</div>}
 
       {/* Banner pilih-semua lintas halaman */}
       <AnimatePresence initial={false}>
@@ -200,8 +264,16 @@ export function DataTable<T>({
         )}
       </AnimatePresence>
 
+      {/* Mode server: pilihan tidak pernah lintas halaman; jelaskan agar tidak ambigu */}
+      {catatanServer && (
+        <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-border/70 bg-data-50/70 px-4 py-2 text-sm text-data-800 dark:bg-data-500/10 dark:text-data-200">
+          {catatanServer}
+          <button type="button" onClick={clear} className="font-semibold underline-offset-4 hover:underline">Batalkan pilihan</button>
+        </div>
+      )}
+
       {/* Tabel */}
-      <div className="scrollbar-thin overflow-x-auto">
+      <div aria-busy={server?.isFetching || undefined} className={cn("scrollbar-thin overflow-x-auto transition-opacity", server?.isFetching && "opacity-60")}>
         {isLoading ? (
           <TableSkeleton cols={Math.min(6, columns.length)} />
         ) : (
@@ -215,11 +287,12 @@ export function DataTable<T>({
                     return (
                       <th
                         key={h.id}
+                        aria-sort={sortable ? (dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none") : undefined}
                         style={{ width: h.getSize() !== 150 ? h.getSize() : undefined }}
                         className="h-11 border-b border-border/70 px-3 text-left text-xs font-medium whitespace-nowrap text-muted-foreground first:pl-5"
                       >
                         {h.isPlaceholder ? null : sortable ? (
-                          <button type="button" onClick={h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 hover:text-foreground">
+                          <button type="button" onClick={server ? () => server.onSortToggle(h.column.id) : h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 hover:text-foreground">
                             {flexRender(h.column.columnDef.header, h.getContext())}
                             {dir === "asc" ? <ArrowUp className="size-3" /> : dir === "desc" ? <ArrowDown className="size-3" /> : <ChevronsUpDown className="size-3 opacity-40" />}
                           </button>
@@ -281,7 +354,7 @@ export function DataTable<T>({
       <div className="flex flex-col items-center justify-between gap-3 px-5 py-3 text-sm text-muted-foreground sm:flex-row">
         <span>
           <span className="num text-foreground">{from.toLocaleString("id-ID")}–{to.toLocaleString("id-ID")}</span> dari{" "}
-          <span className="num text-foreground">{filteredRows.length.toLocaleString("id-ID")}</span> {entityLabel}
+          <span className="num text-foreground">{totalBaris.toLocaleString("id-ID")}</span> {entityLabel}
           {selectedRows.length > 0 && (
             <span className="ml-2 rounded-full bg-data-50 px-2 py-0.5 text-xs text-data-700 dark:bg-data-500/15 dark:text-data-300">
               <span className="num">{selectedRows.length.toLocaleString("id-ID")}</span> terpilih
@@ -289,13 +362,13 @@ export function DataTable<T>({
           )}
         </span>
         <div className="flex items-center gap-2">
-          <Select value={String(ps)} onValueChange={(v: string) => table.setPageSize(Number(v))}>
+          <Select value={String(ps)} onValueChange={(v: string) => (server ? server.onPageSizeChange(Number(v)) : table.setPageSize(Number(v)))}>
             <SelectTrigger className="h-8 w-[110px] rounded-md"><SelectValue /></SelectTrigger>
             <SelectContent>{[10, 25, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n} / halaman</SelectItem>)}</SelectContent>
           </Select>
-          <button type="button" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></button>
-          <span className="num min-w-14 text-center text-foreground">{pageIndex + 1} / {Math.max(1, table.getPageCount())}</span>
-          <button type="button" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></button>
+          <button type="button" onClick={() => (server ? server.onPageChange(server.page - 1) : table.previousPage())} disabled={!table.getCanPreviousPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></button>
+          <span className="num min-w-14 text-center text-foreground">{pageIndex + 1} / {jumlahHal}</span>
+          <button type="button" onClick={() => (server ? server.onPageChange(server.page + 1) : table.nextPage())} disabled={!table.getCanNextPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></button>
         </div>
       </div>
 

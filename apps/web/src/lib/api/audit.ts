@@ -53,6 +53,25 @@ export interface AuditFilter {
   q?: string;
 }
 
+/**
+ * Filter audit dari kueri URL halaman /audit, mis. tautan "Lihat di audit trail" pada riwayat peran
+ * (`/audit?entitas=pengguna&entitas_id=…`). Hanya kunci yang dikenal dan bernilai sah yang diambil; sisanya diabaikan.
+ */
+export function filterAuditDariQuery(params: { get(name: string): string | null }): AuditFilter {
+  const filter: AuditFilter = {};
+  for (const kunci of ["aktor", "aksi", "entitas", "entitas_id", "correlation_id", "q"] as const) {
+    const nilai = params.get(kunci)?.trim();
+    if (nilai) filter[kunci] = nilai.slice(0, 200);
+  }
+  for (const kunci of ["dari", "sampai"] as const) {
+    const nilai = params.get(kunci);
+    if (nilai && /^\d{4}-\d{2}-\d{2}$/.test(nilai)) filter[kunci] = nilai;
+  }
+  const hasil = params.get("hasil");
+  if (hasil === "BERHASIL" || hasil === "GAGAL" || hasil === "DITOLAK") filter.hasil = hasil;
+  return filter;
+}
+
 export interface AuditPage {
   rows: AuditRow[];
   nextCursor?: string;
@@ -71,6 +90,7 @@ export const AUDIT_AKSI = [
   "UPDATE_USER",
   "DELETE_USER",
   "ASSIGN_ROLE",
+  "RESET_MFA",
   "BULK_aktifkan",
   "BULK_nonaktifkan",
   "BULK_wajibkan_mfa",

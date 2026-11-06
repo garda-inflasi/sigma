@@ -7,6 +7,8 @@ import { bffFetch } from "./client";
 import { namaWilayah } from "@/lib/data/generators";
 import { ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import type { PenggunaRow } from "@/lib/data/types";
+import { queryApiPengguna, type StateTabelPengguna } from "@/lib/pengguna/tabel";
+import { toRiwayatPeran, type RiwayatPeran, type RiwayatPeranResponse } from "@/lib/pengguna/riwayat-peran";
 
 /** Bentuk data pengguna sebagaimana dikirim backend Go. */
 export interface UserResponse {
@@ -92,6 +94,7 @@ export function toPenggunaRow(u: UserResponse): PenggunaRow {
     mfa: u.mfa_aktif,
     terakhirMasuk: toTerakhirMasuk(u.terakhir_masuk),
     terkunciSampai: u.terkunci_sampai,
+    dibuatPada: u.dibuat_pada,
   };
 }
 
@@ -118,6 +121,23 @@ export interface PenggunaDetail extends PenggunaRow {
 
 export function toPenggunaDetail(u: UserResponse): PenggunaDetail {
   return { ...toPenggunaRow(u), kabupatenKode: u.kabupaten_kode, dibuatPada: u.dibuat_pada };
+}
+
+/** Satu halaman daftar pengguna dari server beserta jumlah seluruh yang cocok dengan filter. */
+export interface HalamanPengguna {
+  rows: PenggunaRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Hasil POST /v1/users/{id}/reset-mfa. */
+export interface ResetMfaResult {
+  id: string;
+  /** False bila pengguna memang tanpa MFA: tidak ada yang berubah dan sesinya tidak dicabut. */
+  mfa_aktif_sebelumnya: boolean;
+  /** Jumlah sesi pengguna yang diakhiri. */
+  sesi_dicabut: number;
 }
 
 export interface CreatePenggunaInput {
@@ -168,6 +188,12 @@ export const penggunaApi = {
     }
   },
 
+  /** Satu halaman pengguna: pencarian, filter, urutan, dan paginasi dijalankan server (GET /v1/users). */
+  daftar: async (state: StateTabelPengguna): Promise<HalamanPengguna> => {
+    const res = await bffFetch<ListUsersResponse>(`/api/pengguna?${queryApiPengguna(state)}`);
+    return { rows: res.items.map(toPenggunaRow), total: res.total, page: res.page, limit: res.limit };
+  },
+
   /** Satu pengguna dengan data segar dari server (GET /v1/users/{id}); 404 (ApiError) bila tidak ada. */
   get: async (id: string) => {
     const res = await bffFetch<UserResponse>(`/api/pengguna/${encodeURIComponent(id)}`);
@@ -212,6 +238,16 @@ export const penggunaApi = {
       { method: "PUT", body: JSON.stringify({ peran }) }
     );
     return toPenggunaRow(res);
+  },
+
+  /** Reset MFA oleh admin: MFA mati, rahasia dan kode cadangan dihapus, semua sesi pengguna berakhir. */
+  resetMfa: (id: string) =>
+    bffFetch<ResetMfaResult>(`/api/pengguna/${encodeURIComponent(id)}/reset-mfa`, { method: "POST" }),
+
+  /** Riwayat perubahan peran satu pengguna (dari audit trail), terbaru dulu. */
+  riwayatPeran: async (id: string): Promise<RiwayatPeran> => {
+    const res = await bffFetch<RiwayatPeranResponse>(`/api/pengguna/${encodeURIComponent(id)}/riwayat-peran`);
+    return toRiwayatPeran(res);
   },
 
   /** Membuka kunci login (lockout) satu pengguna; tercatat di audit. */

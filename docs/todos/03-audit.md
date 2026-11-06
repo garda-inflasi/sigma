@@ -44,6 +44,7 @@
 2. **FE**
    - [x] Pencarian `q`, rentang tanggal (sudah ada), panel detail dengan diff, filter "jejak objek ini" / "satu permintaan", tombol "Ekspor CSV sesuai filter".
    - [x] Tautan ke halaman terkait objek (halaman daftar; belum ada deep-link ke satu baris karena halaman tujuan belum mendukungnya).
+   - [x] Filter awal `/audit` dari kueri URL (`entitas`, `entitas_id`, `aksi`, `aktor`, `hasil`, `q`, `dari`, `sampai`, `correlation_id`), dipakai tautan "Lihat di audit trail" pada riwayat peran pengguna ([02](02-pengguna-rbac.md)). Aksi `RESET_MFA` (reset MFA oleh admin) ditambahkan ke pilihan aksi.
 3. **TES**
    - [x] Ekspor sesuai filter, tercatat sebagai `EKSPOR_DATA`, anti-injeksi rumus, 401/403/400; detail + diff; filter lanjutan; unit `DiffState` dan paginasi ekspor.
 

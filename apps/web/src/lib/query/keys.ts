@@ -65,7 +65,9 @@ export const qk = {
   pengguna: {
     all: () => ["pengguna"] as const,
     list: (search?: string) => ["pengguna", "list", search ?? ""] as const,
+    halaman: (kunci: string) => ["pengguna", "halaman", kunci] as const,
     detail: (id: string) => ["pengguna", "detail", id] as const,
+    riwayatPeran: (id: string) => ["pengguna", "riwayat-peran", id] as const,
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
   sesi: { aktif: () => ["sesi", "aktif"] as const },

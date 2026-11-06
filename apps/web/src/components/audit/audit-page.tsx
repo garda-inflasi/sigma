@@ -2,12 +2,13 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { Download, Flag, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
-import type { AuditFilter } from "@/lib/api/audit";
+import { filterAuditDariQuery, type AuditFilter } from "@/lib/api/audit";
 import { exportCsv } from "@/lib/csv";
 import type { AuditRow } from "@/lib/data/types";
 import { formatTanggal } from "@/lib/format";
@@ -22,7 +23,9 @@ const HASIL_BADGE = {
 } as const;
 
 export function AuditPage() {
-  const [filter, setFilter] = useState<AuditFilter>({});
+  // Tautan dari halaman lain (mis. riwayat peran pengguna) membuka audit yang sudah disaring lewat kueri URL.
+  const params = useSearchParams();
+  const [filter, setFilter] = useState<AuditFilter>(() => filterAuditDariQuery(params));
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useAudit(filter);
   const rows = useMemo(() => data?.pages.flatMap((p) => p.rows), [data]);

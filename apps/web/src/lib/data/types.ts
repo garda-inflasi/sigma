@@ -271,6 +271,8 @@ export interface PenggunaRow {
   terakhirMasuk: string;
   /** Akhir kunci login (ISO 8601) bila akun sedang terkunci karena percobaan gagal berulang; kosong bila tidak. */
   terkunciSampai?: string;
+  /** Waktu akun dibuat (ISO 8601); kosong pada data mock. */
+  dibuatPada?: string;
 }
 
 export interface AuditRow {

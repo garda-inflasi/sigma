@@ -147,6 +147,12 @@ export function AuditFilterBar({
           onClear={() => set({ entitas_id: undefined })}
         />
       )}
+      {filter.entitas && (
+        <Terpasang
+          label={`Entitas ${filter.entitas}`}
+          onClear={() => set({ entitas: undefined })}
+        />
+      )}
       {filter.correlation_id && (
         <Terpasang
           label="Satu permintaan"

@@ -18,6 +18,7 @@ import {
   test,
   tungguTenang,
 } from "./fixtures";
+import { cariPengguna } from "./pengguna-helpers";
 
 const ALERT_ID = "EWS-E2E-1";
 const ALERT_JUDUL = "E2E uji detail peringatan";
@@ -449,9 +450,7 @@ test.describe("detail pengguna", () => {
     await masukSebagai(page, "superadmin");
     await buka(page, "/pengguna");
     await tungguTenang(page);
-    await page
-      .getByPlaceholder("Cari nama, email, peran, atau lembaga")
-      .fill(server.nama);
+    await cariPengguna(page, server.nama);
 
     await page
       .getByRole("button", { name: `Aksi untuk ${server.nama}`, exact: true })

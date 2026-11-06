@@ -49,7 +49,9 @@ import {
 } from "./prediksi";
 import { mockBarisModel, mockBarisProyeksi, mockSimulasi } from "./prediksi-mock";
 import { penggunaApi, type KatalogAkses, type PenggunaDetail } from "./pengguna";
-import { mockPenggunaDetail } from "./pengguna-mock";
+import { mockPenggunaDetail, queryMockPengguna } from "./pengguna-mock";
+import type { StateTabelPengguna } from "@/lib/pengguna/tabel";
+import { toRiwayatPeran, type RiwayatPeran } from "@/lib/pengguna/riwayat-peran";
 import { USERS } from "@/lib/data/reference";
 import { toEksekusi, toPipeline, toSampel, toSumberData, toSumberDetail, type SumberDetailData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
@@ -368,6 +370,10 @@ export const api = {
   },
   pengguna: {
     list: () => (MODE_MOCK ? mockDelay(m.mockPengguna) : penggunaApi.list()),
+    /** Satu halaman daftar pengguna; mode mock menyaring, mengurutkan, dan memaginasi di memori. */
+    halaman: (state: StateTabelPengguna) => (MODE_MOCK ? mockDelay(() => queryMockPengguna(m.mockPengguna(), state)) : penggunaApi.daftar(state)),
+    riwayatPeran: (id: string): Promise<RiwayatPeran> =>
+      MODE_MOCK ? mockDelay(toRiwayatPeran({ items: [], terpotong: false })) : penggunaApi.riwayatPeran(id),
     detail: (id: string): Promise<PenggunaDetail> =>
       MODE_MOCK
         ? mockDelay(() => {

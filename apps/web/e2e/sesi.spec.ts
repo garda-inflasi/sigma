@@ -32,6 +32,7 @@ import {
   test,
   tungguTenang,
 } from "./fixtures";
+import { cariPengguna } from "./pengguna-helpers";
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
 
@@ -703,9 +704,7 @@ test("admin Paksa keluar di /pengguna mengakhiri semua sesi pengguna itu", async
 
   await masukSebagai(page, "superadmin");
   await buka(page, "/pengguna");
-  await page
-    .getByPlaceholder("Cari nama, email, peran, atau lembaga")
-    .fill(target.email);
+  await cariPengguna(page, target.email);
   await page.getByRole("button", { name: `Aksi untuk ${nama}` }).click();
   await page.getByRole("menuitem", { name: "Paksa keluar" }).click();
 

@@ -38,6 +38,7 @@ import {
   tungguTenang,
   type PantauGalat,
 } from "./fixtures";
+import { cariPengguna } from "./pengguna-helpers";
 
 // Tes yang menunggu jendela laju BFF atau hitung mundur bisa berjalan lebih dari semenit.
 test.describe.configure({ timeout: 180_000 });
@@ -268,18 +269,18 @@ test("lima kata sandi salah mengunci: form menampilkan sisa waktu, kata sandi be
     await masukSebagai(page, "superadmin");
     await buka(page, "/pengguna");
     await tungguTenang(page);
-    await page.getByPlaceholder(/^Cari nama, email/).fill(uKunci.email);
+    await cariPengguna(page, uKunci.email);
     const baris = page.getByRole("row").filter({ hasText: uKunci.email });
     await expect(baris).toHaveCount(1);
     await expect(baris.getByText("Terkunci")).toBeVisible();
     await expect(baris.getByRole("timer")).toContainText(/mnt|dtk/);
     // Pengguna lain tidak ditandai terkunci.
-    await page.getByPlaceholder(/^Cari nama, email/).fill(uBanding.email);
+    await cariPengguna(page, uBanding.email);
     await expect(
       page.getByRole("row").filter({ hasText: uBanding.email }),
     ).toHaveCount(1);
     await expect(page.getByRole("timer")).toHaveCount(0);
-    await page.getByPlaceholder(/^Cari nama, email/).fill(uKunci.email);
+    await cariPengguna(page, uKunci.email);
   });
 
   await test.step("admin membuka kunci dari menu aksi baris", async () => {

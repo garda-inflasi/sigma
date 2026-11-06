@@ -242,6 +242,8 @@ func (h *Handler) CreateUser(c *gin.Context) {
 }
 
 // GET /v1/users
+// Daftar pengguna sisi server: pencarian, filter (peran, status, lapis, mfa, terkunci), urutan (sort, arah),
+// dan paginasi (page, limit maks 100). Parameter yang salah dijawab 400.
 func (h *Handler) ListUsers(c *gin.Context) {
 	var req dto.ListUserRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -249,15 +251,21 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		return
 	}
 
-	if req.Page < 1 {
-		req.Page = 1
+	query, err := req.Query()
+	if err == nil {
+		// Dinormalkan lebih dulu supaya page/limit di respons adalah nilai yang benar-benar dipakai.
+		query, err = query.Normal()
 	}
-	if req.Limit < 1 || req.Limit > 100 {
-		req.Limit = 20
+	if err != nil {
+		jawabGalatFilterPengguna(c, err)
+		return
 	}
 
-	users, total, err := h.uc.ListUsers(c.Request.Context(), req.Page, req.Limit, req.Search)
+	users, total, err := h.uc.ListUsers(c.Request.Context(), query)
 	if err != nil {
+		if jawabGalatFilterPengguna(c, err) {
+			return
+		}
 		response.InternalError(c, "Gagal mengambil data")
 		return
 	}
@@ -271,8 +279,8 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	response.Success(c, dto.ListResponse{
 		Items: items,
 		Total: total,
-		Page:  req.Page,
-		Limit: req.Limit,
+		Page:  query.Page,
+		Limit: query.Limit,
 	})
 }
 

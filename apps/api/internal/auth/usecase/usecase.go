@@ -466,11 +466,6 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 	return nil
 }
 
-// ListUsers returns a paginated list of users, optionally filtered by a search term.
-func (uc *UseCase) ListUsers(ctx context.Context, page, limit int, search string) ([]domain.Pengguna, int64, error) {
-	return uc.repo.ListUsers(ctx, page, limit, search)
-}
-
 // GetUser returns a user by ID.
 func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, error) {
 	user, err := uc.repo.GetUserByID(ctx, id)
@@ -533,18 +528,23 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 
 	// Menonaktifkan akun dan mengganti peran sama-sama harus mengakhiri sesi aktifnya: access token lama
 	// masih membawa izin peran sebelumnya (AssignRole sudah begitu; PATCH tidak boleh menjadi jalan pintas).
+	var revokeErr error
 	if (patch.Status != nil && *patch.Status != "AKTIF") || sesudah.Peran != sebelum.Peran {
-		if err := uc.revokeAllSessions(ctx, sesudah.ID); err != nil {
-			return nil, err
-		}
+		revokeErr = uc.revokeAllSessions(ctx, sesudah.ID)
 	}
 
 	// Snapshot dari baris yang dibaca PatchUser sendiri: selisih sebelum/sesudah hanya berisi apa yang ditulis
-	// permintaan ini, bukan perubahan serentak pihak lain.
+	// permintaan ini, bukan perubahan serentak pihak lain. Perubahan sudah tersimpan, jadi dicatat APA PUN
+	// hasil pencabutan sesi (jejak dan riwayat peran tidak boleh kehilangan perubahan yang nyata); kegagalan
+	// pencabutan dilaporkan ke pemanggil dan ditandai di metadata.
 	uc.writeAudit(ctx, audit.Entry{
 		AktorID: actorID, Aksi: "UPDATE_USER", Entitas: "pengguna", EntitasID: sesudah.ID,
 		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
+		Metadata: metadataSesiGagal(revokeErr),
 	})
+	if revokeErr != nil {
+		return nil, revokeErr
+	}
 	return sesudah, nil
 }
 
@@ -622,14 +622,17 @@ func (uc *UseCase) AssignRole(ctx context.Context, id, role, actorID string) (*d
 		return nil, fmt.Errorf("assign role: %w", err)
 	}
 
-	if err := uc.revokeAllSessions(ctx, sesudah.ID); err != nil {
-		return nil, err
-	}
-
+	// Peran sudah tersimpan: perubahan itu tercatat di audit (dan riwayat peran) APA PUN hasil pencabutan sesi.
+	// Pencabutan yang gagal dilaporkan ke pemanggil dan ditandai di metadata, bukan menghapus jejak perubahan.
+	revokeErr := uc.revokeAllSessions(ctx, sesudah.ID)
 	uc.writeAudit(ctx, audit.Entry{
 		AktorID: actorID, Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: sesudah.ID,
 		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
+		Metadata: metadataSesiGagal(revokeErr),
 	})
+	if revokeErr != nil {
+		return nil, revokeErr
+	}
 	return sesudah, nil
 }
 
@@ -738,6 +741,14 @@ func (uc *UseCase) writeAudit(ctx context.Context, entry audit.Entry) {
 	if err := uc.audit.Write(ctx, entry); err != nil {
 		uc.log.Warn("auth: gagal mencatat audit", map[string]interface{}{"aksi": entry.Aksi, "error": err.Error()})
 	}
+}
+
+// metadataSesiGagal menandai entri audit perubahan akun yang sesinya gagal dicabut (nil bila berhasil).
+func metadataSesiGagal(revokeErr error) map[string]any {
+	if revokeErr == nil {
+		return nil
+	}
+	return map[string]any{"pencabutan_sesi_gagal": true}
 }
 
 // userSnapshot adalah keadaan pengguna yang aman disimpan di audit (tanpa rahasia).

@@ -95,8 +95,8 @@ func (m *mockRepository) SetMFASecret(ctx context.Context, userID, secretTersege
 	return err == nil, err
 }
 
-func (m *mockRepository) ListUsers(ctx context.Context, page, limit int, search string) ([]domain.Pengguna, int64, error) {
-	args := m.Called(ctx, page, limit, search)
+func (m *mockRepository) ListUsers(ctx context.Context, q domain.DaftarPenggunaQuery) ([]domain.Pengguna, int64, error) {
+	args := m.Called(ctx, q)
 	return args.Get(0).([]domain.Pengguna), args.Get(1).(int64), args.Error(2)
 }
 

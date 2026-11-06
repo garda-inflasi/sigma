@@ -9,6 +9,11 @@ type Repository interface {
 	// KunciRepository menyimpan lockout login: satu-satunya mekanisme penghitung percobaan gagal.
 	KunciRepository
 	SesiRepository
+	// DaftarPenggunaRepository, ResetMFARepository, dan RiwayatPeranRepository: daftar sisi server, reset MFA
+	// oleh admin, dan riwayat peran (daftar_pengguna.go, admin_pengguna.go).
+	DaftarPenggunaRepository
+	ResetMFARepository
+	RiwayatPeranRepository
 	GetUserByID(ctx context.Context, id string) (*Pengguna, error)
 	GetUserByEmail(ctx context.Context, email string) (*Pengguna, error)
 	CreateUser(ctx context.Context, user *Pengguna) error
@@ -31,7 +36,6 @@ type Repository interface {
 	// terjadi selama pemeriksaan kata sandi.
 	TouchLastLogin(ctx context.Context, userID string, at time.Time) error
 	DeleteUser(ctx context.Context, id string) error
-	ListUsers(ctx context.Context, page, limit int, search string) ([]Pengguna, int64, error)
 	CreateRefreshToken(ctx context.Context, token *RefreshToken) error
 	GetRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id int64) error

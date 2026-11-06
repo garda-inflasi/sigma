@@ -90,7 +90,7 @@ func TestUpdateUser_StatusSelainAktifMencabutSesi(t *testing.T) {
 	}
 }
 
-func TestUpdateUser_KegagalanMencabutSesiDilaporkanDanTidakDiauditSebagaiBerhasil(t *testing.T) {
+func TestUpdateUser_KegagalanMencabutSesiDilaporkanDanDitandaiDiAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
@@ -101,7 +101,12 @@ func TestUpdateUser_KegagalanMencabutSesiDilaporkanDanTidakDiauditSebagaiBerhasi
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "revoke sessions")
-	assert.Empty(t, recorder.Entries(), "perubahan yang sesinya gagal dicabut tidak dicatat berhasil")
+	// Peran sudah berubah di basis data: perubahannya tetap tercatat (riwayat peran membacanya dari audit),
+	// dengan penanda bahwa sesi lama gagal dicabut.
+	entries := recorder.Entries()
+	require.Len(t, entries, 1)
+	assert.Equal(t, "UPDATE_USER", entries[0].Aksi)
+	assert.Equal(t, true, entries[0].Metadata["pencabutan_sesi_gagal"])
 }
 
 func TestUpdateUser_LapisEksplisitMengalahkanTurunanPeran(t *testing.T) {
@@ -371,9 +376,11 @@ func TestListUsers_MeneruskanPaginasiDanPencarian(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	want := []domain.Pengguna{*activeUser()}
-	repo.On("ListUsers", mock.Anything, 3, 25, "ani").Return(want, int64(61), nil)
+	repo.On("ListUsers", mock.Anything, mock.MatchedBy(func(q domain.DaftarPenggunaQuery) bool {
+		return q.Page == 3 && q.Limit == 25 && q.Filter.Cari == "ani"
+	})).Return(want, int64(61), nil)
 
-	got, total, err := uc.ListUsers(context.Background(), 3, 25, "ani")
+	got, total, err := uc.ListUsers(context.Background(), domain.DaftarPenggunaQuery{Page: 3, Limit: 25, Filter: domain.FilterPengguna{Cari: "ani"}})
 
 	require.NoError(t, err)
 	assert.EqualValues(t, 61, total)

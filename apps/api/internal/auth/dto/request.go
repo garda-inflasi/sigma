@@ -47,10 +47,14 @@ type UpdateUserRequest struct {
 	Status        *string `json:"status" binding:"omitempty,oneof=AKTIF NONAKTIF MENUNGGU"`
 }
 
+// ListUserRequest adalah kueri GET /v1/users. Filternya (FilterPenggunaRequest) dipakai bersama ekspor CSV.
 type ListUserRequest struct {
-	Page   int    `form:"page" binding:"omitempty,min=1"`
-	Limit  int    `form:"limit" binding:"omitempty,min=1,max=100"`
-	Search string `form:"search"`
+	FilterPenggunaRequest
+	Page  int `form:"page" binding:"omitempty,min=1"`
+	Limit int `form:"limit" binding:"omitempty,min=1,max=100"`
+	// Sort dan Arah divalidasi domain.DaftarPenggunaQuery.Normal (daftar putih kolom).
+	Sort string `form:"sort"`
+	Arah string `form:"arah"`
 }
 
 type AssignRoleRequest struct {

@@ -127,6 +127,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.POST("/:id/buka-kunci", handler.BukaKunci)
 			users.POST("/:id/revoke-sessions", handler.ForceLogoutUser)
 			users.PUT("/:id/roles", handler.AssignRole)
+			users.POST("/:id/reset-mfa", handler.ResetMFAPengguna)
+			users.GET("/:id/riwayat-peran", handler.RiwayatPeranPengguna)
 		}
 
 		// RBAC catalogue — read-only, requires pengguna.kelola permission

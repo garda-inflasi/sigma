@@ -788,13 +788,46 @@ paths:
 
   /v1/users:
     get:
-      summary: Mendaftar semua pengguna (dengan paginasi)
+      summary: Mendaftar pengguna (cari, filter, urut, dan paginasi di server)
+      description: |
+        Memerlukan izin `pengguna.kelola`. Pencarian, filter, urutan, dan paginasi dijalankan di server.
+        Filter digabung dengan AND; parameter kosong sama dengan tidak ada. Nilai yang tidak dikenal
+        (peran, status, lapis, mfa, terkunci, sort, arah) atau `search` lebih dari 100 karakter dijawab 400.
+
+        **Urutan.** `sort` hanya menerima kolom di daftar putih; tanpa `sort` urutannya `dibuat_pada` menurun
+        (terbaru dulu), dan dengan `sort` tanpa `arah` urutannya menaik. Urutan selalu total: `id` menjadi
+        tiebreaker pada arah yang sama, jadi paginasi stabil dan `desc` adalah kebalikan persis `asc`.
+        `nama`, `email`, dan `lembaga` tak peka huruf besar-kecil; `peran` dan `status` mengikuti urutan deklarasi
+        enum (peran: hierarki lapis, bukan abjad); `terakhir_masuk` menaruh akun yang belum pernah masuk selalu
+        paling akhir pada kedua arah.
+
+        **Filter terkunci** memakai tabel lockout (01-F): akun yang `terkunci_sampai`-nya belum lewat.
+        Filter yang sama dipakai ekspor CSV pengguna.
       operationId: listUsers
       tags:
         - User Management
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/PenggunaSearch"
+        - $ref: "#/components/parameters/PenggunaPeran"
+        - $ref: "#/components/parameters/PenggunaStatus"
+        - $ref: "#/components/parameters/PenggunaLapis"
+        - $ref: "#/components/parameters/PenggunaMfa"
+        - $ref: "#/components/parameters/PenggunaTerkunci"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [nama, email, peran, lembaga, status, terakhir_masuk, dibuat_pada]
+            default: dibuat_pada
+          description: Kolom urutan
+        - name: arah
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Arah urutan. Bawaan `asc` bila `sort` diberikan, selain itu `desc`.
         - name: page
           in: query
           schema:
@@ -812,11 +845,17 @@ paths:
           description: Jumlah item per halaman
       responses:
         "200":
-          description: Daftar pengguna
+          description: Satu halaman pengguna beserta jumlah seluruh yang cocok dengan filter
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserListResponse"
+        "400":
+          description: Parameter tidak sah (nilai filter/urutan tidak dikenal, boolean bukan `true`/`false`, limit di luar 1-100)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Token tidak valid
           content:
@@ -942,6 +981,131 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BukaKunciResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/reset-mfa:
+    post:
+      summary: Mereset MFA seorang pengguna (kehilangan autentikator)
+      description: |
+        Memerlukan izin `pengguna.kelola`. Menonaktifkan MFA pengguna, mengosongkan rahasia TOTP terenkripsi,
+        langkah TOTP anti-ulang, dan semua kode cadangan, lalu mengakhiri **semua sesi** pengguna itu (access
+        token lama langsung ditolak). Semuanya dalam satu transaksi. Tercatat di audit trail (aksi `RESET_MFA`,
+        sebelum/sesudah `mfa_aktif`).
+
+        **Idempoten:** pengguna tanpa MFA dijawab 200 dengan `mfa_aktif_sebelumnya: false`; tidak ada yang
+        berubah dan sesinya tidak dicabut (rahasia setup yang belum diverifikasi, bila ada, ikut dibersihkan).
+
+        **Akun sendiri ditolak (400).** Pemilik akun memakai `POST /v1/auth/mfa/disable` yang meminta kata sandi
+        dan menghormati MFA wajib; tanpa larangan ini sesi admin yang dibajak dapat melucuti MFA-nya sendiri.
+
+        Peran yang mewajibkan MFA tidak dilepas: bila MFA diwajibkan lingkungan, login berikutnya pengguna itu
+        mendapat `mfa_setup_diwajibkan: true` dan hanya endpoint setup MFA yang terbuka.
+      operationId: resetUserMfa
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: MFA direset (atau pengguna memang tanpa MFA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetMFAResponse"
+        "400":
+          description: Akun sendiri tidak boleh direset lewat endpoint admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/riwayat-peran:
+    get:
+      summary: Riwayat perubahan peran seorang pengguna
+      description: |
+        Memerlukan izin `pengguna.kelola`. Dibaca dari jejak audit (`audit_log`), terbaru lebih dulu: pembuatan
+        akun dengan peran awalnya (`CREATE_USER`, `dari` null), `PUT /v1/users/{id}/roles` (`ASSIGN_ROLE`), dan
+        `PATCH /v1/users/{id}` yang mengubah `peran` (`UPDATE_USER`), serta aksi lain yang mencatat peran
+        sebelum/sesudah pada entitas pengguna (mis. undangan). Aksi yang peran sesudahnya sama dengan sebelumnya
+        (mis. PATCH nama saja) dan aksi yang gagal atau ditolak tidak ikut. Akun yang dibuat lewat seeder tidak
+        punya entri pembuatan. `aktor` null bila aksinya tanpa pelaku; `aktor.id` null bila akun pelaku sudah
+        dihapus (nama dari snapshot audit tetap terbaca). `id` tiap entri adalah id baris audit
+        (`GET /v1/audit/{id}`).
+      operationId: getUserRoleHistory
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+          description: Jumlah entri terbaru yang dikembalikan
+      responses:
+        "200":
+          description: Riwayat peran
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiwayatPeranResponse"
+        "400":
+          description: Limit di luar 1-200
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Token tidak valid
           content:
@@ -4885,6 +5049,46 @@ components:
       schema:
         type: string
         maxLength: 255
+    PenggunaSearch:
+      name: search
+      in: query
+      description: Potongan nama, email, peran (id atau dengan spasi), atau lembaga; tak peka huruf besar-kecil, maksimal 100 karakter
+      schema:
+        type: string
+        maxLength: 100
+    PenggunaPeran:
+      name: peran
+      in: query
+      description: Peran persis (salah satu dari `GET /v1/roles`)
+      schema:
+        type: string
+        example: ADMIN_SISTEM
+    PenggunaStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [AKTIF, NONAKTIF, MENUNGGU]
+    PenggunaLapis:
+      name: lapis
+      in: query
+      schema:
+        type: string
+        enum: [STRATEGIS, MANAJERIAL, OPERASIONAL, SISTEM]
+    PenggunaMfa:
+      name: mfa
+      in: query
+      description: "`true` = hanya akun dengan MFA aktif, `false` = hanya yang belum aktif"
+      schema:
+        type: string
+        enum: ["true", "false"]
+    PenggunaTerkunci:
+      name: terkunci
+      in: query
+      description: "`true` = hanya akun yang login-nya sedang terkunci (lockout), `false` = hanya yang tidak"
+      schema:
+        type: string
+        enum: ["true", "false"]
     HargaStatus:
       name: status
       in: query
@@ -5006,6 +5210,85 @@ components:
             terkunci_sebelumnya:
               type: boolean
               description: True bila akun memang sedang terkunci ketika dibuka
+
+    ResetMFAResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: test-user-mfa
+            mfa_aktif_sebelumnya:
+              type: boolean
+              description: False berarti pengguna memang tanpa MFA; tidak ada yang berubah dan sesinya tidak dicabut
+            sesi_dicabut:
+              type: integer
+              description: Jumlah sesi pengguna yang diakhiri (0 bila MFA tidak aktif)
+
+    PerubahanPeran:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID baris audit sumber (`GET /v1/audit/{id}`)
+        waktu:
+          type: string
+          format: date-time
+        aksi:
+          type: string
+          description: Aksi audit sumber
+          example: ASSIGN_ROLE
+        dari:
+          type: string
+          nullable: true
+          description: Peran sebelumnya; null untuk peran awal saat akun dibuat
+          example: OPS_MAHASISWA
+        ke:
+          type: string
+          description: Peran sesudahnya
+          example: MANAJER_DATA
+        aktor:
+          type: object
+          nullable: true
+          description: Pelaku; null bila aksinya tanpa pelaku terautentikasi
+          properties:
+            id:
+              type: string
+              nullable: true
+              description: Null bila akun pelaku sudah dihapus
+            nama:
+              type: string
+              nullable: true
+              description: Nama pelaku saat aksi (snapshot audit)
+
+    RiwayatPeranResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              description: Terbaru lebih dulu
+              items:
+                $ref: "#/components/schemas/PerubahanPeran"
+            terpotong:
+              type: boolean
+              description: True bila ada entri lebih lama di luar `limit`
 
     LogoutRequest:
       type: object

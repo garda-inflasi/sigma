@@ -298,6 +298,8 @@ func TestIntegration_SSO(t *testing.T) {
 		require.NotNil(t, subject)
 		assert.Equal(t, "sub-mfa", *subject)
 		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LOGIN' AND aktor_id = 'test-user-mfa' AND metadata->>'metode' = 'sso_google' AND metadata->>'tahap' = 'menunggu_mfa'"))
+		// LOGIN akhir (sesi terbit setelah OTP) memuat metode masuk SSO bersama faktor keduanya, bukan hanya mfa=totp.
+		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND hasil = 'BERHASIL' AND aktor_id = 'test-user-mfa' AND metadata->>'metode' = 'sso_google' AND metadata->>'mfa' = 'totp'"))
 	})
 
 	t.Run("state hanya sekali pakai: callback yang diulang ditolak", func(t *testing.T) {

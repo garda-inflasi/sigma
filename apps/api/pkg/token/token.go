@@ -41,6 +41,9 @@ type Claims struct {
 	// SessionID (`sid`) adalah id sesi tempat token ini terbit (family refresh token). Access token mati
 	// seketika saat sesinya dicabut; lihat RevocationChecker. Kosong pada token sebelum fitur sesi ada.
 	SessionID string `json:"sid,omitempty"`
+	// LoginMethod (`metode_login`) hanya ada pada token tantangan MFA: cara langkah pertama login dibuktikan
+	// ("sso_google" bila bukan kata sandi). Dibawa agar audit LOGIN akhir sesudah OTP memuat metode aslinya.
+	LoginMethod string `json:"metode_login,omitempty"`
 	// Profil untuk tampilan (nama, email, lembaga, kabupaten tugas); dibaca sesi server web.
 	// Otorisasi tidak pernah bergantung pada klaim ini.
 	Name  string `json:"name,omitempty"`
@@ -138,6 +141,14 @@ func WithMFASetupRequired(required bool) ClaimOption {
 	}
 }
 
+// WithLoginMethod menandai token tantangan MFA dengan metode login langkah pertama (mis. "sso_google").
+// Kosong berarti kata sandi dan tidak ditulis ke token.
+func WithLoginMethod(metode string) ClaimOption {
+	return func(c *Claims) {
+		c.LoginMethod = metode
+	}
+}
+
 // WithProfile mengisi klaim profil tampilan: nama, email, lembaga, dan kode kabupaten tugas
 // (kosong untuk pengguna tingkat provinsi).
 func WithProfile(nama, email, lembaga, kabupatenKode string) ClaimOption {
@@ -155,7 +166,7 @@ func WithSession(sessionID string) ClaimOption {
 
 // CreateMFAChallengeToken menerbitkan token tantangan MFA berumur pendek: bukti bahwa kata sandi sudah
 // benar, hanya berguna untuk menukar kode OTP dengan sesi. Bukan access token (audiens berbeda).
-func (m *Manager) CreateMFAChallengeToken(userID string) (string, error) {
+func (m *Manager) CreateMFAChallengeToken(userID string, opts ...ClaimOption) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		UserID: userID,
@@ -169,16 +180,35 @@ func (m *Manager) CreateMFAChallengeToken(userID string) (string, error) {
 			ExpiresAt: jwt.NewNumericDate(now.Add(MFAChallengeTTL)),
 		},
 	}
+	for _, opt := range opts {
+		opt(claims)
+	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(m.secret)
+}
+
+// MFAChallenge adalah isi token tantangan MFA yang sah.
+type MFAChallenge struct {
+	UserID string
+	// LoginMethod adalah metode login langkah pertama; kosong untuk kata sandi.
+	LoginMethod string
+}
+
+// VerifyMFAChallenge memeriksa token tantangan MFA dan mengembalikan isinya.
+func (m *Manager) VerifyMFAChallenge(tokenString string) (*MFAChallenge, error) {
+	claims, err := m.parse(tokenString, mfaAudience)
+	if err != nil {
+		return nil, err
+	}
+	return &MFAChallenge{UserID: claims.UserID, LoginMethod: claims.LoginMethod}, nil
 }
 
 // VerifyMFAChallengeToken memeriksa token tantangan MFA dan mengembalikan id pengguna.
 func (m *Manager) VerifyMFAChallengeToken(tokenString string) (string, error) {
-	claims, err := m.parse(tokenString, mfaAudience)
+	challenge, err := m.VerifyMFAChallenge(tokenString)
 	if err != nil {
 		return "", err
 	}
-	return claims.UserID, nil
+	return challenge.UserID, nil
 }
 
 // CreateAccessToken creates a new signed JWT access token.

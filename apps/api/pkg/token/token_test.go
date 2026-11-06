@@ -3,6 +3,7 @@ package token
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -307,4 +308,39 @@ func TestAccessToken_CarriesMFASetupRequiredClaim(t *testing.T) {
 	claims, err = m.VerifyToken(plain)
 	require.NoError(t, err)
 	assert.False(t, claims.MFASetupRequired)
+}
+
+func TestMFAChallengeToken_MembawaMetodeLoginDanTidakMenggandakannyaDiAccessToken(t *testing.T) {
+	m := NewManager("test-secret-key-32-chars-minimum!")
+
+	dariSSO, err := m.CreateMFAChallengeToken("user-1", WithLoginMethod("sso_google"))
+	require.NoError(t, err)
+	isi, err := m.VerifyMFAChallenge(dariSSO)
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", isi.UserID)
+	assert.Equal(t, "sso_google", isi.LoginMethod)
+
+	dariKataSandi, err := m.CreateMFAChallengeToken("user-1")
+	require.NoError(t, err)
+	isi, err = m.VerifyMFAChallenge(dariKataSandi)
+	require.NoError(t, err)
+	assert.Empty(t, isi.LoginMethod, "login kata sandi tidak membawa metode")
+
+	// Pembungkus lama tetap mengembalikan id pengguna untuk kedua bentuk token.
+	userID, err := m.VerifyMFAChallengeToken(dariSSO)
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", userID)
+
+	// Klaim ikut tanda tangan: token yang dimodifikasi ditolak, bukan dibaca dengan metode lain.
+	parts := strings.Split(dariSSO, ".")
+	require.Len(t, parts, 3)
+	_, err = m.VerifyMFAChallenge(parts[0] + "." + parts[1] + "x." + parts[2])
+	assert.Error(t, err)
+
+	// Bukan access token: tidak membawa metode ke sesi.
+	_, err = m.VerifyToken(dariSSO)
+	assert.Error(t, err)
+
+	_, err = m.VerifyMFAChallenge("bukan-jwt")
+	assert.Error(t, err)
 }

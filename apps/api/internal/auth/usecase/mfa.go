@@ -175,11 +175,13 @@ func (uc *UseCase) VerifyMFA(ctx context.Context, userID, code, ip string) (*MFA
 // ValidateMFALogin menukar token tantangan (dari Login) dan kode OTP atau kode cadangan dengan sesi.
 // Percobaan yang salah dihitung terhadap batas kunci akun yang sama dengan kata sandi salah.
 func (uc *UseCase) ValidateMFALogin(ctx context.Context, mfaToken, code, ip string) (*LoginResult, error) {
-	userID, err := uc.token.VerifyMFAChallengeToken(mfaToken)
+	challenge, err := uc.token.VerifyMFAChallenge(mfaToken)
 	if err != nil {
 		return nil, ErrMFAChallengeInvalid
 	}
-	user, err := uc.repo.GetUserByID(ctx, userID)
+	// Metode login langkah pertama (mis. SSO) dibawa token tantangan; audit LOGIN akhir mencatatnya bersama faktor kedua.
+	ctx = withLoginMethod(ctx, challenge.LoginMethod)
+	user, err := uc.repo.GetUserByID(ctx, challenge.UserID)
 	if err != nil || user.Status != "AKTIF" || !user.MfaAktif {
 		return nil, ErrMFAChallengeInvalid
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/pkg/sso"
+	"github.com/garda-inflasi/api/pkg/token"
 	"gorm.io/gorm"
 )
 
@@ -213,7 +214,8 @@ func (s *SSOUseCase) Callback(ctx context.Context, in SSOCallbackInput) (*LoginR
 	}
 
 	if user.MfaAktif {
-		challenge, err := s.uc.token.CreateMFAChallengeToken(user.ID)
+		// Metode login ikut dalam token tantangan supaya audit LOGIN sesudah OTP memuat metode dan faktor keduanya.
+		challenge, err := s.uc.token.CreateMFAChallengeToken(user.ID, token.WithLoginMethod(MetodeSSOGoogle))
 		if err != nil {
 			return nil, fmt.Errorf("create mfa challenge: %w", err)
 		}

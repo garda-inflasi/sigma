@@ -837,7 +837,7 @@ func TestCreateUser_Success(t *testing.T) {
 		Nama:  "New User",
 		Email: "new@example.com",
 		Peran: "OPS_MAHASISWA",
-		Lapis: "OPS",
+		Lapis: "OPERASIONAL",
 	}
 
 	repo.On("GetUserByEmail", mock.Anything, "new@example.com").Return(nil, errors.New("not found"))
@@ -859,6 +859,7 @@ func TestCreateUser_EmailExists(t *testing.T) {
 	user := &domain.Pengguna{
 		ID:    "existing-user",
 		Email: "existing@example.com",
+		Peran: "OPS_MAHASISWA",
 	}
 
 	repo.On("GetUserByEmail", mock.Anything, "existing@example.com").Return(activeUser(), nil)

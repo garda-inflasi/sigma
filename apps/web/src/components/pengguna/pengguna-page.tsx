@@ -164,9 +164,9 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
             </div>
           )}
           <div className="grid gap-2">
-            <Label>Peran</Label>
+            <Label htmlFor="pg-peran">Peran</Label>
             <Select value={form.peran} onValueChange={(v) => setForm({ ...form, peran: v as Role })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="pg-peran"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {ROLE_IDS.map((r) => (
                   <SelectItem key={r} value={r}>{ROLES[r].label} — {LAPIS_META[ROLES[r].lapis].label.split(" — ")[0]}</SelectItem>

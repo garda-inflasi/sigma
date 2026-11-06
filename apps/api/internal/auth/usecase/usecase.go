@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -475,6 +476,17 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 	if err := ValidatePassword(password); err != nil {
 		return err
 	}
+	// Peran dan lapis adalah enum basis data: nilai di luarnya masukan yang salah (400), bukan galat penyimpanan
+	// (500). Lapis boleh berbeda dari lapis bawaan peran (sama dengan UpdateUser yang menerima lapis eksplisit).
+	if !peranDikenal(user.Peran) {
+		return ErrRoleNotFound
+	}
+	if user.Lapis == "" {
+		user.Lapis = lapisPeran(user.Peran) // tidak diisi: turunan peran, seperti UpdateUser
+	}
+	if !slices.Contains(domain.LapisPengguna, user.Lapis) {
+		return galatValidasi("Lapis tidak dikenal: %q (pilihan: %s).", user.Lapis, strings.Join(domain.LapisPengguna, ", "))
+	}
 
 	existing, _ := uc.repo.GetUserByEmail(ctx, user.Email)
 	if existing != nil {
@@ -499,11 +511,12 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 	return nil
 }
 
-// GetUser returns a user by ID.
-func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, error) {
+// muatPengguna membaca satu pengguna. Hanya "tidak ada" yang menjadi ErrUserNotFound (404); galat basis data
+// dibungkus dan tetap galat server (500), jadi pemadaman basis data tidak menyamar sebagai pengguna yang hilang
+// (UI akan menampilkan "tidak ditemukan" untuk akun yang sebenarnya ada) dan aksi admin tidak berhenti diam-diam.
+func (uc *UseCase) muatPengguna(ctx context.Context, id string) (*domain.Pengguna, error) {
 	user, err := uc.repo.GetUserByID(ctx, id)
 	if err != nil {
-		// Hanya "tidak ada" yang menjadi 404; galat basis data tidak boleh menyamar sebagai pengguna hilang.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
@@ -512,11 +525,16 @@ func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, er
 	return user, nil
 }
 
+// GetUser returns a user by ID.
+func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, error) {
+	return uc.muatPengguna(ctx, id)
+}
+
 // UpdateUser applies a partial update to an existing user.
 func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, actorID string) (*domain.Pengguna, error) {
-	user, err := uc.repo.GetUserByID(ctx, id)
+	user, err := uc.muatPengguna(ctx, id)
 	if err != nil {
-		return nil, ErrUserNotFound
+		return nil, err
 	}
 	if err := periksaPerubahanStatus(user, patch.Status); err != nil {
 		return nil, err
@@ -594,8 +612,8 @@ func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID string) error {
 		return ErrCannotDeleteSelf
 	}
 
-	if _, err := uc.repo.GetUserByID(ctx, id); err != nil {
-		return ErrUserNotFound
+	if _, err := uc.muatPengguna(ctx, id); err != nil {
+		return err
 	}
 
 	if err := uc.repo.DeleteUser(ctx, id); err != nil {
@@ -628,9 +646,9 @@ func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, acto
 		return err
 	}
 
-	user, err := uc.repo.GetUserByID(ctx, id)
+	user, err := uc.muatPengguna(ctx, id)
 	if err != nil {
-		return ErrUserNotFound
+		return err
 	}
 	if user.Status == domain.StatusMenunggu {
 		return ErrAkunMenunggu

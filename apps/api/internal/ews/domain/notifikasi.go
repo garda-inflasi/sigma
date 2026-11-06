@@ -36,7 +36,7 @@ const SeverityMinBawaan = SeveritySiaga
 type EwsNotifikasi struct {
 	ID            int64      `gorm:"column:id;primaryKey;->"`
 	AlertID       string     `gorm:"column:alert_id"`
-	PenggunaID    string     `gorm:"column:pengguna_id"`
+	PenggunaID    string     `gorm:"column:pengguna_id;type:uuid"`
 	Kanal         string     `gorm:"column:kanal"`
 	Tujuan        string     `gorm:"column:tujuan"`
 	Status        string     `gorm:"column:status;default:MENUNGGU"`
@@ -51,7 +51,7 @@ func (EwsNotifikasi) TableName() string { return "ews_notifikasi" }
 
 // PreferensiNotifikasi memetakan tabel preferensi_notifikasi.
 type PreferensiNotifikasi struct {
-	PenggunaID  string    `gorm:"column:pengguna_id;primaryKey"`
+	PenggunaID  string    `gorm:"column:pengguna_id;type:uuid;primaryKey"`
 	Kanal       string    `gorm:"column:kanal;primaryKey"`
 	SeverityMin string    `gorm:"column:severity_min"`
 	Aktif       bool      `gorm:"column:aktif"`
@@ -63,7 +63,7 @@ func (PreferensiNotifikasi) TableName() string { return "preferensi_notifikasi" 
 // LanggananPush memetakan tabel langganan_push (satu perangkat).
 type LanggananPush struct {
 	ID         int64     `gorm:"column:id;primaryKey;->"`
-	PenggunaID string    `gorm:"column:pengguna_id"`
+	PenggunaID string    `gorm:"column:pengguna_id;type:uuid"`
 	Endpoint   string    `gorm:"column:endpoint"`
 	P256dh     string    `gorm:"column:p256dh"`
 	Auth       string    `gorm:"column:auth"`

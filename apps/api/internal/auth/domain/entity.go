@@ -4,7 +4,9 @@ import "time"
 
 // Pengguna maps to the pengguna table.
 type Pengguna struct {
-	ID            string  `gorm:"column:id;primaryKey"`
+	// ID adalah UUID kanonik huruf kecil (docs/SKEMA-DATABASE.md). Kosong saat dibuat: PostgreSQL mengisinya
+	// lewat gen_random_uuid() dan GORM membacanya kembali (RETURNING).
+	ID            string  `gorm:"column:id;type:uuid;primaryKey;default:gen_random_uuid()"`
 	Nama          string  `gorm:"column:nama"`
 	Email         string  `gorm:"column:email;uniqueIndex:idx_pengguna_email"`
 	PasswordHash  *string `gorm:"column:password_hash"`
@@ -42,7 +44,7 @@ func (Pengguna) TableName() string {
 // KodeCadanganMFA memetakan tabel mfa_kode_cadangan: satu kode cadangan MFA sebagai hash.
 type KodeCadanganMFA struct {
 	ID          int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID      string     `gorm:"column:user_id"`
+	UserID      string     `gorm:"column:user_id;type:uuid"`
 	KodeHash    string     `gorm:"column:kode_hash"`
 	DipakaiPada *time.Time `gorm:"column:dipakai_pada"`
 	DibuatPada  time.Time  `gorm:"column:dibuat_pada;default:now()"`
@@ -55,7 +57,7 @@ func (KodeCadanganMFA) TableName() string {
 // RefreshToken represents a stored refresh token.
 type RefreshToken struct {
 	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID    string     `gorm:"column:user_id;index:idx_rt_user"`
+	UserID    string     `gorm:"column:user_id;type:uuid;index:idx_rt_user"`
 	TokenHash string     `gorm:"column:token_hash;uniqueIndex:idx_rt_hash"`
 	FamilyID  string     `gorm:"column:family_id;type:uuid;index:idx_rt_family"`
 	IP        *string    `gorm:"column:ip"`
@@ -79,7 +81,7 @@ func (RefreshToken) TableName() string {
 // LoginAttempt represents a login attempt record.
 type LoginAttempt struct {
 	ID            int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID        *string   `gorm:"column:user_id;index:idx_la_user"`
+	UserID        *string   `gorm:"column:user_id;type:uuid;index:idx_la_user"`
 	IP            *string   `gorm:"column:ip"`
 	Success       bool      `gorm:"column:success"`
 	FailureReason *string   `gorm:"column:failure_reason"`
@@ -93,7 +95,7 @@ func (LoginAttempt) TableName() string {
 // ResetToken represents a password reset token.
 type ResetToken struct {
 	ID        int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID    string     `gorm:"column:user_id"`
+	UserID    string     `gorm:"column:user_id;type:uuid"`
 	TokenHash string     `gorm:"column:token_hash;uniqueIndex:idx_rt_hash"`
 	ExpiresAt time.Time  `gorm:"column:expires_at"`
 	UsedAt    *time.Time `gorm:"column:used_at"`

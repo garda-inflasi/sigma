@@ -17,11 +17,11 @@ var ErrBukanMenunggu = errors.New("akun tidak berstatus menunggu aktivasi")
 // disimpan, hanya hash SHA-256-nya.
 type Undangan struct {
 	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	UserID    string `gorm:"column:user_id"`
+	UserID    string `gorm:"column:user_id;type:uuid"`
 	TokenHash string `gorm:"column:token_hash"`
 	// Email adalah alamat tujuan saat undangan dikirim; aktivasi hanya sah selama email akun masih sama.
 	Email        string     `gorm:"column:email"`
-	DiundangOleh *string    `gorm:"column:diundang_oleh"`
+	DiundangOleh *string    `gorm:"column:diundang_oleh;type:uuid"`
 	ExpiresAt    time.Time  `gorm:"column:expires_at"`
 	UsedAt       *time.Time `gorm:"column:used_at"`
 	DicabutPada  *time.Time `gorm:"column:dicabut_pada"`

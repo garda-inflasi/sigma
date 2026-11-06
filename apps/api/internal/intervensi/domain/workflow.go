@@ -79,7 +79,7 @@ type IntervensiPersetujuan struct {
 	TahapTujuan  *string    `gorm:"column:tahap_tujuan"`
 	Status       string     `gorm:"column:status;default:MENUNGGU"`
 	LangkahKini  int        `gorm:"column:langkah_kini;default:1"`
-	DiajukanOleh *string    `gorm:"column:diajukan_oleh"`
+	DiajukanOleh *string    `gorm:"column:diajukan_oleh;type:uuid"`
 	DiajukanPada time.Time  `gorm:"column:diajukan_pada;default:now()"`
 	SelesaiPada  *time.Time `gorm:"column:selesai_pada"`
 	Catatan      string     `gorm:"column:catatan"`
@@ -95,7 +95,7 @@ type PersetujuanLangkah struct {
 	Label          string     `gorm:"column:label"`
 	IzinDibutuhkan string     `gorm:"column:izin_dibutuhkan"`
 	Keputusan      *string    `gorm:"column:keputusan"`
-	Oleh           *string    `gorm:"column:oleh"`
+	Oleh           *string    `gorm:"column:oleh;type:uuid"`
 	Waktu          *time.Time `gorm:"column:waktu"`
 	Catatan        string     `gorm:"column:catatan"`
 }

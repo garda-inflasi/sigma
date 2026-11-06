@@ -195,7 +195,7 @@ type OptimasiRute struct {
 	// BiayaPembanding adalah biaya rencana serakah (pasangan terdekat dulu) untuk
 	// volume yang sama; kosong bila volumenya berbeda sehingga tidak sebanding.
 	BiayaPembanding *int64    `gorm:"column:biaya_pembanding"`
-	DibuatOleh      *string   `gorm:"column:dibuat_oleh"`
+	DibuatOleh      *string   `gorm:"column:dibuat_oleh;type:uuid"`
 	DibuatPada      time.Time `gorm:"column:dibuat_pada;default:now()"`
 }
 

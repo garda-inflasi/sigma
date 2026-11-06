@@ -57,7 +57,7 @@ type ModelRegistry struct {
 	ArtefakURI *string `gorm:"column:artefak_uri"`
 	Catatan    string  `gorm:"column:catatan"`
 	// DipromosikanOleh dan DipromosikanPada mencatat promosi terakhir ke PRODUKSI.
-	DipromosikanOleh *string    `gorm:"column:dipromosikan_oleh"`
+	DipromosikanOleh *string    `gorm:"column:dipromosikan_oleh;type:uuid"`
 	DipromosikanPada *time.Time `gorm:"column:dipromosikan_pada"`
 }
 
@@ -143,7 +143,7 @@ type ModelPromosi struct {
 	StatusLama        string    `gorm:"column:status_lama"`
 	StatusBaru        string    `gorm:"column:status_baru"`
 	ModelDigantikanID *string   `gorm:"column:model_digantikan_id"`
-	Oleh              string    `gorm:"column:oleh"`
+	Oleh              string    `gorm:"column:oleh;type:uuid"`
 	Waktu             time.Time `gorm:"column:waktu;default:now()"`
 }
 
@@ -160,7 +160,7 @@ type SkenarioSimulasi struct {
 	HorizonHari   int       `gorm:"column:horizon_hari"`
 	Parameter     string    `gorm:"column:parameter;type:jsonb"`
 	Hasil         string    `gorm:"column:hasil;type:jsonb"`
-	DibuatOleh    string    `gorm:"column:dibuat_oleh"`
+	DibuatOleh    string    `gorm:"column:dibuat_oleh;type:uuid"`
 	DibuatPada    time.Time `gorm:"column:dibuat_pada;default:now()"`
 }
 

@@ -31,14 +31,14 @@ type EwsAlert struct {
 	Status        string     `gorm:"column:status;default:BARU"`
 	Sumber        string     `gorm:"column:sumber"`
 	DibuatPada    time.Time  `gorm:"column:dibuat_pada;default:now()"`
-	DiakuiOlehID  *string    `gorm:"column:diakui_oleh_id"`
+	DiakuiOlehID  *string    `gorm:"column:diakui_oleh_id;type:uuid"`
 	DiakuiPada    *time.Time `gorm:"column:diakui_pada"`
 	AturanID      *string    `gorm:"column:aturan_id"`
 	// DedupKey mengidentifikasi kondisi yang dipantau rule engine; hanya satu alert
 	// aktif (bukan SELESAI) per kunci. Kosong untuk alert yang tidak berasal dari mesin.
 	DedupKey         *string    `gorm:"column:dedup_key"`
 	DieskalasiPada   *time.Time `gorm:"column:dieskalasi_pada"`
-	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id"`
+	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id;type:uuid"`
 	SelesaiPada      *time.Time `gorm:"column:selesai_pada"`
 }
 
@@ -51,7 +51,7 @@ type EwsRiwayat struct {
 	AlertID string    `gorm:"column:alert_id"`
 	Dari    *string   `gorm:"column:dari"`
 	Ke      string    `gorm:"column:ke"`
-	Oleh    *string   `gorm:"column:oleh"`
+	Oleh    *string   `gorm:"column:oleh;type:uuid"`
 	Waktu   time.Time `gorm:"column:waktu;default:now()"`
 	Catatan string    `gorm:"column:catatan"`
 }
@@ -132,7 +132,7 @@ type AturanEws struct {
 	Keterangan  string `gorm:"column:keterangan"`
 	// Versi naik tiap perubahan ambang; dipakai untuk optimistic locking.
 	Versi        int        `gorm:"column:versi"`
-	DiubahOlehID *string    `gorm:"column:diubah_oleh_id"`
+	DiubahOlehID *string    `gorm:"column:diubah_oleh_id;type:uuid"`
 	DiubahPada   *time.Time `gorm:"column:diubah_pada"`
 }
 
@@ -151,7 +151,7 @@ type AturanEwsRiwayat struct {
 	Kanal         Kanal     `gorm:"column:kanal;type:_text"`
 	Aktif         bool      `gorm:"column:aktif"`
 	Keterangan    string    `gorm:"column:keterangan"`
-	DiubahOlehID  *string   `gorm:"column:diubah_oleh_id"`
+	DiubahOlehID  *string   `gorm:"column:diubah_oleh_id;type:uuid"`
 	Waktu         time.Time `gorm:"column:waktu;default:now()"`
 }
 

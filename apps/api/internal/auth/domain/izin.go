@@ -34,7 +34,7 @@ type Peran struct {
 	Urutan         int       `gorm:"column:urutan"`
 	Versi          int64     `gorm:"column:versi;default:1"`
 	DiperbaruiPada time.Time `gorm:"column:diperbarui_pada;default:now()"`
-	DiperbaruiOleh *string   `gorm:"column:diperbarui_oleh"`
+	DiperbaruiOleh *string   `gorm:"column:diperbarui_oleh;type:uuid"`
 }
 
 func (Peran) TableName() string { return "roles" }
@@ -58,11 +58,11 @@ func (PeranIzin) TableName() string { return "role_permissions" }
 
 // IzinLangsung memetakan tabel user_permissions: izin yang diberikan kepada satu pengguna di luar perannya.
 type IzinLangsung struct {
-	PenggunaID     string     `gorm:"column:pengguna_id;primaryKey"`
+	PenggunaID     string     `gorm:"column:pengguna_id;type:uuid;primaryKey"`
 	PermissionNama string     `gorm:"column:permission_nama;primaryKey"`
 	BerlakuSampai  *time.Time `gorm:"column:berlaku_sampai"`
 	Alasan         string     `gorm:"column:alasan"`
-	DiberikanOleh  *string    `gorm:"column:diberikan_oleh"`
+	DiberikanOleh  *string    `gorm:"column:diberikan_oleh;type:uuid"`
 	DiberikanPada  time.Time  `gorm:"column:diberikan_pada;default:now()"`
 }
 

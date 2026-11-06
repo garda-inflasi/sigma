@@ -53,13 +53,13 @@ type Intervensi struct {
 	ChecklistTotal   int       `gorm:"column:checklist_total"`
 	EwsAlertID       *string   `gorm:"column:ews_alert_id"`
 	// DibuatOlehID kosong untuk kartu yang dibuat sistem (workflow dari alert EWS).
-	DibuatOlehID *string    `gorm:"column:dibuat_oleh_id"`
+	DibuatOlehID *string    `gorm:"column:dibuat_oleh_id;type:uuid"`
 	DibuatPada   time.Time  `gorm:"column:dibuat_pada;default:now()"`
 	SelesaiPada  *time.Time `gorm:"column:selesai_pada"`
 	// Versi naik tiap perubahan kartu; dipakai untuk optimistic locking.
 	Versi            int        `gorm:"column:versi;default:1"`
 	DieskalasiPada   *time.Time `gorm:"column:dieskalasi_pada"`
-	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id"`
+	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id;type:uuid"`
 	// TahapSejak adalah waktu kartu masuk ke tahapnya sekarang; dasar penghitungan SLA tahap.
 	TahapSejak time.Time `gorm:"column:tahap_sejak;default:now()"`
 }
@@ -74,7 +74,7 @@ type IntervensiRiwayat struct {
 	Aksi         string    `gorm:"column:aksi"`
 	Dari         *string   `gorm:"column:dari"`
 	Ke           *string   `gorm:"column:ke"`
-	Oleh         *string   `gorm:"column:oleh"`
+	Oleh         *string   `gorm:"column:oleh;type:uuid"`
 	Waktu        time.Time `gorm:"column:waktu;default:now()"`
 	Alasan       string    `gorm:"column:alasan"`
 }
@@ -106,7 +106,7 @@ type HasilKartu struct {
 // IntervensiPJ memetakan tabel intervensi_pj (penanggung jawab, relasi M:N).
 type IntervensiPJ struct {
 	IntervensiID string `gorm:"column:intervensi_id;primaryKey"`
-	PenggunaID   string `gorm:"column:pengguna_id;primaryKey"`
+	PenggunaID   string `gorm:"column:pengguna_id;type:uuid;primaryKey"`
 }
 
 func (IntervensiPJ) TableName() string { return "intervensi_pj" }

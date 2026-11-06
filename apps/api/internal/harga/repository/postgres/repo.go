@@ -354,7 +354,7 @@ func (r *Repository) Transisi(ctx context.Context, ids []string, aksi domain.Bul
 		var rows []struct {
 			ID        string  `gorm:"column:id"`
 			Status    string  `gorm:"column:status"`
-			PetugasID *string `gorm:"column:petugas_id"`
+			PetugasID *string `gorm:"column:petugas_id;type:uuid"`
 		}
 		if err := tx.Raw("SELECT id, status::text AS status, petugas_id FROM entri_harga WHERE id IN ? ORDER BY id FOR UPDATE", ids).Scan(&rows).Error; err != nil {
 			return fmt.Errorf("kunci entri: %w", err)

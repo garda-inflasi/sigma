@@ -103,6 +103,7 @@ var kategoriPK = map[string]KategoriPK{
 	"kpi_definisi":     PKKode,
 	"alur_persetujuan": PKKode,
 	"target_inflasi":   PKKode, // satu baris per tahun anggaran
+	"pengguna_id_lama": PKKode, // 1:1 dengan pengguna (pemetaan ID lama untuk rollback 000110)
 
 	// HASH: keamanan, kuncinya hash atau token id.
 	"jwt_blacklist":   PKHash,
@@ -125,32 +126,22 @@ var kategoriPK = map[string]KategoriPK{
 // tabelBelumSelaras: tabel yang masih melanggar invarian sampai migrasi konversinya diterapkan. Hapus entri
 // tabel begitu migrasinya selesai; nilai mencatat migrasi yang bertanggung jawab.
 var tabelBelumSelaras = map[string]string{
-	// 000110 pengguna UUID (auth)
-	"pengguna":          "000110",
-	"user_permissions":  "000110",
-	"undangan_pengguna": "000110",
-	"roles":             "000110",
 	// 000111 harga, lapangan, master
-	"entri_harga":          "000111",
-	"riwayat_status_entri": "000111",
-	"tugas_lapangan":       "000111",
-	"batas_harga":          "000111",
-	"perubahan_master":     "000111",
-	"pasar":                "000111",
-	"kabupaten":            "000111",
+	"entri_harga":      "000111",
+	"tugas_lapangan":   "000111",
+	"batas_harga":      "000111",
+	"perubahan_master": "000111",
+	"pasar":            "000111",
+	"kabupaten":        "000111",
 	// 000112 ews, intervensi
-	"aturan_ews":                     "000112",
-	"aturan_ews_riwayat":             "000112",
-	"ews_alert":                      "000112",
-	"ews_riwayat":                    "000112",
-	"ews_event":                      "000112",
-	"ews_notifikasi":                 "000112",
-	"intervensi":                     "000112",
-	"intervensi_pj":                  "000112",
-	"intervensi_riwayat":             "000112",
-	"intervensi_persetujuan":         "000112",
-	"intervensi_persetujuan_langkah": "000112",
-	"alur_persetujuan":               "000112",
+	"aturan_ews":             "000112",
+	"aturan_ews_riwayat":     "000112",
+	"ews_alert":              "000112",
+	"ews_riwayat":            "000112",
+	"ews_event":              "000112",
+	"intervensi":             "000112",
+	"intervensi_persetujuan": "000112",
+	"alur_persetujuan":       "000112",
 	// 000113 cold-storage, spasial
 	"cold_storage":          "000113",
 	"stok_cold_storage":     "000113",
@@ -371,6 +362,29 @@ func TestInvarianKunci(t *testing.T) {
 	}
 	sort.Strings(gagal)
 	assert.Empty(t, gagal, "invarian kunci dilanggar:\n%s", strings.Join(gagal, "\n"))
+}
+
+// TestFKPenggunaSelaras: setiap FK ke pengguna(id), di tabel mana pun (termasuk tabel yang konversi PK-nya masih
+// tercantum di tabelBelumSelaras), sudah bertipe uuid, punya ON DELETE eksplisit, dan terindeks (migrasi 000110).
+// Pelanggaran baru, mis. FK ke pengguna di tabel yang dibuat migrasi berikutnya dengan VARCHAR, ditolak di sini.
+func TestFKPenggunaSelaras(t *testing.T) {
+	db := pg.NewDatabase(t, "fk_pengguna")
+	pgtest.MigrateUp(t, db)
+
+	var jumlah int
+	var gagal []string
+	for _, fk := range bacaFK(t, db) {
+		if fk.Induk != "pengguna" {
+			continue
+		}
+		jumlah++
+		gagal = append(gagal, pelanggaranFK(fk)...)
+		if fk.TipeAnak != "uuid" {
+			gagal = append(gagal, fmt.Sprintf("%s: FK %s(%s) bertipe %s, harus uuid", fk.Anak, fk.Nama, fk.Kolom, fk.TipeAnak))
+		}
+	}
+	assert.Greater(t, jumlah, 40, "FK ke pengguna seharusnya puluhan; bacaFK mungkin salah")
+	assert.Empty(t, gagal, "FK ke pengguna melanggar standar:\n%s", strings.Join(gagal, "\n"))
 }
 
 // TestUUIDStabil_SamaDenganSQL: idx.UUIDStabil (Go) dan garda_uuid_stabil (SQL, migrasi 000109) harus

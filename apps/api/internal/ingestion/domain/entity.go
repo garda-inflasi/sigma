@@ -38,7 +38,7 @@ type EksekusiSumber struct {
 	ID                 int64      `gorm:"column:id;primaryKey;autoIncrement"`
 	SumberID           string     `gorm:"column:sumber_id"`
 	Pemicu             string     `gorm:"column:pemicu"`
-	AktorID            *string    `gorm:"column:aktor_id"`
+	AktorID            *string    `gorm:"column:aktor_id;type:uuid"`
 	Status             string     `gorm:"column:status"`
 	Mulai              time.Time  `gorm:"column:mulai"`
 	Selesai            *time.Time `gorm:"column:selesai"`

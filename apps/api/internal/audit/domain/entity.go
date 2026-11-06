@@ -17,7 +17,7 @@ const (
 type AuditLog struct {
 	ID            string    `gorm:"column:id;primaryKey"`
 	Waktu         time.Time `gorm:"column:waktu;default:now()"`
-	AktorID       *string   `gorm:"column:aktor_id"`
+	AktorID       *string   `gorm:"column:aktor_id;type:uuid"`
 	AktorNama     *string   `gorm:"column:aktor_nama"`
 	AktorEmail    *string   `gorm:"column:aktor_email"`
 	AktorPeran    *string   `gorm:"column:aktor_peran"`

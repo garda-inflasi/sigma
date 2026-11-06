@@ -47,14 +47,14 @@ type EntriHarga struct {
 	Catatan         *string    `gorm:"column:catatan"`
 	IdempotencyKey  *string    `gorm:"column:idempotency_key"`
 	DicatatPada     time.Time  `gorm:"column:dicatat_pada"`
-	PetugasID       *string    `gorm:"column:petugas_id"`
-	DivalidasiOleh  *string    `gorm:"column:divalidasi_oleh"`
+	PetugasID       *string    `gorm:"column:petugas_id;type:uuid"`
+	DivalidasiOleh  *string    `gorm:"column:divalidasi_oleh;type:uuid"`
 	DivalidasiPada  *time.Time `gorm:"column:divalidasi_pada"`
-	DipublikasiOleh *string    `gorm:"column:dipublikasi_oleh"`
+	DipublikasiOleh *string    `gorm:"column:dipublikasi_oleh;type:uuid"`
 	DipublikasiPada *time.Time `gorm:"column:dipublikasi_pada"`
 	// AlasanPenolakan wajib terisi bila Status DITOLAK (dijaga CHECK di basis data).
 	AlasanPenolakan *string    `gorm:"column:alasan_penolakan"`
-	DitolakOleh     *string    `gorm:"column:ditolak_oleh"`
+	DitolakOleh     *string    `gorm:"column:ditolak_oleh;type:uuid"`
 	DitolakPada     *time.Time `gorm:"column:ditolak_pada"`
 	// FlagValidasi adalah hasil cek otomatis (lihat Validasi).
 	FlagValidasi FlagValidasi `gorm:"column:flag_validasi;type:jsonb"`
@@ -102,14 +102,14 @@ type EntriView struct {
 	FotoURL         *string      `gorm:"column:foto_url"`
 	Catatan         *string      `gorm:"column:catatan"`
 	DicatatPada     time.Time    `gorm:"column:dicatat_pada"`
-	PetugasID       *string      `gorm:"column:petugas_id"`
+	PetugasID       *string      `gorm:"column:petugas_id;type:uuid"`
 	PetugasNama     *string      `gorm:"column:petugas_nama"`
-	DivalidasiOleh  *string      `gorm:"column:divalidasi_oleh"`
+	DivalidasiOleh  *string      `gorm:"column:divalidasi_oleh;type:uuid"`
 	DivalidasiPada  *time.Time   `gorm:"column:divalidasi_pada"`
-	DipublikasiOleh *string      `gorm:"column:dipublikasi_oleh"`
+	DipublikasiOleh *string      `gorm:"column:dipublikasi_oleh;type:uuid"`
 	DipublikasiPada *time.Time   `gorm:"column:dipublikasi_pada"`
 	AlasanPenolakan *string      `gorm:"column:alasan_penolakan"`
-	DitolakOleh     *string      `gorm:"column:ditolak_oleh"`
+	DitolakOleh     *string      `gorm:"column:ditolak_oleh;type:uuid"`
 	DitolakPada     *time.Time   `gorm:"column:ditolak_pada"`
 	FlagValidasi    FlagValidasi `gorm:"column:flag_validasi;type:jsonb"`
 	DibuatPada      time.Time    `gorm:"column:dibuat_pada"`

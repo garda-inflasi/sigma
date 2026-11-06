@@ -43,7 +43,7 @@ type PolicyBrief struct {
 	Ringkasan     string `gorm:"column:ringkasan;type:text"`
 	Rekomendasi   string `gorm:"column:rekomendasi;type:jsonb"`
 	Halaman       int    `gorm:"column:halaman"`
-	DisusunOlehID string `gorm:"column:disusun_oleh_id"`
+	DisusunOlehID string `gorm:"column:disusun_oleh_id;type:uuid"`
 	// Konten adalah dokumen JSON Konten (narasi per bagian dan lampiran sitasi);
 	// SnapshotData berisi fakta yang dipakai saat penyusunan.
 	Konten       string  `gorm:"column:konten;type:jsonb;default:{}"`
@@ -81,7 +81,7 @@ type BriefVersi struct {
 	BriefID string    `gorm:"column:brief_id;primaryKey"`
 	Versi   int       `gorm:"column:versi;primaryKey"`
 	Konten  string    `gorm:"column:konten;type:jsonb"`
-	Oleh    string    `gorm:"column:oleh"`
+	Oleh    string    `gorm:"column:oleh;type:uuid"`
 	Waktu   time.Time `gorm:"column:waktu;default:now()"`
 }
 

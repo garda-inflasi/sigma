@@ -95,7 +95,7 @@ type TransaksiStok struct {
 	VolumeTon         float64   `gorm:"column:volume_ton"`
 	FasilitasAsalID   *string   `gorm:"column:fasilitas_asal_id"`
 	FasilitasTujuanID *string   `gorm:"column:fasilitas_tujuan_id"`
-	OlehID            *string   `gorm:"column:oleh_id"`
+	OlehID            *string   `gorm:"column:oleh_id;type:uuid"`
 	Waktu             time.Time `gorm:"column:waktu"`
 	Alasan            string    `gorm:"column:alasan"`
 	Sumber            string    `gorm:"column:sumber;default:APLIKASI"`

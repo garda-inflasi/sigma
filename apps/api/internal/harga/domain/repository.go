@@ -53,7 +53,7 @@ type Bentrok struct {
 	ID          string    `gorm:"column:id"`
 	Harga       int       `gorm:"column:harga"`
 	DicatatPada time.Time `gorm:"column:dicatat_pada"`
-	PetugasID   string    `gorm:"column:petugas_id"`
+	PetugasID   string    `gorm:"column:petugas_id;type:uuid"`
 	PetugasNama string    `gorm:"column:petugas_nama"`
 }
 

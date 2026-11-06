@@ -44,6 +44,10 @@ func (r *Repository) UpdateUser(ctx context.Context, user *domain.Pengguna) erro
 	return r.db.WithContext(ctx).Save(user).Error
 }
 
+func (r *Repository) TouchLastLogin(ctx context.Context, userID string, at time.Time) error {
+	return r.db.WithContext(ctx).Model(&domain.Pengguna{}).Where("id = ?", userID).UpdateColumn("terakhir_masuk", at).Error
+}
+
 func (r *Repository) DeleteUser(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&domain.Pengguna{}).Error
 }

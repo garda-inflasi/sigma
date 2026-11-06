@@ -40,6 +40,10 @@ func (m *mockRepository) RevokeSession(ctx context.Context, userID, familyID str
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockRepository) TouchLastLogin(ctx context.Context, userID string, at time.Time) error {
+	return m.Called(ctx, userID, at).Error(0)
+}
+
 func (m *mockRepository) RetireFamilyTokensExcept(ctx context.Context, familyID, keepTokenHash string, now time.Time) error {
 	return m.Called(ctx, familyID, keepTokenHash, now).Error(0)
 }

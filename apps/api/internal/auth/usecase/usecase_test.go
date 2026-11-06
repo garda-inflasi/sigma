@@ -215,7 +215,7 @@ func TestLogin_Success(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
 
 	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -519,7 +519,7 @@ func TestLogin_MandatoryChangeFlagIsCarriedByToken(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
 
 	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 

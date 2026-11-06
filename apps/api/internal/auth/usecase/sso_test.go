@@ -78,6 +78,16 @@ func (r *memRepo) UpdateUser(_ context.Context, u *domain.Pengguna) error {
 	return nil
 }
 
+// TouchLastLogin hanya mengubah terakhir_masuk, seperti UPDATE kolom tunggal di Postgres.
+func (r *memRepo) TouchLastLogin(_ context.Context, userID string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if u, ok := r.users[userID]; ok {
+		u.TerakhirMasuk = &at
+	}
+	return nil
+}
+
 func (r *memRepo) CreateRefreshToken(_ context.Context, t *domain.RefreshToken) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

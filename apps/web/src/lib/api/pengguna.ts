@@ -142,19 +142,30 @@ export interface UpdatePenggunaInput {
 
 export type BulkAksi = "aktifkan" | "nonaktifkan" | "wajibkan_mfa" | "akhiri_sesi";
 
+/** Ukuran halaman saat memuat daftar pengguna (batas maksimum API). */
+export const HALAMAN_PENGGUNA = 100;
+
+export function queryDaftarPengguna(page: number, search?: string): string {
+  const qs = new URLSearchParams({ page: String(page), limit: String(HALAMAN_PENGGUNA) });
+  if (search) qs.set("search", search);
+  return qs.toString();
+}
+
+/** Masih ada halaman berikutnya? Halaman kosong menghentikan perulangan walau total tidak konsisten. */
+export function lanjutHalamanPengguna(res: Pick<ListUsersResponse, "items" | "total" | "page" | "limit">): boolean {
+  return res.items.length > 0 && res.page * res.limit < res.total;
+}
+
 /** Klien CRUD pengguna — semua panggilan melalui Route Handler BFF. */
 export const penggunaApi = {
-  list: async (params: { page?: number; limit?: number; search?: string } = {}) => {
-    const qs = new URLSearchParams();
-    if (params.page) qs.set("page", String(params.page));
-    if (params.limit) qs.set("limit", String(params.limit));
-    if (params.search) qs.set("search", params.search);
-    const query = qs.toString();
-
-    const res = await bffFetch<ListUsersResponse>(
-      `/api/pengguna${query ? `?${query}` : ""}`
-    );
-    return res.items.map(toPenggunaRow);
+  /** Seluruh pengguna yang cocok (semua halaman): tabel menyaring dan memaginasi di klien. */
+  list: async (params: { search?: string } = {}) => {
+    const rows: PenggunaRow[] = [];
+    for (let page = 1; ; page++) {
+      const res = await bffFetch<ListUsersResponse>(`/api/pengguna?${queryDaftarPengguna(page, params.search)}`);
+      rows.push(...res.items.map(toPenggunaRow));
+      if (!lanjutHalamanPengguna(res)) return rows;
+    }
   },
 
   /** Satu pengguna dengan data segar dari server (GET /v1/users/{id}); 404 (ApiError) bila tidak ada. */

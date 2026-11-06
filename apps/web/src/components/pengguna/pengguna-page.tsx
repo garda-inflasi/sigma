@@ -235,7 +235,8 @@ export function PenggunaPage() {
   const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset"; user: PenggunaRow | null } | null>(null);
 
   const kolom = useMemo<ColumnDef<PenggunaRow>[]>(() => [
-    { accessorKey: "nama", header: "Nama", cell: ({ row: { original: u } }) => <div><p className="font-medium">{u.nama}</p><p className="text-xs text-muted-foreground">{u.email}</p></div> },
+    // Nilai kolom memuat email juga supaya kotak cari ("Cari nama, email, …") menemukan pengguna lewat email.
+    { id: "nama", accessorFn: (u) => `${u.nama} ${u.email}`, header: "Nama", cell: ({ row: { original: u } }) => <div><p className="font-medium">{u.nama}</p><p className="text-xs text-muted-foreground">{u.email}</p></div> },
     { id: "peran", accessorFn: (u) => ROLES[u.role].label, header: "Peran", cell: ({ row: { original: u } }) => <div><p>{ROLES[u.role].label}</p><p className="text-xs text-muted-foreground">{LAPIS_META[ROLES[u.role].lapis].label.split(" — ")[0]}</p></div> },
     { id: "lapis", accessorFn: (u) => ROLES[u.role].lapis, header: "Lapis", filterFn: "equals" },
     { accessorKey: "lembaga", header: "Lembaga" },

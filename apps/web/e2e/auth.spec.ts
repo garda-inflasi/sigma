@@ -191,15 +191,12 @@ test("/reset-password tanpa token menawarkan tautan baru", async ({ page }) => {
 
 // ── Masuk dan keluar ─────────────────────────────────────────────────────
 
-test("halaman masuk tidak lagi menawarkan SSO Google dan menaut ke lupa kata sandi", async ({
-  page,
-}) => {
+// Tombol "Masuk dengan Google" tampil hanya bila SSO dikonfigurasi; diuji di sso.spec.ts.
+test("halaman masuk menaut ke lupa kata sandi", async ({ page }) => {
   await page.goto("/masuk", { waitUntil: "domcontentloaded" });
   await expect(
     page.getByRole("heading", { name: "Masuk ke Garda Inflasi" }),
   ).toBeVisible();
-  await expect(page.getByText(/Google/)).toHaveCount(0);
-  await expect(page.getByText("atau", { exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Lupa kata sandi?" }).click();
   await expect(page).toHaveURL(/\/lupa-password$/);
 });

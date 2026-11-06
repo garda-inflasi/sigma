@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { masihTerkunci, penggunaApi, toPenggunaDetail, toPenggunaRow, type UserResponse } from "./pengguna";
+import { HALAMAN_PENGGUNA, lanjutHalamanPengguna, masihTerkunci, penggunaApi, queryDaftarPengguna, toPenggunaDetail, toPenggunaRow, type UserResponse } from "./pengguna";
 
 const dasar: UserResponse = {
   id: "USR-1",
@@ -75,5 +75,23 @@ describe("kunci login (lockout)", () => {
     } finally {
       globalThis.fetch = asli;
     }
+  });
+});
+
+describe("daftar pengguna dimuat seluruh halamannya", () => {
+  it("meminta halaman berukuran maksimum dan meneruskan pencarian", () => {
+    assert.equal(queryDaftarPengguna(1), `page=1&limit=${HALAMAN_PENGGUNA}`);
+    assert.equal(queryDaftarPengguna(3, "aulia rahman"), `page=3&limit=${HALAMAN_PENGGUNA}&search=aulia+rahman`);
+  });
+
+  it("berhenti tepat setelah halaman terakhir", () => {
+    assert.equal(lanjutHalamanPengguna({ items: new Array(100), total: 250, page: 1, limit: 100 }), true);
+    assert.equal(lanjutHalamanPengguna({ items: new Array(100), total: 250, page: 2, limit: 100 }), true);
+    assert.equal(lanjutHalamanPengguna({ items: new Array(50), total: 250, page: 3, limit: 100 }), false);
+    assert.equal(lanjutHalamanPengguna({ items: new Array(100), total: 100, page: 1, limit: 100 }), false);
+  });
+
+  it("halaman kosong menghentikan perulangan walau total tidak konsisten", () => {
+    assert.equal(lanjutHalamanPengguna({ items: [], total: 500, page: 2, limit: 100 }), false);
   });
 });

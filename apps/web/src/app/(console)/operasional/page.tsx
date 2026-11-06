@@ -17,6 +17,7 @@ export const metadata = { title: "Dashboard operasional" };
 export default async function OperasionalPage() {
   const user = await getSession();
   const role = user?.role;
+  const lihatPeta = can(role, "spasial.lihat");
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
@@ -39,8 +40,9 @@ export default async function OperasionalPage() {
         <div className="xl:col-span-5"><CuacaWilayahCard /></div>
       </div>
       <div className="grid gap-6 xl:grid-cols-12">
-        <div className="xl:col-span-7"><OpsMap /></div>
-        <div className="xl:col-span-5"><TrendChart /></div>
+        {/* Peta memakai data spasial: peran tanpa spasial.lihat (mis. manajer mutu, agregator) tidak memuatnya. */}
+        {lihatPeta && <div className="xl:col-span-7"><OpsMap /></div>}
+        <div className={lihatPeta ? "xl:col-span-5" : "xl:col-span-12"}><TrendChart /></div>
       </div>
       {can(role, "harga.lihat") && (
         <div className="grid gap-6 xl:grid-cols-12">

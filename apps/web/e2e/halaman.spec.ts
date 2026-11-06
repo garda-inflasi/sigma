@@ -1,8 +1,13 @@
 /**
- * Uji asap per peran: setiap halaman yang menjadi hak peran itu terbuka tanpa dialihkan,
- * tanpa respons API >= 400, dan tanpa galat JS; halaman di luar hak peran dialihkan ke
- * /akses-ditolak.
+ * Uji asap per peran: untuk ke-14 peran (satu akun demo per peran), setiap halaman yang boleh dibuka
+ * peran itu menurut tabel izin rute aplikasi (lib/rbac/routes.ts) terbuka tanpa dialihkan, tanpa
+ * respons API >= 400, dan tanpa galat JS. Halaman di luar hak peran dialihkan ke /akses-ditolak.
+ *
+ * Daftar halaman diturunkan dari tabel yang sama dengan penjaga rute, jadi peran atau halaman baru
+ * otomatis ikut teruji, termasuk widget yang memanggil API di luar izin peran (403).
  */
+import { canAccessRoute } from "../src/lib/rbac/routes";
+import { ROLE_IDS, type Role } from "../src/lib/rbac/roles";
 import {
   AKUN,
   buka,
@@ -13,53 +18,58 @@ import {
   type Akun,
 } from "./fixtures";
 
-const RENCANA: Partial<Record<Akun, string[]>> = {
-  superadmin: [
-    "/pengguna",
-    "/audit",
-    "/master/komoditas",
-    "/master/wilayah",
-    "/master/pasar",
-    "/sumber-data",
-    "/mfa",
-  ],
-  manajerData: [
-    "/operasional",
-    "/data/harga",
-    "/ews",
-    "/peta",
-    "/prediksi",
-    "/intervensi",
-    "/sumber-data",
-    "/kpi",
-  ],
-  strategisDjpb: [
-    "/eksekutif",
-    "/policy-brief",
-    "/intervensi",
-    "/kpi",
-    "/cold-storage",
-  ],
-  strategisFmipa: [
-    "/eksekutif",
-    "/operasional",
-    "/ews",
-    "/prediksi",
-    "/intervensi",
-    "/policy-brief",
-    "/master/komoditas",
-    "/peta",
-    "/alur-sistem",
-  ],
-  manajerMutu: ["/cold-storage", "/kpi"],
-  koordinator: ["/data/harga", "/operasional", "/lapangan/tugas"],
-  manajerKebijakan: ["/policy-brief", "/intervensi"],
-  mahasiswa: ["/lapangan/tugas", "/lapangan/riwayat", "/lapangan/input"],
+/** Akun demo untuk setiap peran (apps/api/internal/auth/seeder/demo.go). */
+const AKUN_PERAN: Record<Role, Akun> = {
+  ADMIN_SISTEM: "superadmin",
+  STRATEGIS_FMIPA: "strategisFmipa",
+  STRATEGIS_BI: "strategisBi",
+  STRATEGIS_BPS: "strategisBps",
+  STRATEGIS_DJPB: "strategisDjpb",
+  MANAJER_PROGRAM: "manajerProgram",
+  MANAJER_DATA: "manajerData",
+  MANAJER_KEBIJAKAN: "manajerKebijakan",
+  MANAJER_PEMBIAYAAN: "manajerPembiayaan",
+  MANAJER_RISIKO: "manajerRisiko",
+  MANAJER_MUTU: "manajerMutu",
+  OPS_KOORDINATOR: "koordinator",
+  OPS_AGREGATOR: "agregator",
+  OPS_MAHASISWA: "mahasiswa",
 };
 
-for (const [akun, halaman] of Object.entries(RENCANA) as [Akun, string[]][]) {
-  test.describe(`halaman ${AKUN[akun]}`, () => {
-    for (const path of halaman) {
+/** Semua halaman aplikasi yang membutuhkan sesi. */
+const HALAMAN = [
+  "/eksekutif",
+  "/operasional",
+  "/data/harga",
+  "/sumber-data",
+  "/master/komoditas",
+  "/master/wilayah",
+  "/master/pasar",
+  "/ews",
+  "/prediksi",
+  "/peta",
+  "/cold-storage",
+  "/intervensi",
+  "/policy-brief",
+  "/kpi",
+  "/pengguna",
+  "/audit",
+  "/alur-sistem",
+  "/keamanan",
+  "/mfa",
+  "/lapangan/tugas",
+  "/lapangan/riwayat",
+  "/lapangan/input",
+];
+
+test("setiap peran punya akun demo", () => {
+  expect(Object.keys(AKUN_PERAN).sort()).toEqual([...ROLE_IDS].sort());
+});
+
+for (const peran of ROLE_IDS) {
+  const akun = AKUN_PERAN[peran];
+  test.describe(`halaman ${AKUN[akun]} (${peran})`, () => {
+    for (const path of HALAMAN.filter((p) => canAccessRoute(peran, p))) {
       test(`${path} terbuka`, async ({ page }) => {
         await masukSebagai(page, akun);
         await buka(page, path);
@@ -76,6 +86,8 @@ const DITOLAK: [Akun, string][] = [
   ["superadmin", "/kpi"],
   ["strategisFmipa", "/pengguna"],
   ["mahasiswa", "/operasional"],
+  ["manajerPembiayaan", "/ews"],
+  ["agregator", "/peta"],
 ];
 
 for (const [akun, path] of DITOLAK) {

@@ -25,7 +25,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | #   | Fitur                                     | Rute UI                    | UI  | Backend | Terhubung | Skema & seed | Tes | Berkas                                                     |
 | --- | ----------------------------------------- | -------------------------- | :-: | :-----: | :-------: | :----------: | :-: | ---------------------------------------------------------- |
 | 1   | Autentikasi, MFA, sesi                    | `/masuk`, `/lupa-password` | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [01-auth.md](01-auth.md)                                   |
-| 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | 🟡  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
+| 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
 | 3   | Audit trail                               | `/audit`                   | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [03-audit.md](03-audit.md)                                 |
 | 4   | Master data                               | `/master/[entitas]`        | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
 | 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
@@ -61,6 +61,12 @@ seketika, rotasi refresh token atomik dengan refresh senyap di web, lockout per 
 terdaftar, pesan galat login seragam, SSO Google (OIDC + PKCE) dengan mock IdP untuk demo, job pembersihan tabel auth,
 logout yang membersihkan data offline lapangan, batas laju per IP di API, coverage usecase auth 96,9%. E2E 293 tes
 (termasuk uji asap 14 peran × halaman yang diizinkan) lolos dua putaran berturut-turut.
+**Pengguna & RBAC (6 Nov 2026):** 02-C (Opsi B) dan seluruh backlog lanjutan [02](02-pengguna-rbac.md) selesai:
+matriks peran × izin di basis data yang dapat diedit admin, izin langsung per pengguna dengan masa berlaku dan alasan
+(berlaku di API ≤ 15 detik, UI menyusul lewat refresh senyap), penjaga pemegang terakhir `pengguna.kelola`, undangan
+akun lewat email dengan halaman aktivasi, impor/ekspor CSV, daftar pengguna dengan filter/urutan/paginasi sisi
+server, reset MFA oleh admin, dan riwayat peran. Coverage handler pengguna ≥ 86%, usecase auth 96,9%, 71 tes
+komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemisahan tugas) yang tersisa di 02.
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 
 1. **Belum diuji terhadap layanan nyata** (tidak ada akses/kunci saat dikerjakan): konektor PIHPS, BMKG, dan BPS

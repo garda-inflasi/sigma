@@ -15,6 +15,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	auditRoutes "github.com/garda-inflasi/api/internal/audit/routes"
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
+	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -52,6 +53,9 @@ func newSuite(t *testing.T, name string) *suite {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
+	// Izin dibaca dari basis data (02-C): tanpa referensi RBAC tidak ada peran yang punya izin apa pun.
+	_, err := authseeder.SeedRBAC(t.Context(), db)
+	require.NoError(t, err)
 
 	hash, err := crypto.HashPassword(sandi)
 	require.NoError(t, err)

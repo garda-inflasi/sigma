@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  checkLoginRateLimit,
   checkRateLimit,
   getRateLimitKey,
   ukurBatasLaju,
@@ -83,5 +84,64 @@ describe("ukurBatasLogin", () => {
     const ditolak = ukurBatasLogin(req());
     assert.equal(ditolak.diizinkan, false);
     assert.ok(ditolak.tungguDetik >= 1 && ditolak.tungguDetik <= 60);
+  });
+});
+
+describe("getRateLimitKey", () => {
+  const dari = (xff?: string) =>
+    new Request("http://localhost/api/auth/login", {
+      headers: xff === undefined ? {} : { "x-forwarded-for": xff },
+    });
+
+  it("memakai entri paling kiri X-Forwarded-For dan membuang spasi", () => {
+    assert.equal(getRateLimitKey(dari("  203.0.113.4 , 10.0.0.1")), "bff:203.0.113.4");
+  });
+
+  it("tanpa header (akses langsung ke Next) jatuh ke satu ember bersama 127.0.0.1", () => {
+    assert.equal(getRateLimitKey(dari()), "bff:127.0.0.1");
+    assert.equal(getRateLimitKey(dari("")), "bff:127.0.0.1");
+    assert.equal(getRateLimitKey(dari(" , 10.0.0.1")), "bff:127.0.0.1");
+  });
+});
+
+describe("checkLoginRateLimit", () => {
+  const dari = (ip: string) =>
+    new Request("http://localhost/api/auth/login", {
+      headers: { "x-forwarded-for": ip },
+    });
+
+  it("boolean: lima percobaan pertama lolos, keenam ditolak, IP lain tidak terpengaruh", () => {
+    for (let i = 0; i < 5; i++)
+      assert.equal(checkLoginRateLimit(dari("198.51.100.201")), true, `ke-${i + 1}`);
+    assert.equal(checkLoginRateLimit(dari("198.51.100.201")), false);
+    assert.equal(checkLoginRateLimit(dari("198.51.100.202")), true);
+  });
+
+  it("login dan validasi OTP berbagi ember yang sama (ukurBatasLogin)", () => {
+    const ip = "198.51.100.203";
+    for (let i = 0; i < 3; i++) checkLoginRateLimit(dari(ip));
+    for (let i = 0; i < 2; i++) assert.equal(ukurBatasLogin(dari(ip)).diizinkan, true);
+    assert.equal(
+      ukurBatasLogin(dari(ip)).diizinkan,
+      false,
+      "5 percobaan gabungan sudah habis",
+    );
+  });
+});
+
+describe("ukurBatasLaju: batas ekstrem", () => {
+  it("limit 1 menolak segera dan menunggu tepat sampai entri itu habis", () => {
+    const kunci = kunciBaru();
+    assert.equal(ukurBatasLaju(kunci, 1, 10_000, T0).diizinkan, true);
+    const ditolak = ukurBatasLaju(kunci, 1, 10_000, T0 + 2_500);
+    assert.deepEqual(ditolak, { diizinkan: false, tungguDetik: 8 });
+    assert.equal(ukurBatasLaju(kunci, 1, 10_000, T0 + 10_000).diizinkan, true);
+  });
+
+  it("entri tepat di batas jendela sudah dianggap keluar (< bukan <=)", () => {
+    const kunci = kunciBaru();
+    ukurBatasLaju(kunci, 1, 1_000, T0);
+    assert.equal(ukurBatasLaju(kunci, 1, 1_000, T0 + 999).diizinkan, false);
+    assert.equal(ukurBatasLaju(kunci, 1, 1_000, T0 + 1_000).diizinkan, true);
   });
 });

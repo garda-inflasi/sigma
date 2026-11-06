@@ -54,7 +54,7 @@ export function Topbar() {
   return (
     <header className="sticky top-3 z-20 mx-3 lg:mx-1 lg:mr-3">
       <div className="glass flex h-16 items-center gap-3 rounded-xl px-3 sm:px-4">
-        <button onClick={() => setMobileOpen(true)} className="grid size-9 place-items-center rounded-xl hover:bg-secondary lg:hidden" aria-label="Buka navigasi">
+        <button type="button" onClick={() => setMobileOpen(true)} className="grid size-9 place-items-center rounded-xl hover:bg-secondary lg:hidden" aria-label="Buka navigasi">
           <Menu className="size-5" />
         </button>
         <div className="min-w-0 flex-1">
@@ -62,7 +62,7 @@ export function Topbar() {
           <p className="hidden truncate text-xs text-muted-foreground sm:block">{today}</p>
         </div>
 
-        <button
+        <button type="button"
           onClick={() => setCommandOpen(true)}
           className="glass-subtle hidden h-9 w-64 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-shadow hover:shadow-ambient-sm md:flex"
         >

@@ -20,7 +20,7 @@ export function Segmented<T extends string>({
       {options.map((o) => {
         const active = o.value === value;
         return (
-          <button
+          <button type="button"
             key={o.value}
             role="tab"
             aria-selected={active}

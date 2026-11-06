@@ -90,7 +90,7 @@ export function PrediksiPage() {
   const alasanSegarkan = alasanTakBisaSegarkan(model, kode, !!statusMl?.tersedia);
 
   const kolomProyeksi = useMemo<ColumnDef<BarisProyeksi>[]>(() => [
-    { accessorKey: "nama", header: "Komoditas", cell: ({ row: { original: r } }) => <button onClick={() => { setKode(r.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex items-center gap-2 font-medium hover:text-data-700"><KomoditasIcon kode={r.id} className="text-muted-foreground" />{r.nama}</button> },
+    { accessorKey: "nama", header: "Komoditas", cell: ({ row: { original: r } }) => <button type="button" onClick={() => { setKode(r.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex items-center gap-2 font-medium hover:text-data-700"><KomoditasIcon kode={r.id} className="text-muted-foreground" />{r.nama}</button> },
     { accessorKey: "kini", header: "Harga kini", cell: ({ getValue }) => <span className="num">{formatRupiah(getValue<number>())}</span> },
     { accessorKey: "proyeksi", header: "Proyeksi 14 hari", cell: ({ getValue }) => <span className="num font-semibold">{formatRupiah(getValue<number>())}</span> },
     { accessorKey: "pct", header: "Perubahan", cell: ({ getValue }) => { const v = getValue<number>(); return <span className={cn("num font-semibold", v > 5 ? "text-defisit-ink" : v < -3 ? "text-surplus-ink" : "text-normal-ink")}>{formatPersen(v, { signed: true })}</span>; } },

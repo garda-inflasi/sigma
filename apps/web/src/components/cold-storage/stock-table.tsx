@@ -393,7 +393,7 @@ export function StockTable({
                     ))}
                   </SelectContent>
                 </Select>
-                <button
+                <button type="button"
                   onClick={() => onParams({ desc: !params.desc })}
                   aria-label={
                     params.desc
@@ -411,7 +411,7 @@ export function StockTable({
               </div>
 
               {adaFilter && (
-                <button
+                <button type="button"
                   onClick={onResetFilters}
                   className="inline-flex h-10 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
                 >
@@ -454,7 +454,7 @@ export function StockTable({
                   semuaDiHalaman &&
                   total > rows.length &&
                   total <= COLD_STORAGE_MAX_BULK_IDS && (
-                    <button
+                    <button type="button"
                       onClick={pilihSemuaHasil}
                       disabled={memilihSemua}
                       className="inline-flex items-center gap-1.5 font-semibold underline-offset-4 hover:underline disabled:opacity-60"
@@ -465,7 +465,7 @@ export function StockTable({
                       Pilih semua {total.toLocaleString("id-ID")} lot
                     </button>
                   )}
-                <button
+                <button type="button"
                   onClick={clear}
                   className="font-semibold underline-offset-4 hover:underline"
                 >
@@ -485,7 +485,7 @@ export function StockTable({
                 Gagal memperbarui data; menampilkan data terakhir.{" "}
                 {error.message}
               </span>
-              <button
+              <button type="button"
                 onClick={onRetry}
                 className="font-semibold underline-offset-4 hover:underline"
               >
@@ -574,7 +574,7 @@ export function StockTable({
                               k.kanan ? "pr-8 text-right" : "text-left",
                             )}
                           >
-                            <button
+                            <button type="button"
                               onClick={() => urutkan(k.key)}
                               className={cn(
                                 "inline-flex items-center gap-1 hover:text-foreground",

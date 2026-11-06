@@ -20,6 +20,9 @@ import { formatRelatif } from "@/lib/format";
 import { useAlurPersetujuan, usePersetujuan, usePutusPersetujuan, useTahapIntervensi } from "@/lib/query/hooks";
 import { can, type Permission } from "@/lib/rbac/permissions";
 import { cn } from "@/lib/utils";
+import { z } from "zod";
+import { FormBff } from "@/components/form/form-bff";
+import { useFormBff } from "@/lib/form/use-form-bff";
 
 /** Label tahap dari definisi server (cadangan klien selama dimuat); kode tahap bila tak dikenal. */
 function useJudulTahap() {
@@ -27,6 +30,8 @@ function useJudulTahap() {
   const semua = Object.values(data ?? SIKLUS_TAHAP).flat();
   return (id?: string) => semua.find((t) => t.id === id)?.judul ?? id ?? "";
 }
+
+const skemaTolak = z.object({ catatan: z.string().trim().min(1, "Alasan penolakan wajib diisi.") });
 
 /** Dialog catatan penolakan; penolakan wajib disertai alasan (ditegakkan juga di server). */
 function DialogTolak({
@@ -38,18 +43,15 @@ function DialogTolak({
 }) {
   const putus = usePutusPersetujuan();
   const [catatan, setCatatan] = useState("");
-  const tolak = () => {
-    if (!permintaan) return;
-    putus.mutate(
-      { id: permintaan.id, keputusan: "TOLAK", catatan: catatan.trim() },
-      {
-        onSuccess: () => {
-          setCatatan("");
-          onClose();
-        },
-      },
-    );
-  };
+  // Toast hasil/galat dari hook mutasi; galat juga tampil di dialog.
+  const kiriman = useFormBff<z.output<typeof skemaTolak>>({
+    skema: skemaTolak,
+    kirim: (n) => putus.mutateAsync({ id: permintaan!.id, keputusan: "TOLAK", catatan: n.catatan }),
+    sukses: () => {
+      setCatatan("");
+      onClose();
+    },
+  });
   return (
     <Dialog
       open={permintaan !== null}
@@ -65,24 +67,35 @@ function DialogTolak({
             dan audit trail.
           </DialogDescription>
         </DialogHeader>
-        <Textarea
-          value={catatan}
-          onChange={(e) => setCatatan(e.target.value)}
-          placeholder="Alasan penolakan"
-          maxLength={500}
-          aria-label="Alasan penolakan"
-        />
-        <div className="flex justify-end gap-2">
-          <SpringButton variant="soft" onClick={onClose}>
-            Batal
-          </SpringButton>
-          <SpringButton
-            disabled={catatan.trim() === "" || putus.isPending}
-            onClick={tolak}
-          >
-            Tolak
-          </SpringButton>
-        </div>
+        <FormBff
+          onKirim={kiriman.kirimDari(() => ({ catatan }))}
+          sibuk={kiriman.pending}
+          className="space-y-4"
+        >
+          <Textarea
+            value={catatan}
+            onChange={(e) => setCatatan(e.target.value)}
+            placeholder="Alasan penolakan"
+            maxLength={500}
+            aria-label="Alasan penolakan"
+          />
+          {kiriman.galat && (
+            <p role="alert" className="text-xs text-defisit-ink dark:text-rose-300">
+              {kiriman.galat.pesan}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <SpringButton variant="soft" onClick={onClose}>
+              Batal
+            </SpringButton>
+            <SpringButton
+              type="submit"
+              disabled={catatan.trim() === "" || kiriman.pending}
+            >
+              Tolak
+            </SpringButton>
+          </div>
+        </FormBff>
       </DialogContent>
     </Dialog>
   );

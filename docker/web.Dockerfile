@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -7,6 +8,9 @@ RUN corepack enable && corepack prepare pnpm@10 --activate
 
 # Set CI to avoid interactive prompts
 ENV CI=true
+# Store pnpm di cache mount BuildKit (bertahan antar build): lockfile yang berubah hanya mengunduh paket
+# yang belum ada, dan unduhan yang putus di jaringan lambat diulang lebih sabar.
+ENV npm_config_store_dir=/pnpm/store npm_config_fetch_retries=5 npm_config_fetch_retry_maxtimeout=120000
 
 # Copy workspace configuration files (no root package.json — pnpm works without it)
 COPY pnpm-workspace.yaml turbo.json ./
@@ -14,7 +18,7 @@ COPY pnpm-lock.yaml ./
 
 # Unduh paket hanya dari lockfile. Layer ini tetap di cache selama pnpm-lock.yaml tidak
 # berubah, sehingga perubahan kode tidak memicu unduh ulang seluruh paket npm.
-RUN pnpm fetch --frozen-lockfile
+RUN --mount=type=cache,id=garda-pnpm-store,target=/pnpm/store pnpm fetch --frozen-lockfile
 
 # Copy all packages (needed for workspace dependencies)
 COPY packages/ ./packages/
@@ -33,7 +37,7 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 
 # Pasang dependensi dari store hasil `pnpm fetch` (tanpa jaringan)
-RUN pnpm install --offline --frozen-lockfile
+RUN --mount=type=cache,id=garda-pnpm-store,target=/pnpm/store pnpm install --offline --frozen-lockfile
 
 # Build the web app (package name is garda-inflasi-web, not web)
 RUN pnpm --filter garda-inflasi-web build

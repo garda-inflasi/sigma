@@ -183,12 +183,12 @@ export function DataTable<T>({
             {allFilteredSelected ? (
               <>
                 Seluruh <span className="num font-semibold">{filteredRows.length.toLocaleString("id-ID")}</span> {entityLabel} terpilih.
-                <button onClick={clear} className="font-semibold underline-offset-4 hover:underline">Batalkan pilihan</button>
+                <button type="button" onClick={clear} className="font-semibold underline-offset-4 hover:underline">Batalkan pilihan</button>
               </>
             ) : (
               <>
                 <span className="num font-semibold">{pageRows.length}</span> {entityLabel} di halaman ini terpilih.
-                <button
+                <button type="button"
                   onClick={() => setRowSelection(Object.fromEntries(filteredRows.map((r) => [r.id, true])))}
                   className="font-semibold underline-offset-4 hover:underline"
                 >
@@ -219,7 +219,7 @@ export function DataTable<T>({
                         className="h-11 border-b border-border/70 px-3 text-left text-xs font-medium whitespace-nowrap text-muted-foreground first:pl-5"
                       >
                         {h.isPlaceholder ? null : sortable ? (
-                          <button onClick={h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 hover:text-foreground">
+                          <button type="button" onClick={h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 hover:text-foreground">
                             {flexRender(h.column.columnDef.header, h.getContext())}
                             {dir === "asc" ? <ArrowUp className="size-3" /> : dir === "desc" ? <ArrowDown className="size-3" /> : <ChevronsUpDown className="size-3 opacity-40" />}
                           </button>
@@ -293,9 +293,9 @@ export function DataTable<T>({
             <SelectTrigger className="h-8 w-[110px] rounded-md"><SelectValue /></SelectTrigger>
             <SelectContent>{[10, 25, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n} / halaman</SelectItem>)}</SelectContent>
           </Select>
-          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></button>
+          <button type="button" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></button>
           <span className="num min-w-14 text-center text-foreground">{pageIndex + 1} / {Math.max(1, table.getPageCount())}</span>
-          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></button>
+          <button type="button" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></button>
         </div>
       </div>
 

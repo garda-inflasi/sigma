@@ -23,6 +23,13 @@ export function useSekarang(aktif: boolean): number | null {
   return sekarang;
 }
 
+/** Hitung mundur untuk galat yang dikelola di tempat lain (mis. `useFormBff`). */
+export function useTungguGalat(galat: GalatAuth | null) {
+  const sekarang = useSekarang(galat?.sampaiMs !== undefined);
+  const tertahan = sekarang !== null && masihMenunggu(galat, sekarang);
+  return { sekarang, tertahan };
+}
+
 /**
  * Galat auth satu form beserta hitung mundurnya. `tertahan` true selama kunci akun atau batas laju masih
  * berlaku: form menonaktifkan tombol kirimnya.

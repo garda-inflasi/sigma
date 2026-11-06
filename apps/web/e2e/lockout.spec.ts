@@ -36,6 +36,7 @@ import {
   sesiApi,
   test,
   tungguTenang,
+  type PantauGalat,
 } from "./fixtures";
 
 // Tes yang menunggu jendela laju BFF atau hitung mundur bisa berjalan lebih dari semenit.
@@ -171,11 +172,19 @@ test.afterAll(async () => {
   expect(gagal, "pengguna uji yang gagal dihapus").toEqual([]);
 });
 
+/** Kiriman form masuk kini dijawab JSON (fetch), jadi penolakan yang memang diharapkan tes ini diizinkan. */
+function izinkanPenolakanMasuk(galat: PantauGalat, status: number): void {
+  galat.izinkan(new RegExp(`^${status} POST /api/auth/login$`));
+  galat.izinkan(new RegExp(`Failed to load resource.*status of ${status}`));
+}
+
 // ── Akun terkunci → pesan di form → admin membuka kunci → masuk ──────────
 
 test("lima kata sandi salah mengunci: form menampilkan sisa waktu, kata sandi benar ditolak, admin membuka kunci, masuk berhasil", async ({
   page,
+  galat,
 }) => {
+  izinkanPenolakanMasuk(galat, 423);
   let sebelumMuatUlang = 0;
 
   await test.step("lima kegagalan lewat API langsung, lalu kata sandi benar tetap ditolak 423", async () => {
@@ -200,7 +209,7 @@ test("lima kata sandi salah mengunci: form menampilkan sisa waktu, kata sandi be
   await test.step("satu kiriman form: pesan kunci dengan sisa waktu yang berjalan, tombol tertahan", async () => {
     await masukLewatForm(page, uKunci.email, uKunci.sandi);
 
-    await expect(page).toHaveURL(/\/masuk\?.*kode=ACCOUNT_LOCKED/);
+    await expect(page).toHaveURL(/\/masuk$/);
     await expect(alertForm(page)).toContainText(
       /Akun terkunci karena terlalu banyak percobaan gagal\./,
     );
@@ -219,9 +228,15 @@ test("lima kata sandi salah mengunci: form menampilkan sisa waktu, kata sandi be
     expect(sebelumMuatUlang).toBeGreaterThan(14 * 60 - 40);
   });
 
-  await test.step("muat ulang tidak mengulang hitungan dari awal", async () => {
+  await test.step("muat ulang tanpa kiriman ulang; kiriman berikutnya memakai sisa waktu dari server", async () => {
     await page.waitForTimeout(2_000);
+    // Muat ulang adalah GET biasa (form tidak pernah dikirim native): halaman bersih, tanpa galat lama.
     await page.reload({ waitUntil: "domcontentloaded" });
+    await tungguTenang(page);
+    await expect(alertForm(page)).toHaveCount(0);
+
+    // Kiriman berikutnya tetap 423 dan hitung mundurnya melanjutkan akhir kunci di server, bukan mengulang.
+    await masukLewatForm(page, uKunci.email, uKunci.sandi);
     const timer = alertForm(page).getByRole("timer");
     await expect(timer).toBeVisible();
     const sesudah = detikDariTeks(await timer.innerText());
@@ -343,7 +358,9 @@ test("email tak terdaftar mendapat urutan jawaban yang sama dengan email terdaft
 
 test("batas laju BFF: kiriman form yang ditolak 429 menampilkan pesan dengan hitung mundur sampai selesai", async ({
   page,
+  galat,
 }) => {
+  izinkanPenolakanMasuk(galat, 429);
   await test.step("menghabiskan jendela laju dengan permintaan langsung ke BFF, tercatat di anggaran", async () => {
     let ditolak: Response | null = null;
     for (let i = 0; i < 8 && !ditolak; i++) {
@@ -390,7 +407,7 @@ test("batas laju BFF: kiriman form yang ditolak 429 menampilkan pesan dengan hit
     // Sengaja tanpa anggaranBff.pakai: kiriman ini memang harus ditolak 429, dan server tidak mencatatnya.
     await tombolMasuk(page).click();
 
-    await expect(page).toHaveURL(/\/masuk\?.*kode=RATE_LIMITED/);
+    await expect(page).toHaveURL(/\/masuk$/);
     await expect(alertForm(page)).toContainText(
       /Terlalu banyak percobaan dari perangkat ini\. Coba lagi dalam \d+ (menit|detik)/,
     );

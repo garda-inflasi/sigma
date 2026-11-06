@@ -1,73 +1,55 @@
 "use client";
 
-import { ArrowRight, Check, Circle, Loader2, Lock } from "lucide-react";
+import { ArrowRight, Check, Circle, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
+import { KolomSandi } from "@/components/auth/kolom-sandi";
+import { KotakGalatAuth, useTungguGalat } from "@/components/auth/galat-auth";
+import { FormBff } from "@/components/form/form-bff";
 import { bffFetch } from "@/lib/api/client";
-import {
-  galatAuth,
-  galatLokal,
-  masukanDariError,
-  pesanTampil,
-} from "@/lib/auth/pesan-login";
-import { evaluatePassword, isPasswordValid } from "@/lib/auth/password-policy";
+import { evaluatePassword } from "@/lib/auth/password-policy";
+import { galatAuth, masukanDariError, pesanTampil, type GalatAuth } from "@/lib/auth/pesan-login";
+import { skemaGantiSandi } from "@/lib/auth/skema-sandi";
+import { useFormBff } from "@/lib/form/use-form-bff";
 import { cn } from "@/lib/utils";
 
-/** Form ganti kata sandi: menampilkan aturan kebijakan secara langsung. */
+/** Form ganti kata sandi: menampilkan aturan kebijakan secara langsung; berpindah halaman hanya sesudah 2xx. */
 export function GantiPasswordForm({ redirect }: { redirect: string }) {
   const [lama, setLama] = useState("");
   const [baru, setBaru] = useState("");
   const [konfirmasi, setKonfirmasi] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
+  const form = useFormBff<{ lama: string; baru: string; konfirmasi: string }, unknown, GalatAuth>({
+    skema: skemaGantiSandi,
+    kirim: (n) =>
+      bffFetch("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ old_password: n.lama, new_password: n.baru }),
+      }),
+    sukses: () => {
+      toast.success("Kata sandi diganti", { description: "Mengalihkan ke ruang kerja Anda…" });
+      // Token baru tanpa klaim wajib ganti: root layout (sesi) dirender ulang.
+      return { ke: redirect, segarkan: true };
+    },
+    // Kata sandi lama yang salah dijawab server apa adanya; kunci akun (423) membawa hitung mundur.
+    petaGalat: (err) => galatAuth(masukanDariError(err), "ganti"),
+    judulToastGagal: "Gagal mengganti kata sandi",
+    pesanToast: (g) => pesanTampil(g),
+  });
+  const galat = form.galat;
+  const loading = form.pending;
+  const { sekarang, tertahan } = useTungguGalat(galat);
 
   const aturan = evaluatePassword(baru);
-  const cocok = baru !== "" && baru === konfirmasi;
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (loading) return;
-    setGalat(null);
-
-    if (!lama) return setGalat(galatLokal("Kata sandi saat ini wajib diisi."));
-    if (!isPasswordValid(baru))
-      return setGalat(
-        galatLokal("Kata sandi baru belum memenuhi semua aturan."),
-      );
-    if (!cocok) return setGalat(galatLokal("Konfirmasi kata sandi tidak sama."));
-
-    setLoading(true);
-    try {
-      await bffFetch("/api/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({ old_password: lama, new_password: baru }),
-      });
-      toast.success("Kata sandi diganti", {
-        description: "Mengalihkan ke ruang kerja Anda…",
-      });
-      window.location.assign(redirect);
-    } catch (err) {
-      // Kata sandi lama yang salah dijawab server apa adanya; kunci akun (423) membawa hitung mundur.
-      const hasil = galatAuth(masukanDariError(err), "ganti");
-      setGalat(hasil);
-      toast.error("Gagal mengganti kata sandi", {
-        description: pesanTampil(hasil),
-      });
-      setLoading(false);
-    }
-  }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3.5" noValidate>
+    <FormBff onKirim={form.kirimDari(() => ({ lama, baru, konfirmasi }))} sibuk={loading} className="mt-6 space-y-3.5">
       <KolomSandi
         id="lama"
         label="Kata sandi saat ini"
         value={lama}
         onChange={setLama}
         disabled={loading}
+        galat={form.galatField.lama}
         autoComplete="current-password"
       />
       <KolomSandi
@@ -76,6 +58,7 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
         value={baru}
         onChange={setBaru}
         disabled={loading}
+        galat={form.galatField.baru}
         autoComplete="new-password"
       />
 
@@ -106,6 +89,7 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
         value={konfirmasi}
         onChange={setKonfirmasi}
         disabled={loading}
+        galat={form.galatField.konfirmasi}
         autoComplete="new-password"
       />
 
@@ -127,41 +111,6 @@ export function GantiPasswordForm({ redirect }: { redirect: string }) {
           </>
         )}
       </button>
-    </form>
-  );
-}
-
-function KolomSandi({
-  id,
-  label,
-  value,
-  onChange,
-  disabled,
-  autoComplete,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
-  autoComplete: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
-        <Lock className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          id={id}
-          type="password"
-          autoComplete={autoComplete}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className="h-11 px-10"
-          required
-        />
-      </div>
-    </div>
+    </FormBff>
   );
 }

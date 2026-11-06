@@ -122,7 +122,7 @@ export function Sidebar() {
             <p className="truncate text-xs text-muted-foreground">{ROLES[user.role].label}</p>
           </div>
         )}
-        <button onClick={toggle} className="flex h-9 w-full items-center justify-center gap-2 rounded-xl text-sm text-muted-foreground hover:bg-white/60 hover:text-foreground dark:hover:bg-white/5" aria-label={collapsed ? "Bentangkan sidebar" : "Ciutkan sidebar"}>
+        <button type="button" onClick={toggle} className="flex h-9 w-full items-center justify-center gap-2 rounded-xl text-sm text-muted-foreground hover:bg-white/60 hover:text-foreground dark:hover:bg-white/5" aria-label={collapsed ? "Bentangkan sidebar" : "Ciutkan sidebar"}>
           {collapsed ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-4" /> Ciutkan</>}
         </button>
       </div>

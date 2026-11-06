@@ -5,15 +5,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { KolomSandi } from "@/components/auth/kolom-sandi";
-import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
+import { KotakGalatAuth, useTungguGalat } from "@/components/auth/galat-auth";
+import { FormBff } from "@/components/form/form-bff";
 import { bffFetch } from "@/lib/api/client";
 import { evaluatePassword } from "@/lib/auth/password-policy";
-import {
-  galatLokal,
-  masukanDariError,
-  pesanTampil,
-} from "@/lib/auth/pesan-login";
-import { galatReset, validasiFormReset } from "@/lib/auth/reset-password";
+import { masukanDariError, pesanTampil, type GalatAuth } from "@/lib/auth/pesan-login";
+import { galatReset } from "@/lib/auth/reset-password";
+import { skemaSandiBaru } from "@/lib/auth/skema-sandi";
+import { useFormBff } from "@/lib/form/use-form-bff";
 import { cn } from "@/lib/utils";
 
 const TOMBOL =
@@ -23,42 +22,26 @@ const TOMBOL =
 export function ResetPasswordForm({ token }: { token: string }) {
   const [baru, setBaru] = useState("");
   const [konfirmasi, setKonfirmasi] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
   const [selesai, setSelesai] = useState(false);
+  const form = useFormBff<{ baru: string; konfirmasi: string }, unknown, GalatAuth>({
+    skema: skemaSandiBaru,
+    kirim: (n) => bffFetch("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password: n.baru }) }),
+    sukses: () => {
+      setSelesai(true);
+      toast.success("Kata sandi diatur ulang", { description: "Silakan masuk dengan kata sandi baru." });
+    },
+    petaGalat: (err) => {
+      const m = masukanDariError(err);
+      return galatReset(m.status, m.pesan, { kode: m.kode, detik: m.detik });
+    },
+    judulToastGagal: "Gagal mengatur ulang",
+    pesanToast: (g) => pesanTampil(g),
+  });
+  const galat = form.galat;
+  const loading = form.pending;
+  const { sekarang, tertahan } = useTungguGalat(galat);
 
   const aturan = evaluatePassword(baru);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (loading) return;
-
-    const salah = validasiFormReset(baru, konfirmasi);
-    if (salah) return setGalat(galatLokal(salah));
-
-    setGalat(null);
-    setLoading(true);
-    try {
-      await bffFetch("/api/auth/reset-password", {
-        method: "POST",
-        body: JSON.stringify({ token, password: baru }),
-      });
-      setSelesai(true);
-      toast.success("Kata sandi diatur ulang", {
-        description: "Silakan masuk dengan kata sandi baru.",
-      });
-    } catch (err) {
-      const m = masukanDariError(err);
-      const hasil = galatReset(m.status, m.pesan, {
-        kode: m.kode,
-        detik: m.detik,
-      });
-      setGalat(hasil);
-      toast.error("Gagal mengatur ulang", { description: pesanTampil(hasil) });
-    } finally {
-      setLoading(false);
-    }
-  }
 
   if (selesai) {
     return (
@@ -75,13 +58,14 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3.5" noValidate>
+    <FormBff onKirim={form.kirimDari(() => ({ baru, konfirmasi }))} sibuk={loading} className="mt-6 space-y-3.5">
       <KolomSandi
         id="baru"
         label="Kata sandi baru"
         value={baru}
         onChange={setBaru}
         disabled={loading}
+        galat={form.galatField.baru}
         autoComplete="new-password"
       />
 
@@ -112,6 +96,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
         value={konfirmasi}
         onChange={setKonfirmasi}
         disabled={loading}
+        galat={form.galatField.konfirmasi}
         autoComplete="new-password"
       />
 
@@ -137,6 +122,6 @@ export function ResetPasswordForm({ token }: { token: string }) {
           </>
         )}
       </button>
-    </form>
+    </FormBff>
   );
 }

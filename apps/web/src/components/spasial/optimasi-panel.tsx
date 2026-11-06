@@ -17,6 +17,9 @@ import { useCan } from "@/lib/auth/session-context";
 import { KOMODITAS } from "@/lib/data/reference";
 import { formatAngka, formatRupiah, formatTanggal } from "@/lib/format";
 import { useOptimasiRute, useRiwayatOptimasi } from "@/lib/query/hooks";
+import { FormBff } from "@/components/form/form-bff";
+import { skemaDariValidasi } from "@/lib/form/skema";
+import { useFormBff } from "@/lib/form/use-form-bff";
 
 const TANPA = "__tanpa";
 
@@ -54,8 +57,12 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
       : undefined,
     simpan,
   });
-  const hitung = (simpan: boolean) =>
-    optimasi.mutate(params(simpan), { onSuccess: setHasil });
+  // Toast hasil/galat dari hook mutasi; galat juga tampil di panel. Enter di isian = "Hitung rute optimal".
+  const kiriman = useFormBff<OptimasiParams, RencanaOptimasi>({
+    skema: skemaOptimasi,
+    kirim: (p) => optimasi.mutateAsync(p),
+    sukses: (rencana) => setHasil(rencana),
+  });
 
   return (
     <section
@@ -66,7 +73,11 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
         title="Optimasi rute distribusi"
         description="Rencana biaya terendah dari wilayah surplus ke wilayah defisit menurut neraca terbaru; volume tersalur dimaksimalkan lebih dulu."
       />
-      <div className="flex flex-wrap items-end gap-3">
+      <FormBff
+        onKirim={kiriman.kirimDari(() => params(false))}
+        sibuk={kiriman.pending}
+        className="flex flex-wrap items-end gap-3"
+      >
         <Medan label="Komoditas">
           <Select value={komoditas} onValueChange={setKomoditas}>
             <SelectTrigger aria-label="Komoditas optimasi" className="h-10 w-52">
@@ -117,19 +128,18 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
           />
         </Medan>
         <button
-          type="button"
-          onClick={() => hitung(false)}
-          disabled={!jamValid || optimasi.isPending}
+          type="submit"
+          disabled={!jamValid || kiriman.pending}
           className="inline-flex h-10 items-center gap-2 rounded-xl bg-navy-900 px-4 text-sm font-medium text-white disabled:opacity-50"
         >
-          {optimasi.isPending && <Loader2 className="size-4 animate-spin" />}{" "}
+          {kiriman.pending && <Loader2 className="size-4 animate-spin" />}{" "}
           Hitung rute optimal
         </button>
         {bisaSimpan && (
           <button
             type="button"
-            onClick={() => hitung(true)}
-            disabled={!jamValid || skenario || optimasi.isPending}
+            onClick={() => void kiriman.kirimNilai(params(true))}
+            disabled={!jamValid || skenario || kiriman.pending}
             title={
               skenario
                 ? "Skenario hanya simulasi dan tidak dapat disimpan"
@@ -140,12 +150,24 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
             <Save className="size-4" /> Simpan sebagai usulan
           </button>
         )}
-      </div>
+      </FormBff>
+      {kiriman.galat && (
+        <p role="alert" className="text-sm text-defisit-ink dark:text-rose-300">
+          {kiriman.galat.pesan}
+        </p>
+      )}
       {hasil && <Hasil hasil={hasil} />}
       <Riwayat />
     </section>
   );
 }
+
+/** Batas waktu tempuh opsional, 0–240 jam (server memeriksa ulang). */
+const skemaOptimasi = skemaDariValidasi<OptimasiParams>((p) =>
+  p.maksJamTempuh !== undefined && !(p.maksJamTempuh > 0 && p.maksJamTempuh <= 240)
+    ? "Batas waktu tempuh harus lebih dari 0 dan paling lama 240 jam."
+    : null,
+);
 
 /** Rencana yang pernah disimpan sebagai usulan rute (terbaru dulu, paling banyak 20). */
 function Riwayat() {

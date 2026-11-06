@@ -10,56 +10,46 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
+import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { KotakGalatAuth, useGalatAuth } from "@/components/auth/galat-auth";
+import { KotakGalatAuth, useTungguGalat } from "@/components/auth/galat-auth";
 import { bffFetch, MODE_MOCK } from "@/lib/api/client";
 import {
   galatAuth,
-  galatLokal,
   masukanDariError,
   pesanTampil,
+  type GalatAuth,
 } from "@/lib/auth/pesan-login";
+import { useFormBff } from "@/lib/form/use-form-bff";
 import { cn } from "@/lib/utils";
 
-/** Form permintaan tautan atur ulang kata sandi. */
+const skemaLupa = z.object({ email: z.string().trim().min(1, "Email wajib diisi.") });
+
+/** Form permintaan tautan atur ulang kata sandi (JSON ke BFF, tanpa reload). */
 export function LupaPasswordForm() {
   const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
   const [terkirim, setTerkirim] = useState(false);
-  const { galat, setGalat, sekarang, tertahan } = useGalatAuth();
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (loading) return;
-    setGalat(null);
-
-    if (!email.trim()) {
-      setGalat(galatLokal("Email wajib diisi."));
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (MODE_MOCK) {
-        await new Promise((r) => setTimeout(r, 650));
-      } else {
-        await bffFetch("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email: email.trim() }) });
-      }
+  const form = useFormBff<z.infer<typeof skemaLupa>, unknown, GalatAuth>({
+    skema: skemaLupa,
+    kirim: (n) =>
+      MODE_MOCK
+        ? new Promise((r) => setTimeout(r, 650))
+        : bffFetch("/api/auth/forgot-password", { method: "POST", body: JSON.stringify(n) }),
+    sukses: () => {
       // Selalu tampilkan keadaan sukses (tanpa membocorkan keberadaan akun).
       setTerkirim(true);
-      toast.success("Tautan dikirim", {
-        description: "Periksa kotak masuk email institusi Anda.",
-      });
-    } catch (err) {
-      // 429 dari BFF membawa sisa waktu; selebihnya pesan jaringan umum (tidak membocorkan keberadaan akun).
-      const hasil = galatAuth(masukanDariError(err), "lupa");
-      setGalat(hasil);
-      toast.error("Gagal mengirim", { description: pesanTampil(hasil) });
-    } finally {
-      setLoading(false);
-    }
-  }
+      toast.success("Tautan dikirim", { description: "Periksa kotak masuk email institusi Anda." });
+    },
+    // 429 dari BFF membawa sisa waktu; selebihnya pesan jaringan umum (tidak membocorkan keberadaan akun).
+    petaGalat: (err) => galatAuth(masukanDariError(err), "lupa"),
+    judulToastGagal: "Gagal mengirim",
+    pesanToast: (g) => pesanTampil(g),
+  });
+  const galat = form.galat;
+  const loading = form.pending;
+  const { sekarang, tertahan } = useTungguGalat(galat);
 
   if (terkirim) {
     return (
@@ -83,7 +73,7 @@ export function LupaPasswordForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-6 space-y-3.5" noValidate>
+    <FormBff onKirim={form.kirimDari(() => ({ email }))} sibuk={loading} className="mt-6 space-y-3.5">
       <div className="space-y-2">
         <Label htmlFor="email">Email institusi</Label>
         <div className="relative">
@@ -98,11 +88,13 @@ export function LupaPasswordForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
-            aria-invalid={!!galat}
+            aria-invalid={!!(galat || form.galatField.email)}
+            aria-describedby={form.galatField.email ? idGalatField("email") : undefined}
             className="h-11 px-10"
             required
           />
         </div>
+        <PesanField field="email" pesan={form.galatField.email} />
       </div>
 
       {galat && <KotakGalatAuth galat={galat} sekarang={sekarang} />}
@@ -133,6 +125,6 @@ export function LupaPasswordForm() {
       >
         <ArrowLeft className="size-4" /> Kembali ke halaman masuk
       </Link>
-    </form>
+    </FormBff>
   );
 }

@@ -6,11 +6,9 @@ import {
   formatSisaSingkat,
   formatSisaWaktu,
   galatAuth,
-  galatDariParam,
   KODE_GALAT,
   masihMenunggu,
   masukanDariError,
-  paramDariGalat,
   PESAN_GALAT,
   PESAN_JARINGAN,
   PESAN_TUNGGU_SELESAI,
@@ -288,74 +286,6 @@ describe("masukanDariError", () => {
       detik: undefined,
     });
     assert.deepEqual(masukanDariError("aneh"), {});
-  });
-});
-
-describe("parameter URL halaman masuk", () => {
-  it("bolak-balik: galat terkunci bertahan setelah muat ulang dengan sisa waktu yang benar", () => {
-    const g = galatAuth(
-      { kode: "ACCOUNT_LOCKED", detik: 600 },
-      "masuk",
-      SEKARANG,
-    );
-    const query = new URLSearchParams(paramDariGalat(g, SEKARANG));
-    assert.equal(query.get("kode"), "ACCOUNT_LOCKED");
-    assert.match(query.get("error") ?? "", /Coba lagi dalam 10 menit/);
-
-    // Muat ulang 4 menit kemudian: sisa 6 menit, bukan 10 lagi.
-    const param = {
-      error: query.get("error") ?? undefined,
-      kode: query.get("kode") ?? undefined,
-      sampai: query.get("sampai") ?? undefined,
-    };
-    const dibaca = galatDariParam(param, SEKARANG + 240_000);
-    assert.ok(dibaca);
-    assert.equal(dibaca.kode, "ACCOUNT_LOCKED");
-    assert.match(
-      pesanTampil(dibaca, SEKARANG + 240_000),
-      /Coba lagi dalam 6 menit/,
-    );
-  });
-
-  it("kode dikenal mengalahkan teks error, supaya pesan selalu dari tabel", () => {
-    const g = galatDariParam(
-      { error: "teks sisipan", kode: "INVALID_CREDENTIALS" },
-      SEKARANG,
-    );
-    assert.equal(g?.pesan, "Email atau password salah.");
-  });
-
-  it("teks error tanpa kode (alur lain) tetap ditampilkan; tanpa keduanya tidak ada galat", () => {
-    assert.equal(
-      galatDariParam({ error: "Email dan password wajib diisi." })?.pesan,
-      "Email dan password wajib diisi.",
-    );
-    assert.equal(galatDariParam({}), null);
-    assert.equal(galatDariParam({ kode: "TIDAK_DIKENAL" }), null);
-  });
-
-  it("sampai yang ngawur diabaikan", () => {
-    for (const sampai of [
-      "abc",
-      "-5",
-      "1e9",
-      String(SEKARANG / 1000 + 10 * 24 * 3600),
-    ]) {
-      const g = galatDariParam({ kode: "ACCOUNT_LOCKED", sampai }, SEKARANG);
-      assert.equal(g?.sampaiMs, undefined, sampai);
-    }
-  });
-
-  it("sampai yang sudah lewat menghasilkan pesan selesai", () => {
-    const g = galatDariParam(
-      { kode: "RATE_LIMITED", sampai: String(SEKARANG / 1000 - 5) },
-      SEKARANG,
-    );
-    assert.ok(g);
-    assert.equal(
-      pesanTampil(g, SEKARANG),
-      PESAN_TUNGGU_SELESAI,
-    );
   });
 });
 

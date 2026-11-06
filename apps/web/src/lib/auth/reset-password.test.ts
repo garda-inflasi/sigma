@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ambilToken, galatReset, validasiFormReset } from "./reset-password";
+import { ambilToken, galatReset } from "./reset-password";
 
 describe("ambilToken", () => {
   it("mengambil token dari query, membuang spasi", () => {
@@ -13,23 +13,6 @@ describe("ambilToken", () => {
     assert.equal(ambilToken("   "), null);
     assert.equal(ambilToken([]), null);
     assert.equal(ambilToken("x".repeat(500)), null);
-  });
-});
-
-describe("validasiFormReset", () => {
-  it("menolak kata sandi yang melanggar kebijakan", () => {
-    assert.match(validasiFormReset("lemah", "lemah") ?? "", /aturan/);
-  });
-
-  it("menolak konfirmasi yang berbeda", () => {
-    assert.match(
-      validasiFormReset("SandiBaru#2026", "SandiBaru#2027") ?? "",
-      /Konfirmasi/,
-    );
-  });
-
-  it("menerima kata sandi sah dengan konfirmasi sama", () => {
-    assert.equal(validasiFormReset("SandiBaru#2026", "SandiBaru#2026"), null);
   });
 });
 

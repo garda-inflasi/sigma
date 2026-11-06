@@ -69,10 +69,8 @@ describe("POST /api/auth/login: batas laju BFF", () => {
     );
   });
 
-  it("kiriman form dialihkan ke /masuk dengan kode dan akhir tunggu (bukan JSON mentah)", async () => {
+  it("kiriman form native (bukan JSON) ditolak 415 tanpa alihan dan tidak dihitung batas laju", async () => {
     const klien = ipBaru();
-    await habiskan(klien);
-
     const res = await POST(
       permintaan(klien, {
         form: true,
@@ -80,17 +78,11 @@ describe("POST /api/auth/login: batas laju BFF", () => {
       }),
     );
 
-    assert.ok(res.status >= 300 && res.status < 400, `status ${res.status}`);
-    const lokasi = new URL(res.headers.get("location") ?? "");
-    assert.equal(lokasi.pathname, "/masuk");
-    assert.equal(lokasi.searchParams.get("kode"), "RATE_LIMITED");
-    const sampai = Number(lokasi.searchParams.get("sampai"));
-    const sisa = sampai - Date.now() / 1000;
-    assert.ok(sisa > 0 && sisa <= 61, `sampai ${sisa} detik dari sekarang`);
-    assert.match(
-      lokasi.searchParams.get("error") ?? "",
-      /^Terlalu banyak percobaan dari perangkat ini\./,
-    );
+    assert.equal(res.status, 415);
+    assert.equal(res.headers.get("location"), null);
+    assert.equal((await res.json()).error, true);
+    // Lima permintaan JSON berikutnya masih lolos batas laju (gagal validasi 400, bukan 429).
+    await habiskan(klien);
   });
 
   it("IP lain tidak terpengaruh", async () => {
@@ -144,24 +136,66 @@ describe("POST /api/auth/login: galat dari API Go", () => {
     );
   });
 
-  it("423 pada kiriman form: alihan /masuk membawa kode dan sampai", async () => {
-    goMenjawab(423, {
-      code: "ACCOUNT_LOCKED",
-      message: "x",
-      data: { sisa_detik: 840 },
+  it("sukses: JSON membawa tujuan sesuai redirect dan cookie sesi terpasang", async () => {
+    goMenjawab(200, {
+      code: "200",
+      message: "ok",
+      data: {
+        access_token: "akses",
+        refresh_token: "segar",
+        user: { id: "u1", peran: "MANAJER_DATA", wajib_ganti_password: false },
+        mfa_setup_diwajibkan: false,
+      },
     });
 
-    const res = await kirim(ipBaru(), true);
-
-    const lokasi = new URL(res.headers.get("location") ?? "");
-    assert.equal(lokasi.pathname, "/masuk");
-    assert.equal(lokasi.searchParams.get("kode"), "ACCOUNT_LOCKED");
-    const sisa = Number(lokasi.searchParams.get("sampai")) - Date.now() / 1000;
-    assert.ok(sisa > 835 && sisa <= 841, `sisa ${sisa}`);
-    assert.match(
-      lokasi.searchParams.get("error") ?? "",
-      /^Akun terkunci karena terlalu banyak percobaan gagal\. Coba lagi dalam /,
+    const res = await POST(
+      permintaan(ipBaru(), {
+        body: { email: "a@b.id", password: "Sandi#12345", redirect: "/ews?id=7" },
+      }),
     );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("location"), null);
+    const body = await res.json();
+    assert.equal(body.tujuan, "/ews?id=7");
+    assert.equal(body.mfa_required, undefined);
+    const cookie = res.headers.getSetCookie().join("\n");
+    assert.match(cookie, /garda_access=akses/);
+  });
+
+  it("akun ber-MFA: tujuan langkah OTP, tanpa cookie sesi", async () => {
+    goMenjawab(200, {
+      code: "200",
+      message: "ok",
+      data: { mfa_required: true, mfa_token: "tantangan" },
+    });
+
+    const res = await POST(
+      permintaan(ipBaru(), {
+        body: { email: "a@b.id", password: "Sandi#12345", redirect: "/kpi" },
+      }),
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body, { mfa_required: true, tujuan: "/masuk?mfa=1&lanjut=%2Fkpi" });
+    assert.doesNotMatch(res.headers.getSetCookie().join("\n"), /garda_access=/);
+  });
+
+  it("redirect di luar aplikasi diabaikan", async () => {
+    goMenjawab(200, {
+      code: "200",
+      message: "ok",
+      data: { mfa_required: true, mfa_token: "tantangan" },
+    });
+
+    const res = await POST(
+      permintaan(ipBaru(), {
+        body: { email: "a@b.id", password: "Sandi#12345", redirect: "//evil.example" },
+      }),
+    );
+
+    assert.equal((await res.json()).tujuan, "/masuk?mfa=1&lanjut=%2F");
   });
 
   it("401 kredensial salah: pesan tabel, tanpa hitung mundur", async () => {
@@ -170,15 +204,13 @@ describe("POST /api/auth/login: galat dari API Go", () => {
       message: "Email atau password salah",
     });
 
-    const res = await kirim(ipBaru(), true);
+    const res = await kirim(ipBaru(), false);
 
-    const lokasi = new URL(res.headers.get("location") ?? "");
-    assert.equal(
-      lokasi.searchParams.get("error"),
-      "Email atau password salah.",
-    );
-    assert.equal(lokasi.searchParams.get("kode"), "INVALID_CREDENTIALS");
-    assert.equal(lokasi.searchParams.has("sampai"), false);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.message, "Email atau password salah.");
+    assert.equal(body.kode, "INVALID_CREDENTIALS");
+    assert.equal(body.sisa_detik, undefined);
   });
 
   it("403 akun nonaktif", async () => {

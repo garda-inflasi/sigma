@@ -45,6 +45,10 @@ import type {
 import { garda } from "@/lib/design/tokens";
 import { formatAngka, formatTanggal } from "@/lib/format";
 import { useCatatTransaksi, useFasilitasDetail } from "@/lib/query/hooks";
+import { z } from "zod";
+import { FormBff } from "@/components/form/form-bff";
+import type { GalatForm } from "@/lib/form/kiriman";
+import { useFormBff } from "@/lib/form/use-form-bff";
 
 const JENIS_LABEL: Record<TransaksiStok["jenis"], string> = {
   MASUK: "Masuk",
@@ -329,6 +333,16 @@ function FormTransaksi({
   const bisaKelola = useCan("coldstorage.kelola");
   const bisaPindah = useCan("logistik.kelola") || bisaKelola;
   const catat = useCatatTransaksi();
+  // Toast hasil/galat datang dari hook mutasi; galat juga tampil di form.
+  const kiriman = useFormBff<TransaksiPayload, unknown, GalatForm, TransaksiPayload | undefined>({
+    skema: skemaTransaksi,
+    kirim: (p) => catat.mutateAsync(p),
+    sukses: () => {
+      setVolume("");
+      setAlasan("");
+      setPemilik("");
+    },
+  });
 
   const [jenis, setJenis] = useState<Jenis>(bisaKelola ? "MASUK" : "PINDAH");
   const [komoditas, setKomoditas] = useState(KOMODITAS[0]?.kode ?? "");
@@ -376,20 +390,11 @@ function FormTransaksi({
       : undefined;
   })();
 
-  const kirim = () => {
-    if (!payload) return;
-    catat.mutate(payload, {
-      onSuccess: () => {
-        setVolume("");
-        setAlasan("");
-        setPemilik("");
-      },
-    });
-  };
-
   return (
-    <section
+    <FormBff
       aria-label="Catat transaksi"
+      onKirim={kiriman.kirimDari(() => payload)}
+      sibuk={kiriman.pending}
       className="space-y-3 rounded-lg border border-border p-3"
     >
       <h3 className="font-medium">Catat transaksi stok</h3>
@@ -496,18 +501,25 @@ function FormTransaksi({
           </Medan>
         )}
       </div>
+      {kiriman.galat && (
+        <p role="alert" className="text-xs text-defisit-ink dark:text-rose-300">
+          {kiriman.galat.pesan}
+        </p>
+      )}
       <button
-        type="button"
-        onClick={kirim}
-        disabled={!payload || catat.isPending}
+        type="submit"
+        disabled={!payload || kiriman.pending}
         className="inline-flex h-9 items-center gap-2 rounded-lg bg-navy-900 px-4 text-sm font-medium text-white disabled:opacity-50"
       >
-        {catat.isPending && <Loader2 className="size-4 animate-spin" />} Catat
+        {kiriman.pending && <Loader2 className="size-4 animate-spin" />} Catat
         transaksi
       </button>
-    </section>
+    </FormBff>
   );
 }
+
+/** Isian belum lengkap (payload belum bisa disusun) ditolak sebelum menyentuh server. */
+const skemaTransaksi = z.custom<TransaksiPayload>((p) => p !== undefined, "Lengkapi isian transaksi terlebih dahulu.");
 
 function Medan({
   label,

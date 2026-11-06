@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { FormBff } from "@/components/form/form-bff";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,6 +29,8 @@ import type {
   TitikSuhu,
 } from "@/lib/data/types";
 import { formatAngka, formatTanggal } from "@/lib/format";
+import { skemaDariValidasi } from "@/lib/form/skema";
+import { useFormBff } from "@/lib/form/use-form-bff";
 import { useCatatTelemetri, useUbahFasilitas } from "@/lib/query/hooks";
 
 const STATUS_LABEL: Record<FasilitasColdStorage["status"], string> = {
@@ -155,6 +158,24 @@ export function PengelolaanFasilitas({ detail }: { detail: DetailFasilitas }) {
   );
 }
 
+interface MasukanUbah {
+  /** Hanya kolom yang berubah. */
+  payload: UbahFasilitasPayload;
+  nilai: { kapasitasTon: number; suhuMinC: number; suhuMaksC: number };
+}
+const skemaUbah = skemaDariValidasi<MasukanUbah>((m) =>
+  Object.keys(m.payload).length === 0 ? "Belum ada perubahan." : galatUbahFasilitas(m.nilai),
+);
+
+interface MasukanCatat {
+  suhuKosong: boolean;
+  suhuC: number;
+  kelembapanPct?: number;
+  waktu: Date | null;
+}
+const galatCatat = (m: MasukanCatat) => (m.suhuKosong ? "Suhu wajib diisi." : galatPembacaan(m));
+const skemaCatat = skemaDariValidasi<MasukanCatat>(galatCatat);
+
 function FormUbahFasilitas({
   fasilitas: f,
   onSelesai,
@@ -186,22 +207,28 @@ function FormUbahFasilitas({
   if (status !== f.status) payload.status = status;
   const berubah = Object.keys(payload).length > 0;
 
-  const galat = galatUbahFasilitas({
+  // Galat isian tampil langsung saat mengetik; galat server (toast dari hook mutasi) juga tampil di form.
+  const galatIsian = galatUbahFasilitas({
     kapasitasTon: kapasitasNum,
     suhuMinC: minNum,
     suhuMaksC: maksNum,
   });
-
-  const simpan = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!berubah || galat) return;
-    ubah.mutate(payload, { onSuccess: onSelesai });
-  };
+  const kiriman = useFormBff<MasukanUbah>({
+    skema: skemaUbah,
+    kirim: (m) => ubah.mutateAsync(m.payload),
+    sukses: () => onSelesai(),
+  });
+  const galat = galatIsian ?? kiriman.galat?.pesan ?? null;
+  const simpan = kiriman.kirimDari(() => ({
+    payload,
+    nilai: { kapasitasTon: kapasitasNum, suhuMinC: minNum, suhuMaksC: maksNum },
+  }));
 
   return (
-    <form
+    <FormBff
       aria-label="Ubah fasilitas"
-      onSubmit={simpan}
+      onKirim={simpan}
+      sibuk={kiriman.pending}
       className="space-y-3 rounded-lg border border-border p-3"
     >
       <h3 className="font-medium">Ubah fasilitas</h3>
@@ -262,17 +289,17 @@ function FormUbahFasilitas({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={!berubah || !!galat || ubah.isPending}
+          disabled={!berubah || !!galatIsian || kiriman.pending}
           className={TOMBOL_UTAMA}
         >
-          {ubah.isPending && <Loader2 className="size-4 animate-spin" />} Simpan
+          {kiriman.pending && <Loader2 className="size-4 animate-spin" />} Simpan
           perubahan
         </button>
         <button type="button" onClick={onSelesai} className={TOMBOL_SEKUNDER}>
           Batal
         </button>
       </div>
-    </form>
+    </FormBff>
   );
 }
 
@@ -293,51 +320,44 @@ function FormCatatSuhu({
   const suhuNum = angkaIsian(suhu);
   const lembapNum = lembap.trim() === "" ? undefined : angkaIsian(lembap);
   const waktuDate = dariDatetimeLocal(waktu);
-  const galat =
-    suhu.trim() === ""
-      ? "Suhu wajib diisi."
-      : galatPembacaan({
-          suhuC: suhuNum,
-          kelembapanPct: lembapNum,
-          waktu: waktuDate,
-        });
+  const galatIsian = galatCatat({ suhuKosong: suhu.trim() === "", suhuC: suhuNum, kelembapanPct: lembapNum, waktu: waktuDate });
 
-  const simpan = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (galat || !waktuDate) return;
-    catat.mutate(
-      {
+  const kiriman = useFormBff<MasukanCatat, HasilTelemetri>({
+    skema: skemaCatat,
+    kirim: (m) =>
+      catat.mutateAsync({
         fasilitasId: f.id,
-        waktu: waktuDate.toISOString(),
-        suhuC: suhuNum,
-        kelembapanPct: lembapNum,
-      },
-      {
-        onSuccess: (res) => {
-          setHasil(res);
-          setSuhu("");
-          if (res.duplikat > 0)
-            toast.warning("Pembacaan sudah pernah dicatat", {
-              description:
-                "Sudah ada pembacaan pada waktu yang sama; tidak disimpan ulang.",
-            });
-          else
-            toast.success("Pembacaan suhu tercatat", {
-              description: "Tercatat di audit trail.",
-            });
-          if (res.diLuarRentang.length > 0)
-            toast.error("Suhu di luar batas alarm", {
-              description: `${res.diLuarRentang.length} pembacaan melewati batas fasilitas.`,
-            });
-        },
-      },
-    );
-  };
+        waktu: m.waktu!.toISOString(),
+        suhuC: m.suhuC,
+        kelembapanPct: m.kelembapanPct,
+      }),
+    sukses: (res) => {
+      setHasil(res);
+      setSuhu("");
+      if (res.duplikat > 0)
+        toast.warning("Pembacaan sudah pernah dicatat", {
+          description: "Sudah ada pembacaan pada waktu yang sama; tidak disimpan ulang.",
+        });
+      else toast.success("Pembacaan suhu tercatat", { description: "Tercatat di audit trail." });
+      if (res.diLuarRentang.length > 0)
+        toast.error("Suhu di luar batas alarm", {
+          description: `${res.diLuarRentang.length} pembacaan melewati batas fasilitas.`,
+        });
+    },
+  });
+  const galat = galatIsian ?? kiriman.galat?.pesan ?? null;
+  const simpan = kiriman.kirimDari(() => ({
+    suhuKosong: suhu.trim() === "",
+    suhuC: suhuNum,
+    kelembapanPct: lembapNum,
+    waktu: waktuDate,
+  }));
 
   return (
-    <form
+    <FormBff
       aria-label="Catat suhu manual"
-      onSubmit={simpan}
+      onKirim={simpan}
+      sibuk={kiriman.pending}
       className="space-y-3 rounded-lg border border-border p-3"
     >
       <h3 className="font-medium">Catat suhu manual</h3>
@@ -348,7 +368,7 @@ function FormCatatSuhu({
             value={suhu}
             onChange={(e) => setSuhu(e.target.value)}
             className="h-9 w-32"
-            aria-invalid={suhu.trim() !== "" && !!galat}
+            aria-invalid={suhu.trim() !== "" && !!galatIsian}
           />
         </Medan>
         <Medan label="Kelembapan (%), opsional">
@@ -378,17 +398,17 @@ function FormCatatSuhu({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={!!galat || catat.isPending}
+          disabled={!!galatIsian || kiriman.pending}
           className={TOMBOL_UTAMA}
         >
-          {catat.isPending && <Loader2 className="size-4 animate-spin" />}{" "}
+          {kiriman.pending && <Loader2 className="size-4 animate-spin" />}{" "}
           Simpan pembacaan
         </button>
         <button type="button" onClick={onTutup} className={TOMBOL_SEKUNDER}>
           Tutup
         </button>
       </div>
-    </form>
+    </FormBff>
   );
 }
 

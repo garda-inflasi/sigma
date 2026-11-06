@@ -102,7 +102,7 @@ function SkemaAceh({ markers, geometri, selected, onSelect, onKlikPeta }: { mark
             <p className="font-display text-sm font-semibold">{aktif.nama}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Pergerakan terbesar: {aktif.komoditas}</p>
             <p className="num mt-1 text-lg font-semibold">{formatPersen(aktif.delta, { signed: true })}</p>
-            <button onClick={() => setAktif(null)} className="mt-1 text-xs text-data-700 hover:underline dark:text-data-300">Tutup</button>
+            <button type="button" onClick={() => setAktif(null)} className="mt-1 text-xs text-data-700 hover:underline dark:text-data-300">Tutup</button>
           </motion.div>
         )}
       </AnimatePresence>

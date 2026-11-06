@@ -26,6 +26,10 @@ import {
 import { usePaksaKeluarPengguna } from "@/lib/query/sesi-hooks";
 import { LAPIS_META, ROLES, ROLE_IDS, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
+import { z } from "zod";
+import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
+import type { GalatForm } from "@/lib/form/kiriman";
+import { useFormBff } from "@/lib/form/use-form-bff";
 
 const STATUS = { AKTIF: { tone: "normal", label: "Aktif" }, NONAKTIF: { tone: "netral", label: "Nonaktif" }, MENUNGGU: { tone: "waspada", label: "Menunggu aktivasi" } } as const;
 
@@ -71,11 +75,26 @@ function MatriksAkses() {
   );
 }
 
+/** Skema dialog pengguna; kata sandi sementara hanya diisi saat membuat akun. */
+function skemaPengguna(baru: boolean) {
+  return z.object({
+    id: z.string().trim(),
+    nama: z.string().trim().min(1, "Nama wajib diisi."),
+    email: z.string().trim().pipe(z.email("Email tidak valid.")),
+    password: baru ? z.string().min(8, "Kata sandi minimal 8 karakter.") : z.string(),
+    peran: z.enum(ROLE_IDS),
+    lembaga: z.string().trim().min(1, "Lembaga wajib diisi."),
+  });
+}
+const skemaBuatPengguna = skemaPengguna(true);
+const skemaUbahPengguna = skemaPengguna(false);
+type IsianPengguna = z.input<typeof skemaBuatPengguna>;
+
 /** Isi dialog buat/ubah pengguna. `user` null → mode buat; `PenggunaDetail` (dari server) menambah rincian akun. */
 function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | PenggunaDetail | null; gagalMuat: boolean; onOpenChange: (v: boolean) => void }) {
   const buat = useCreatePengguna();
   const ubah = useUpdatePengguna();
-  const [form, setForm] = useState(() => ({
+  const [form, setForm] = useState<IsianPengguna>(() => ({
     id: user?.id ?? "",
     nama: user?.nama ?? "",
     email: user?.email ?? "",
@@ -84,25 +103,22 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
     lembaga: user?.lembaga ?? "",
   }));
 
-  const sibuk = buat.isPending || ubah.isPending;
-  const lengkap = Boolean(form.nama && form.email && form.lembaga && (user || form.password.length >= 8));
-
-  function simpan() {
-    if (user) {
-      ubah.mutate(
-        { id: user.id, input: { nama: form.nama, email: form.email, peran: form.peran, lembaga: form.lembaga, lapis: ROLES[form.peran].lapis } },
-        { onSuccess: () => onOpenChange(false) },
-      );
-    } else {
-      buat.mutate(
-        { id: form.id, nama: form.nama, email: form.email, password: form.password, peran: form.peran, lapis: ROLES[form.peran].lapis, lembaga: form.lembaga },
-        { onSuccess: () => onOpenChange(false) },
-      );
-    }
-  }
+  // Toast gagal datang dari hook mutasi; galat juga tampil di dialog (400/422 per field bila server merincinya).
+  const kiriman = useFormBff<z.output<typeof skemaBuatPengguna>, unknown, GalatForm, IsianPengguna>({
+    skema: user ? skemaUbahPengguna : skemaBuatPengguna,
+    kirim: (n) =>
+      user
+        ? ubah.mutateAsync({ id: user.id, input: { nama: n.nama, email: n.email, peran: n.peran, lembaga: n.lembaga, lapis: ROLES[n.peran].lapis } })
+        : buat.mutateAsync({ id: n.id, nama: n.nama, email: n.email, password: n.password, peran: n.peran, lapis: ROLES[n.peran].lapis, lembaga: n.lembaga }),
+    sukses: () => onOpenChange(false),
+  });
+  const sibuk = kiriman.pending;
+  const g = kiriman.galatField;
+  const atributGalat = (field: keyof IsianPengguna) =>
+    g[field] ? { "aria-invalid": true, "aria-describedby": idGalatField(`pg-${field}`) } : {};
 
   return (
-    <>
+    <FormBff onKirim={kiriman.kirimDari(() => form)} sibuk={sibuk} className="contents">
         <DialogHeader>
           <DialogTitle>{user ? "Ubah pengguna" : "Tambah pengguna"}</DialogTitle>
           <DialogDescription>
@@ -114,21 +130,25 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
           {!user && (
             <div className="grid gap-2">
               <Label htmlFor="pg-id">ID pengguna</Label>
-              <Input id="pg-id" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="USR-0001" />
+              <Input id="pg-id" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="USR-0001" {...atributGalat("id")} />
+              <PesanField field="pg-id" pesan={g.id} />
             </div>
           )}
           <div className="grid gap-2">
             <Label htmlFor="pg-nama">Nama lengkap</Label>
-            <Input id="pg-nama" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} />
+            <Input id="pg-nama" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} {...atributGalat("nama")} />
+            <PesanField field="pg-nama" pesan={g.nama} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="pg-email">Email</Label>
-            <Input id="pg-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <Input id="pg-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} {...atributGalat("email")} />
+            <PesanField field="pg-email" pesan={g.email} />
           </div>
           {!user && (
             <div className="grid gap-2">
               <Label htmlFor="pg-pass">Kata sandi sementara</Label>
-              <Input id="pg-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimal 8 karakter" />
+              <Input id="pg-pass" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimal 8 karakter" {...atributGalat("password")} />
+              <PesanField field="pg-password" pesan={g.password} />
             </div>
           )}
           <div className="grid gap-2">
@@ -144,8 +164,10 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
           </div>
           <div className="grid gap-2">
             <Label htmlFor="pg-lembaga">Lembaga</Label>
-            <Input id="pg-lembaga" value={form.lembaga} onChange={(e) => setForm({ ...form, lembaga: e.target.value })} />
+            <Input id="pg-lembaga" value={form.lembaga} onChange={(e) => setForm({ ...form, lembaga: e.target.value })} {...atributGalat("lembaga")} />
+            <PesanField field="pg-lembaga" pesan={g.lembaga} />
           </div>
+          {kiriman.galat && <p role="alert" className="text-sm text-destructive">{kiriman.galat.pesan}</p>}
           {user && gagalMuat && <p className="text-xs text-muted-foreground">Data terbaru gagal dimuat; formulir memakai data dari daftar.</p>}
           {user && "dibuatPada" in user && (
             <dl aria-label="Rincian akun" className="grid gap-1.5 rounded-xl bg-mist-100/70 p-3 text-sm dark:bg-white/5">
@@ -161,11 +183,11 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sibuk}>Batal</Button>
-          <SpringButton variant="primary" size="md" onClick={simpan} disabled={!lengkap || sibuk}>
+          <SpringButton type="submit" variant="primary" size="md" disabled={sibuk}>
             {sibuk ? "Menyimpan…" : user ? "Simpan perubahan" : "Buat pengguna"}
           </SpringButton>
         </DialogFooter>
-    </>
+    </FormBff>
   );
 }
 
@@ -192,31 +214,52 @@ function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null
   );
 }
 
+const skemaResetAdmin = z.object({ password: z.string().min(8, "Kata sandi minimal 8 karakter.") });
+
 /** Dialog reset kata sandi oleh admin. */
 function ResetPasswordDialog({ user, open, onOpenChange }: { user: PenggunaRow | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const reset = useResetPasswordPengguna();
   const [password, setPassword] = useState("");
+  const kiriman = useFormBff<z.infer<typeof skemaResetAdmin>>({
+    skema: skemaResetAdmin,
+    kirim: (n) => reset.mutateAsync({ id: user!.id, password: n.password }),
+    sukses: () => {
+      setPassword("");
+      onOpenChange(false);
+    },
+  });
+  const galat = kiriman.galatField.password ?? kiriman.galat?.pesan;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Reset kata sandi</DialogTitle>
-          <DialogDescription>
-            Kata sandi baru untuk {user?.nama}. Seluruh sesi pengguna akan diakhiri dan mereka harus masuk ulang.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-2 py-2">
-          <Label htmlFor="pg-new-pass">Kata sandi baru</Label>
-          <Input id="pg-new-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimal 8 karakter" />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={reset.isPending}>Batal</Button>
-          <SpringButton variant="danger" size="md" disabled={password.length < 8 || reset.isPending}
-            onClick={() => reset.mutate({ id: user!.id, password }, { onSuccess: () => { setPassword(""); onOpenChange(false); } })}>
-            {reset.isPending ? "Mereset…" : "Reset kata sandi"}
-          </SpringButton>
-        </DialogFooter>
+        <FormBff onKirim={kiriman.kirimDari(() => ({ password }))} sibuk={kiriman.pending} className="contents">
+          <DialogHeader>
+            <DialogTitle>Reset kata sandi</DialogTitle>
+            <DialogDescription>
+              Kata sandi baru untuk {user?.nama}. Seluruh sesi pengguna akan diakhiri dan mereka harus masuk ulang.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="pg-new-pass">Kata sandi baru</Label>
+            <Input
+              id="pg-new-pass"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Minimal 8 karakter"
+              aria-invalid={galat ? true : undefined}
+              aria-describedby={galat ? idGalatField("pg-new-pass") : undefined}
+            />
+            <PesanField field="pg-new-pass" pesan={galat} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={kiriman.pending}>Batal</Button>
+            <SpringButton type="submit" variant="danger" size="md" disabled={password.length < 8 || kiriman.pending}>
+              {kiriman.pending ? "Mereset…" : "Reset kata sandi"}
+            </SpringButton>
+          </DialogFooter>
+        </FormBff>
       </DialogContent>
     </Dialog>
   );

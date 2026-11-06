@@ -58,7 +58,7 @@ export function PetaPage() {
           <ul className="scrollbar-thin mt-4 -mr-2 flex-1 space-y-1 overflow-y-auto pr-2">
             {urut.map((m) => (
               <li key={m.kode}>
-                <button onClick={() => setPilih(m.kode)} className={cn("flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-white/60 dark:hover:bg-white/5", pilih === m.kode && "bg-white shadow-ambient-sm dark:bg-white/10")}>
+                <button type="button" onClick={() => setPilih(m.kode)} className={cn("flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-white/60 dark:hover:bg-white/5", pilih === m.kode && "bg-white shadow-ambient-sm dark:bg-white/10")}>
                   <span className={cn("size-2.5 rounded-full", { defisit: "bg-defisit", waspada: "bg-waspada", normal: "bg-normal", surplus: "bg-surplus" }[m.status])} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{m.nama}</span><span className="block truncate text-xs text-muted-foreground">{m.komoditas}</span></span>
                   <span className="num text-sm font-semibold">{formatPersen(m.delta, { signed: true })}</span>

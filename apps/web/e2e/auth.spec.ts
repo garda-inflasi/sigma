@@ -209,14 +209,33 @@ test("masuk berhasil mendarat di beranda peran", async ({ page }) => {
 
 test("kata sandi salah menampilkan galat dan tetap di halaman masuk", async ({
   page,
+  galat,
 }) => {
+  // Kiriman asinkron ke BFF: penolakan adalah jawaban JSON 401, bukan alihan halaman.
+  izinkanHttp(galat, 401, "POST", "/api/auth/login");
   await masukLewatForm(page, uSalah.email, "Salah#Sandi1x");
-  await expect(page).toHaveURL(/\/masuk\?error=/);
-  await expect(page.getByText("Email atau password salah")).toBeVisible();
+  // Halaman tidak berpindah atau dimuat ulang; galat tampil di form (dan di toast).
+  await expect(page.getByRole("alert").filter({ hasText: "Email atau password salah" }).first()).toBeVisible();
+  await expect(page.locator("form").getByText("Email atau password salah")).toBeVisible();
+  await expect(page).toHaveURL(/\/masuk$/);
   await expect(
     page.getByRole("heading", { name: "Masuk ke Garda Inflasi" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Email institusi")).toHaveValue(uSalah.email);
   await expect(page.getByLabel("Kata sandi", { exact: true })).toHaveValue("");
+
+  // Regresi "Confirm Form Resubmission": muat ulang sesudah gagal adalah GET biasa (fixture `galat` juga
+  // menggagalkan tes bila ada navigasi POST), dan halaman kembali bersih tanpa galat lama.
+  const navigasi: string[] = [];
+  page.on("request", (r) => {
+    if (r.isNavigationRequest()) navigasi.push(r.method());
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: "Masuk ke Garda Inflasi" }),
+  ).toBeVisible();
+  expect(navigasi).toEqual(["GET"]);
+  await expect(page.getByText("Email atau password salah")).toHaveCount(0);
 });
 
 test("keluar mencabut sesi dan kembali ke halaman masuk", async ({ page }) => {

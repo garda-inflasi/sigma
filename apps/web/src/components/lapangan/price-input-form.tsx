@@ -21,6 +21,9 @@ import { useAcuanServer } from "@/lib/offline/acuan-server";
 import { useOnline } from "@/lib/offline/use-online";
 import { useFieldQueue } from "@/lib/stores/field-queue-store";
 import { cn } from "@/lib/utils";
+import { FormBff } from "@/components/form/form-bff";
+import { skemaDariValidasi } from "@/lib/form/skema";
+import { useFormBff } from "@/lib/form/use-form-bff";
 
 type Geo = { lat: number; lng: number; akurasi: number };
 
@@ -32,6 +35,20 @@ function Kartu({ judul, children, className }: { judul: string; children: React.
     </section>
   );
 }
+
+interface MasukanEntri {
+  status: "ANTRE" | "DRAF";
+  harga: number;
+  /** Harga terisi, kode etik dicentang, dan bukti tersedia bila harga di luar rentang wajar. */
+  valid: boolean;
+}
+const skemaEntri = skemaDariValidasi<MasukanEntri>((m) =>
+  !m.harga
+    ? "Isi harga terlebih dahulu."
+    : m.status === "ANTRE" && !m.valid
+      ? "Lengkapi entri: centang kode etik dan sertakan bukti bila harga di luar rentang wajar."
+      : null,
+);
 
 /**
  * Form input harga per komoditas — offline-first.
@@ -92,9 +109,14 @@ export function PriceInputForm() {
   const valid = harga > 0 && etik && buktiOk;
   const markerPos = harga ? Math.max(0, Math.min(100, ((harga / acuan.median - 0.5) / 1) * 100)) : 50;
 
-  function simpan(status: "ANTRE" | "DRAF") {
-    if (status === "ANTRE" && !valid) return;
-    if (!harga) return toast.error("Isi harga terlebih dahulu");
+  // Entri disimpan ke antrean perangkat (offline-first); sync engine yang mengirimnya ke BFF/API.
+  const kiriman = useFormBff<MasukanEntri>({
+    skema: skemaEntri,
+    kirim: async (m) => simpanLokal(m.status),
+  });
+  const simpan = (status: MasukanEntri["status"]) => ({ status, harga, valid });
+
+  function simpanLokal(status: MasukanEntri["status"]) {
     tambah({
       localId: crypto.randomUUID(), komoditasKode: kode, pasarId, tipe, harga, satuan: kom.satuan, kualitas,
       kodePedagang: pedagang || undefined, foto, lat: geo?.lat, lng: geo?.lng, akurasiM: geo?.akurasi, dalamGeofence,
@@ -112,7 +134,7 @@ export function PriceInputForm() {
   }
 
   return (
-    <div className="space-y-4">
+    <FormBff onKirim={kiriman.kirimDari(() => simpan("ANTRE"))} sibuk={kiriman.pending} aria-label="Entri harga" className="space-y-4">
       {tugasKom?.length ? (
         <p className="rounded-xl bg-data-50/80 px-4 py-2.5 text-sm text-data-800 dark:bg-data-500/10 dark:text-data-200">
           Tugas {params.get("tugas")}: <span className="num font-semibold">{daftarKom.filter((k) => sudahDiisi(k.kode)).length}/{daftarKom.length}</span> komoditas sudah dicatat hari ini.
@@ -125,7 +147,7 @@ export function PriceInputForm() {
           const aktif = k.kode === kode;
           const done = sudahDiisi(k.kode);
           return (
-            <button key={k.kode} role="radio" aria-checked={aktif} onClick={() => setKode(k.kode)} className={cn("relative flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-colors", aktif ? "text-white" : "glass-subtle text-foreground")}>
+            <button type="button" key={k.kode} role="radio" aria-checked={aktif} onClick={() => setKode(k.kode)} className={cn("relative flex h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-colors", aktif ? "text-white" : "glass-subtle text-foreground")}>
               {aktif && <motion.span layoutId="kom-pill" transition={spring.layout} className="absolute inset-0 rounded-xl bg-navy-800 shadow-ambient-sm dark:bg-data-600" />}
               <KomoditasIcon kode={k.kode} className="relative" />
               <span className="relative whitespace-nowrap">{k.nama}</span>
@@ -202,7 +224,7 @@ export function PriceInputForm() {
             <div className="relative size-20 shrink-0 overflow-hidden rounded-xl">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={foto} alt="Foto bukti harga" className="size-full object-cover" />
-              <button onClick={() => setFoto(undefined)} className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-navy-900/70 text-white" aria-label="Hapus foto"><Trash2 className="size-3" /></button>
+              <button type="button" onClick={() => setFoto(undefined)} className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-navy-900/70 text-white" aria-label="Hapus foto"><Trash2 className="size-3" /></button>
             </div>
           ) : (
             <label className="grid size-20 shrink-0 cursor-pointer place-items-center rounded-xl border-2 border-dashed border-border text-muted-foreground hover:border-data-400 hover:text-data-600">
@@ -226,11 +248,12 @@ export function PriceInputForm() {
       {/* Bilah aksi lengket di atas navigasi bawah */}
       <div className="fixed inset-x-0 bottom-[92px] z-30 mx-auto max-w-md px-4">
         <div className="glass-strong flex gap-2 rounded-xl p-2">
-          <SpringButton variant="soft" size="lg" onClick={() => simpan("DRAF")} disabled={!harga}>Simpan draf</SpringButton>
-          <SpringButton variant={online ? "primary" : "data"} size="lg" className="flex-1" onClick={() => simpan("ANTRE")} disabled={!valid}>
+          <SpringButton variant="soft" size="lg" onClick={() => void kiriman.kirimNilai(simpan("DRAF"))} disabled={!harga}>Simpan draf</SpringButton>
+          <SpringButton type="submit" variant={online ? "primary" : "data"} size="lg" className="flex-1" disabled={!valid}>
             {online ? "Simpan entri" : "Simpan offline"}
           </SpringButton>
         </div>
+        {kiriman.galat && <p role="alert" className="mt-1 rounded-lg bg-defisit-soft/80 px-3 py-1.5 text-xs text-defisit-ink">{kiriman.galat.pesan}</p>}
       </div>
 
       <AnimatePresence>
@@ -242,6 +265,6 @@ export function PriceInputForm() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </FormBff>
   );
 }

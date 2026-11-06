@@ -21,16 +21,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  validasiBuat,
-  type BuatIntervensiInput,
-  type GalatBuat,
-} from "@/lib/api/intervensi";
+import { FormBff } from "@/components/form/form-bff";
+import { validasiBuat, type BuatIntervensiInput } from "@/lib/api/intervensi";
 import { useSession } from "@/lib/auth/session-context";
 import { KABUPATEN, KOMODITAS } from "@/lib/data/reference";
 import { SIKLUS_URUTAN } from "@/lib/data/siklus";
 import type { Prioritas } from "@/lib/data/types";
 import { siklusMeta, type Siklus } from "@/lib/design/tokens";
+import { skemaDariValidasi } from "@/lib/form/skema";
+import { useFormBff } from "@/lib/form/use-form-bff";
 import { useBuatIntervensi } from "@/lib/query/hooks";
 
 const PRIORITAS: { value: Prioritas; label: string }[] = [
@@ -44,6 +43,9 @@ function tanggalDepan(hari: number) {
   const d = new Date(Date.now() + hari * 86_400_000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+/** Validasi klien yang mencerminkan permintaan API (lib/api/intervensi), dipakai sebagai skema form. */
+const skemaBuat = skemaDariValidasi<BuatIntervensiInput>(validasiBuat);
 
 function Galat({ id, pesan }: { id: string; pesan?: string }) {
   return pesan ? (
@@ -75,7 +77,7 @@ export function TambahIntervensiDialog({
 }) {
   const { id: userId } = useSession();
   const buat = useBuatIntervensi();
-  const [form, setForm] = useState({
+  const [isian, setIsian] = useState({
     judul: "",
     deskripsi: "",
     siklus: siklusAwal,
@@ -85,32 +87,29 @@ export function TambahIntervensiDialog({
     tenggat: tanggalDepan(7),
     tugaskanSaya: true,
   });
-  const [galat, setGalat] = useState<GalatBuat>({});
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  const set = <K extends keyof typeof isian>(k: K, v: (typeof isian)[K]) =>
+    setIsian((f) => ({ ...f, [k]: v }));
 
-  function kirim(e: React.FormEvent) {
-    e.preventDefault();
-    const input: BuatIntervensiInput = {
-      judul: form.judul,
-      deskripsi: form.deskripsi,
-      siklus: form.siklus,
-      prioritas: form.prioritas,
-      komoditasKode: form.komoditasKode,
-      kabupatenKode: form.kabupatenKode,
-      tenggat: form.tenggat,
-      penanggungJawabIds: form.tugaskanSaya && userId ? [userId] : [],
-    };
-    const g = validasiBuat(input);
-    setGalat(g);
-    if (Object.keys(g).length > 0) return;
-    buat.mutate(input, {
-      onSuccess: () => {
-        onDibuat(input.siklus);
-        onOpenChange(false);
-      },
-    });
-  }
+  const form = useFormBff<BuatIntervensiInput>({
+    skema: skemaBuat,
+    // Toast sukses/gagal dari hook mutasi; galat 400/422 juga tampil di bawah form.
+    kirim: (input) => buat.mutateAsync(input),
+    sukses: (_, input) => {
+      onDibuat(input.siklus);
+      onOpenChange(false);
+    },
+  });
+  const galat = form.galatField;
+  const kirim = form.kirimDari(() => ({
+    judul: isian.judul,
+    deskripsi: isian.deskripsi,
+    siklus: isian.siklus,
+    prioritas: isian.prioritas,
+    komoditasKode: isian.komoditasKode,
+    kabupatenKode: isian.kabupatenKode,
+    tenggat: isian.tenggat,
+    penanggungJawabIds: isian.tugaskanSaya && userId ? [userId] : [],
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -122,12 +121,12 @@ export function TambahIntervensiDialog({
             di riwayat serta audit trail.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={kirim} noValidate className="space-y-4">
+        <FormBff onKirim={kirim} sibuk={form.pending} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="int-judul">Judul</Label>
             <Input
               id="int-judul"
-              value={form.judul}
+              value={isian.judul}
               maxLength={255}
               onChange={(e) => set("judul", e.target.value)}
               aria-invalid={!!galat.judul}
@@ -140,7 +139,7 @@ export function TambahIntervensiDialog({
             <Label htmlFor="int-deskripsi">Deskripsi (opsional)</Label>
             <Textarea
               id="int-deskripsi"
-              value={form.deskripsi}
+              value={isian.deskripsi}
               onChange={(e) => set("deskripsi", e.target.value)}
               rows={3}
             />
@@ -149,7 +148,7 @@ export function TambahIntervensiDialog({
             <div className="space-y-1.5">
               <Label htmlFor="int-siklus">Siklus</Label>
               <Select
-                value={form.siklus}
+                value={isian.siklus}
                 onValueChange={(v) => set("siklus", v as Siklus)}
               >
                 <SelectTrigger id="int-siklus" className="w-full">
@@ -167,7 +166,7 @@ export function TambahIntervensiDialog({
             <div className="space-y-1.5">
               <Label htmlFor="int-prioritas">Prioritas</Label>
               <Select
-                value={form.prioritas}
+                value={isian.prioritas}
                 onValueChange={(v) => set("prioritas", v as Prioritas)}
               >
                 <SelectTrigger id="int-prioritas" className="w-full">
@@ -185,7 +184,7 @@ export function TambahIntervensiDialog({
             <div className="space-y-1.5">
               <Label htmlFor="int-komoditas">Komoditas</Label>
               <Select
-                value={form.komoditasKode}
+                value={isian.komoditasKode}
                 onValueChange={(v) => set("komoditasKode", v)}
               >
                 <SelectTrigger
@@ -208,7 +207,7 @@ export function TambahIntervensiDialog({
             <div className="space-y-1.5">
               <Label htmlFor="int-wilayah">Wilayah</Label>
               <Select
-                value={form.kabupatenKode}
+                value={isian.kabupatenKode}
                 onValueChange={(v) => set("kabupatenKode", v)}
               >
                 <SelectTrigger
@@ -234,7 +233,7 @@ export function TambahIntervensiDialog({
             <Input
               id="int-tenggat"
               type="date"
-              value={form.tenggat}
+              value={isian.tenggat}
               onChange={(e) => set("tenggat", e.target.value)}
               aria-invalid={!!galat.tenggat}
               aria-describedby={galat.tenggat ? "int-tenggat-galat" : undefined}
@@ -244,13 +243,18 @@ export function TambahIntervensiDialog({
           <div className="flex items-center gap-2">
             <Checkbox
               id="int-saya"
-              checked={form.tugaskanSaya}
+              checked={isian.tugaskanSaya}
               onCheckedChange={(v) => set("tugaskanSaya", v === true)}
             />
             <Label htmlFor="int-saya" className="font-normal">
               Jadikan saya penanggung jawab
             </Label>
           </div>
+          {form.galat && (
+            <p role="alert" className="text-sm text-defisit-ink dark:text-rose-300">
+              {form.galat.pesan}
+            </p>
+          )}
           <DialogFooter>
             <SpringButton variant="soft" onClick={() => onOpenChange(false)}>
               Batal
@@ -258,12 +262,12 @@ export function TambahIntervensiDialog({
             <SpringButton
               type="submit"
               variant="primary"
-              disabled={buat.isPending}
+              disabled={form.pending}
             >
-              {buat.isPending ? "Menyimpan…" : "Simpan intervensi"}
+              {form.pending ? "Menyimpan…" : "Simpan intervensi"}
             </SpringButton>
           </DialogFooter>
-        </form>
+        </FormBff>
       </DialogContent>
     </Dialog>
   );

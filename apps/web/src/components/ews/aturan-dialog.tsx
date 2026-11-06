@@ -12,13 +12,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FormBff } from "@/components/form/form-bff";
 import { ApiError } from "@/lib/api/client";
 import {
   KANAL_EWS,
   satuanAmbang,
   validasiAmbang,
   type EwsAturan,
+  type UbahAturanInput,
 } from "@/lib/api/ews";
+import { galatFormBawaan } from "@/lib/form/kiriman";
+import { skemaDariValidasi } from "@/lib/form/skema";
+import { useFormBff } from "@/lib/form/use-form-bff";
 import { useUbahAturanEws } from "@/lib/query/hooks";
 import { JENIS_EWS } from "./ews-meta";
 
@@ -28,6 +33,25 @@ const KANAL_LABEL: Record<string, string> = {
   EMAIL: "Email",
   WHATSAPP: "WhatsApp",
 };
+
+/** Ambang berurutan, jendela, peredaman, dan kanal; server memeriksa ulang. */
+function validasiAturan(input: UbahAturanInput): string | null {
+  return (
+    validasiAmbang(input) ??
+    (!Number.isInteger(input.jendelaHari) || input.jendelaHari < 1 || input.jendelaHari > 90
+      ? "Jendela harus bilangan bulat 1–90 hari."
+      : null) ??
+    (!Number.isInteger(input.cooldownJam) || input.cooldownJam < 0 || input.cooldownJam > 720
+      ? "Peredaman harus bilangan bulat 0–720 jam."
+      : null) ??
+    (input.kanal.length === 0 ? "Pilih sedikitnya satu kanal." : null)
+  );
+}
+
+const skemaAturan = skemaDariValidasi<UbahAturanInput>(validasiAturan);
+
+const PESAN_VERSI_USANG =
+  "Aturan ini baru diubah pengguna lain. Data sudah dimuat ulang; tinjau nilainya lalu simpan lagi.";
 
 /** Formulir ambang satu aturan. Dipasang ulang (key = id + versi) tiap aturan atau versinya berganti. */
 function FormAturan({
@@ -48,52 +72,27 @@ function FormAturan({
     aktif: aturan.aktif,
     keterangan: aturan.keterangan,
   });
-  const [galat, setGalat] = useState<string | null>(null);
   const satuan = satuanAmbang(aturan.jenis);
 
-  function kirim(e: React.FormEvent) {
-    e.preventDefault();
-    const input = {
-      waspada: Number(form.waspada),
-      siaga: Number(form.siaga),
-      kritis: Number(form.kritis),
-      jendelaHari: Number(form.jendelaHari),
-      cooldownJam: Number(form.cooldownJam),
-      kanal: form.kanal,
-      aktif: form.aktif,
-      keterangan: form.keterangan,
-      versi: aturan.versi,
-    };
-    const salah =
-      validasiAmbang(input) ??
-      (!Number.isInteger(input.jendelaHari) ||
-      input.jendelaHari < 1 ||
-      input.jendelaHari > 90
-        ? "Jendela harus bilangan bulat 1–90 hari."
-        : null) ??
-      (!Number.isInteger(input.cooldownJam) ||
-      input.cooldownJam < 0 ||
-      input.cooldownJam > 720
-        ? "Peredaman harus bilangan bulat 0–720 jam."
-        : null) ??
-      (input.kanal.length === 0 ? "Pilih sedikitnya satu kanal." : null);
-    setGalat(salah);
-    if (salah) return;
-    simpan.mutate(
-      { id: aturan.id, input },
-      {
-        onSuccess: onDone,
-        onError: (err) =>
-          setGalat(
-            err instanceof ApiError && err.status === 409
-              ? "Aturan ini baru diubah pengguna lain. Data sudah dimuat ulang; tinjau nilainya lalu simpan lagi."
-              : err instanceof Error
-                ? err.message
-                : "Ambang gagal disimpan.",
-          ),
-      },
-    );
-  }
+  const kiriman = useFormBff<UbahAturanInput>({
+    skema: skemaAturan,
+    kirim: (input) => simpan.mutateAsync({ id: aturan.id, input }),
+    sukses: () => onDone(),
+    petaGalat: (err) =>
+      err instanceof ApiError && err.status === 409 ? { pesan: PESAN_VERSI_USANG } : galatFormBawaan(err),
+  });
+  const galat = kiriman.galat?.pesan ?? null;
+  const kirim = kiriman.kirimDari(() => ({
+    waspada: Number(form.waspada),
+    siaga: Number(form.siaga),
+    kritis: Number(form.kritis),
+    jendelaHari: Number(form.jendelaHari),
+    cooldownJam: Number(form.cooldownJam),
+    kanal: form.kanal,
+    aktif: form.aktif,
+    keterangan: form.keterangan,
+    versi: aturan.versi,
+  }));
 
   const ambang = [
     ["waspada", "Waspada"],
@@ -101,7 +100,7 @@ function FormAturan({
     ["kritis", "Kritis"],
   ] as const;
   return (
-    <form onSubmit={kirim} className="space-y-4">
+    <FormBff onKirim={kirim} sibuk={kiriman.pending} className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
         {ambang.map(([kunci, label]) => (
           <div key={kunci} className="space-y-1.5">
@@ -192,11 +191,11 @@ function FormAturan({
         <SpringButton variant="soft" onClick={onDone}>
           Batal
         </SpringButton>
-        <SpringButton type="submit" disabled={simpan.isPending}>
-          {simpan.isPending ? "Menyimpan…" : "Simpan ambang"}
+        <SpringButton type="submit" disabled={kiriman.pending}>
+          {kiriman.pending ? "Menyimpan…" : "Simpan ambang"}
         </SpringButton>
       </div>
-    </form>
+    </FormBff>
   );
 }
 

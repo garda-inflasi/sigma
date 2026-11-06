@@ -39,7 +39,7 @@ function EwsToastCard({ id, alert, duration, onView, onAck }: { id: string | num
       className="glass-strong relative w-[384px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl p-4 pl-5"
     >
       <span className={cn("absolute inset-y-0 left-0 w-1", t.bg)} />
-      <button onClick={() => toast.dismiss(id)} className="absolute top-3 right-3 grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-secondary" aria-label="Tutup">
+      <button type="button" onClick={() => toast.dismiss(id)} className="absolute top-3 right-3 grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-secondary" aria-label="Tutup">
         <X className="size-3.5" />
       </button>
       <div className="flex gap-3.5 pr-6">

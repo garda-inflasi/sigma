@@ -21,7 +21,7 @@ export function Pagination({ page, totalPages, onChange, disabled, className }: 
 
   return (
     <nav aria-label="Paginasi stok" className={cn("flex items-center gap-1", className)}>
-      <button onClick={() => onChange(page - 1)} disabled={disabled || page <= 1} className={edgeButton} aria-label="Halaman sebelumnya">
+      <button type="button" onClick={() => onChange(page - 1)} disabled={disabled || page <= 1} className={edgeButton} aria-label="Halaman sebelumnya">
         <ChevronLeft className="size-4" />
         <span className="hidden sm:inline">Sebelumnya</span>
       </button>
@@ -30,7 +30,7 @@ export function Pagination({ page, totalPages, onChange, disabled, className }: 
         item === "…" ? (
           <span key={`gap-${i}`} aria-hidden className="grid size-8 place-items-center text-sm text-muted-foreground">…</span>
         ) : (
-          <button
+          <button type="button"
             key={item}
             onClick={() => onChange(item)}
             disabled={disabled}
@@ -48,7 +48,7 @@ export function Pagination({ page, totalPages, onChange, disabled, className }: 
         ),
       )}
 
-      <button onClick={() => onChange(page + 1)} disabled={disabled || page >= totalPages} className={edgeButton} aria-label="Halaman berikutnya">
+      <button type="button" onClick={() => onChange(page + 1)} disabled={disabled || page >= totalPages} className={edgeButton} aria-label="Halaman berikutnya">
         <span className="hidden sm:inline">Berikutnya</span>
         <ChevronRight className="size-4" />
       </button>

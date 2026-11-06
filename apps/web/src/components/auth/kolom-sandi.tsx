@@ -3,6 +3,7 @@
 import { Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PesanField, idGalatField } from "@/components/form/form-bff";
 
 /** Isian kata sandi berlabel dengan ikon kunci, dipakai form autentikasi. */
 export function KolomSandi({
@@ -12,6 +13,7 @@ export function KolomSandi({
   onChange,
   disabled,
   autoComplete,
+  galat,
 }: {
   id: string;
   label: string;
@@ -19,6 +21,8 @@ export function KolomSandi({
   onChange: (v: string) => void;
   disabled: boolean;
   autoComplete: string;
+  /** Pesan galat field ini (skema klien atau 400/422 server). */
+  galat?: string;
 }) {
   return (
     <div className="space-y-2">
@@ -32,10 +36,13 @@ export function KolomSandi({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
+          aria-invalid={galat ? true : undefined}
+          aria-describedby={galat ? idGalatField(id) : undefined}
           className="h-11 px-10"
           required
         />
       </div>
+      <PesanField field={id} pesan={galat} />
     </div>
   );
 }

@@ -193,6 +193,13 @@ export class PantauGalat {
       if (url.startsWith("/api/") && res.status() >= 400)
         this.catat(`${res.status()} ${res.request().method()} ${url}`);
     });
+    // Form tidak boleh dikirim browser secara native (docs/FORM.md): navigasi dokumen POST/PUT ke aplikasi
+    // berarti halaman dimuat dari hasil kiriman form, dan me-reload-nya memicu "Confirm Form Resubmission".
+    // Navigasi di origin lain (mis. halaman masuk IdP tiruan) tidak dihitung.
+    page.on("request", (req) => {
+      if (req.isNavigationRequest() && req.method() !== "GET" && req.url().startsWith(BASE_URL))
+        this.catat(`navigasi ${req.method()} ${req.url().replace(BASE_URL, "")} (kiriman form native)`);
+    });
     page.on("pageerror", (err) => this.catat(`pageerror: ${err.message}`));
     page.on("console", (msg) => {
       if (msg.type() === "error") this.catat(`console: ${msg.text()}`);

@@ -9,7 +9,7 @@ info:
     ## Authentication
 
     Semua endpoint kecuali `/healthz`, `/v1/auth/login`, `/v1/auth/refresh`,
-    `/v1/auth/forgot-password`, `/v1/auth/reset-password`, `/v1/auth/mfa/validate`, dan
+    `/v1/auth/forgot-password`, `/v1/auth/reset-password`, `/v1/auth/aktivasi`, `/v1/auth/mfa/validate`, dan
     `/v1/auth/sso/*` memerlukan
     JWT Bearer token yang dikirim via header `Authorization: Bearer <token>`.
 
@@ -17,8 +17,8 @@ info:
 
     ## Batas laju endpoint auth publik
 
-    `POST /v1/auth/login`, `/v1/auth/mfa/validate`, `/v1/auth/forgot-password`, `/v1/auth/reset-password`
-    (satu ember) dan `/v1/auth/sso/google/authorize` + `/callback` (ember sendiri) dibatasi per IP klien
+    `POST /v1/auth/login`, `/v1/auth/mfa/validate`, `/v1/auth/forgot-password`, `/v1/auth/reset-password`,
+    `/v1/auth/aktivasi` (satu ember) dan `/v1/auth/sso/google/authorize` + `/callback` (ember sendiri) dibatasi per IP klien
     (`AUTH_RATE_LIMIT_PER_MENIT`, bawaan 10 per menit), selain batas global API. Kelebihan dijawab 429 dengan
     kode `RATE_LIMITED`, header `Retry-After`, dan `data.sisa_detik` (kontrak yang sama dengan batas laju
     BFF web, yang meneruskannya tanpa diubah). Permintaan yang ditolak tidak diperiksa dan tidak dihitung
@@ -575,6 +575,50 @@ paths:
         "429":
           $ref: "#/components/responses/BatasLaju"
 
+  /v1/auth/aktivasi:
+    post:
+      summary: Mengaktifkan akun undangan dengan menetapkan kata sandi pertama
+      description: |
+        Publik. Token berasal dari tautan di email undangan (`/aktivasi?token=...`, alamat dasar dari env
+        `APP_PUBLIC_URL`): 256 bit acak, hanya hash-nya yang disimpan, berlaku 72 jam, dan hanya dapat dipakai satu
+        kali. Dalam satu transaksi atomik token ditandai terpakai, kata sandi disimpan, status akun menjadi `AKTIF`
+        (dari `MENUNGGU`), dan `wajib_ganti_password` dimatikan; permintaan serentak dengan token yang sama hanya
+        satu yang berhasil. Kata sandi diperiksa dengan kebijakan yang sama dengan atur ulang kata sandi (maksimal
+        72 karakter, batas bcrypt) dan kata sandi yang melanggar kebijakan **tidak** menghanguskan tautan. Tautan
+        tidak berlaku bila undangan diganti (kirim ulang), akun tidak lagi `MENUNGGU`, atau email akun diubah
+        sesudah undangan dikirim. Tidak menerbitkan sesi: pengguna masuk lewat `POST /v1/auth/login` (lockout dan
+        MFA tetap berlaku di satu tempat). Tercatat di audit (`AKTIVASI_AKUN`, aktor = pemilik akun).
+      operationId: authAktivasi
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AktivasiRequest"
+      responses:
+        "200":
+          description: Akun aktif; masuk dengan kata sandi yang baru ditetapkan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Kata sandi melanggar kebijakan (pesan memuat alasannya) atau badan tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tautan tidak valid, sudah dipakai, diganti undangan baru, atau kedaluwarsa (pesan membedakan kedaluwarsa)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/BatasLaju"
+
   /v1/auth/mfa/setup:
     post:
       summary: Memulai setup MFA (menghasilkan rahasia TOTP dan QR)
@@ -1008,6 +1052,10 @@ paths:
   /v1/users/bulk:
     post:
       summary: Menjalankan aksi massal pada pengguna
+      description: |
+        Aksi `aktifkan` dan `nonaktifkan` melewati akun berstatus `MENUNGGU` (undangan): akun itu aktif hanya lewat
+        `POST /v1/auth/aktivasi` dan dibatalkan dengan menghapusnya; jumlah `berhasil` hanya menghitung akun yang
+        berubah.
       operationId: bulkUsers
       tags:
         - User Management
@@ -1040,6 +1088,256 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tidak memiliki izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/undang:
+    post:
+      summary: Mengundang pengguna lewat email (kata sandi pertama ditetapkan pemiliknya)
+      description: |
+        Memerlukan izin `pengguna.kelola`. Membuat akun berstatus `MENUNGGU` tanpa kata sandi beserta satu undangan
+        (token acak 256-bit, hanya hash-nya disimpan, berlaku 72 jam) dalam satu transaksi, lalu mengirim email
+        berisi tautan `/aktivasi?token=...`. `id` dibuat server (`USR-` + 16 heksadesimal). Email dirapikan ke huruf
+        kecil dan unik tanpa peduli huruf besar-kecil. Akun yang menunggu berperilaku seperti email tak terdaftar di
+        login dan lupa kata sandi (tidak ada celah enumerasi). Kegagalan mengirim email (SMTP tidak dikonfigurasi,
+        menolak, atau tidak menjawab dalam 10 detik) tidak membatalkan akun: `email_terkirim` bernilai `false` dan
+        undangan dikirim ulang lewat `POST /v1/users/{id}/undang-ulang`. Tercatat di audit (`UNDANG_PENGGUNA`,
+        tanpa token).
+      operationId: undangUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UndangPenggunaRequest"
+      responses:
+        "201":
+          description: Akun dan undangan dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UndanganResponse"
+        "400":
+          description: Isian tidak valid (pesan merinci semua isian yang salah) atau peran/kabupaten tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email sudah terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/undang-ulang:
+    post:
+      summary: Mengirim ulang undangan akun yang masih menunggu aktivasi
+      description: |
+        Memerlukan izin `pengguna.kelola`. Hanya untuk akun `MENUNGGU`. Semua undangan hidup akun itu dicabut dan
+        diganti satu undangan baru (72 jam sejak sekarang) dalam satu transaksi; tautan lama langsung tidak
+        berlaku. Dikirim ke email akun saat ini. Tercatat di audit (`UNDANG_ULANG_PENGGUNA`).
+      operationId: undangUlangUser
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: Undangan baru dibuat (periksa `email_terkirim`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UndanganResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Akun tidak sedang menunggu aktivasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/impor:
+    post:
+      summary: Impor pengguna dari CSV (periksa dulu, lalu buat sebagai undangan)
+      description: |
+        Memerlukan izin `pengguna.kelola`. `csv` adalah teks berkas; header `nama,email,peran,lembaga,kabupaten_kode`
+        (`kabupaten_kode` boleh tidak ada kolomnya; urutan kolom bebas; kolom lain ditolak), UTF-8 dengan atau tanpa
+        BOM, pemisah koma atau titik koma (dideteksi dari header), CRLF atau LF. Maksimal 500 baris data dan 512 KB;
+        baris yang seluruhnya kosong dilewati. Peran adalah id peran (huruf besar-kecil bebas). Nama, email, dan
+        lembaga tidak boleh diawali `=`, `+`, `-`, atau `@` (dibaca sebagai rumus di spreadsheet).
+
+        `dry_run: true` hanya mengurai dan memeriksa (tanpa menulis dan tanpa audit) lalu mengembalikan hasil per
+        baris. `dry_run: false` memeriksa ulang dengan data terkini dan membuat akun `MENUNGGU` untuk baris yang sah
+        dalam **satu transaksi** (semua atau tidak sama sekali); baris tidak sah tidak dibuat dan dilaporkan per
+        baris tanpa menggagalkan yang lain. Bila sebuah email didaftarkan pihak lain di antara pemeriksaan dan
+        penulisan, seluruh penulisan dibatalkan (409) dan impor diulang. Email undangan dikirim sesudah komit di
+        latar belakang (konkurensi terbatas); kegagalan kirim tercatat di audit (`KIRIM_UNDANGAN`, `GAGAL`) dan
+        akunnya tetap ada. `email_aktif: false` berarti SMTP tidak dikonfigurasi (tidak ada email dikirim).
+        Audit: `UNDANG_PENGGUNA` per akun (`metadata.sumber = impor`) dan satu `IMPOR_PENGGUNA` berisi ringkasan.
+      operationId: imporUsers
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImporPenggunaRequest"
+      responses:
+        "200":
+          description: Hasil pemeriksaan atau impor per baris
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImporPenggunaResponse"
+        "400":
+          description: |
+            Berkas ditolak seluruhnya: bukan UTF-8, kosong, tanpa baris data, header salah (kolom wajib hilang,
+            kolom tak dikenal atau ganda), kutip tak berpasangan, lebih dari 500 baris, atau `csv`/`dry_run` tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Ada email yang didaftarkan pihak lain saat impor berjalan; tidak ada akun yang dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Teks CSV melebihi 512 KB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/ekspor:
+    get:
+      summary: Ekspor pengguna ke CSV
+      description: |
+        Memerlukan izin `pengguna.kelola`. CSV (titik koma, UTF-8 dengan BOM) berisi kolom tetap
+        `id,nama,email,peran,lapis,lembaga,kabupaten_kode,status,mfa_aktif,terakhir_masuk,dibuat_pada`; tidak pernah
+        memuat kata sandi, rahasia MFA, kode cadangan, atau token. Sel yang diawali `=`, `+`, `-`, `@`, tab, atau CR
+        diberi awalan apostrof (anti injeksi rumus). Filter sama dengan `GET /v1/users` (`search`), ditambah `ids`
+        untuk "ekspor yang dipilih" (maksimal 500 id; id yang tidak ada diabaikan; `ids` yang hanya berisi pemisah
+        ditolak, bukan berubah menjadi semua pengguna). Maksimal 20.000 baris; sisanya ditandai
+        `X-Export-Truncated`. Ekspor adalah keluarnya data pribadi (UU PDP): dicatat sebagai `EKSPOR_DATA` SEBELUM
+        berkas diserahkan; bila audit gagal dicatat, berkas tidak diserahkan (500).
+      operationId: eksporUsers
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Cari nama, email, peran, atau lembaga (tak peka huruf besar-kecil)
+        - name: ids
+          in: query
+          schema:
+            type: string
+          description: Id pengguna dipisah koma (maksimal 500)
+          example: USR-0001,USR-0002
+      responses:
+        "200":
+          description: Berkas CSV
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: '`attachment; filename="pengguna-YYYY-MM-DD.csv"`'
+            X-Export-Rows:
+              schema:
+                type: integer
+              description: Jumlah baris data
+            X-Export-Truncated:
+              schema:
+                type: string
+                enum: ["true"]
+              description: Ada bila hasil dipotong pada batas 20.000 baris
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: '`ids` tidak valid atau lebih dari 500'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tidak memiliki izin `pengguna.kelola`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Gagal menyusun berkas atau mencatat audit (berkas tidak diserahkan)
           content:
             application/json:
               schema:
@@ -4987,6 +5285,154 @@ components:
               type: integer
               description: Lama tunggu sampai percobaan berikutnya diizinkan, dibulatkan ke atas (minimal 1)
               example: 42
+
+    UndangPenggunaRequest:
+      type: object
+      required:
+        - nama
+        - email
+        - peran
+        - lembaga
+      properties:
+        nama:
+          type: string
+          maxLength: 255
+          example: Budi Santoso
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          example: budi@gardainflasi.id
+        peran:
+          type: string
+          example: OPS_MAHASISWA
+          description: Id salah satu peran (lihat `GET /v1/roles`); `lapis` diturunkan dari peran
+        lembaga:
+          type: string
+          maxLength: 255
+          example: FMIPA USK
+        kabupaten_kode:
+          type: string
+          example: "1171"
+          description: Kode BPS empat digit yang ada di master wilayah; kosong = seluruh Aceh
+
+    UndanganResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+          example: Created
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/UserObject"
+            berlaku_sampai:
+              type: string
+              format: date-time
+              description: Akhir masa berlaku tautan undangan
+            email_terkirim:
+              type: boolean
+              description: |
+                `false` bila SMTP tidak dikonfigurasi, menolak, atau tidak menjawab dalam 10 detik; akun dan
+                undangan tetap ada dan bisa dikirim ulang
+              example: true
+
+    AktivasiRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+          maxLength: 512
+          description: Token dari tautan di email undangan
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Kata sandi pertama; kebijakan sama dengan atur ulang kata sandi, maksimal 72 karakter
+
+    ImporPenggunaRequest:
+      type: object
+      required:
+        - csv
+        - dry_run
+      properties:
+        csv:
+          type: string
+          description: Isi berkas CSV sebagai teks (maksimal 512 KB, 500 baris data)
+          example: "nama;email;peran;lembaga;kabupaten_kode\nBudi;budi@gardainflasi.id;OPS_MAHASISWA;FMIPA USK;1171\n"
+        dry_run:
+          type: boolean
+          description: |
+            Wajib eksplisit. `true` hanya memeriksa; `false` membuat akun undangan untuk baris yang sah
+
+    ImporPenggunaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            dry_run:
+              type: boolean
+            total:
+              type: integer
+              description: Jumlah baris data (baris kosong tidak dihitung)
+            valid:
+              type: integer
+              description: Baris yang lolos pemeriksaan
+            galat:
+              type: integer
+              description: Baris yang ditolak
+            dibuat:
+              type: integer
+              description: Akun yang dibuat (0 pada dry run)
+            email_aktif:
+              type: boolean
+              description: "`false` bila SMTP tidak dikonfigurasi (tidak ada email undangan dikirim)"
+            baris:
+              type: array
+              items:
+                type: object
+                properties:
+                  baris:
+                    type: integer
+                    description: Nomor baris di berkas (header = 1)
+                    example: 2
+                  nama:
+                    type: string
+                  email:
+                    type: string
+                    description: Huruf kecil
+                  peran:
+                    type: string
+                    description: Huruf besar
+                  lembaga:
+                    type: string
+                  kabupaten_kode:
+                    type: string
+                  status:
+                    type: string
+                    enum: [valid, galat, dibuat]
+                  galat:
+                    type: array
+                    items:
+                      type: string
+                    description: Semua alasan penolakan baris ini (larik kosong bila sah)
+                  id:
+                    type: string
+                    description: Id akun yang dibuat (hanya `status = dibuat`)
 
     BukaKunciResponse:
       type: object

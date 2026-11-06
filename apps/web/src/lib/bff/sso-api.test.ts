@@ -81,6 +81,40 @@ describe("ssoApi", () => {
     assert.equal(panggilan[0].headers["x-forwarded-for"], undefined);
   });
 
+  // Regresi: sesi yang lahir dari SSO tercatat dengan user agent "node" (fetch server) karena hanya
+  // X-Forwarded-For yang diteruskan, sehingga daftar sesi di /keamanan menampilkan perangkat yang salah.
+  it("authorize dan callback meneruskan user agent peramban ke Go", async () => {
+    const ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0";
+    const panggilan = stub((p) =>
+      p.url.endsWith("/authorize")
+        ? amplopSukses({ authorize_url: "https://idp/auth", binding: "b" })
+        : amplopSukses({ access_token: "a", refresh_token: "r", user: {} }),
+    );
+
+    await ssoApi.authorize("203.0.113.5", ua);
+    await ssoApi.callback(
+      { code: "c", state: "s", binding: "b" },
+      "203.0.113.5",
+      ua,
+    );
+
+    assert.equal(panggilan.length, 2);
+    for (const p of panggilan) {
+      assert.equal(p.headers["user-agent"], ua);
+      assert.equal(p.headers["x-forwarded-for"], "203.0.113.5");
+    }
+  });
+
+  it("tanpa user agent tidak mengirim header User-Agent buatan", async () => {
+    const panggilan = stub(() =>
+      amplopSukses({ authorize_url: "https://idp/auth", binding: "b" }),
+    );
+    await ssoApi.authorize("203.0.113.5", null);
+    await ssoApi.authorize("203.0.113.5");
+    assert.equal(panggilan[0].headers["user-agent"], undefined);
+    assert.equal(panggilan[1].headers["user-agent"], undefined);
+  });
+
   it("galat API membawa status dan kode amplop (dipetakan ke ?error= oleh BFF)", async () => {
     stub(() => amplopGalat(403, "SSO_ACCOUNT_NOT_FOUND", "Tidak ada akun"));
     await assert.rejects(

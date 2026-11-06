@@ -30,6 +30,9 @@ const SESI = {
 
 let GET: (request: NextRequest) => Promise<Response>;
 let pulihkan: (() => void) | undefined;
+const UA_PERAMBAN =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36";
+
 let urutanIp = 0;
 
 before(async () => {
@@ -48,6 +51,7 @@ function callback(
 ): NextRequest {
   const headers: Record<string, string> = {
     "x-forwarded-for": opsi.ip ?? `10.1.0.${++urutanIp}`,
+    "user-agent": UA_PERAMBAN,
   };
   const cookie =
     opsi.cookie === undefined
@@ -106,6 +110,11 @@ describe("GET /api/auth/sso/google/callback: berhasil", () => {
       panggilan[0].headers["x-forwarded-for"],
       "203.0.113.7",
       "IP klien diteruskan untuk audit",
+    );
+    assert.equal(
+      panggilan[0].headers["user-agent"],
+      UA_PERAMBAN,
+      "user agent peramban diteruskan agar daftar sesi menampilkan perangkat yang benar, bukan 'node'",
     );
 
     assert.equal(response.status, 302);

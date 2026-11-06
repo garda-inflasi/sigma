@@ -20,6 +20,7 @@ async function panggil<T>(
   init: RequestInit,
   timeoutMs: number,
   forwardedFor?: string | null,
+  userAgent?: string | null,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -30,6 +31,9 @@ async function panggil<T>(
       Accept: "application/json",
       // IP klien untuk audit dan batas laju di API (Go hanya mempercayai header ini dari jaringan privat).
       ...(forwardedFor ? { "X-Forwarded-For": forwardedFor } : {}),
+      // User agent peramban untuk daftar sesi ("Chrome di macOS"); tanpa ini Go mencatat "node" (fetch server)
+      // untuk setiap sesi yang lahir dari SSO, berbeda dari sesi masuk kata sandi (lihat headerKlien).
+      ...(userAgent ? { "User-Agent": userAgent } : {}),
     },
   });
 
@@ -62,24 +66,27 @@ export interface SsoAuthorize {
 
 export const ssoApi = {
   /** POST /auth/sso/google/authorize: URL otorisasi Google dan binding untuk cookie. */
-  authorize: (forwardedFor?: string | null) =>
+  authorize: (forwardedFor?: string | null, userAgent?: string | null) =>
     panggil<SsoAuthorize>(
       "/auth/sso/google/authorize",
       { method: "POST" },
       15_000,
       forwardedFor,
+      userAgent,
     ),
 
   /** POST /auth/sso/google/callback: sesi penuh atau tantangan MFA (bentuk sama dengan login). */
   callback: (
     body: { code: string; state: string; binding: string },
     forwardedFor?: string | null,
+    userAgent?: string | null,
   ) =>
     panggil<LoginResponse>(
       "/auth/sso/google/callback",
       { method: "POST", body: JSON.stringify(body) },
       40_000,
       forwardedFor,
+      userAgent,
     ),
 };
 

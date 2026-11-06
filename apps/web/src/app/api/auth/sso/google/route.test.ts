@@ -19,6 +19,9 @@ const URL_GOOGLE =
 
 let GET: (request: NextRequest) => Promise<Response>;
 let pulihkan: (() => void) | undefined;
+const UA_PERAMBAN =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36";
+
 let urutanIp = 0;
 
 before(async () => {
@@ -32,7 +35,7 @@ afterEach(() => {
 
 function mulai(query = "", ip = `10.2.0.${++urutanIp}`): NextRequest {
   return new NextRequest(`http://localhost:8090/api/auth/sso/google${query}`, {
-    headers: { "x-forwarded-for": ip },
+    headers: { "x-forwarded-for": ip, "user-agent": UA_PERAMBAN },
   });
 }
 
@@ -56,6 +59,7 @@ describe("GET /api/auth/sso/google", () => {
     assert.match(panggilan[0].url, /\/auth\/sso\/google\/authorize$/);
     assert.equal(panggilan[0].method, "POST");
     assert.equal(panggilan[0].headers["x-forwarded-for"], "203.0.113.9");
+    assert.equal(panggilan[0].headers["user-agent"], UA_PERAMBAN);
 
     assert.equal(response.status, 302);
     assert.equal(lokasi(response), URL_GOOGLE);

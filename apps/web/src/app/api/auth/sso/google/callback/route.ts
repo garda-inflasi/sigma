@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
     const result = await ssoApi.callback(
       { code: callback.code, state: callback.state, binding: flow.binding },
       request.headers.get("x-forwarded-for"),
+      request.headers.get("user-agent"),
     );
 
     // Akun ber-MFA: belum ada sesi. Token tantangan memakai cookie dan langkah OTP yang sama dengan login.

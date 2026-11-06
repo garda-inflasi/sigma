@@ -328,6 +328,9 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		Status:        req.Status,
 	}, actorID)
 	if err != nil {
+		if jawabGalatAkunMenunggu(c, err) {
+			return
+		}
 		switch err {
 		case usecase.ErrUserNotFound:
 			response.NotFound(c, "Pengguna tidak ditemukan")
@@ -379,6 +382,10 @@ func (h *Handler) ResetPasswordAdmin(c *gin.Context) {
 	actorID := c.GetString("user_id")
 
 	if err := h.uc.ResetPasswordAdmin(audit.RequestContext(c), id, req.NewPassword, actorID); err != nil {
+		if errors.Is(err, usecase.ErrAkunMenunggu) {
+			response.Conflict(c, err.Error())
+			return
+		}
 		switch err {
 		case usecase.ErrUserNotFound:
 			response.NotFound(c, "Pengguna tidak ditemukan")

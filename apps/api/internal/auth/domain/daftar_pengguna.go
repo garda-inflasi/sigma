@@ -75,6 +75,25 @@ type FilterPengguna struct {
 	MFA *bool
 	// Terkunci true = hanya akun yang login-nya sedang terkunci (lockout, 01-F), false = hanya yang tidak.
 	Terkunci *bool
+	// IDs membatasi hasil pada akun tertentu ("ekspor yang dipilih"); kosong = tanpa batas id. Hanya diisi ekspor.
+	IDs []string
+}
+
+// Normal memvalidasi filter dan mengembalikan salinan dengan kata kunci tanpa spasi tepi. Dipakai daftar
+// (DaftarPenggunaQuery.Normal) dan ekspor CSV, jadi keduanya menolak masukan yang sama. Galatnya
+// *FilterPenggunaError. Peran tidak diperiksa di sini karena katalog peran ada di usecase.
+func (f FilterPengguna) Normal() (FilterPengguna, error) {
+	f.Cari = strings.TrimSpace(f.Cari)
+	if utf8.RuneCountInString(f.Cari) > MaksPanjangCari {
+		return f, galatFilter("search", "search maksimal %d karakter", MaksPanjangCari)
+	}
+	if f.Status != "" && !slices.Contains(StatusPengguna, f.Status) {
+		return f, galatFilter("status", "status tidak dikenal: %q (pilihan: %s)", f.Status, strings.Join(StatusPengguna, ", "))
+	}
+	if f.Lapis != "" && !slices.Contains(LapisPengguna, f.Lapis) {
+		return f, galatFilter("lapis", "lapis tidak dikenal: %q (pilihan: %s)", f.Lapis, strings.Join(LapisPengguna, ", "))
+	}
+	return f, nil
 }
 
 // DaftarPenggunaQuery adalah satu permintaan daftar pengguna: filter, urutan, dan halaman.
@@ -94,15 +113,10 @@ type DaftarPenggunaQuery struct {
 // halaman, limit) dan kata kunci tanpa spasi tepi. Galatnya *FilterPenggunaError. Peran tidak diperiksa di
 // sini karena katalog peran ada di usecase.
 func (q DaftarPenggunaQuery) Normal() (DaftarPenggunaQuery, error) {
-	q.Filter.Cari = strings.TrimSpace(q.Filter.Cari)
-	if utf8.RuneCountInString(q.Filter.Cari) > MaksPanjangCari {
-		return q, galatFilter("search", "search maksimal %d karakter", MaksPanjangCari)
-	}
-	if q.Filter.Status != "" && !slices.Contains(StatusPengguna, q.Filter.Status) {
-		return q, galatFilter("status", "status tidak dikenal: %q (pilihan: %s)", q.Filter.Status, strings.Join(StatusPengguna, ", "))
-	}
-	if q.Filter.Lapis != "" && !slices.Contains(LapisPengguna, q.Filter.Lapis) {
-		return q, galatFilter("lapis", "lapis tidak dikenal: %q (pilihan: %s)", q.Filter.Lapis, strings.Join(LapisPengguna, ", "))
+	f, err := q.Filter.Normal()
+	q.Filter = f
+	if err != nil {
+		return q, err
 	}
 
 	urutDiberikan := q.Urut != ""

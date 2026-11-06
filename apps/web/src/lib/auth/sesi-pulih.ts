@@ -22,6 +22,7 @@ const TANPA_PEMULIHAN = [
   "/api/auth/mfa/validate",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
+  "/api/auth/aktivasi",
 ];
 
 /** Pesan 401 karena kredensial yang diketik salah (bukan token): mengulangnya hanya melipatgandakan percobaan. */
@@ -155,7 +156,7 @@ export async function fetchDenganPemulihan(
   return fetchFn(input, buat());
 }
 
-const HALAMAN_AUTH = ["/masuk", "/lupa-password", "/reset-password"];
+const HALAMAN_AUTH = ["/masuk", "/lupa-password", "/reset-password", "/aktivasi"];
 
 /**
  * Tujuan setelah sesi berakhir: halaman masuk membawa halaman semula di `lanjut`. Null bila sudah di halaman

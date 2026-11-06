@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
@@ -114,6 +115,8 @@ type Config struct {
 	// RefreshGraceWindow adalah jendela setelah rotasi saat refresh token lama yang disajikan lagi dianggap
 	// permintaan serentak yang sah (mis. dua tab), bukan pemakaian ulang. 0 mematikan toleransi. Lihat sesi.go.
 	RefreshGraceWindow time.Duration
+	// UndanganTTL adalah masa berlaku tautan undangan akun (02-D); nol memakai UndanganTTLBawaan (72 jam).
+	UndanganTTL time.Duration
 }
 
 func DefaultConfig() Config {
@@ -137,6 +140,9 @@ type UseCase struct {
 	log         *logger.Logger
 	emailSender *email.Sender
 	audit       audit.Writer
+	// kirimLatar menunggu pengiriman email undangan massal yang berjalan di latar belakang (impor CSV);
+	// TungguPengirimanEmail dipakai tes dan penutupan layanan.
+	kirimLatar sync.WaitGroup
 }
 
 func New(repo domain.Repository, tokenMgr *token.Manager, cfg Config, log *logger.Logger, emailSender *email.Sender, auditWriter audit.Writer) *UseCase {
@@ -485,6 +491,9 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 	if err != nil {
 		return nil, ErrUserNotFound
 	}
+	if err := periksaPerubahanStatus(user, patch.Status); err != nil {
+		return nil, err
+	}
 
 	// Hanya kolom yang diminta yang ditulis (PatchUser): perubahan serentak pada kolom lain, mis. penonaktifan
 	// atau reset kata sandi oleh admin lain, tidak tertimpa salinan pengguna yang dibaca di atas.
@@ -587,6 +596,9 @@ func (uc *UseCase) ResetPasswordAdmin(ctx context.Context, id, newPassword, acto
 	user, err := uc.repo.GetUserByID(ctx, id)
 	if err != nil {
 		return ErrUserNotFound
+	}
+	if user.Status == domain.StatusMenunggu {
+		return ErrAkunMenunggu
 	}
 
 	if err := uc.setPassword(ctx, user, newPassword, true, false); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"gorm.io/gorm"
@@ -42,9 +43,11 @@ func lepasLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-// terapkanFilterPengguna menambahkan syarat filter ke query (nilai kosong = tanpa syarat).
-func terapkanFilterPengguna(db *gorm.DB, q domain.DaftarPenggunaQuery) *gorm.DB {
-	f := q.Filter
+// terapkanFilterPengguna menambahkan syarat filter ke query (nilai kosong = tanpa syarat). Satu-satunya tempat
+// kriteria daftar pengguna ditulis: ListUsers (GET /v1/users) dan ListUsersUntukEkspor (GET /v1/users/ekspor)
+// sama-sama memakainya, jadi ekspor selalu memuat persis yang tampil di daftar dengan filter yang sama.
+// sekarang adalah waktu acuan filter Terkunci.
+func terapkanFilterPengguna(db *gorm.DB, f domain.FilterPengguna, sekarang time.Time) *gorm.DB {
 	if f.Cari != "" {
 		kata := "%" + lepasLike(strings.ToLower(f.Cari)) + "%"
 		// peran bertipe enum PostgreSQL, jadi di-cast ke text sebelum LOWER(). Versi dengan spasi menolong
@@ -71,7 +74,10 @@ func terapkanFilterPengguna(db *gorm.DB, q domain.DaftarPenggunaQuery) *gorm.DB 
 		if !*f.Terkunci {
 			terkunci = "NOT " + terkunci
 		}
-		db = db.Where(terkunci, q.Sekarang)
+		db = db.Where(terkunci, sekarang)
+	}
+	if len(f.IDs) > 0 {
+		db = db.Where("id IN ?", f.IDs)
 	}
 	return db
 }
@@ -99,7 +105,7 @@ func (r *Repository) ListUsers(ctx context.Context, q domain.DaftarPenggunaQuery
 	var total int64
 
 	// Session membuat query dasar dipakai ulang oleh Count dan Find tanpa saling mengubah statement.
-	query := terapkanFilterPengguna(r.db.WithContext(ctx).Model(&domain.Pengguna{}), q).Session(&gorm.Session{})
+	query := terapkanFilterPengguna(r.db.WithContext(ctx).Model(&domain.Pengguna{}), q.Filter, q.Sekarang).Session(&gorm.Session{})
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count users: %w", err)
 	}

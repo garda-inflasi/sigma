@@ -44,6 +44,17 @@ func (r *Repository) HapusResetTokenMati(ctx context.Context, sebelum time.Time,
 		sebelum, sebelum, batas)
 }
 
+func (r *Repository) HapusUndanganMati(ctx context.Context, sebelum time.Time, batas int) (int64, error) {
+	return r.hapusBatch(ctx, batas,
+		`DELETE FROM undangan_pengguna WHERE id IN (
+			SELECT id FROM undangan_pengguna
+			WHERE expires_at < ?
+			   OR (used_at IS NOT NULL AND used_at < ?)
+			   OR (dicabut_pada IS NOT NULL AND dicabut_pada < ?)
+			ORDER BY id LIMIT ? FOR UPDATE SKIP LOCKED)`,
+		sebelum, sebelum, sebelum, batas)
+}
+
 func (r *Repository) HapusLoginAttemptLama(ctx context.Context, sebelum time.Time, batas int) (int64, error) {
 	return r.hapusBatch(ctx, batas,
 		`DELETE FROM login_attempts WHERE id IN (

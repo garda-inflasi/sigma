@@ -15,7 +15,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { exportCsv } from "@/lib/csv";
 import type { PenggunaRow } from "@/lib/data/types";
 import { formatRelatif, formatTanggal } from "@/lib/format";
 import { masihTerkunci, type PenggunaDetail } from "@/lib/api/pengguna";
@@ -24,6 +23,8 @@ import { FilterPengguna } from "./filter-pengguna";
 import { LencanaTerkunci } from "./lencana-terkunci";
 import { ResetMfaDialog } from "./reset-mfa-dialog";
 import { RiwayatPeran } from "./riwayat-peran";
+import { AksiUndangan, ItemKirimUlangUndangan } from "./aksi-undangan";
+import { useEksporPengguna } from "@/lib/query/undangan-hooks";
 import {
   adalahKolomUrut, koreksiHalaman, kunciCachePengguna, parseStateTabel, queryUrlPengguna, resetFilter, toSortingState, ubahCari, ubahFilter, ubahHalaman,
   ubahUkuran, ubahUrut, type StateTabelPengguna,
@@ -287,6 +288,7 @@ export function PenggunaPage() {
   const bukaKunci = useBukaKunciPengguna();
   const bolehKelola = useCan("pengguna.kelola");
   const paksaKeluar = usePaksaKeluarPengguna();
+  const eksporTerpilih = useEksporPengguna();
 
   const [dialog, setDialog] = useState<{ mode: "buat" | "ubah" | "reset" | "mfa"; user: PenggunaRow | null } | null>(null);
 
@@ -324,7 +326,11 @@ export function PenggunaPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onSelect={() => setDialog({ mode: "ubah", user: u })}><Pencil /> Ubah data</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setDialog({ mode: "reset", user: u })}><KeyRound /> Reset kata sandi</DropdownMenuItem>
+            {u.status === "MENUNGGU" ? (
+              <ItemKirimUlangUndangan user={u} />
+            ) : (
+              <DropdownMenuItem onSelect={() => setDialog({ mode: "reset", user: u })}><KeyRound /> Reset kata sandi</DropdownMenuItem>
+            )}
             {bolehKelola && masihTerkunci(u.terkunciSampai) && (
               <DropdownMenuItem onSelect={() => bukaKunci.mutate({ id: u.id, nama: u.nama })}><LockOpen /> Buka kunci</DropdownMenuItem>
             )}
@@ -365,16 +371,14 @@ export function PenggunaPage() {
           }}
           filterBar={<FilterPengguna state={tabelState} onFilter={(kunci, nilai) => ubahTabel(ubahFilter(tabelState, kunci, nilai))} onReset={() => ubahTabel(resetFilter(tabelState))} />}
           toolbar={
-            <SpringButton variant="primary" size="sm" onClick={() => setDialog({ mode: "buat", user: null })}>
-              <UserPlus /> Tambah pengguna
-            </SpringButton>
+            <AksiUndangan onBuatSementara={() => setDialog({ mode: "buat", user: null })} filter={{ search: tabelState.search, peran: tabelState.peran, status: tabelState.status, lapis: tabelState.lapis, mfa: tabelState.mfa, terkunci: tabelState.terkunci }} />
           }
           bulkActions={[
-            { id: "aktifkan", label: "Aktifkan", icon: UserCheck, perm: "pengguna.kelola", tone: "data", enabled: (r) => r.every((u) => u.status !== "AKTIF"), run: (r) => bulkMut.mutateAsync({ aksi: "aktifkan", ids: r.map((u) => u.id), label: "Aktifkan" }) },
+            { id: "aktifkan", label: "Aktifkan", icon: UserCheck, perm: "pengguna.kelola", tone: "data", enabled: (r) => r.every((u) => u.status === "NONAKTIF"), run: (r) => bulkMut.mutateAsync({ aksi: "aktifkan", ids: r.map((u) => u.id), label: "Aktifkan" }) },
             { id: "nonaktifkan", label: "Nonaktifkan", icon: UserX, perm: "pengguna.kelola", tone: "danger", enabled: (r) => r.every((u) => u.status === "AKTIF"), confirm: { title: "Nonaktifkan akun terpilih?", description: (n) => `${n} akun tidak dapat masuk dan seluruh sesinya diakhiri. Data yang pernah diinput tetap tersimpan.`, actionLabel: "Nonaktifkan" }, run: (r) => bulkMut.mutateAsync({ aksi: "nonaktifkan", ids: r.map((u) => u.id), label: "Nonaktifkan" }) },
             { id: "mfa", label: "Wajibkan MFA", icon: KeyRound, perm: "pengguna.kelola", run: (r) => bulkMut.mutateAsync({ aksi: "wajibkan_mfa", ids: r.map((u) => u.id), label: "Wajibkan MFA" }) },
             { id: "sesi", label: "Akhiri sesi", icon: LogOut, perm: "pengguna.kelola", run: (r) => bulkMut.mutateAsync({ aksi: "akhiri_sesi", ids: r.map((u) => u.id), label: "Akhiri sesi" }) },
-            { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "Nama", value: (u) => u.nama }, { header: "Email", value: (u) => u.email }, { header: "Peran", value: (u) => ROLES[u.role].label }, { header: "Lembaga", value: (u) => u.lembaga }, { header: "Status", value: (u) => u.status }], "pengguna") },
+            { id: "ekspor", label: "Ekspor CSV", icon: Download, perm: "pengguna.kelola", run: (r) => eksporTerpilih.jalankan({ ids: r.map((u) => u.id) }) },
           ]} />
       )}
       <p className={cn("text-xs text-muted-foreground", tab === "matriks" ? "block" : "hidden")}>Matriks ini dibaca dari API (GET /v1/roles dan /v1/permissions), sumber izin yang sama dengan penegakan di backend.</p>

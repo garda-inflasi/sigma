@@ -308,9 +308,12 @@ func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action d
 
 	switch action {
 	case domain.BulkAktifkan:
-		tx = tx.Update("status", "AKTIF")
+		// Akun MENUNGGU (undangan) tidak boleh diaktifkan tanpa kata sandi: hanya aktivasi oleh pemiliknya.
+		tx = tx.Where("status <> ?", domain.StatusMenunggu).Update("status", "AKTIF")
 	case domain.BulkNonaktifkan:
-		tx = tx.Update("status", "NONAKTIF")
+		// Akun MENUNGGU dibatalkan dengan menghapusnya, bukan dinonaktifkan: akun tanpa kata sandi tidak punya
+		// jalan kembali ke AKTIF selain undangan.
+		tx = tx.Where("status <> ?", domain.StatusMenunggu).Update("status", "NONAKTIF")
 		// Akun nonaktif tidak boleh meneruskan sesinya: access token mati seketika lewat sid.
 		if tx.Error == nil {
 			if err := r.db.WithContext(ctx).Model(&domain.RefreshToken{}).

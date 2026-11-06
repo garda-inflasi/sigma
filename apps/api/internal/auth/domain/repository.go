@@ -14,6 +14,9 @@ type Repository interface {
 	DaftarPenggunaRepository
 	ResetMFARepository
 	RiwayatPeranRepository
+	// UndanganRepository dan EksporRepository: undang pengguna lewat email, impor, dan ekspor CSV (02-D).
+	UndanganRepository
+	EksporRepository
 	GetUserByID(ctx context.Context, id string) (*Pengguna, error)
 	GetUserByEmail(ctx context.Context, email string) (*Pengguna, error)
 	CreateUser(ctx context.Context, user *Pengguna) error

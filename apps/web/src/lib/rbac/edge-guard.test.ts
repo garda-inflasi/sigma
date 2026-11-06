@@ -89,10 +89,12 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
     "/masuk",
     "/lupa-password",
     "/reset-password",
+    "/aktivasi",
     "/akses-ditolak",
     "/offline",
     "/healthz",
     "/api/auth/login",
+    "/api/auth/aktivasi",
     "/api/auth/mfa/validate",
     "/api/auth/sso/google",
     "/api/auth/sso/google/callback",
@@ -106,6 +108,11 @@ describe("rute publik dan alur masuk tidak terblokir", () => {
 
   it("batas prefiks: /masuk-palsu bukan rute publik", () => {
     assert.equal(isPublicRoute("/masuk-palsu"), false);
+  });
+
+  it("batas prefiks aktivasi: /aktivasi-palsu dan /api/auth/aktivasi-palsu bukan rute publik", () => {
+    assert.equal(isPublicRoute("/aktivasi-palsu"), false);
+    assert.equal(isPublicRoute("/api/auth/aktivasi-palsu"), false);
   });
 
   it("/daftar tidak lagi publik (halamannya tidak ada)", () => {

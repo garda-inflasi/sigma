@@ -74,7 +74,8 @@ func TestUpdateUser_TidakMencabutSesiBilaPeranDanStatusTidakBerubah(t *testing.T
 }
 
 func TestUpdateUser_StatusSelainAktifMencabutSesi(t *testing.T) {
-	for _, status := range []string{"NONAKTIF", "MENUNGGU"} {
+	// MENUNGGU tidak bisa dipasang lewat PATCH (hanya alur undangan); lihat undangan_test.go.
+	for _, status := range []string{"NONAKTIF"} {
 		t.Run(status, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc := newTestUseCase(repo)

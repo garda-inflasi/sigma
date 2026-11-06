@@ -87,7 +87,8 @@ func isiDataPenggunaLama(t *testing.T, db *gorm.DB) {
 		`INSERT INTO ews_alert (id, severity, jenis, judul, pesan, kabupaten_kode, nilai, satuan_nilai, skor_dampak, sumber, diakui_oleh_id, dieskalasi_oleh_id)
 			VALUES ('EWS-1', 'WASPADA', 'LONJAKAN_HARGA', 'Lonjakan', 'pesan', '1174', 10, '%', 5, 'rule', 'superadmin', 'user_nonaktif')`,
 		`INSERT INTO ews_riwayat (alert_id, ke, oleh) VALUES ('EWS-1', 'DIAKUI', 'superadmin')`,
-		`INSERT INTO ews_notifikasi (alert_id, pengguna_id, kanal, tujuan) VALUES ('EWS-1', 'mahasiswa_9', 'EMAIL', 'mahasiswa9@x.id')`,
+		`INSERT INTO ews_notifikasi (alert_id, pengguna_id, kanal, tujuan) VALUES
+			('EWS-1', 'mahasiswa_9', 'EMAIL', 'mahasiswa9@x.id'), ('EWS-1', 'mahasiswa_9', 'PUSH', 'mahasiswa_9')`,
 		`INSERT INTO aturan_ews (id, jenis, ambang_waspada, ambang_siaga, ambang_kritis, diubah_oleh_id) VALUES ('AR-1', 'LONJAKAN_HARGA', 1, 2, 3, 'superadmin')`,
 		`INSERT INTO tahap_intervensi_def (siklus, kode_tahap, urutan, label) VALUES ('NORMAL', 'IDENTIFIKASI', 1, 'Identifikasi')`,
 		`INSERT INTO intervensi (id, siklus, tahap, judul, komoditas_kode, kabupaten_kode, prioritas, tenggat, dibuat_oleh_id)
@@ -223,6 +224,11 @@ func TestMigrasiPenggunaUUID_DataLamaIkutDanBisaDibalik(t *testing.T) {
 		assert.Equal(t, uuidPengguna("test-user-001"), scanString(t, db, `SELECT entitas_id FROM audit_log WHERE id = 'A5'`))
 	})
 
+	t.Run("ews_notifikasi.tujuan: PUSH berisi id pengguna dan ikut dipetakan, EMAIL tidak disentuh", func(t *testing.T) {
+		assert.Equal(t, uuidPengguna("mahasiswa_9"), scanString(t, db, `SELECT tujuan FROM ews_notifikasi WHERE kanal = 'PUSH'`))
+		assert.Equal(t, "mahasiswa9@x.id", scanString(t, db, `SELECT tujuan FROM ews_notifikasi WHERE kanal = 'EMAIL'`))
+	})
+
 	t.Run("audit_log tetap append-only", func(t *testing.T) {
 		assert.Equal(t, "O", scanString(t, db, `SELECT tgenabled::text FROM pg_trigger WHERE tgname = 'trg_audit_log_append_only'`))
 		err := db.Exec(`UPDATE audit_log SET aksi = 'DIUBAH' WHERE id = 'A1'`).Error
@@ -288,6 +294,8 @@ func TestMigrasiPenggunaUUID_DataLamaIkutDanBisaDibalik(t *testing.T) {
 		assert.Equal(t, "superadmin", scanString(t, db, `SELECT aktor_id FROM audit_log WHERE id = 'A1'`))
 
 		assert.Equal(t, "mahasiswa_9", scanString(t, db, `SELECT entitas_id FROM audit_log WHERE id = 'A1'`), "rujukan lunak kembali")
+		assert.Equal(t, "mahasiswa_9", scanString(t, db, `SELECT tujuan FROM ews_notifikasi WHERE kanal = 'PUSH'`))
+		assert.Equal(t, "mahasiswa9@x.id", scanString(t, db, `SELECT tujuan FROM ews_notifikasi WHERE kanal = 'EMAIL'`))
 		assert.Equal(t, "ekspor", scanString(t, db, `SELECT entitas_id FROM audit_log WHERE id = 'A2'`))
 
 		for _, fk := range bacaKolomFKPengguna(t, db) {

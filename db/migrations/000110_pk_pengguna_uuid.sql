@@ -25,6 +25,7 @@
 --      nilainya ID lama akun yang ada (dipakai riwayat peran dan filter audit). audit_log.sebelum/sesudah/
 --      metadata dibiarkan sebagai sejarah (snapshot JSON; riwayat peran membaca isi peran, bukan ID di dalamnya).
 --      audit_log append-only: pemicunya dimatikan hanya selama UPDATE pemetaan ini, di transaksi yang sama.
+--      ews_notifikasi.tujuan untuk kanal PUSH berisi id pengguna (sama dengan pengguna_id) dan ikut dipetakan.
 --      mfa_kode_cadangan.kode_hash dihitung dari "<id pengguna>:<kode>" sehingga tidak bisa dihitung ulang;
 --      aplikasi menerima hash dengan ID lama lewat pengguna_id_lama (usecase.verifySecondFactor).
 --
@@ -158,6 +159,9 @@ BEGIN
      WHERE a.entitas = 'pengguna' AND a.entitas_id = l.id_lama;
     ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_append_only;
 
+    -- ews_notifikasi.tujuan: alamat email untuk kanal EMAIL, id pengguna untuk PUSH (sama dengan pengguna_id).
+    UPDATE ews_notifikasi SET tujuan = pengguna_id::text WHERE kanal = 'PUSH';
+
     COMMENT ON TABLE pengguna_id_lama IS
         'ID lama (slug) tiap pengguna sebelum migrasi 000110; 1:1 dengan pengguna. Dipakai Down dan kompatibilitas hash kode cadangan MFA.';
 END
@@ -257,6 +261,7 @@ BEGIN
       FROM pengguna_id_lama l
      WHERE a.entitas = 'pengguna' AND a.entitas_id = l.id::text;
     ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_append_only;
+    UPDATE ews_notifikasi SET tujuan = pengguna_id WHERE kanal = 'PUSH';
 
     -- 4. FK dengan aturan semula (NO ACTION = bawaan PostgreSQL).
     FOR r IN SELECT * FROM rencana_fk_pengguna LOOP

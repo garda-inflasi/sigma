@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // PenyusunID adalah akun demo (seeder auth.demo) yang menyusun semua brief contoh.
-const PenyusunID = "manajer_kebijakan"
+var PenyusunID = seedkit.IDPengguna("manajer_kebijakan")
 
 // DemoSummary melaporkan baris yang diusulkan oleh SeedDemo.
 type DemoSummary struct {
@@ -107,7 +108,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 		return DemoSummary{}, fmt.Errorf("seed brief demo: cek penyusun: %w", err)
 	}
 	if penyusun == 0 {
-		return DemoSummary{}, errors.New("seed brief demo: akun " + PenyusunID + " belum ada; jalankan auth.demo lebih dulu")
+		return DemoSummary{}, errors.New("seed brief demo: akun manajer_kebijakan (" + PenyusunID + ") belum ada; jalankan auth.demo lebih dulu")
 	}
 
 	rows, err := BuildBrief(now)

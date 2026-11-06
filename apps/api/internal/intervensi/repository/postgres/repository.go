@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
@@ -105,7 +106,7 @@ func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap 
 		created = domain.Intervensi{
 			ID: fmt.Sprintf("INT-%d", seq), Siklus: in.Siklus, Tahap: tahap, Urutan: urutan, Judul: in.Judul,
 			Deskripsi: in.Deskripsi, KomoditasKode: in.KomoditasKode, KabupatenKode: in.KabupatenKode,
-			Prioritas: in.Prioritas, Tenggat: in.Tenggat, EwsAlertID: in.EwsAlertID, DibuatOlehID: &in.DibuatOlehID,
+			Prioritas: in.Prioritas, Tenggat: in.Tenggat, EwsAlertID: in.EwsAlertID, DibuatOlehID: idx.PtrAtauNil(in.DibuatOlehID),
 		}
 		if err := tx.Create(&created).Error; err != nil {
 			return err

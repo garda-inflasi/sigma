@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -34,7 +35,9 @@ const (
 const cooldownBawaanJam = 24
 
 // pengakuiDemo adalah akun demo (auth.demo) yang mengakui alert contoh, bergantian.
-var pengakuiDemo = []string{"manajer_risiko", "manajer_data", "koordinator_lapangan"}
+var pengakuiDemo = []string{
+	seedkit.IDPengguna("manajer_risiko"), seedkit.IDPengguna("manajer_data"), seedkit.IDPengguna("koordinator_lapangan"),
+}
 
 // SeedReference meng-upsert aturan ambang awal. Idempoten. Aturan yang sudah
 // diubah lewat UI (versi > 1) tidak disentuh sama sekali; yang belum diubah

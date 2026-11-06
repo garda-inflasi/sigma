@@ -8,12 +8,14 @@ import (
 	"strings"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"gorm.io/gorm"
 )
 
 const (
-	adminID      = "admin-awal"
+	// adminSlug adalah ID lama admin awal; UUID barisnya seedkit.IDPengguna(adminSlug).
+	adminSlug    = "admin-awal"
 	adminPeran   = "ADMIN_SISTEM"
 	adminLembaga = "Garda Inflasi"
 	// generatedPasswordBytes adalah panjang acak (byte) kata sandi yang dibuatkan.
@@ -68,7 +70,7 @@ func SeedAdmin(ctx context.Context, db *gorm.DB, cfg AdminConfig) (AdminSummary,
 	}
 
 	admin := domain.Pengguna{
-		ID: adminID, Nama: "Administrator Sistem", Email: email, PasswordHash: &hash,
+		ID: seedkit.IDPengguna(adminSlug), Nama: "Administrator Sistem", Email: email, PasswordHash: &hash,
 		Peran: adminPeran, Lapis: "SISTEM", Lembaga: adminLembaga, Status: "AKTIF",
 		WajibGantiPassword: true, MfaWajib: true,
 	}

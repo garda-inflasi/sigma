@@ -13,6 +13,7 @@ import (
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 )
 
@@ -130,7 +131,7 @@ func (uc *UseCase) Jalankan(ctx context.Context, sumberID, actorID string) (inge
 	if _, err := uc.repo.GetByID(ctx, sumberID); err != nil {
 		return ingest.EksekusiSumber{}, err
 	}
-	run, err := uc.ingest.Mulai(ctx, sumberID, ingest.PemicuManual, &actorID)
+	run, err := uc.ingest.Mulai(ctx, sumberID, ingest.PemicuManual, idx.PtrAtauNil(actorID))
 	if err != nil {
 		uc.catatJalankan(ctx, sumberID, actorID, audit.HasilDitolak, map[string]any{"alasan": err.Error()})
 		return ingest.EksekusiSumber{}, err

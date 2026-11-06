@@ -93,6 +93,9 @@ func (r *Repository) MulaiEksekusi(ctx context.Context, sumberID, pemicu string,
 			return fmt.Errorf("tutup eksekusi macet: %w", err)
 		}
 
+		if aktorID != nil && *aktorID == "" {
+			aktorID = nil // kolom uuid: pelaku sistem adalah NULL, bukan ''
+		}
 		baru := domain.EksekusiSumber{SumberID: sumberID, Pemicu: pemicu, AktorID: aktorID, Status: domain.StatusBerjalan, Mulai: time.Now(), Ringkasan: "{}"}
 		if err := tx.Create(&baru).Error; err != nil {
 			var pgErr *pgconn.PgError

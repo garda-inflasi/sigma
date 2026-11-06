@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // ── Undangan ──────────────────────────────────────────────────────────
@@ -78,7 +79,8 @@ type EksporPenggunaRequest struct {
 }
 
 // Filter mengubah query menjadi filter domain (galat = *domain.FilterPenggunaError, sama dengan daftar);
-// id kosong dan ganda dibuang.
+// id kosong, ganda, dan yang bukan UUID dibuang (id pengguna adalah UUID, jadi yang lain tidak mungkin cocok
+// dan kolom uuid menolaknya). Bila semua id terbuang, handler menjawab 400 alih-alih mengekspor semua pengguna.
 func (r EksporPenggunaRequest) Filter() (domain.FilterPengguna, error) {
 	f, err := r.FilterPenggunaRequest.Filter()
 	if err != nil {
@@ -86,8 +88,8 @@ func (r EksporPenggunaRequest) Filter() (domain.FilterPengguna, error) {
 	}
 	terlihat := map[string]bool{}
 	for _, id := range strings.Split(r.IDs, ",") {
-		id = strings.TrimSpace(id)
-		if id == "" || terlihat[id] {
+		id, ok := idx.NormalUUID(strings.TrimSpace(id))
+		if !ok || terlihat[id] {
 			continue
 		}
 		terlihat[id] = true

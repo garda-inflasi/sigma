@@ -9,6 +9,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -33,7 +34,10 @@ func jawabAkunTerkunci(c *gin.Context, err error) {
 // Membuka kunci login satu pengguna (pengguna.kelola) dan menghapus hitungan percobaan gagalnya. Tercatat
 // di audit (UNLOCK_USER). Idempoten: akun yang tidak terkunci dijawab 200 dengan terkunci_sebelumnya false.
 func (h *Handler) BukaKunci(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 
 	res, err := h.uc.BukaKunciPengguna(audit.RequestContext(c), id, c.GetString("user_id"))
 	if err != nil {

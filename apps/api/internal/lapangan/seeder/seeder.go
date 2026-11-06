@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/lapangan/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -113,7 +114,7 @@ func Build(in Input, now time.Time) []domain.TugasLapangan {
 		for i, t := range templates {
 			tenggat := now.Add(time.Duration(t.TenggatJam) * time.Hour).Truncate(time.Second)
 			tugas := domain.TugasLapangan{
-				ID:            fmt.Sprintf("TGS-%s-%d", p.ID, i+1),
+				ID:            fmt.Sprintf("TGS-%s-%d", seedkit.SlugPengguna(p.ID), i+1),
 				Judul:         t.Judul,
 				PasarID:       p.PasarID,
 				PetugasID:     p.ID,

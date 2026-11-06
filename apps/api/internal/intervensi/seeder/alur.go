@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -76,10 +77,12 @@ func seedAlur(ctx context.Context, db *gorm.DB) (alur, langkah int, err error) {
 // permintaanDemo adalah satu permintaan persetujuan terbuka pada kartu demo: INT-304 (menunggu
 // di Usulan intervensi logistik kilat) diajukan pindah ke Dukungan instrumen belanja.
 const (
-	kartuPermintaanDemo   = "INT-304"
-	tahapPermintaanDemo   = "t-fiskal"
-	pengajuPermintaanDemo = "manajer_program"
+	kartuPermintaanDemo = "INT-304"
+	tahapPermintaanDemo = "t-fiskal"
 )
+
+// pengajuPermintaanDemo adalah UUID akun manajer_program.
+var pengajuPermintaanDemo = seedkit.IDPengguna("manajer_program")
 
 // seedPermintaanDemo membangun ulang permintaan persetujuan demo (id baris dari sequence).
 func seedPermintaanDemo(tx *gorm.DB, kartuIDs []string, now time.Time) (int, error) {

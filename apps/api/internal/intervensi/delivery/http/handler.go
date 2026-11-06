@@ -10,6 +10,7 @@ import (
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	"github.com/garda-inflasi/api/internal/intervensi/dto"
 	"github.com/garda-inflasi/api/internal/intervensi/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -62,10 +63,21 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
+	// Penanggung jawab adalah id pengguna (UUID): teks lain tidak mungkin ada, dan kolom uuid menolaknya (22P02).
+	pj := make([]string, len(req.PenanggungJawabIDs))
+	for i, mentah := range req.PenanggungJawabIDs {
+		id, ok := idx.NormalUUID(mentah)
+		if !ok {
+			response.BadRequest(c, "Validasi gagal: penanggung jawab harus berupa ID pengguna (UUID) yang sah")
+			return
+		}
+		pj[i] = id
+	}
+
 	created, err := h.uc.Create(audit.RequestContext(c), domain.NewIntervensi{
 		Siklus: req.Siklus, Judul: req.Judul, Deskripsi: req.Deskripsi, KomoditasKode: req.KomoditasKode,
 		KabupatenKode: req.KabupatenKode, Prioritas: req.Prioritas, Tenggat: req.Tenggat, EwsAlertID: req.EwsAlertID,
-		PenanggungJawabIDs: req.PenanggungJawabIDs, DibuatOlehID: c.GetString("user_id"),
+		PenanggungJawabIDs: pj, DibuatOlehID: c.GetString("user_id"),
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidReference) {

@@ -1,6 +1,9 @@
 package seeder
 
-import "github.com/garda-inflasi/api/internal/intervensi/domain"
+import (
+	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
+)
 
 // Izin yang disyaratkan tahap tertentu (selain intervensi.kelola bawaan).
 const (
@@ -42,18 +45,19 @@ var tahapSeeds = []tahapSeed{
 }
 
 // Penanggung jawab dipilih dari akun demo auth.demo bertipe tim operasional dan manajer.
+// id adalah UUID akun (seedkit.IDPengguna dari slug demo).
 var timDemo = []struct{ id, nama string }{
-	{"manajer_program", "Rina Safitri, S.T., M.T."},
-	{"manajer_data", "Bambang Wijaya, S.Kom., M.Cs."},
-	{"manajer_kebijakan", "Dr. Nurul Aini, S.E., M.E."},
-	{"manajer_risiko", "Dian Permata, S.Si., M.M."},
-	{"manajer_mutu", "Hendra Gunawan, S.T., M.T."},
-	{"koordinator_lapangan", "Zulkifli, S.P."},
-	{"agregator_data", "Maya Sari, S.Stat."},
+	{seedkit.IDPengguna("manajer_program"), "Rina Safitri, S.T., M.T."},
+	{seedkit.IDPengguna("manajer_data"), "Bambang Wijaya, S.Kom., M.Cs."},
+	{seedkit.IDPengguna("manajer_kebijakan"), "Dr. Nurul Aini, S.E., M.E."},
+	{seedkit.IDPengguna("manajer_risiko"), "Dian Permata, S.Si., M.M."},
+	{seedkit.IDPengguna("manajer_mutu"), "Hendra Gunawan, S.T., M.T."},
+	{seedkit.IDPengguna("koordinator_lapangan"), "Zulkifli, S.P."},
+	{seedkit.IDPengguna("agregator_data"), "Maya Sari, S.Stat."},
 }
 
-// pembuatDemo membuat seluruh kartu contoh.
-const pembuatDemo = "manajer_program"
+// pembuatDemo membuat seluruh kartu contoh (UUID akun manajer_program).
+var pembuatDemo = seedkit.IDPengguna("manajer_program")
 
 type kartuSeed struct {
 	judul     string

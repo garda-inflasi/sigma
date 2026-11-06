@@ -16,7 +16,7 @@ var _ domain.NotifikasiRepository = (*Repository)(nil)
 // bawaan (aktif, tingkat minimum SIAGA). Urutan enum severity menjadikan >= valid.
 const antrekanSQL = `
 INSERT INTO ews_notifikasi (alert_id, pengguna_id, kanal, tujuan, jadwal_berikut)
-SELECT a.id, u.id, k.kanal, CASE k.kanal WHEN 'EMAIL' THEN u.email ELSE u.id END, @now
+SELECT a.id, u.id, k.kanal, CASE k.kanal WHEN 'EMAIL' THEN u.email ELSE u.id::text END, @now
   FROM ews_alert a
   JOIN aturan_ews r ON r.id = a.aturan_id
   CROSS JOIN LATERAL unnest(r.kanal) AS k(kanal)

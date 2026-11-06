@@ -71,12 +71,17 @@ type mintedSession struct {
 }
 
 // mintAccess membuat access token yang terikat ke sesi familyID (klaim sid).
-func (uc *UseCase) mintAccess(user *domain.Pengguna, familyID string) (string, error) {
+func (uc *UseCase) mintAccess(ctx context.Context, user *domain.Pengguna, familyID string) (string, error) {
 	kabupaten := ""
 	if user.KabupatenKode != nil {
 		kabupaten = *user.KabupatenKode
 	}
-	accessToken, err := uc.token.CreateAccessToken(user.ID, user.Peran, uc.getPermissionsForRole(user.Peran),
+	// Izin efektif (peran + izin langsung aktif) saat ini; token membawa salinannya untuk UI web.
+	izin, err := uc.izinPengguna(ctx, user)
+	if err != nil {
+		return "", err
+	}
+	accessToken, err := uc.token.CreateAccessToken(user.ID, user.Peran, izin,
 		token.WithPasswordChangeRequired(user.WajibGantiPassword),
 		token.WithMFASetupRequired(uc.mfaSetupRequired(user)),
 		token.WithProfile(user.Nama, user.Email, user.Lembaga, kabupaten),
@@ -90,7 +95,7 @@ func (uc *UseCase) mintAccess(user *domain.Pengguna, familyID string) (string, e
 // mintSession membuat access token (terikat sid = familyID) dan baris refresh token baru tanpa menyimpannya.
 // startedAt nol berarti sesi baru dimulai now. IP dan user agent mengikuti permintaan yang sedang berjalan.
 func (uc *UseCase) mintSession(ctx context.Context, user *domain.Pengguna, familyID, ip string, startedAt, now time.Time) (*mintedSession, error) {
-	accessToken, err := uc.mintAccess(user, familyID)
+	accessToken, err := uc.mintAccess(ctx, user, familyID)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +302,7 @@ func (uc *UseCase) replayOrReuse(ctx context.Context, stored *domain.RefreshToke
 			if err != nil {
 				return nil, err
 			}
-			accessToken, err := uc.mintAccess(user, stored.FamilyID)
+			accessToken, err := uc.mintAccess(ctx, user, stored.FamilyID)
 			if err != nil {
 				return nil, err
 			}

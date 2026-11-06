@@ -7,11 +7,9 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 )
 
-// peranDikenal melaporkan apakah peran ada di katalog peran backend (enum peran, 14 nilai).
-func peranDikenal(peran string) bool {
-	_, ok := rolePermissions[peran]
-	return ok
-}
+// peranDikenal melaporkan apakah peran ada di katalog peran backend (enum peran, 14 nilai). Katalog peran
+// tetap didefinisikan di kode (rbac_katalog.go); hanya matriks izinnya yang tinggal di basis data (02-C).
+func peranDikenal(peran string) bool { return PeranDikenal(peran) }
 
 // ListUsers mengembalikan satu halaman pengguna beserta jumlah seluruh yang cocok dengan filter. Seluruh
 // masukan divalidasi di sini (domain.DaftarPenggunaQuery.Normal + peran terhadap katalog): galatnya

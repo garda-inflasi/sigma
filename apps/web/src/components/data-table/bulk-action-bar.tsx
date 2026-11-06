@@ -44,11 +44,11 @@ interface Props<T> {
  * difilter oleh izin peran; aksi destruktif memerlukan konfirmasi.
  */
 export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placement = "fixed", maxVisible = 3, className }: Props<T>) {
-  const role = useOptionalSession()?.role;
+  const sesi = useOptionalSession();
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<BulkAction<T> | null>(null);
   const [alasan, setAlasan] = useState("");
-  const allowed = actions.filter((a) => !a.perm || can(role, a.perm));
+  const allowed = actions.filter((a) => !a.perm || can(sesi, a.perm));
   const visible = allowed.slice(0, maxVisible);
   const overflow = allowed.slice(maxVisible);
 

@@ -1213,6 +1213,297 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/roles:
+    get:
+      summary: Matriks peran dengan izinnya yang berlaku
+      description: |
+        Memerlukan izin `pengguna.kelola`. Izin yang berlaku dibaca dari basis data (RBAC Opsi B, 02-C): `permissions`
+        adalah izin peran saat ini, `bawaan` adalah matriks bawaan di kode (pembanding "pulihkan bawaan"), dan
+        `versi` adalah kunci optimistis untuk `PUT /v1/roles/{id}/permissions`. Urutan peran baku (14 peran).
+      operationId: listRoles
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar peran
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleListResponse"
+        "401":
+          description: "Token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tidak memiliki izin `pengguna.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/roles/{id}/permissions:
+    put:
+      summary: Mengganti seluruh izin satu peran
+      description: |
+        Memerlukan izin `pengguna.kelola`. Mengganti himpunan izin peran (daftar kosong eksplisit sah). Perubahan
+        berlaku pada request berikutnya di proses API ini (cache izin dibuang) dan paling lambat satu umur cache
+        (bawaan 15 detik) di replika lain; token yang membawa salinan izin lama dijawab `401 PERMISSIONS_CHANGED`
+        sampai disegarkan lewat refresh. Tercatat di audit (`UPDATE_ROLE_PERMISSIONS`, sebelum/sesudah).
+        Mengganti dengan himpunan yang sama tidak menulis apa pun (versi tetap, tanpa audit).
+
+        Kunci optimistis: `versi` harus sama dengan versi peran saat ini, kalau tidak `409 ROLE_VERSION_CONFLICT`
+        (data berisi peran saat ini) dan tidak ada yang ditimpa. Nama izin harus ada di katalog
+        (`400 UNKNOWN_PERMISSION`); katalog didefinisikan di kode. Perubahan yang membuat sistem tidak punya
+        lagi pengguna aktif pemegang `pengguna.kelola` lewat perannya ditolak (`409 LAST_PERMISSION_HOLDER`).
+      operationId: updateRolePermissions
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Kunci peran (nilai enum `peran`, mis. `OPS_MAHASISWA`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRolePermissionsRequest"
+      responses:
+        "200":
+          description: Peran setelah diubah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponseEnvelope"
+        "400":
+          description: "Validasi gagal atau izin di luar katalog (`UNKNOWN_PERMISSION`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "Token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tidak memiliki izin `pengguna.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Peran tidak dikenal"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`ROLE_VERSION_CONFLICT` (diubah admin lain; data berisi peran saat ini) atau `LAST_PERMISSION_HOLDER`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/permissions:
+    get:
+      summary: Katalog izin
+      description: |
+        Memerlukan izin `pengguna.kelola`. Katalog 35 izin `domain.aksi` yang dikenal sistem, dengan deskripsi dan
+        kelompok. Katalog didefinisikan di kode (route merujuk nama-namanya); UI tidak dapat menciptakan izin baru.
+      operationId: listPermissions
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Katalog izin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionListResponse"
+        "401":
+          description: "Token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tidak memiliki izin `pengguna.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/permissions:
+    get:
+      summary: Izin seorang pengguna (dari peran dan langsung)
+      description: |
+        Memerlukan izin `pengguna.kelola`. `izin_peran` dari perannya, `langsung` izin langsung (aktif dan yang
+        sudah kedaluwarsa sebagai riwayat), dan `efektif` gabungan yang berlaku sekarang.
+      operationId: listUserPermissions
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      responses:
+        "200":
+          description: Ringkasan izin pengguna
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPermissionsResponse"
+        "401":
+          description: "Token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tidak memiliki izin `pengguna.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Pengguna tidak ditemukan"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Memberi izin langsung kepada pengguna
+      description: |
+        Memerlukan izin `pengguna.kelola`. `alasan` wajib (maks. 500 karakter); `berlaku_sampai` (RFC 3339) opsional
+        dan harus di masa depan, kosong berarti tanpa batas. Pemberi (`diberikan_oleh`) diambil dari token.
+        Izin yang sudah dimiliki lewat peran ditolak (`409 PERMISSION_ALREADY_VIA_ROLE`) dan izin langsung yang masih
+        berlaku ditolak (`409 DIRECT_PERMISSION_EXISTS`: cabut dulu bila ingin mengubah); baris yang sudah
+        kedaluwarsa diganti. Berlaku pada request berikutnya; token pengguna yang membawa salinan lama dijawab
+        `401 PERMISSIONS_CHANGED` sampai disegarkan. Tercatat di audit (`GRANT_USER_PERMISSION`).
+      operationId: grantUserPermission
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantUserPermissionRequest"
+      responses:
+        "201":
+          description: Izin langsung diberikan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectPermissionEnvelope"
+        "400":
+          description: "Validasi gagal, izin di luar katalog (`UNKNOWN_PERMISSION`), alasan kosong, atau masa berlaku sudah lewat"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "Token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tidak memiliki izin `pengguna.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Pengguna tidak ditemukan"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`PERMISSION_ALREADY_VIA_ROLE` atau `DIRECT_PERMISSION_EXISTS`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/{id}/permissions/{izin}:
+    delete:
+      summary: Mencabut izin langsung pengguna
+      description: |
+        Memerlukan izin `pengguna.kelola`. Menghapus izin langsung, aktif maupun yang sudah kedaluwarsa. Berlaku
+        pada request berikutnya. Tercatat di audit (`REVOKE_USER_PERMISSION`).
+      operationId: revokeUserPermission
+      tags:
+        - User Management
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID pengguna
+        - name: izin
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Nama izin, mis. `kpi.lihat`
+      responses:
+        "200":
+          description: Izin langsung dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokeDirectPermissionResponse"
+        "401":
+          description: "Token tidak valid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Tidak memiliki izin `pengguna.kelola`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Tidak ada izin langsung itu (`DIRECT_PERMISSION_NOT_FOUND`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/users/bulk:
     post:
       summary: Menjalankan aksi massal pada pengguna
@@ -5441,7 +5732,11 @@ components:
         Amplop galat. `code` adalah status HTTP sebagai teks ("400", "404", ...) atau, untuk galat auth yang
         perlu dibedakan klien, salah satu kode stabil: `INVALID_CREDENTIALS` (401), `ACCOUNT_LOCKED` (423),
         `ACCOUNT_INACTIVE` (403), `MFA_CODE_INVALID` (401/400), `MFA_CHALLENGE_EXPIRED` (401),
-        `PASSWORD_CHANGE_REQUIRED` (403), `MFA_SETUP_REQUIRED` (403). Kode tidak berubah antara API Go dan BFF web.
+        `PASSWORD_CHANGE_REQUIRED` (403), `MFA_SETUP_REQUIRED` (403), `PERMISSIONS_CHANGED` (401: salinan izin pada
+        access token sudah berbeda dari izin efektif akun; klien menyegarkannya lewat refresh), dan untuk RBAC
+        (02-C): `ROLE_VERSION_CONFLICT`, `LAST_PERMISSION_HOLDER`, `PERMISSION_ALREADY_VIA_ROLE`,
+        `DIRECT_PERMISSION_EXISTS` (409), `UNKNOWN_PERMISSION` (400), `DIRECT_PERMISSION_NOT_FOUND` (404).
+        Kode tidak berubah antara API Go dan BFF web.
       properties:
         code:
           type: string
@@ -5658,6 +5953,213 @@ components:
             terkunci_sebelumnya:
               type: boolean
               description: True bila akun memang sedang terkunci ketika dibuka
+
+    RoleItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: OPS_MAHASISWA
+        label:
+          type: string
+          example: Agen Lapangan Mahasiswa
+        lapis:
+          type: string
+          example: OPERASIONAL
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Izin peran saat ini (basis data)
+        bawaan:
+          type: array
+          items:
+            type: string
+          description: Izin bawaan di kode (pembanding untuk memulihkan matriks bawaan)
+        versi:
+          type: integer
+          format: int64
+          description: Kunci optimistis; naik setiap matriks peran berubah
+        diperbarui_pada:
+          type: string
+          format: date-time
+        diperbarui_oleh:
+          type: string
+          nullable: true
+          description: ID admin yang terakhir mengubah matriks peran
+
+    RoleListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleItem"
+
+    RoleResponseEnvelope:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          $ref: "#/components/schemas/RoleItem"
+
+    UpdateRolePermissionsRequest:
+      type: object
+      required: [permissions, versi]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Seluruh izin peran yang baru (menggantikan yang lama; kosong eksplisit sah)
+        versi:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Versi peran yang dibaca klien (`GET /v1/roles`)
+
+    PermissionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: kpi.lihat
+        deskripsi:
+          type: string
+          example: Melihat indikator kinerja (KPI)
+        kelompok:
+          type: string
+          example: KPI
+
+    PermissionListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionItem"
+
+    DirectPermission:
+      type: object
+      properties:
+        izin:
+          type: string
+          example: kpi.lihat
+        deskripsi:
+          type: string
+        kelompok:
+          type: string
+        berlaku_sampai:
+          type: string
+          format: date-time
+          nullable: true
+          description: Kosong berarti tanpa batas
+        alasan:
+          type: string
+        diberikan_oleh:
+          type: string
+          nullable: true
+        diberikan_oleh_nama:
+          type: string
+          nullable: true
+        diberikan_pada:
+          type: string
+          format: date-time
+        aktif:
+          type: boolean
+          description: False bila masa berlakunya sudah lewat (riwayat sampai dicabut)
+
+    DirectPermissionEnvelope:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "201"
+        message:
+          type: string
+          example: Created
+        data:
+          $ref: "#/components/schemas/DirectPermission"
+
+    UserPermissionsResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            peran:
+              type: string
+            izin_peran:
+              type: array
+              items:
+                type: string
+            langsung:
+              type: array
+              items:
+                $ref: "#/components/schemas/DirectPermission"
+            efektif:
+              type: array
+              items:
+                type: string
+              description: Gabungan izin peran dan izin langsung yang masih berlaku
+
+    GrantUserPermissionRequest:
+      type: object
+      required: [izin, alasan]
+      properties:
+        izin:
+          type: string
+          example: kpi.lihat
+        berlaku_sampai:
+          type: string
+          format: date-time
+          nullable: true
+          description: Opsional; harus di masa depan. Kosong berarti tanpa batas.
+        alasan:
+          type: string
+          maxLength: 500
+          description: Wajib
+
+    RevokeDirectPermissionResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              description: ID pengguna
+            izin:
+              type: string
 
     ResetMFAResponse:
       type: object

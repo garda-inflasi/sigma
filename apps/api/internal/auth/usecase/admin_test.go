@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -388,33 +387,40 @@ func TestListUsers_MeneruskanPaginasiDanPencarian(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestListRoles_UrutanBakuDanIzinSamaDenganMatriks(t *testing.T) {
-	roles := newTestUseCase(new(mockRepository)).ListRoles()
+// Tanpa penyimpanan basis data (repositori tiruan) ListRoles/ListPermissions memakai matriks dan katalog bawaan;
+// perilaku berbasis basis data diuji di izin_test.go dan integrasi.
+func TestListRoles_TanpaBasisDataMemakaiMatriksBawaan(t *testing.T) {
+	roles, err := newTestUseCase(new(mockRepository)).ListRoles(context.Background())
 
+	require.NoError(t, err)
 	require.Len(t, roles, len(roleOrder))
 	for i, r := range roles {
 		assert.Equal(t, roleOrder[i], r.ID, "urutan peran mengikuti roleOrder")
 		assert.Equal(t, rolePermissions[r.ID], r.Permissions)
+		assert.Equal(t, rolePermissions[r.ID], r.Bawaan)
+		assert.NotEmpty(t, r.Label, r.ID)
 		assert.NotEmpty(t, r.Permissions, r.ID)
 	}
 	assert.Equal(t, "ADMIN_SISTEM", roles[len(roles)-1].ID)
 }
 
-func TestListPermissions_UrutDanTanpaDuplikatDanMencakupSemuaIzinPeran(t *testing.T) {
-	perms := newTestUseCase(new(mockRepository)).ListPermissions()
+func TestListPermissions_TanpaBasisDataMemakaiKatalogDanMencakupSemuaIzinPeran(t *testing.T) {
+	perms, err := newTestUseCase(new(mockRepository)).ListPermissions(context.Background())
 
-	assert.True(t, sort.StringsAreSorted(perms))
+	require.NoError(t, err)
 	seen := map[string]bool{}
 	for _, p := range perms {
-		assert.False(t, seen[p], "duplikat: %s", p)
-		seen[p] = true
+		assert.False(t, seen[p.ID], "duplikat: %s", p.ID)
+		assert.NotEmpty(t, p.Deskripsi, p.ID)
+		assert.NotEmpty(t, p.Kelompok, p.ID)
+		seen[p.ID] = true
 	}
 	for role, ps := range rolePermissions {
 		for _, p := range ps {
 			assert.True(t, seen[p], "izin %s milik %s hilang dari katalog", p, role)
 		}
 	}
-	assert.Contains(t, perms, "pengguna.kelola")
+	assert.Contains(t, seen, "pengguna.kelola")
 }
 
 // ── Login: jalur yang tidak boleh menggagalkan atau menyesatkan ──────

@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
 import { DialogKeluar } from "@/components/auth/dialog-keluar";
 import { PenjagaDataOffline } from "@/components/auth/penjaga-data-offline";
+import { PenyegarIzin } from "@/components/auth/penyegar-izin";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/lib/auth/session-context";
 import type { SessionUser } from "@/lib/auth/resolve";
@@ -30,6 +31,7 @@ export function Providers({ user, children }: { user: SessionUser | null; childr
             <TooltipProvider delayDuration={250}>
               {children}
               <PenjagaDataOffline />
+              <PenyegarIzin />
               <DialogKeluar />
               <Toaster
                 position="top-right"

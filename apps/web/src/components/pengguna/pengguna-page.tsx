@@ -25,6 +25,9 @@ import { ResetMfaDialog } from "./reset-mfa-dialog";
 import { RiwayatPeran } from "./riwayat-peran";
 import { AksiUndangan, ItemKirimUlangUndangan } from "./aksi-undangan";
 import { useEksporPengguna } from "@/lib/query/undangan-hooks";
+import { MatriksAksesEditor } from "./matriks-akses";
+import { IzinLangsungPanel, PilihBagianPengguna, type BagianDialogPengguna } from "./izin-langsung";
+import { MODE_MOCK } from "@/lib/api/client";
 import {
   adalahKolomUrut, koreksiHalaman, kunciCachePengguna, parseStateTabel, queryUrlPengguna, resetFilter, toSortingState, ubahCari, ubahFilter, ubahHalaman,
   ubahUkuran, ubahUrut, type StateTabelPengguna,
@@ -205,11 +208,19 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
 function PenggunaDialog({ user, open, onOpenChange }: { user: PenggunaRow | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const detail = usePenggunaDetail(open && user ? user.id : null);
   const siap = !user || detail.isSuccess || detail.isError;
+  const [bagian, setBagian] = useState<BagianDialogPengguna>("akun");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         {siap ? (
-          <FormPengguna user={user ? (detail.data ?? user) : null} gagalMuat={detail.isError} onOpenChange={onOpenChange} />
+          <>
+            {user && <PilihBagianPengguna nilai={bagian} onUbah={setBagian} />}
+            {/* Formulir akun tetap terpasang (disembunyikan) saat melihat izin langsung: isiannya tidak hilang. */}
+            <div className={user && bagian === "izin" ? "hidden" : "contents"}>
+              <FormPengguna user={user ? (detail.data ?? user) : null} gagalMuat={detail.isError} onOpenChange={onOpenChange} />
+            </div>
+            {user && bagian === "izin" && <IzinLangsungPanel user={user} onTutup={() => onOpenChange(false)} />}
+          </>
         ) : (
           <>
             <DialogHeader>
@@ -354,7 +365,7 @@ export function PenggunaPage() {
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader title="Pengguna & peran" description="RBAC tiga lapis dengan SSO, MFA, dan prinsip least privilege. Perubahan akun tercatat di audit trail."
         actions={<Segmented layoutId="pengguna-tab" size="sm" value={tab} onChange={setTab} options={[{ value: "daftar", label: "Daftar pengguna" }, { value: "matriks", label: "Matriks akses" }]} />} />
-      {tab === "matriks" ? <MatriksAkses /> : (
+      {tab === "matriks" ? (bolehKelola && !MODE_MOCK ? <MatriksAksesEditor /> : <MatriksAkses />) : (
         <DataTable data={data?.rows} isLoading={isLoading} columns={kolom} getRowId={(r) => r.id} entityLabel="pengguna" searchPlaceholder="Cari nama, email, peran, atau lembaga"
           server={{
             total: data?.total ?? 0,

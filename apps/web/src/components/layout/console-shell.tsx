@@ -12,8 +12,8 @@ import { Topbar } from "./topbar";
 
 /** Cangkang konsol: sidebar kaca, topbar, palet ⌘K, aliran EWS, siklus ambient. */
 export function ConsoleShell({ children }: { children: ReactNode }) {
-  const { role } = useSession();
-  const { data } = useSiklusAktif(can(role, "dashboard.operasional"));
+  const sesi = useSession();
+  const { data } = useSiklusAktif(can(sesi, "dashboard.operasional"));
   useEffect(() => {
     useUi.persist.rehydrate();
   }, []);

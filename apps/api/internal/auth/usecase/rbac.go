@@ -1,9 +1,11 @@
 package usecase
 
-// Peta peran -> izin di berkas ini adalah satu-satunya sumber izin backend
-// (keputusan D3, docs/todos/02-pengguna-rbac.md). Berkas
-// packages/contracts/permissions.json dan apps/web/src/lib/rbac/permissions.ts
-// dijaga sama dengannya oleh tes.
+// Peta peran -> izin di berkas ini adalah matriks BAWAAN, bukan lagi sumber izin yang berlaku: sejak 02-C
+// (Opsi B, migrasi 000107) izin yang ditegakkan API dibaca dari basis data (role_permissions + user_permissions),
+// dan matriks ini hanya dipakai seeder lapis reference untuk mengisi tabel (ON CONFLICT DO NOTHING, perubahan
+// admin tidak pernah tertimpa) serta sebagai pembanding "bawaan" di UI. Katalog izin yang dikenal sistem ada di
+// rbac_katalog.go. Berkas packages/contracts/permissions.json dan apps/web/src/lib/rbac/permissions.ts
+// (katalog + matriks bawaan) dijaga sama dengannya oleh tes.
 
 // roleOrder menjaga urutan baku peran seperti di web (lib/rbac/roles.ts ROLE_IDS)
 // agar daftar peran dari API stabil.
@@ -43,8 +45,8 @@ var roleLapis = map[string]string{
 	"ADMIN_SISTEM":       "SISTEM",
 }
 
-// rolePermissions adalah sumber kebenaran tunggal RBAC di backend; cermin matriks
-// web di lib/rbac/permissions.ts.
+// rolePermissions adalah matriks bawaan peran -> izin (cermin ROLE_PERMISSIONS di web lib/rbac/permissions.ts).
+// Jangan dipakai untuk memutuskan akses: itu urusan basis data (lihat izin.go).
 var rolePermissions = map[string][]string{
 	"STRATEGIS_FMIPA": {
 		"dashboard.eksekutif", "dashboard.operasional", "harga.lihat", "harga.ekspor",

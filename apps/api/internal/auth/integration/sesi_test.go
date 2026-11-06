@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
+	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,7 +151,7 @@ func TestSesi_LogoutAlsoKillsEarlierAccessTokensOfTheSession(t *testing.T) {
 
 func TestSesi_BlacklistedJTIIsEnforcedForTokensWithoutSid(t *testing.T) {
 	s := setupSuite(t)
-	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", []string{"pengguna.kelola"})
+	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, s.status(t, legacy), "token tanpa sid tetap diterima selama jti tidak dicabut")
 
@@ -542,7 +543,7 @@ func TestSesi_RevokeOthersKeepsOnlyTheCurrentSession(t *testing.T) {
 
 func TestSesi_RevokeOthersWithTokenWithoutSidAsksToLoginAgain(t *testing.T) {
 	s := setupSuite(t)
-	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", []string{"pengguna.kelola"})
+	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
 	require.NoError(t, err)
 	s.mulaiSesi(t, emailAdmin, uaMac)
 
@@ -570,7 +571,7 @@ func TestSesi_LogoutWithRefreshTokenBodyFallsBackForTokenWithoutSid(t *testing.T
 	s := setupSuite(t)
 	a := s.mulaiSesi(t, emailAdmin, uaMac)
 	b := s.mulaiSesi(t, emailAdmin, uaAndroid)
-	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", []string{"pengguna.kelola"})
+	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, s.panggil(t, http.MethodPost, "/v1/auth/logout", map[string]any{"refresh_token": a.refresh}, legacy).Code)

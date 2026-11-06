@@ -1,4 +1,4 @@
-import type { Permission } from "./permissions";
+import type { Permission, PemegangIzin } from "./permissions";
 import { can } from "./permissions";
 import type { Role } from "./roles";
 
@@ -27,7 +27,7 @@ export function requiredPermission(pathname: string): Permission | null {
   return hit?.perm ?? null;
 }
 
-export function canAccessRoute(role: Role | undefined, pathname: string) {
+export function canAccessRoute(subject: Role | PemegangIzin | undefined, pathname: string) {
   const perm = requiredPermission(pathname);
-  return perm ? can(role, perm) : true;
+  return perm ? can(subject, perm) : true;
 }

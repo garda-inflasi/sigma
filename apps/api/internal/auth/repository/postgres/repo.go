@@ -43,31 +43,42 @@ func (r *Repository) CreateUser(ctx context.Context, user *domain.Pengguna) erro
 func (r *Repository) PatchUser(ctx context.Context, id string, patch domain.PenggunaPatch) (*domain.Pengguna, *domain.Pengguna, error) {
 	var sebelum, sesudah *domain.Pengguna
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var saat domain.Pengguna
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&saat).Error; err != nil {
-			return fmt.Errorf("get user for update: %w", err)
+		// Ganti peran atau status dapat menghilangkan pemegang terakhir izin pengelolaan: serialkan dan jaga
+		// (kunci penasihat diambil sebelum kunci baris).
+		jaga := patch.Peran != nil || patch.Status != nil
+		if jaga {
+			return jagaPemegang(tx, func() error { return r.patchUserDalam(tx, id, patch, &sebelum, &sesudah) })
 		}
-		lama := saat
-		kolom := patch.Kolom()
-		if len(kolom) == 0 {
-			sebelum, sesudah = &lama, &saat
-			return nil
-		}
-		kolom["diupdate_pada"] = gorm.Expr("now()")
-		if err := tx.Model(&domain.Pengguna{}).Where("id = ?", id).Updates(kolom).Error; err != nil {
-			return fmt.Errorf("patch user: %w", err)
-		}
-		var baru domain.Pengguna
-		if err := tx.Where("id = ?", id).First(&baru).Error; err != nil {
-			return fmt.Errorf("reload user: %w", err)
-		}
-		sebelum, sesudah = &lama, &baru
-		return nil
+		return r.patchUserDalam(tx, id, patch, &sebelum, &sesudah)
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 	return sebelum, sesudah, nil
+}
+
+// patchUserDalam menulis patch di dalam transaksi tx: baris dikunci, dibaca (sebelum), ditulis, lalu dibaca ulang (sesudah).
+func (r *Repository) patchUserDalam(tx *gorm.DB, id string, patch domain.PenggunaPatch, sebelum, sesudah **domain.Pengguna) error {
+	var saat domain.Pengguna
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&saat).Error; err != nil {
+		return fmt.Errorf("get user for update: %w", err)
+	}
+	lama := saat
+	kolom := patch.Kolom()
+	if len(kolom) == 0 {
+		*sebelum, *sesudah = &lama, &saat
+		return nil
+	}
+	kolom["diupdate_pada"] = gorm.Expr("now()")
+	if err := tx.Model(&domain.Pengguna{}).Where("id = ?", id).Updates(kolom).Error; err != nil {
+		return fmt.Errorf("patch user: %w", err)
+	}
+	var baru domain.Pengguna
+	if err := tx.Where("id = ?", id).First(&baru).Error; err != nil {
+		return fmt.Errorf("reload user: %w", err)
+	}
+	*sebelum, *sesudah = &lama, &baru
+	return nil
 }
 
 func (r *Repository) SetPassword(ctx context.Context, userID string, p domain.GantiPassword) (bool, error) {
@@ -103,7 +114,12 @@ func (r *Repository) TouchLastLogin(ctx context.Context, userID string, at time.
 }
 
 func (r *Repository) DeleteUser(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&domain.Pengguna{}).Error
+	// Menghapus pemegang terakhir izin pengelolaan ditolak (domain.ErrPemegangTerakhir).
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return jagaPemegang(tx, func() error {
+			return tx.Where("id = ?", id).Delete(&domain.Pengguna{}).Error
+		})
+	})
 }
 
 // ── Refresh Token ─────────────────────────────────────────────────────
@@ -311,17 +327,7 @@ func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action d
 		// Akun MENUNGGU (undangan) tidak boleh diaktifkan tanpa kata sandi: hanya aktivasi oleh pemiliknya.
 		tx = tx.Where("status <> ?", domain.StatusMenunggu).Update("status", "AKTIF")
 	case domain.BulkNonaktifkan:
-		// Akun MENUNGGU dibatalkan dengan menghapusnya, bukan dinonaktifkan: akun tanpa kata sandi tidak punya
-		// jalan kembali ke AKTIF selain undangan.
-		tx = tx.Where("status <> ?", domain.StatusMenunggu).Update("status", "NONAKTIF")
-		// Akun nonaktif tidak boleh meneruskan sesinya: access token mati seketika lewat sid.
-		if tx.Error == nil {
-			if err := r.db.WithContext(ctx).Model(&domain.RefreshToken{}).
-				Where("user_id IN ? AND revoked_at IS NULL", ids).
-				Update("revoked_at", time.Now()).Error; err != nil {
-				return 0, fmt.Errorf("revoke sessions: %w", err)
-			}
-		}
+		return r.nonaktifkanPengguna(ctx, ids)
 	case domain.BulkWajibkanMFA:
 		tx = tx.Update("mfa_wajib", true)
 	case domain.BulkAkhiriSesi:
@@ -342,4 +348,32 @@ func (r *Repository) BulkUpdateUsers(ctx context.Context, ids []string, action d
 	}
 
 	return tx.RowsAffected, nil
+}
+
+// nonaktifkanPengguna menonaktifkan akun dan mencabut sesinya dalam satu transaksi, ditolak
+// (domain.ErrPemegangTerakhir) bila membuat sistem kehilangan pemegang terakhir izin pengelolaan.
+// Akun nonaktif tidak boleh meneruskan sesinya: access token mati seketika lewat sid.
+func (r *Repository) nonaktifkanPengguna(ctx context.Context, ids []string) (int64, error) {
+	var diubah int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return jagaPemegang(tx, func() error {
+			// Akun MENUNGGU dibatalkan dengan menghapusnya, bukan dinonaktifkan: akun tanpa kata sandi tidak punya
+			// jalan kembali ke AKTIF selain undangan.
+			res := tx.Model(&domain.Pengguna{}).Where("id IN ? AND status <> ?", ids, domain.StatusMenunggu).Update("status", "NONAKTIF")
+			if res.Error != nil {
+				return fmt.Errorf("bulk action %s: %w", domain.BulkNonaktifkan, res.Error)
+			}
+			diubah = res.RowsAffected
+			if err := tx.Model(&domain.RefreshToken{}).
+				Where("user_id IN ? AND revoked_at IS NULL", ids).
+				Update("revoked_at", time.Now()).Error; err != nil {
+				return fmt.Errorf("revoke sessions: %w", err)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return 0, err
+	}
+	return diubah, nil
 }

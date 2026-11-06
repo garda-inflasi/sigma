@@ -70,6 +70,9 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 
 	repo := postgres.New(deps.DB)
 	uc := usecase.New(repo, deps.Token, cfg, deps.Logger, emailSender, audit.NewWriter(deps.DB))
+	// Izin efektif (peran + izin langsung) dibaca dari basis data lewat cache pendek dan ditegakkan JWTAuth di
+	// semua modul, dengan cara yang sama seperti pemeriksa pencabutan di atas (lihat usecase/izin.go).
+	deps.Token.SetPermissionResolver(uc.PermissionResolver())
 	handler := http.New(uc)
 
 	// Caddy membuka /api/v1/* langsung ke Go, melewati batas laju BFF (5/menit/IP). Endpoint publik yang
@@ -136,13 +139,18 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.PUT("/:id/roles", handler.AssignRole)
 			users.POST("/:id/reset-mfa", handler.ResetMFAPengguna)
 			users.GET("/:id/riwayat-peran", handler.RiwayatPeranPengguna)
+			// Izin langsung per pengguna (02-C): beri dengan alasan wajib dan masa berlaku opsional, cabut, daftar.
+			users.GET("/:id/permissions", handler.ListUserPermissions)
+			users.POST("/:id/permissions", handler.GrantUserPermission)
+			users.DELETE("/:id/permissions/:izin", handler.RevokeUserPermission)
 		}
 
-		// RBAC catalogue — read-only, requires pengguna.kelola permission
+		// RBAC catalogue and role x permission matrix (02-C) — requires pengguna.kelola permission
 		rbac := protected.Group("")
 		rbac.Use(middleware.RequirePermission("pengguna.kelola"))
 		{
 			rbac.GET("/roles", handler.ListRoles)
+			rbac.PUT("/roles/:id/permissions", handler.UpdateRolePermissions)
 			rbac.GET("/permissions", handler.ListPermissions)
 		}
 	}

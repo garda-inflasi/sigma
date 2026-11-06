@@ -46,7 +46,7 @@ export function Topbar() {
   const unread = useEwsStore((s) => s.unread);
   const bacaSemua = useEwsStore((s) => s.bacaSemua);
   const stream = useEwsStore((s) => s.status);
-  const { data: siklus } = useSiklusAktif(can(user.role, "dashboard.operasional"));
+  const { data: siklus } = useSiklusAktif(can(user, "dashboard.operasional"));
   const { resolvedTheme, setTheme } = useTheme();
   const title = activeNav(pathname, NAV_FLAT)?.label ?? "Garda Inflasi";
   const meta = siklus ? siklusMeta[siklus.siklus] : null;
@@ -72,7 +72,7 @@ export function Topbar() {
         </button>
 
         {meta && (
-          <Link href={can(user.role, "intervensi.lihat") ? `/intervensi?siklus=${siklus!.siklus}` : "#"} className={cn("hidden h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium sm:inline-flex", toneClass[meta.tone].soft, toneClass[meta.tone].text)}>
+          <Link href={can(user, "intervensi.lihat") ? `/intervensi?siklus=${siklus!.siklus}` : "#"} className={cn("hidden h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium sm:inline-flex", toneClass[meta.tone].soft, toneClass[meta.tone].text)}>
             <PulseRing tone={meta.tone} rings={1} active={siklus!.siklus === "tekanan"} />
             {meta.label}
           </Link>
@@ -81,7 +81,7 @@ export function Topbar() {
         {MODE_MOCK && <span className="hidden rounded-md border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground 2xl:inline">Data demo</span>}
         <RoleSwitcher />
 
-        {can(user.role, "ews.lihat") && (
+        {can(user, "ews.lihat") && (
           <Link href="/ews" onClick={bacaSemua} className="relative grid size-9 place-items-center rounded-xl hover:bg-secondary" aria-label={`Peringatan dini, ${unread} belum dibaca`}>
             <Bell className="size-[18px]" />
             <AnimatePresence>

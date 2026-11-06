@@ -17,15 +17,15 @@ import { cn } from "@/lib/utils";
 import { BrandMark } from "./brand-mark";
 
 export function useVisibleNav() {
-  const { role } = useSession();
-  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || can(role, i.perm)) })).filter((g) => g.items.length > 0);
+  const sesi = useSession();
+  return NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || can(sesi, i.perm)) })).filter((g) => g.items.length > 0);
 }
 
 function useBadges() {
-  const { role } = useSession();
+  const sesi = useSession();
   const unread = useEwsStore((s) => s.unread);
-  const { data } = useRingkasanHarga(90, can(role, "harga.lihat"));
-  const validasi = can(role, "harga.validasi") || can(role, "harga.publikasi") ? (data?.diajukan ?? 0) : 0;
+  const { data } = useRingkasanHarga(90, can(sesi, "harga.lihat"));
+  const validasi = can(sesi, "harga.validasi") || can(sesi, "harga.publikasi") ? (data?.diajukan ?? 0) : 0;
   return { ews: unread, validasi };
 }
 

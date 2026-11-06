@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -66,9 +67,45 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			return
 		}
 
+		// Izin yang ditegakkan berasal dari basis data (resolver berbatas cache pendek), bukan dari klaim token:
+		// izin yang dicabut, izin langsung yang kedaluwarsa, dan perubahan matriks peran harus berlaku dalam
+		// hitungan detik, bukan menunggu token 15 menit habis. Tanpa resolver (router tanpa modul auth) klaim dipakai.
+		//
+		// Gagal-tutup: izin yang tidak dapat dipastikan menolak request dengan 503 (bukan memakai klaim yang
+		// mungkin sudah dicabut). Akun yang sudah tidak ada atau tidak aktif dijawab 401 seperti sesi dicabut.
+		perms, resolved, err := tokenMgr.ResolvePermissions(c.Request.Context(), claims)
+		if err != nil {
+			if errors.Is(err, token.ErrPrincipalNotFound) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"code":    "401",
+					"message": SessionRevokedMessage,
+				})
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"code":    "503",
+				"message": "Izin akun tidak dapat diperiksa, coba lagi",
+			})
+			return
+		}
+		if resolved {
+			// Token yang izinnya sudah berbeda dari kenyataan ditolak dengan kode khusus: klien web menjawabnya dengan
+			// refresh senyap (01-E) dan token baru langsung membawa izin yang benar, sehingga menu, tombol, dan
+			// penjaga rute di UI ikut menyusul tanpa pengguna harus masuk ulang.
+			if !token.SamePermissions(perms, claims.Permissions) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"code":    PermissionsChangedCode,
+					"message": PermissionsChangedMessage,
+				})
+				return
+			}
+		} else {
+			perms = claims.Permissions
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("role", claims.Role)
-		c.Set("permissions", claims.Permissions)
+		c.Set("permissions", perms)
 		c.Set("jti", claims.ID)
 		c.Set(sessionIDKey, claims.SessionID)
 		if claims.ExpiresAt != nil {
@@ -92,6 +129,14 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// PermissionsChangedCode adalah kode galat 401 untuk access token yang salinan izinnya sudah tidak sama dengan
+// izin efektif akunnya (izin langsung diberi/dicabut/kedaluwarsa, atau matriks peran diubah).
+const PermissionsChangedCode = "PERMISSIONS_CHANGED"
+
+// PermissionsChangedMessage sengaja tidak memuat kata "password"/"kata sandi": klien web memperlakukan 401
+// semacam itu sebagai salah kredensial dan tidak mencoba refresh.
+const PermissionsChangedMessage = "Izin akun berubah, sesi perlu disegarkan"
 
 // PasswordChangeRequiredCode adalah kode galat 403 untuk akun yang wajib mengganti kata sandi.
 const PasswordChangeRequiredCode = "PASSWORD_CHANGE_REQUIRED"

@@ -78,7 +78,7 @@ export function FieldShell({ children }: { children: ReactNode }) {
             </p>
           </div>
           <OfflineIndicator />
-          {can(user.role, "dashboard.operasional") && (
+          {can(user, "dashboard.operasional") && (
             <Link
               href="/operasional"
               className="grid size-9 place-items-center rounded-xl hover:bg-secondary"

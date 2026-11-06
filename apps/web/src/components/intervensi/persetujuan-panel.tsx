@@ -133,8 +133,9 @@ function Rantai({ p }: { p: Persetujuan }) {
 
 /** Antrean persetujuan berjenjang: pemindahan kartu ke tahap persetujuan dan telaah eskalasi. */
 export function PersetujuanPanel() {
-  const { id: userId, role } = useSession();
-  const { data, isLoading } = usePersetujuan(can(role, "intervensi.lihat"));
+  const sesi = useSession();
+  const userId = sesi.id;
+  const { data, isLoading } = usePersetujuan(can(sesi, "intervensi.lihat"));
   const putus = usePutusPersetujuan();
   const judulTahap = useJudulTahap();
   const [ditolak, setDitolak] = useState<Persetujuan | null>(null);
@@ -154,7 +155,7 @@ export function PersetujuanPanel() {
           const boleh = bisaMemutus(
             p,
             userId,
-            can(role, p.izinLangkahKini as Permission),
+            can(sesi, p.izinLangkahKini as Permission),
           );
           return (
             <li
@@ -207,8 +208,8 @@ export function PersetujuanPanel() {
  * (izin apa) yang memutus tiap langkah, dan urutannya. Membantu pengaju memperkirakan jalur sebelum meminta.
  */
 export function AlurPersetujuanPanel() {
-  const { role } = useSession();
-  const { data, isLoading, isError } = useAlurPersetujuan(can(role, "intervensi.lihat"));
+  const sesi = useSession();
+  const { data, isLoading, isError } = useAlurPersetujuan(can(sesi, "intervensi.lihat"));
   const judulTahap = useJudulTahap();
   if (isLoading) return null;
   if (isError)

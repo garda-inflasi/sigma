@@ -16,8 +16,7 @@ export const metadata = { title: "Dashboard operasional" };
 
 export default async function OperasionalPage() {
   const user = await getSession();
-  const role = user?.role;
-  const lihatPeta = can(role, "spasial.lihat");
+  const lihatPeta = can(user, "spasial.lihat");
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
@@ -25,15 +24,15 @@ export default async function OperasionalPage() {
         description="Harga, pasokan, dan aktivitas tim lapangan di seluruh Aceh. Diperbarui otomatis setiap 30 detik."
         actions={
           <>
-            {can(role, "harga.validasi") && <SpringLink href="/data/harga?status=DIAJUKAN" variant="soft"><ClipboardCheck /> Antrean validasi</SpringLink>}
-            {can(role, "harga.input") && <SpringLink href="/lapangan/input"><Plus /> Input harga</SpringLink>}
+            {can(user, "harga.validasi") && <SpringLink href="/data/harga?status=DIAJUKAN" variant="soft"><ClipboardCheck /> Antrean validasi</SpringLink>}
+            {can(user, "harga.input") && <SpringLink href="/lapangan/input"><Plus /> Input harga</SpringLink>}
           </>
         }
       />
       <KpiGrid />
       <div className="grid gap-6 xl:grid-cols-12">
         <div className="xl:col-span-8"><PriceHeatmap /></div>
-        {can(role, "ews.lihat") && <EwsLiveFeed className="xl:col-span-4" />}
+        {can(user, "ews.lihat") && <EwsLiveFeed className="xl:col-span-4" />}
       </div>
       <div className="grid gap-6 xl:grid-cols-12">
         <div className="xl:col-span-7"><PembandingHargaCard /></div>
@@ -44,7 +43,7 @@ export default async function OperasionalPage() {
         {lihatPeta && <div className="xl:col-span-7"><OpsMap /></div>}
         <div className={lihatPeta ? "xl:col-span-5" : "xl:col-span-12"}><TrendChart /></div>
       </div>
-      {can(role, "harga.lihat") && (
+      {can(user, "harga.lihat") && (
         <div className="grid gap-6 xl:grid-cols-12">
           <div className="xl:col-span-8"><ValidationQueue /></div>
           <div className="xl:col-span-4 xl:pt-[68px]"><FieldActivity /></div>

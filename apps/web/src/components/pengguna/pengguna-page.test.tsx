@@ -291,6 +291,13 @@ describe("PenggunaPage: urutan, pencarian, filter, halaman", () => {
     await waitFor(() => assert.equal(kueriDaftarTerakhir().get("sort"), null));
   });
 
+  it("kotak cari punya nama aksesibel (bukan hanya placeholder)", async () => {
+    renderHalaman(<PenggunaPage />);
+    await tungguBaris();
+    const kotak = screen.getByRole("textbox", { name: /Cari nama, email, peran, atau lembaga/ });
+    assert.ok(kotak.getAttribute("aria-label") || kotak.closest("label")?.textContent?.trim(), "nama dari aria-label atau teks label");
+  });
+
   it("kolom yang tidak bisa diurutkan (MFA, cakupan) tidak punya tombol urut", async () => {
     renderHalaman(<PenggunaPage />);
     await tungguBaris();
@@ -922,6 +929,33 @@ describe("PenggunaPage: dialog ubah pengguna", () => {
         null,
       ),
     );
+  });
+
+  // Regresi aksesibilitas: label "Peran" tidak terhubung ke pemilihnya (pembaca layar mengumumkan combobox tanpa nama).
+  it("pemilih Peran punya nama aksesibel di dialog ubah", async () => {
+    const { user } = renderHalaman(<PenggunaPage />);
+    await tungguBaris();
+    const menu = await bukaMenuBaris(user, "Ani Mahasiswa");
+    await user.click(within(menu).getByRole("menuitem", { name: /Ubah data/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Ubah pengguna" });
+    await within(dialog).findByLabelText("Nama lengkap");
+
+    const peran = within(dialog).getByRole("combobox", { name: "Peran" });
+    assert.match(peran.textContent ?? "", /Agen Lapangan Mahasiswa/);
+  });
+
+  it("dialog 'Tambah pengguna' (kata sandi sementara): setiap isian punya label terhubung", async () => {
+    const { user } = renderHalaman(<PenggunaPage />);
+    await tungguBaris();
+    await user.click(screen.getByRole("button", { name: /Undang pengguna/ }));
+    const undang = await screen.findByRole("dialog");
+    await user.click(within(undang).getByRole("button", { name: /kata sandi sementara/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Tambah pengguna" });
+    for (const label of ["ID pengguna", "Nama lengkap", "Email", "Kata sandi sementara", "Lembaga"]) {
+      assert.ok(within(dialog).getByLabelText(label), label);
+    }
+    assert.ok(within(dialog).getByRole("combobox", { name: "Peran" }));
   });
 
   it("validasi klien: nama kosong menahan kiriman dan menampilkan pesan di field", async () => {

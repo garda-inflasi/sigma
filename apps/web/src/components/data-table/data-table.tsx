@@ -215,6 +215,7 @@ export function DataTable<T>({
               }
             }}
             placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
             className="h-10 w-full rounded-md border border-input bg-white/70 pr-3 pl-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:shadow-glow-data dark:bg-white/5"
           />
         </label>

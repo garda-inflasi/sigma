@@ -129,7 +129,7 @@ func (e *Engine) tulis(ctx context.Context, a domain.AturanEws, p domain.Penguku
 		aksi = "NAIK_TINGKAT"
 	}
 	err = e.audit.Write(ctx, audit.Entry{
-		Aksi: aksi, Entitas: "ews_alert", EntitasID: alert.ID, Hasil: audit.HasilBerhasil,
+		Aksi: aksi, Entitas: "ews_alert", EntitasID: alert.ID.String(), Hasil: audit.HasilBerhasil,
 		Sesudah:  map[string]any{"severity": alert.Severity, "nilai": alert.Nilai, "dedup_key": in.DedupKey},
 		Metadata: map[string]any{"aturan": a.ID, "sumber": Sumber},
 	})

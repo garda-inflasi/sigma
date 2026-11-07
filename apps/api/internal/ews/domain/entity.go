@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Status siklus hidup alert (enum status_ews).
@@ -16,9 +18,11 @@ const (
 	StatusSelesai    = "SELESAI"
 )
 
-// EwsAlert memetakan tabel ews_alert.
+// EwsAlert memetakan tabel ews_alert. ID adalah BIGINT identity; Kode adalah kode tampilan (EWS-n, ID lama)
+// yang dipakai UI, notifikasi, dan sebagai alias rute /v1/ews/:id.
 type EwsAlert struct {
-	ID            string     `gorm:"column:id;primaryKey"`
+	ID            idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string    `gorm:"column:kode"`
 	Severity      string     `gorm:"column:severity"`
 	Jenis         string     `gorm:"column:jenis"`
 	Judul         string     `gorm:"column:judul"`
@@ -33,7 +37,7 @@ type EwsAlert struct {
 	DibuatPada    time.Time  `gorm:"column:dibuat_pada;default:now()"`
 	DiakuiOlehID  *string    `gorm:"column:diakui_oleh_id;type:uuid"`
 	DiakuiPada    *time.Time `gorm:"column:diakui_pada"`
-	AturanID      *string    `gorm:"column:aturan_id"`
+	AturanID      *idx.ID    `gorm:"column:aturan_id"`
 	// DedupKey mengidentifikasi kondisi yang dipantau rule engine; hanya satu alert
 	// aktif (bukan SELESAI) per kunci. Kosong untuk alert yang tidak berasal dari mesin.
 	DedupKey         *string    `gorm:"column:dedup_key"`
@@ -47,8 +51,10 @@ func (EwsAlert) TableName() string { return "ews_alert" }
 // EwsRiwayat memetakan tabel ews_riwayat: satu perubahan status alert. Oleh kosong
 // berarti sistem (rule engine atau eskalasi otomatis).
 type EwsRiwayat struct {
-	ID      string    `gorm:"column:id;primaryKey"`
-	AlertID string    `gorm:"column:alert_id"`
+	ID idx.ID `gorm:"column:id;primaryKey;autoIncrement"`
+	// Kode adalah ID lama (RW-n, RW-D-...); kunci idempoten seeder. NULL untuk baris yang dibuat aplikasi.
+	Kode    *string   `gorm:"column:kode"`
+	AlertID idx.ID    `gorm:"column:alert_id"`
 	Dari    *string   `gorm:"column:dari"`
 	Ke      string    `gorm:"column:ke"`
 	Oleh    *string   `gorm:"column:oleh;type:uuid"`
@@ -63,13 +69,15 @@ type Alert struct {
 	EwsAlert      `gorm:"embedded"`
 	KomoditasNama *string `gorm:"column:komoditas_nama;->"`
 	KabupatenNama string  `gorm:"column:kabupaten_nama;->"`
+	// AturanKode adalah kode tampilan aturan yang memicu alert (ATR-...), kosong bila tanpa aturan.
+	AturanKode *string `gorm:"column:aturan_kode;->"`
 }
 
 // EwsEvent memetakan tabel ews_event: peristiwa alert untuk aliran SSE. Id berurut
 // dipakai sebagai Last-Event-ID.
 type EwsEvent struct {
-	ID         int64     `gorm:"column:id;primaryKey;->"`
-	AlertID    string    `gorm:"column:alert_id"`
+	ID         idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	AlertID    idx.ID    `gorm:"column:alert_id"`
 	Tipe       string    `gorm:"column:tipe;default:alert"`
 	DibuatPada time.Time `gorm:"column:dibuat_pada;default:now()"`
 }
@@ -116,7 +124,9 @@ func (k Kanal) Value() (driver.Value, error) {
 // AturanEws memetakan tabel aturan_ews: ambang per jenis (dan komoditas) beserta
 // kanal notifikasi.
 type AturanEws struct {
-	ID            string  `gorm:"column:id;primaryKey"`
+	ID idx.ID `gorm:"column:id;primaryKey;autoIncrement"`
+	// Kode adalah ID lama (ATR-...), kode tampilan, alias rute /v1/ews/aturan/:id, dan kunci idempoten seeder.
+	Kode          *string `gorm:"column:kode"`
 	KomoditasKode *string `gorm:"column:komoditas_kode"`
 	// KabupatenKode membatasi aturan ke satu kabupaten; kosong berlaku untuk semua.
 	KabupatenKode *string `gorm:"column:kabupaten_kode"`
@@ -140,8 +150,9 @@ func (AturanEws) TableName() string { return "aturan_ews" }
 
 // AturanEwsRiwayat memetakan tabel aturan_ews_riwayat: foto satu versi ambang.
 type AturanEwsRiwayat struct {
-	ID            string    `gorm:"column:id;primaryKey"`
-	AturanID      string    `gorm:"column:aturan_id"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string   `gorm:"column:kode"`
+	AturanID      idx.ID    `gorm:"column:aturan_id"`
 	Versi         int       `gorm:"column:versi"`
 	AmbangWaspada float64   `gorm:"column:ambang_waspada"`
 	AmbangSiaga   float64   `gorm:"column:ambang_siaga"`

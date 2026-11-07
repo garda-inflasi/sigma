@@ -13,6 +13,7 @@ import (
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -105,11 +106,16 @@ func TestBuildKartu_ShapeAndReferences(t *testing.T) {
 	for _, d := range BuildTahap() {
 		tahap[d.KodeTahap] = d.Siklus
 	}
-	ids, pos := map[string]bool{}, map[string]bool{}
+	ids, pos, kodes := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	perSiklus := map[string]int{}
 	for _, k := range kartu {
 		assert.False(t, ids[k.ID], "id ganda %s", k.ID)
 		ids[k.ID] = true
+		require.NotNil(t, k.Kode)
+		assert.False(t, kodes[*k.Kode], "kode ganda %s", *k.Kode)
+		kodes[*k.Kode] = true
+		assert.Equal(t, idx.UUIDStabil("intervensi", *k.Kode), k.ID, "ID kartu seed = UUID stabil dari kode (sama dengan migrasi 000112)")
+		assert.Nil(t, k.EwsAlertID, "ID alert dibuat basis data; SeedDemo mengisinya dari kode alert")
 		assert.Equal(t, tahap[k.Tahap], k.Siklus, "%s: tahap %s bukan milik siklus %s", k.ID, k.Tahap, k.Siklus)
 		key := k.Tahap + "/" + string(rune('0'+k.Urutan))
 		assert.False(t, pos[key], "%s: urutan ganda di tahap", k.ID)
@@ -124,6 +130,14 @@ func TestBuildKartu_ShapeAndReferences(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]int{"TEKANAN": 7, "NORMAL": 6, "SURPLUS": 6}, perSiklus)
+
+	byKode := map[string]domain.Intervensi{}
+	for _, k := range kartu {
+		byKode[*k.Kode] = k
+	}
+	assert.Equal(t, "EWS-1000", AlertKodeKartu(byKode["INT-301"]))
+	assert.Equal(t, "EWS-1013", AlertKodeKartu(byKode["INT-315"]))
+	assert.Empty(t, AlertKodeKartu(byKode["INT-304"]), "kartu tanpa alert")
 
 	assigned := map[string]int{}
 	for _, p := range pj {
@@ -225,13 +239,13 @@ func TestSeedDemo_ResetsAssigneesToTheirInitialState(t *testing.T) {
 	require.NoError(t, err)
 	_, err = SeedDemo(ctx, db, seedNow)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec(`INSERT INTO intervensi_pj (intervensi_id, pengguna_id) VALUES ('INT-301', garda_uuid_stabil('pengguna', 'strategis_bi'))`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO intervensi_pj (intervensi_id, pengguna_id) VALUES (garda_uuid_stabil('intervensi', 'INT-301'), garda_uuid_stabil('pengguna', 'strategis_bi'))`).Error)
 
 	_, err = SeedDemo(ctx, db, seedNow)
 	require.NoError(t, err)
 
 	var n int64
-	require.NoError(t, db.Table("intervensi_pj").Where("intervensi_id = 'INT-301' AND pengguna_id = garda_uuid_stabil('pengguna', 'strategis_bi')").Count(&n).Error)
+	require.NoError(t, db.Table("intervensi_pj").Where("intervensi_id = garda_uuid_stabil('intervensi', 'INT-301') AND pengguna_id = garda_uuid_stabil('pengguna', 'strategis_bi')").Count(&n).Error)
 	assert.Zero(t, n)
 }
 
@@ -250,7 +264,66 @@ func TestEveryCardTahapIsDefinedForItsSiklus(t *testing.T) {
 	assert.Zero(t, orphans)
 
 	t.Run("tahap tak terdefinisi ditolak basis data", func(t *testing.T) {
-		err := db.Exec(`UPDATE intervensi SET tahap = 'n-pantau' WHERE id = 'INT-301'`).Error // INT-301 siklus TEKANAN
+		err := db.Exec(`UPDATE intervensi SET tahap = 'n-pantau' WHERE kode = 'INT-301'`).Error // INT-301 siklus TEKANAN
 		assert.ErrorContains(t, err, "fk_intervensi_tahap")
 	})
+}
+
+func TestSeedDemo_RowIDsAreStableUUIDsAndAlertLinksResolve(t *testing.T) {
+	db := seededDB(t, "intervensi_seed_uuid")
+	ctx := t.Context()
+	_, err := SeedReference(ctx, db)
+	require.NoError(t, err)
+	_, err = SeedDemo(ctx, db, seedNow)
+	require.NoError(t, err)
+
+	var row struct {
+		ID, Kode, AlertKode string
+	}
+	require.NoError(t, db.Raw(`SELECT i.id::text AS id, i.kode, a.kode AS alert_kode FROM intervensi i JOIN ews_alert a ON a.id = i.ews_alert_id WHERE i.kode = 'INT-301'`).Scan(&row).Error)
+	assert.Equal(t, idx.UUIDStabil("intervensi", "INT-301"), row.ID)
+	assert.Equal(t, "EWS-1000", row.AlertKode, "kartu merujuk alert lewat ID BIGINT yang dicari dari kodenya")
+
+	var tanpaAlert, denganAlert int64
+	require.NoError(t, db.Raw(`SELECT count(*) FROM intervensi WHERE ews_alert_id IS NULL`).Scan(&tanpaAlert).Error)
+	require.NoError(t, db.Raw(`SELECT count(*) FROM intervensi WHERE ews_alert_id IS NOT NULL`).Scan(&denganAlert).Error)
+	assert.EqualValues(t, 14, tanpaAlert)
+	assert.EqualValues(t, 5, denganAlert, "INT-301, 302, 303, 314, dan 315 punya alert pemicu (lihat kartuSeeds)")
+}
+
+// Basis data hasil migrasi 000112 sudah memuat kartu dengan UUID stabil dan kode = ID lama: seed tidak
+// menggandakannya dan tidak mengubah UUID-nya.
+func TestSeedDemo_DoesNotDuplicateRowsAlreadyMigrated(t *testing.T) {
+	db := seededDB(t, "intervensi_seed_migrated")
+	ctx := t.Context()
+	_, err := SeedReference(ctx, db)
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`INSERT INTO intervensi (id, kode, siklus, tahap, judul, komoditas_kode, kabupaten_kode, prioritas, tenggat, dibuat_oleh_id)
+		VALUES (garda_uuid_stabil('intervensi', 'INT-301'), 'INT-301', 'TEKANAN', 't-ews', 'Judul lama', 'CBM-KRT', '1171', 'RENDAH', now(), garda_uuid_stabil('pengguna', 'manajer_program'))`).Error)
+
+	_, err = SeedDemo(ctx, db, seedNow)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 19, count(t, db, "intervensi"))
+	var judul string
+	require.NoError(t, db.Raw(`SELECT judul FROM intervensi WHERE kode = 'INT-301'`).Scan(&judul).Error)
+	assert.Equal(t, "Lonjakan cabai merah Banda Aceh", judul, "baris lama diperbarui menurut seed, bukan digandakan")
+}
+
+func TestSeedDemo_FailsClearlyWithoutDemoAlerts(t *testing.T) {
+	db := pg.NewDatabase(t, "intervensi_seed_tanpa_alert")
+	pgtest.MigrateUp(t, db)
+	ctx := t.Context()
+	_, err := masterseeder.SeedReference(ctx, db)
+	require.NoError(t, err)
+	_, err = authseeder.SeedDemo(ctx, db)
+	require.NoError(t, err)
+	_, err = SeedReference(ctx, db)
+	require.NoError(t, err)
+
+	_, err = SeedDemo(ctx, db, seedNow)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "ews.demo")
+	assert.Zero(t, count(t, db, "intervensi"), "tidak ada kartu setengah jadi")
 }

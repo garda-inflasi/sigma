@@ -13,6 +13,7 @@ import (
 	"github.com/garda-inflasi/api/internal/ews/notifikasi"
 	"github.com/garda-inflasi/api/internal/ews/stream"
 	"github.com/garda-inflasi/api/internal/ews/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,9 @@ import (
 
 // totalCountHeader membawa jumlah seluruh hasil filter untuk klien yang memaginasi.
 const totalCountHeader = "X-Total-Count"
+
+// maksKode adalah panjang maksimum kode tampilan (kolom kode varchar(64)) yang diterima sebagai alias rute.
+const maksKode = 64
 
 type Handler struct {
 	uc     *usecase.UseCase
@@ -77,9 +81,13 @@ func (h *Handler) List(c *gin.Context) {
 	response.Success(c, dto.ToAlertResponses(items))
 }
 
-// GetByID handles GET /v1/ews/:id
+// GetByID handles GET /v1/ews/:id. :id adalah ID alert atau kode tampilan lama (EWS-...); selain itu 404.
 func (h *Handler) GetByID(c *gin.Context) {
-	alert, err := h.uc.GetByID(c.Request.Context(), c.Param("id"))
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKode, "Alert EWS tidak ditemukan")
+	if !ok {
+		return
+	}
+	alert, err := h.uc.GetByID(c.Request.Context(), ref)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Alert EWS tidak ditemukan")
@@ -101,15 +109,19 @@ func (h *Handler) ListAturan(c *gin.Context) {
 	response.Success(c, dto.ToAturanResponses(items))
 }
 
-// UpdateAturan handles PUT /v1/ews/aturan/:id
+// UpdateAturan handles PUT /v1/ews/aturan/:id. :id adalah ID aturan atau kode lama (ATR-...); selain itu 404.
 func (h *Handler) UpdateAturan(c *gin.Context) {
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKode, "Aturan ambang tidak ditemukan")
+	if !ok {
+		return
+	}
 	var req dto.UpdateAturanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
 
-	updated, err := h.uc.UpdateAturan(audit.RequestContext(c), c.Param("id"), domain.AturanUpdate{
+	updated, err := h.uc.UpdateAturan(audit.RequestContext(c), ref, domain.AturanUpdate{
 		Versi: req.Versi, AmbangWaspada: req.AmbangWaspada, AmbangSiaga: req.AmbangSiaga, AmbangKritis: req.AmbangKritis,
 		JendelaHari: req.JendelaHari, CooldownJam: req.CooldownJam, Kanal: req.Kanal, Aktif: *req.Aktif, Keterangan: req.Keterangan,
 	}, c.GetString("user_id"))
@@ -137,9 +149,13 @@ func (h *Handler) Evaluasi(c *gin.Context) {
 	response.Success(c, dto.ToEvaluasiResponse(ringkasan))
 }
 
-// ListRiwayat handles GET /v1/ews/:id/riwayat
+// ListRiwayat handles GET /v1/ews/:id/riwayat. :id adalah ID alert atau kode tampilan lama (EWS-...).
 func (h *Handler) ListRiwayat(c *gin.Context) {
-	items, err := h.uc.ListRiwayat(c.Request.Context(), c.Param("id"))
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKode, "Alert EWS tidak ditemukan")
+	if !ok {
+		return
+	}
+	items, err := h.uc.ListRiwayat(c.Request.Context(), ref)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Alert EWS tidak ditemukan")

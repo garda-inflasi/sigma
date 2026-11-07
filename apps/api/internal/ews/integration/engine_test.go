@@ -3,6 +3,9 @@ package integration
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,21 +35,22 @@ func (s *suite) evaluasi(t *testing.T) evaluasiRow {
 }
 
 type alertMesin struct {
-	ID       string  `gorm:"column:id"`
-	Severity string  `gorm:"column:severity"`
-	Status   string  `gorm:"column:status"`
-	Nilai    float64 `gorm:"column:nilai"`
-	AturanID string  `gorm:"column:aturan_id"`
-	DedupKey string  `gorm:"column:dedup_key"`
-	Skor     int     `gorm:"column:skor_dampak"`
-	Pesan    string  `gorm:"column:pesan"`
+	ID         string  `gorm:"column:id"`
+	Kode       string  `gorm:"column:kode"`
+	Severity   string  `gorm:"column:severity"`
+	Status     string  `gorm:"column:status"`
+	Nilai      float64 `gorm:"column:nilai"`
+	AturanKode string  `gorm:"column:aturan_kode"`
+	DedupKey   string  `gorm:"column:dedup_key"`
+	Skor       int     `gorm:"column:skor_dampak"`
+	Pesan      string  `gorm:"column:pesan"`
 }
 
 func (s *suite) alertMesin(t *testing.T, dedupKey string) []alertMesin {
 	t.Helper()
 	var rows []alertMesin
-	require.NoError(t, s.db.Raw(`SELECT id, severity, status, nilai, aturan_id, dedup_key, skor_dampak, pesan
-		FROM ews_alert WHERE dedup_key = ? ORDER BY dibuat_pada, id`, dedupKey).Scan(&rows).Error)
+	require.NoError(t, s.db.Raw(`SELECT a.id::text AS id, a.kode, a.severity, a.status, a.nilai, t.kode AS aturan_kode, a.dedup_key, a.skor_dampak, a.pesan
+		FROM ews_alert a LEFT JOIN aturan_ews t ON t.id = a.aturan_id WHERE a.dedup_key = ? ORDER BY a.dibuat_pada, a.id`, dedupKey).Scan(&rows).Error)
 	return rows
 }
 
@@ -78,7 +82,8 @@ func TestEngine_PriceSpikeCreatesOneIdempotentAlert(t *testing.T) {
 	a := alerts[0]
 	assert.Equal(t, "KRITIS", a.Severity)
 	assert.Equal(t, "BARU", a.Status)
-	assert.Equal(t, "ATR-LH-CBM-KRT", a.AturanID)
+	assert.Equal(t, "ATR-LH-CBM-KRT", a.AturanKode)
+	assert.Regexp(t, `^EWS-[0-9]+$`, a.Kode, "alert buatan mesin diberi kode tampilan dari sequence")
 	assert.InDelta(t, 20, a.Nilai, 0.001)
 	assert.Equal(t, 80+11, a.Skor)
 	assert.Contains(t, a.Pesan, "naik 20,0%")
@@ -99,9 +104,36 @@ func TestEngine_PriceSpikeCreatesOneIdempotentAlert(t *testing.T) {
 	assert.Equal(t, 1, second.Dilewati)
 	assert.Len(t, s.alertMesin(t, "LONJAKAN_HARGA|CBM-KRT|1171"), 1)
 
-	var audit []string
-	require.NoError(t, s.db.Raw(`SELECT aksi FROM audit_log WHERE entitas = 'ews_alert' ORDER BY waktu`).Scan(&audit).Error)
-	assert.Equal(t, []string{"BUAT_OTOMATIS", "EVALUASI", "EVALUASI"}, audit)
+	var audit []struct{ Aksi, EntitasID string }
+	require.NoError(t, s.db.Raw(`SELECT aksi, entitas_id FROM audit_log WHERE entitas = 'ews_alert' ORDER BY waktu`).Scan(&audit).Error)
+	require.Len(t, audit, 3)
+	assert.Equal(t, "BUAT_OTOMATIS", audit[0].Aksi)
+	assert.Equal(t, a.ID, audit[0].EntitasID, "audit mencatat ID alert (desimal), bukan kode tampilan")
+	assert.Equal(t, "EVALUASI", audit[1].Aksi)
+	assert.Equal(t, "EVALUASI", audit[2].Aksi)
+}
+
+// Kode tampilan EWS-n dibuat dari sequence, jadi alert yang dibuat bersamaan tidak pernah bentrok, dan nomor
+// pertama berada di atas kode seed demo.
+func TestEngine_AlertCodesAreUniqueAndAboveSeedCodes(t *testing.T) {
+	s := newSuite(t, "ews_engine_kode")
+	now := time.Now()
+	s.entriHarga(t, "H1", "CBM-KRT", "PSR-1171-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
+	s.entriHarga(t, "H2", "CBM-KRT", "PSR-1171-01", 60000, "DIVALIDASI", now.Add(-2*time.Hour))
+	s.entriHarga(t, "H3", "BWM", "PSR-1107-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
+	s.entriHarga(t, "H4", "BWM", "PSR-1107-01", 60000, "DIVALIDASI", now.Add(-2*time.Hour))
+
+	require.Equal(t, 2, s.evaluasi(t).Dibuat)
+
+	var kode []string
+	require.NoError(t, s.db.Raw(`SELECT kode FROM ews_alert WHERE dedup_key IS NOT NULL ORDER BY id`).Scan(&kode).Error)
+	require.Len(t, kode, 2)
+	assert.NotEqual(t, kode[0], kode[1])
+	for _, k := range kode {
+		n, err := strconv.Atoi(strings.TrimPrefix(k, "EWS-"))
+		require.NoError(t, err, k)
+		assert.GreaterOrEqual(t, n, 2000, "di atas kode seed demo (EWS-0901..EWS-1013)")
+	}
 }
 
 func TestEngine_RaisesSeverityOnWorseningConditionAndRecordsHistory(t *testing.T) {
@@ -210,16 +242,16 @@ func TestEngine_InactiveRuleIsIgnoredAndThresholdsAreHonoured(t *testing.T) {
 	now := time.Now()
 	s.entriHarga(t, "H1", "CBM-KRT", "PSR-1171-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
 	s.entriHarga(t, "H2", "CBM-KRT", "PSR-1171-01", 60000, "DIVALIDASI", now.Add(-2*time.Hour))
-	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET aktif = false WHERE id = 'ATR-LH-CBM-KRT'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET aktif = false WHERE kode = 'ATR-LH-CBM-KRT'`).Error)
 
 	res := s.evaluasi(t)
 	assert.Equal(t, 8, res.Aturan)
 	assert.Zero(t, res.Dibuat)
 
-	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET aktif = true, ambang_waspada = 30, ambang_siaga = 40, ambang_kritis = 50 WHERE id = 'ATR-LH-CBM-KRT'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET aktif = true, ambang_waspada = 30, ambang_siaga = 40, ambang_kritis = 50 WHERE kode = 'ATR-LH-CBM-KRT'`).Error)
 	assert.Zero(t, s.evaluasi(t).Dibuat, "+20% di bawah ambang waspada 30%")
 
-	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET ambang_waspada = 15, ambang_siaga = 30, ambang_kritis = 50 WHERE id = 'ATR-LH-CBM-KRT'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET ambang_waspada = 15, ambang_siaga = 30, ambang_kritis = 50 WHERE kode = 'ATR-LH-CBM-KRT'`).Error)
 	assert.Equal(t, 1, s.evaluasi(t).Dibuat)
 	assert.Equal(t, "WASPADA", s.alertMesin(t, "LONJAKAN_HARGA|CBM-KRT|1171")[0].Severity)
 }
@@ -234,6 +266,7 @@ func TestEngine_EvaluasiEndpointAuthorization(t *testing.T) {
 
 type aturanRow struct {
 	ID            string   `json:"id"`
+	Kode          *string  `json:"kode"`
 	AmbangWaspada float64  `json:"ambang_waspada"`
 	AmbangSiaga   float64  `json:"ambang_siaga"`
 	AmbangKritis  float64  `json:"ambang_kritis"`
@@ -255,6 +288,7 @@ func bodyAturan(versi int, waspada, siaga, kritis float64) map[string]any {
 
 func TestAturan_UpdateThresholds(t *testing.T) {
 	s := newSuite(t, "ews_aturan_update")
+	// Rute dipanggil lewat kode lama (alias); ID desimalnya diuji di TestAturan_UpdateByIDAndInvalidIDs.
 	const path = "/v1/ews/aturan/ATR-LH-BWM"
 
 	t.Run("izin ews.atur_ambang dibutuhkan", func(t *testing.T) {
@@ -276,6 +310,7 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 		bad["kanal"] = []string{"TELEGRAM"}
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPut, path, emailAtur, bad).Code, "kanal di luar daftar")
 		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodPut, "/v1/ews/aturan/TIDAK-ADA", emailAtur, bodyAturan(1, 5, 10, 20)).Code)
+		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodPut, "/v1/ews/aturan/99999", emailAtur, bodyAturan(1, 5, 10, 20)).Code)
 	})
 
 	t.Run("simpan menaikkan versi, mencatat riwayat dan audit", func(t *testing.T) {
@@ -293,15 +328,16 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 			Versi        int
 			AmbangKritis float64
 		}
-		require.NoError(t, s.db.Raw(`SELECT versi, ambang_kritis FROM aturan_ews_riwayat WHERE aturan_id = 'ATR-LH-BWM'`).Scan(&snapshot).Error)
+		require.NoError(t, s.db.Raw(`SELECT versi, ambang_kritis FROM aturan_ews_riwayat WHERE aturan_id = (SELECT id FROM aturan_ews WHERE kode = 'ATR-LH-BWM')`).Scan(&snapshot).Error)
 		require.Len(t, snapshot, 1)
 		assert.Equal(t, 2, snapshot[0].Versi)
 		assert.EqualValues(t, 20, snapshot[0].AmbangKritis)
 
-		var audit []struct{ Aksi, Sebelum, Sesudah string }
-		require.NoError(t, s.db.Raw(`SELECT aksi, sebelum::text AS sebelum, sesudah::text AS sesudah FROM audit_log WHERE entitas = 'aturan_ews'`).Scan(&audit).Error)
+		var audit []struct{ Aksi, EntitasID, Sebelum, Sesudah string }
+		require.NoError(t, s.db.Raw(`SELECT aksi, entitas_id, sebelum::text AS sebelum, sesudah::text AS sesudah FROM audit_log WHERE entitas = 'aturan_ews'`).Scan(&audit).Error)
 		require.Len(t, audit, 1)
 		assert.Equal(t, "UBAH_AMBANG", audit[0].Aksi)
+		assert.Equal(t, s.aturanID(t, "ATR-LH-BWM"), audit[0].EntitasID, "audit mencatat ID aturan (desimal), walau rute dipanggil lewat kode")
 		assert.Contains(t, audit[0].Sebelum, `"ambang_kritis": 18`)
 		assert.Contains(t, audit[0].Sesudah, `"ambang_kritis": 20`)
 	})
@@ -312,7 +348,7 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 
 		list := data[[]aturanRow](t, s.call(t, http.MethodGet, "/v1/ews/aturan", emailLihat, nil))
 		for _, a := range list {
-			if a.ID == "ATR-LH-BWM" {
+			if *a.Kode == "ATR-LH-BWM" {
 				assert.EqualValues(t, 20, a.AmbangKritis)
 				assert.Equal(t, 2, a.Versi)
 			}
@@ -324,7 +360,7 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 		require.NoError(t, err)
 		list := data[[]aturanRow](t, s.call(t, http.MethodGet, "/v1/ews/aturan", emailLihat, nil))
 		for _, a := range list {
-			switch a.ID {
+			switch *a.Kode {
 			case "ATR-LH-BWM":
 				assert.EqualValues(t, 20, a.AmbangKritis, "hasil kalibrasi dipertahankan")
 				assert.Equal(t, "Dikalibrasi ulang", a.Keterangan)
@@ -335,11 +371,33 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 	})
 }
 
+func TestAturan_UpdateByIDAndInvalidIDs(t *testing.T) {
+	s := newSuite(t, "ews_aturan_update_id")
+	id := s.aturanID(t, "ATR-LH-BWM")
+
+	for _, bukanID := range []string{"0", "-1", "01", "abc def", "ATR-" + strings.Repeat("X", 80)} {
+		w := s.call(t, http.MethodPut, "/v1/ews/aturan/"+url.PathEscape(bukanID), emailAtur, bodyAturan(1, 5, 10, 20))
+		assert.Equal(t, http.StatusNotFound, w.Code, bukanID)
+	}
+	// Rujukan yang bukan ID dan lebih panjang dari kode (64) dijawab 404 sebelum badan diperiksa.
+	panjang := "/v1/ews/aturan/ATR-" + strings.Repeat("X", 80)
+	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodPut, panjang, emailAtur, map[string]any{}).Code)
+
+	w := s.call(t, http.MethodPut, "/v1/ews/aturan/"+id, emailAtur, bodyAturan(1, 5, 10, 20))
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	got := data[aturanRow](t, w)
+	assert.Equal(t, id, got.ID)
+	require.NotNil(t, got.Kode)
+	assert.Equal(t, "ATR-LH-BWM", *got.Kode)
+	assert.Equal(t, 2, got.Versi)
+}
+
 func TestBulk_RecordsHistoryAndTimestamps(t *testing.T) {
 	s := newSuite(t, "ews_bulk_riwayat")
+	id := s.alertID(t, "EWS-1000")
 
 	for _, step := range []struct{ email, action string }{{emailAkui, "akui"}, {emailPenuh, "eskalasi"}, {emailPenuh, "selesai"}} {
-		w := s.call(t, http.MethodPost, "/v1/ews/bulk", step.email, map[string]any{"action": step.action, "ids": []string{"EWS-1000"}})
+		w := s.call(t, http.MethodPost, "/v1/ews/bulk", step.email, map[string]any{"action": step.action, "ids": []string{id}})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	}
 
@@ -364,7 +422,7 @@ func TestBulk_RecordsHistoryAndTimestamps(t *testing.T) {
 		DieskalasiPada, SelesaiPada *time.Time
 		DieskalasiOlehID            *string
 	}
-	require.NoError(t, s.db.Raw(`SELECT dieskalasi_pada, selesai_pada, dieskalasi_oleh_id FROM ews_alert WHERE id = 'EWS-1000'`).Scan(&stamp).Error)
+	require.NoError(t, s.db.Raw(`SELECT dieskalasi_pada, selesai_pada, dieskalasi_oleh_id FROM ews_alert WHERE kode = 'EWS-1000'`).Scan(&stamp).Error)
 	assert.NotNil(t, stamp.DieskalasiPada)
 	assert.NotNil(t, stamp.SelesaiPada)
 	require.NotNil(t, stamp.DieskalasiOlehID)

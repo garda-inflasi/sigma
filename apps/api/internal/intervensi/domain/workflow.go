@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Jenis permintaan persetujuan (CHECK intervensi_persetujuan.jenis).
@@ -72,8 +74,8 @@ type Alur struct {
 
 // IntervensiPersetujuan memetakan tabel intervensi_persetujuan.
 type IntervensiPersetujuan struct {
-	ID           int64      `gorm:"column:id;primaryKey;->"`
-	IntervensiID string     `gorm:"column:intervensi_id"`
+	ID           idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	IntervensiID string     `gorm:"column:intervensi_id;type:uuid"`
 	AlurKode     *string    `gorm:"column:alur_kode"`
 	Jenis        string     `gorm:"column:jenis"`
 	TahapTujuan  *string    `gorm:"column:tahap_tujuan"`
@@ -90,7 +92,7 @@ func (IntervensiPersetujuan) TableName() string { return "intervensi_persetujuan
 // PersetujuanLangkah memetakan tabel intervensi_persetujuan_langkah: satu langkah rantai
 // persetujuan sebuah permintaan beserta keputusannya (kosong sampai diputuskan).
 type PersetujuanLangkah struct {
-	PersetujuanID  int64      `gorm:"column:persetujuan_id;primaryKey"`
+	PersetujuanID  idx.ID     `gorm:"column:persetujuan_id;primaryKey"`
 	Urutan         int        `gorm:"column:urutan;primaryKey"`
 	Label          string     `gorm:"column:label"`
 	IzinDibutuhkan string     `gorm:"column:izin_dibutuhkan"`
@@ -129,6 +131,7 @@ func (p Persetujuan) IzinLangkahKini() string {
 
 // AjukanInput adalah masukan permintaan persetujuan. Oleh kosong berarti sistem.
 type AjukanInput struct {
+	// KartuID adalah UUID kartu.
 	KartuID     string
 	Jenis       string
 	TahapTujuan string // wajib untuk JenisPindahTahap
@@ -138,7 +141,7 @@ type AjukanInput struct {
 
 // PutusInput adalah keputusan atas langkah LangkahKini sebuah permintaan.
 type PutusInput struct {
-	PersetujuanID int64
+	PersetujuanID idx.ID
 	// LangkahKini adalah langkah yang dilihat pemutus; ditolak bila permintaan sudah bergerak.
 	LangkahKini int
 	Keputusan   string
@@ -148,7 +151,7 @@ type PutusInput struct {
 
 // KartuMelewatiSLA adalah kartu aktif yang lebih lama di tahapnya daripada SLA tahap itu.
 type KartuMelewatiSLA struct {
-	ID        string `gorm:"column:id"`
+	ID        string `gorm:"column:id"` // UUID kartu
 	TahapKode string `gorm:"column:tahap_kode"`
 	Label     string `gorm:"column:label"`
 	SLAHari   int    `gorm:"column:sla_hari"`
@@ -157,7 +160,10 @@ type KartuMelewatiSLA struct {
 // KartuOtomatis adalah kartu yang dibuat workflow dari alert EWS. Tahap awal dan nomor
 // ditentukan repository; pembuatnya sistem.
 type KartuOtomatis struct {
-	AlertID, Siklus, Judul, Deskripsi, KomoditasKode, KabupatenKode, Prioritas string
+	AlertID idx.ID
+	// AlertKode adalah kode tampilan alert (EWS-n), dipakai pada teks riwayat kartu; boleh kosong.
+	AlertKode                                                         string
+	Siklus, Judul, Deskripsi, KomoditasKode, KabupatenKode, Prioritas string
 	// HariTenggatCadangan dipakai bila tahap awal tidak punya SLA.
 	HariTenggatCadangan int
 	// PeranPenanggungJawab: pengguna aktif berperan ini ditugasi otomatis.
@@ -172,7 +178,7 @@ type WorkflowRepository interface {
 	// langkah alur tiap tahap persetujuan dari tahap sekarang (tidak termasuk) sampai tahap tujuan
 	// (termasuk); ErrTanpaPersetujuan bila tak ada, ErrKartuSelesai, ErrPersetujuanTerbuka.
 	Ajukan(ctx context.Context, in AjukanInput) (*Persetujuan, error)
-	GetPersetujuan(ctx context.Context, id int64) (*Persetujuan, error)
+	GetPersetujuan(ctx context.Context, id idx.ID) (*Persetujuan, error)
 	// ListPersetujuan mengembalikan permintaan (terbaru dahulu); status kosong = semua.
 	ListPersetujuan(ctx context.Context, status string) ([]Persetujuan, error)
 	// Putus menyimpan keputusan. Setuju pada langkah terakhir menyelesaikan permintaan dan, untuk

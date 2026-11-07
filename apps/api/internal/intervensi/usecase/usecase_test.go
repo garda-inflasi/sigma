@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -29,8 +30,8 @@ func (m *mockRepository) ListTahap(ctx context.Context) ([]domain.TahapDef, erro
 	return args.Get(0).([]domain.TahapDef), args.Error(1)
 }
 
-func (m *mockRepository) GetByID(ctx context.Context, id string) (*domain.Intervensi, error) {
-	args := m.Called(ctx, id)
+func (m *mockRepository) GetByID(ctx context.Context, ref idx.RujukanUUID) (*domain.Intervensi, error) {
+	args := m.Called(ctx, ref)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -63,6 +64,12 @@ func (m *mockRepository) ListRiwayat(ctx context.Context, id string) ([]domain.R
 	return args.Get(0).([]domain.Riwayat), args.Error(1)
 }
 
+// kid memberi UUID kartu uji dari kode lamanya (rumus yang sama dengan seed dan migrasi 000112), dan rujukanID
+// membungkusnya sebagai rujukan rute berupa UUID.
+func kid(kode string) string { return idx.UUIDStabil("intervensi", kode) }
+
+func rujukanID(kode string) idx.RujukanUUID { return idx.RujukanUUID{ID: kid(kode)} }
+
 func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
 	recorder := &audittest.Recorder{}
 	return New(repo, nil, recorder, logger.NewDefault()), recorder
@@ -93,16 +100,17 @@ func TestCreate_PutsCardInFirstTahapOfItsSiklusAndAudits(t *testing.T) {
 	uc, recorder := newTestUseCase(repo)
 	in := domain.NewIntervensi{Siklus: "TEKANAN", Judul: "Operasi pasar", Prioritas: "TINGGI", Tenggat: time.Now(), DibuatOlehID: uid("u1")}
 	repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-	repo.On("Create", mock.Anything, in, "t-ews").Return(&domain.Intervensi{ID: "INT-1000", Siklus: "TEKANAN", Tahap: "t-ews", Judul: "Operasi pasar", Prioritas: "TINGGI"}, nil)
+	kode := "INT-1000"
+	repo.On("Create", mock.Anything, in, "t-ews").Return(&domain.Intervensi{ID: kid("INT-1000"), Kode: &kode, Siklus: "TEKANAN", Tahap: "t-ews", Judul: "Operasi pasar", Prioritas: "TINGGI"}, nil)
 
 	created, err := uc.Create(context.Background(), in)
 
 	require.NoError(t, err)
-	assert.Equal(t, "INT-1000", created.ID)
+	assert.Equal(t, kid("INT-1000"), created.ID)
 	entry, ok := recorder.Last()
 	require.True(t, ok)
 	assert.Equal(t, "BUAT", entry.Aksi)
-	assert.Equal(t, "INT-1000", entry.EntitasID)
+	assert.Equal(t, kid("INT-1000"), entry.EntitasID, "audit mencatat UUID kartu, bukan kode tampilan")
 	assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 }
 
@@ -130,7 +138,7 @@ func TestCreate_InvalidReferenceIsPassedThroughWithoutAudit(t *testing.T) {
 }
 
 func TestMove(t *testing.T) {
-	card := &domain.Intervensi{ID: "INT-301", Siklus: "TEKANAN", Tahap: "t-ews", Urutan: 0, Versi: 3}
+	card := &domain.Intervensi{ID: kid("INT-301"), Siklus: "TEKANAN", Tahap: "t-ews", Urutan: 0, Versi: 3}
 	noMove := func(repo *mockRepository) {
 		repo.AssertNotCalled(t, "Move", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	}
@@ -138,11 +146,11 @@ func TestMove(t *testing.T) {
 	t.Run("pindah ke tahap biasa dengan izin kelola mengembalikan versi baru", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		repo.On("Move", mock.Anything, "INT-301", "t-ews", 2, false, 3, uid("u1")).Return(4, nil)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-ews", 2, false, 3, uid("u1")).Return(4, nil)
 
-		versi, err := uc.Move(context.Background(), "INT-301", "t-ews", 2, 3, uid("u1"), allow(domain.IzinBawaan))
+		versi, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-ews", 2, 3, uid("u1"), allow(domain.IzinBawaan))
 
 		require.NoError(t, err)
 		assert.Equal(t, 4, versi)
@@ -156,11 +164,11 @@ func TestMove(t *testing.T) {
 	t.Run("tahap penutup menandai selesai", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, _ := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		repo.On("Move", mock.Anything, "INT-301", "t-selesai", 0, true, 3, uid("u1")).Return(4, nil)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-selesai", 0, true, 3, uid("u1")).Return(4, nil)
 
-		_, err := uc.Move(context.Background(), "INT-301", "t-selesai", 0, 3, uid("u1"), allow("intervensi.setujui"))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-selesai", 0, 3, uid("u1"), allow("intervensi.setujui"))
 
 		require.NoError(t, err)
 		repo.AssertExpectations(t)
@@ -169,10 +177,10 @@ func TestMove(t *testing.T) {
 	t.Run("izin tahap tujuan tidak terpenuhi ditolak dan dicatat", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 
-		_, err := uc.Move(context.Background(), "INT-301", "t-petakan", 0, 3, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-petakan", 0, 3, uid("u1"), allow(domain.IzinBawaan))
 
 		var forbidden *ForbiddenError
 		require.ErrorAs(t, err, &forbidden)
@@ -193,10 +201,10 @@ func TestMove(t *testing.T) {
 		}
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(tahap, nil)
 
-		_, err := uc.Move(context.Background(), "INT-301", "t-akhir", 0, 3, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-akhir", 0, 3, uid("u1"), allow(domain.IzinBawaan))
 
 		var forbidden *ForbiddenError
 		require.ErrorAs(t, err, &forbidden)
@@ -209,20 +217,20 @@ func TestMove(t *testing.T) {
 		assert.Equal(t, "Petakan suplai", entry.Metadata["dilewati"])
 
 		// Pemegang izin tahap itu boleh melompatinya.
-		repo.On("Move", mock.Anything, "INT-301", "t-akhir", 0, true, 3, uid("u1")).Return(4, nil)
-		_, err = uc.Move(context.Background(), "INT-301", "t-akhir", 0, 3, uid("u1"), allow(domain.IzinBawaan, "intervensi.setujui"))
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-akhir", 0, true, 3, uid("u1")).Return(4, nil)
+		_, err = uc.Move(context.Background(), rujukanID("INT-301"), "t-akhir", 0, 3, uid("u1"), allow(domain.IzinBawaan, "intervensi.setujui"))
 		assert.NoError(t, err)
 	})
 
 	t.Run("mundur melewati tahap persetujuan tidak dianggap melompat", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, _ := newTestUseCase(repo)
-		maju := &domain.Intervensi{ID: "INT-302", Siklus: "TEKANAN", Tahap: "t-selesai", Versi: 1}
-		repo.On("GetByID", mock.Anything, "INT-302").Return(maju, nil)
+		maju := &domain.Intervensi{ID: kid("INT-302"), Siklus: "TEKANAN", Tahap: "t-selesai", Versi: 1}
+		repo.On("GetByID", mock.Anything, rujukanID("INT-302")).Return(maju, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		repo.On("Move", mock.Anything, "INT-302", "t-ews", 0, false, 1, uid("u1")).Return(2, nil)
+		repo.On("Move", mock.Anything, kid("INT-302"), "t-ews", 0, false, 1, uid("u1")).Return(2, nil)
 
-		_, err := uc.Move(context.Background(), "INT-302", "t-ews", 0, 1, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-302"), "t-ews", 0, 1, uid("u1"), allow(domain.IzinBawaan))
 
 		require.NoError(t, err)
 	})
@@ -230,11 +238,11 @@ func TestMove(t *testing.T) {
 	t.Run("versi usang diteruskan sebagai konflik tanpa audit", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		repo.On("Move", mock.Anything, "INT-301", "t-ews", 0, false, 2, uid("u1")).Return(0, domain.ErrVersiUsang)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-ews", 0, false, 2, uid("u1")).Return(0, domain.ErrVersiUsang)
 
-		_, err := uc.Move(context.Background(), "INT-301", "t-ews", 0, 2, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-ews", 0, 2, uid("u1"), allow(domain.IzinBawaan))
 
 		assert.ErrorIs(t, err, ErrVersiUsang)
 		assert.Empty(t, recorder.Entries())
@@ -243,10 +251,10 @@ func TestMove(t *testing.T) {
 	t.Run("tahap milik siklus lain ditolak", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, _ := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 
-		_, err := uc.Move(context.Background(), "INT-301", "n-pantau", 0, 3, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "n-pantau", 0, 3, uid("u1"), allow(domain.IzinBawaan))
 
 		assert.ErrorIs(t, err, ErrInvalidTahap)
 	})
@@ -254,9 +262,9 @@ func TestMove(t *testing.T) {
 	t.Run("kartu tidak ada", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, _ := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "X").Return(nil, gorm.ErrRecordNotFound)
+		repo.On("GetByID", mock.Anything, idx.RujukanUUID{Kode: "X"}).Return(nil, gorm.ErrRecordNotFound)
 
-		_, err := uc.Move(context.Background(), "X", "t-ews", 0, 1, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), idx.RujukanUUID{Kode: "X"}, "t-ews", 0, 1, uid("u1"), allow(domain.IzinBawaan))
 
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
@@ -264,11 +272,11 @@ func TestMove(t *testing.T) {
 	t.Run("kartu hilang saat dipindah menjadi tidak ditemukan", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		repo.On("Move", mock.Anything, "INT-301", "t-ews", 0, false, 3, uid("u1")).Return(0, domain.ErrNotFound)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-ews", 0, false, 3, uid("u1")).Return(0, domain.ErrNotFound)
 
-		_, err := uc.Move(context.Background(), "INT-301", "t-ews", 0, 3, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-ews", 0, 3, uid("u1"), allow(domain.IzinBawaan))
 
 		assert.ErrorIs(t, err, ErrNotFound)
 		assert.Empty(t, recorder.Entries())
@@ -277,11 +285,11 @@ func TestMove(t *testing.T) {
 	t.Run("galat repository diteruskan tanpa audit", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCase(repo)
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		repo.On("Move", mock.Anything, "INT-301", "t-ews", 0, false, 3, uid("u1")).Return(0, assert.AnError)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-ews", 0, false, 3, uid("u1")).Return(0, assert.AnError)
 
-		_, err := uc.Move(context.Background(), "INT-301", "t-ews", 0, 3, uid("u1"), allow(domain.IzinBawaan))
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-ews", 0, 3, uid("u1"), allow(domain.IzinBawaan))
 
 		assert.ErrorIs(t, err, assert.AnError)
 		assert.Empty(t, recorder.Entries())
@@ -341,22 +349,69 @@ func TestBulkAksi(t *testing.T) {
 func TestListRiwayat(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
-	repo.On("GetByID", mock.Anything, "X").Return(nil, gorm.ErrRecordNotFound)
-	_, err := uc.ListRiwayat(context.Background(), "X")
+	repo.On("GetByID", mock.Anything, idx.RujukanUUID{Kode: "X"}).Return(nil, gorm.ErrRecordNotFound)
+	_, err := uc.ListRiwayat(context.Background(), idx.RujukanUUID{Kode: "X"})
 	assert.ErrorIs(t, err, ErrNotFound)
 
-	repo.On("GetByID", mock.Anything, "INT-1").Return(&domain.Intervensi{ID: "INT-1"}, nil)
-	repo.On("ListRiwayat", mock.Anything, "INT-1").Return([]domain.Riwayat{{IntervensiRiwayat: domain.IntervensiRiwayat{Aksi: "BUAT"}}}, nil)
-	items, err := uc.ListRiwayat(context.Background(), "INT-1")
+	repo.On("GetByID", mock.Anything, rujukanID("INT-1")).Return(&domain.Intervensi{ID: kid("INT-1")}, nil)
+	repo.On("ListRiwayat", mock.Anything, kid("INT-1")).Return([]domain.Riwayat{{IntervensiRiwayat: domain.IntervensiRiwayat{Aksi: "BUAT"}}}, nil)
+	items, err := uc.ListRiwayat(context.Background(), rujukanID("INT-1"))
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
+}
+
+// Kode tampilan lama (INT-n) di URL diselesaikan ke kartu; repository dan audit memakai UUID kartu.
+func TestRujukanKode_DiselesaikanKeUUIDDiRepositoryDanAudit(t *testing.T) {
+	kode := "INT-301"
+	card := &domain.Intervensi{ID: kid("INT-301"), Kode: &kode, Siklus: "TEKANAN", Tahap: "t-ews", Versi: 3}
+	alias := idx.RujukanUUID{Kode: "INT-301"}
+
+	t.Run("Move", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, recorder := newTestUseCase(repo)
+		repo.On("GetByID", mock.Anything, alias).Return(card, nil)
+		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-ews", 0, false, 3, uid("u1")).Return(4, nil)
+
+		_, err := uc.Move(context.Background(), alias, "t-ews", 0, 3, uid("u1"), allow(domain.IzinBawaan))
+
+		require.NoError(t, err)
+		repo.AssertExpectations(t)
+		entry, _ := recorder.Last()
+		assert.Equal(t, kid("INT-301"), entry.EntitasID)
+	})
+	t.Run("ListRiwayat", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		repo.On("GetByID", mock.Anything, alias).Return(card, nil)
+		repo.On("ListRiwayat", mock.Anything, kid("INT-301")).Return([]domain.Riwayat{}, nil)
+
+		_, err := uc.ListRiwayat(context.Background(), alias)
+
+		require.NoError(t, err)
+		repo.AssertExpectations(t)
+	})
+	t.Run("Ajukan", func(t *testing.T) {
+		uc, repo, wf, rec := newWorkflowUseCase()
+		repo.On("GetByID", mock.Anything, alias).Return(card, nil)
+		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
+		in := domain.AjukanInput{KartuID: kid("INT-301"), Jenis: domain.JenisPindahTahap, TahapTujuan: "t-petakan", Oleh: uid("u1")}
+		wf.On("Ajukan", mock.Anything, in).Return(permintaan(domain.PersetujuanMenunggu, 1, uid("u1")), nil)
+
+		_, err := uc.Ajukan(context.Background(), alias, "t-petakan", "", uid("u1"))
+
+		require.NoError(t, err)
+		wf.AssertExpectations(t)
+		entry, _ := rec.Last()
+		assert.Equal(t, kid("INT-301"), entry.EntitasID)
+	})
 }
 
 func TestListAndListTahap(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
 	q := domain.ListQuery{Siklus: "TEKANAN"}
-	repo.On("List", mock.Anything, q).Return([]domain.Kartu{{Intervensi: domain.Intervensi{ID: "INT-301"}}}, nil)
+	repo.On("List", mock.Anything, q).Return([]domain.Kartu{{Intervensi: domain.Intervensi{ID: kid("INT-301")}}}, nil)
 	repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 
 	cards, err := uc.List(context.Background(), q)

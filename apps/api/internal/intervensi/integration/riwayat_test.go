@@ -14,7 +14,7 @@ func (s *suite) pindah(t *testing.T, email, id, tahap string, urutan, versi int)
 	Body string
 } {
 	t.Helper()
-	w := s.call(t, http.MethodPatch, "/v1/intervensi/"+id+"/tahap", email, map[string]any{"tahap": tahap, "urutan": urutan, "versi": versi})
+	w := s.call(t, http.MethodPatch, "/v1/intervensi/"+rujukan(id)+"/tahap", email, map[string]any{"tahap": tahap, "urutan": urutan, "versi": versi})
 	return &struct {
 		Code int
 		Body string
@@ -22,6 +22,7 @@ func (s *suite) pindah(t *testing.T, email, id, tahap string, urutan, versi int)
 }
 
 type riwayatRow struct {
+	ID       string  `json:"id"`
 	Aksi     string  `json:"aksi"`
 	Dari     *string `json:"dari"`
 	Ke       *string `json:"ke"`
@@ -31,7 +32,7 @@ type riwayatRow struct {
 
 func riwayat(t *testing.T, s *suite, id string) []riwayatRow {
 	t.Helper()
-	w := s.call(t, http.MethodGet, "/v1/intervensi/"+id+"/riwayat", emailLihat, nil)
+	w := s.call(t, http.MethodGet, "/v1/intervensi/"+rujukan(id)+"/riwayat", emailLihat, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	return data[[]riwayatRow](t, w)
 }
@@ -153,14 +154,14 @@ func TestHistory_CreateAssignEscalateAndMove(t *testing.T) {
 		return w.Code, data[hasilBulk](t, w)
 	}
 
-	code, res := bulk("tugaskan", id, "INT-319", "INT-9999", id)
+	code, res := bulk("tugaskan", id, kid("INT-319"), kid("INT-9999"), id)
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, 1, res.Berhasil)
 	assert.Equal(t, 2, res.Gagal)
 	require.Len(t, res.Hasil, 3, "id ganda dibuang; hasil per kartu sesuai urutan")
 	assert.Equal(t, id, res.Hasil[0].ID)
 	assert.True(t, res.Hasil[0].Berhasil)
-	assert.Equal(t, "INT-319", res.Hasil[1].ID)
+	assert.Equal(t, kid("INT-319"), res.Hasil[1].ID)
 	assert.Equal(t, "Kartu sudah selesai", res.Hasil[1].Alasan)
 	assert.Equal(t, "Kartu tidak ditemukan", res.Hasil[2].Alasan)
 
@@ -211,8 +212,26 @@ func TestBulkAndHistoryAuthorization(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/intervensi/bulk", emailKelola, map[string]any{"action": "hapus", "ids": []string{"INT-301"}}).Code)
 	assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/intervensi/bulk", emailKelola, map[string]any{"action": "tugaskan", "ids": []string{}}).Code)
+	for _, ids := range [][]string{{"INT-301"}, {"bukan-uuid"}, {kid("INT-301"), "INT-302"}, {"00000000-0000-0000-0000-00000000000Z"}} {
+		w := s.call(t, http.MethodPost, "/v1/intervensi/bulk", emailKelola, map[string]any{"action": "tugaskan", "ids": ids})
+		assert.Equal(t, http.StatusBadRequest, w.Code, "ID di body harus UUID (kode lama ditolak): %v: %s", ids, w.Body.String())
+	}
 
 	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodGet, "/v1/intervensi/INT-301/riwayat", "", nil).Code)
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/intervensi/INT-301/riwayat", emailTanpaIzin, nil).Code)
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/intervensi/INT-9999/riwayat", emailLihat, nil).Code)
+	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/intervensi/"+kid("INT-9999")+"/riwayat", emailLihat, nil).Code)
+	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/intervensi/bukan-uuid/riwayat", emailLihat, nil).Code)
+}
+
+func TestHistory_AliasAndUUIDReturnTheSameTimeline(t *testing.T) {
+	s := sharedSuite(t)
+	byUUID := data[[]riwayatRow](t, s.call(t, http.MethodGet, "/v1/intervensi/"+kid("INT-303")+"/riwayat", emailLihat, nil))
+	byKode := data[[]riwayatRow](t, s.call(t, http.MethodGet, "/v1/intervensi/INT-303/riwayat", emailLihat, nil))
+
+	require.Len(t, byUUID, 2)
+	assert.Equal(t, byUUID, byKode, "kode lama (tautan lama) menunjuk kartu yang sama")
+	for _, r := range byUUID {
+		assert.Regexp(t, `^[1-9][0-9]*$`, r.ID, "ID riwayat adalah string desimal")
+	}
 }

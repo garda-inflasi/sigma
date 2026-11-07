@@ -1,6 +1,10 @@
 // Package seeder mengisi definisi tahap intervensi (referensi, aman di produksi)
 // dan kartu kanban contoh (demo, hanya pengembangan). Komoditas dan kabupaten
 // berasal dari master.reference; pengguna dari auth.demo; alert dari ews.demo.
+//
+// ID kartu adalah UUID stabil idx.UUIDStabil("intervensi", "<kode>") (sama dengan migrasi 000112), jadi basis
+// data baru dan basis data hasil migrasi memakai UUID yang sama dan seed tidak menggandakan baris. Kode
+// tampilan INT-n disimpan di kolom kode.
 package seeder
 
 import (
@@ -9,6 +13,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -57,10 +62,14 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 
 	var persetujuan int
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := isiAlertKartu(tx, kartu); err != nil {
+			return err
+		}
+		// id adalah UUID stabil dari kode, jadi ON CONFLICT (id) aman (bukan kolom identity).
 		err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"siklus", "tahap", "urutan", "judul", "deskripsi", "komoditas_kode", "kabupaten_kode", "prioritas",
+				"kode", "siklus", "tahap", "urutan", "judul", "deskripsi", "komoditas_kode", "kabupaten_kode", "prioritas",
 				"tenggat", "rekomendasi_ai", "checklist_selesai", "checklist_total", "ews_alert_id", "dibuat_oleh_id",
 				"dibuat_pada", "selesai_pada", "versi", "dieskalasi_pada", "dieskalasi_oleh_id", "tahap_sejak",
 			}),
@@ -89,6 +98,51 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	}
 	return DemoSummary{Kartu: len(kartu), PenanggungJawab: len(pj), Riwayat: len(riwayat), Persetujuan: persetujuan}, nil
 }
+
+// isiAlertKartu mengisi EwsAlertID kartu dari kode alert pemicunya (BuildKartu tidak tahu ID basis data).
+// Alert harus sudah ada (ews.demo).
+func isiAlertKartu(tx *gorm.DB, kartu []domain.Intervensi) error {
+	var rows []struct {
+		ID   idx.ID
+		Kode string
+	}
+	if err := tx.Raw("SELECT id, kode FROM ews_alert WHERE kode IS NOT NULL").Scan(&rows).Error; err != nil {
+		return fmt.Errorf("baca alert ews: %w", err)
+	}
+	peta := make(map[string]idx.ID, len(rows))
+	for _, r := range rows {
+		peta[r.Kode] = r.ID
+	}
+	for i := range kartu {
+		kode := AlertKodeKartu(kartu[i])
+		if kode == "" {
+			continue
+		}
+		id, ok := peta[kode]
+		if !ok {
+			return fmt.Errorf("seed kartu: alert %s belum ada (jalankan ews.demo lebih dulu)", kode)
+		}
+		kartu[i].EwsAlertID = &id
+	}
+	return nil
+}
+
+// AlertKodeKartu mengembalikan kode alert EWS (EWS-n) pemicu kartu contoh itu menurut Kode kartu; kosong bila
+// kartu tidak punya alert.
+func AlertKodeKartu(k domain.Intervensi) string {
+	if k.Kode == nil {
+		return ""
+	}
+	for i, s := range kartuSeeds {
+		if kodeKartu(i) == *k.Kode {
+			return s.alert
+		}
+	}
+	return ""
+}
+
+// kodeKartu adalah kode tampilan kartu contoh ke-i: INT-<301 + i>.
+func kodeKartu(i int) string { return fmt.Sprintf("INT-%d", 301+i) }
 
 // BuildTahap menyusun baris tahap_intervensi_def; urutan dihitung per siklus.
 func BuildTahap() []domain.TahapDef {
@@ -143,8 +197,9 @@ func BuildKartu(now time.Time) ([]domain.Intervensi, []domain.IntervensiPJ) {
 	var pj []domain.IntervensiPJ
 	posisi := map[string]int{}
 	for i, s := range kartuSeeds {
+		kode := kodeKartu(i)
 		k := domain.Intervensi{
-			ID: fmt.Sprintf("INT-%d", 301+i), Siklus: s.siklus, Tahap: s.tahap, Urutan: posisi[s.tahap], Judul: s.judul,
+			ID: idx.UUIDStabil("intervensi", kode), Kode: &kode, Siklus: s.siklus, Tahap: s.tahap, Urutan: posisi[s.tahap], Judul: s.judul,
 			KomoditasKode: s.komoditas, KabupatenKode: s.kabupaten, Prioritas: s.prioritas,
 			Tenggat: now.Add(time.Duration(s.tenggat) * day), RekomendasiAI: s.ai,
 			ChecklistSelesai: s.selesai, ChecklistTotal: s.total, DibuatOlehID: &pembuat,
@@ -152,10 +207,6 @@ func BuildKartu(now time.Time) ([]domain.Intervensi, []domain.IntervensiPJ) {
 		}
 		posisi[s.tahap]++
 		k.TahapSejak = k.DibuatPada.Add(time.Duration(urutanTahap[s.tahap]-1) * selangTahap)
-		if s.alert != "" {
-			alert := s.alert
-			k.EwsAlertID = &alert
-		}
 		if final[s.tahap] {
 			selesai := now.Add(-day)
 			k.SelesaiPada = &selesai

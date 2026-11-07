@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -103,7 +104,7 @@ func susunRantai(tx *gorm.DB, kartuID string, in domain.AjukanInput) ([]rantai, 
 
 // bukaPersetujuan membuat permintaan persetujuan untuk kartu yang sudah terkunci dalam tx dan
 // mengembalikan id-nya. oleh kosong berarti sistem.
-func bukaPersetujuan(tx *gorm.DB, in domain.AjukanInput) (int64, error) {
+func bukaPersetujuan(tx *gorm.DB, in domain.AjukanInput) (idx.ID, error) {
 	var terbuka bool
 	err := tx.Raw("SELECT EXISTS (SELECT 1 FROM intervensi_persetujuan WHERE intervensi_id = ? AND status = 'MENUNGGU')", in.KartuID).Scan(&terbuka).Error
 	if err != nil {
@@ -124,7 +125,7 @@ func bukaPersetujuan(tx *gorm.DB, in domain.AjukanInput) (int64, error) {
 	if in.Oleh != "" {
 		pengaju = &in.Oleh
 	}
-	var id int64
+	var id idx.ID
 	err = tx.Raw(`
 		INSERT INTO intervensi_persetujuan (intervensi_id, alur_kode, jenis, tahap_tujuan, diajukan_oleh, catatan)
 		VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
@@ -143,7 +144,7 @@ func bukaPersetujuan(tx *gorm.DB, in domain.AjukanInput) (int64, error) {
 }
 
 func (r *Repository) Ajukan(ctx context.Context, in domain.AjukanInput) (*domain.Persetujuan, error) {
-	var id int64
+	var id idx.ID
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		kartu, err := kunciKartu(tx, in.KartuID)
 		if err != nil {
@@ -174,8 +175,8 @@ func isiLangkah(db *gorm.DB, items []domain.Persetujuan) error {
 	if len(items) == 0 {
 		return nil
 	}
-	ids := make([]int64, len(items))
-	index := make(map[int64]int, len(items))
+	ids := make([]idx.ID, len(items))
+	index := make(map[idx.ID]int, len(items))
 	for i, p := range items {
 		ids[i] = p.ID
 		index[p.ID] = i
@@ -195,11 +196,11 @@ func isiLangkah(db *gorm.DB, items []domain.Persetujuan) error {
 	return nil
 }
 
-func (r *Repository) GetPersetujuan(ctx context.Context, id int64) (*domain.Persetujuan, error) {
+func (r *Repository) GetPersetujuan(ctx context.Context, id idx.ID) (*domain.Persetujuan, error) {
 	return getPersetujuan(r.db.WithContext(ctx), id)
 }
 
-func getPersetujuan(db *gorm.DB, id int64) (*domain.Persetujuan, error) {
+func getPersetujuan(db *gorm.DB, id idx.ID) (*domain.Persetujuan, error) {
 	var items []domain.Persetujuan
 	if err := persetujuanQuery(db).Where("p.id = ?", id).Limit(1).Scan(&items).Error; err != nil {
 		return nil, fmt.Errorf("ambil persetujuan: %w", err)
@@ -390,11 +391,12 @@ func (r *Repository) BuatKartuOtomatis(ctx context.Context, in domain.KartuOtoma
 			hari = *awal.SLAHari
 		}
 
+		// ID (UUID) dibuat basis data; kode tampilan INT-n dari sequence khusus kode.
 		var ids []string
 		err := tx.Raw(`
-			INSERT INTO intervensi (id, siklus, tahap, urutan, judul, deskripsi, komoditas_kode, kabupaten_kode, prioritas,
+			INSERT INTO intervensi (kode, siklus, tahap, urutan, judul, deskripsi, komoditas_kode, kabupaten_kode, prioritas,
 			                        tenggat, rekomendasi_ai, ews_alert_id, dibuat_oleh_id, dibuat_pada, tahap_sejak)
-			SELECT 'INT-' || nextval('intervensi_id_seq')::text, CAST(@siklus AS siklus), @tahap,
+			SELECT 'INT-' || nextval('intervensi_kode_seq')::text, CAST(@siklus AS siklus), @tahap,
 			       COALESCE((SELECT MAX(urutan) + 1 FROM intervensi WHERE siklus = CAST(@siklus AS siklus) AND tahap = @tahap), 0),
 			       @judul, @deskripsi, @komoditas, @kabupaten, CAST(@prioritas AS prioritas),
 			       @tenggat, false, @alert, NULL, @now, @now
@@ -421,10 +423,14 @@ func (r *Repository) BuatKartuOtomatis(ctx context.Context, in domain.KartuOtoma
 				return fmt.Errorf("tugaskan penanggung jawab otomatis: %w", err)
 			}
 		}
-		return catatRiwayat(tx, id, domain.AksiBuat, nil, &awal.KodeTahap, "", "Dibuat otomatis dari alert "+in.AlertID)
+		sebutan := in.AlertKode
+		if sebutan == "" {
+			sebutan = in.AlertID.String()
+		}
+		return catatRiwayat(tx, id, domain.AksiBuat, nil, &awal.KodeTahap, "", "Dibuat otomatis dari alert "+sebutan)
 	})
 	if err != nil || id == "" {
 		return nil, err
 	}
-	return r.GetByID(ctx, id)
+	return r.GetByID(ctx, idx.RujukanUUID{ID: id})
 }

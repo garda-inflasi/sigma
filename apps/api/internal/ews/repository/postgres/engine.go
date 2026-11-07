@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -149,10 +150,13 @@ func (r *Repository) Ukur(ctx context.Context, aturan domain.AturanEws, now time
 func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.Time) (domain.HasilTulis, *domain.Alert, error) {
 	var (
 		hasil   domain.HasilTulis
-		alertID string
+		alertID idx.ID
 	)
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var aktif struct{ ID, Severity, Status string }
+		var aktif struct {
+			ID               idx.ID
+			Severity, Status string
+		}
 		res := tx.Raw(`
 			SELECT id, severity, status FROM ews_alert
 			 WHERE dedup_key = ? AND status <> 'SELESAI' FOR UPDATE`, in.DedupKey).Scan(&aktif)
@@ -185,11 +189,13 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 			return nil
 		}
 
-		var ids []string
+		// ID dibuat basis data (identity); kode tampilan EWS-n berasal dari sequence khusus kode, jadi tidak bisa
+		// bentrok antar-instance walau dua evaluasi berjalan bersamaan.
+		var ids []idx.ID
 		err = tx.Raw(`
-			INSERT INTO ews_alert (id, severity, jenis, judul, pesan, komoditas_kode, kabupaten_kode, nilai,
+			INSERT INTO ews_alert (kode, severity, jenis, judul, pesan, komoditas_kode, kabupaten_kode, nilai,
 			                       satuan_nilai, skor_dampak, sumber, dibuat_pada, aturan_id, dedup_key)
-			VALUES ('EWS-' || nextval('ews_alert_id_seq')::text, CAST(@severity AS severity), CAST(@jenis AS jenis_ews),
+			VALUES ('EWS-' || nextval('ews_alert_kode_seq')::text, CAST(@severity AS severity), CAST(@jenis AS jenis_ews),
 			        @judul, @pesan, @komoditas, @kabupaten, @nilai, @satuan, @skor, @sumber, @waktu, @aturan, @key)
 			ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL AND status <> 'SELESAI' DO NOTHING
 			RETURNING id`, map[string]any{
@@ -219,7 +225,7 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 	if hasil != domain.HasilDibuat && hasil != domain.HasilDinaikkan {
 		return hasil, nil, nil
 	}
-	alert, err := r.GetByID(ctx, alertID)
+	alert, err := r.GetByID(ctx, idx.RujukanID{ID: alertID})
 	if err != nil {
 		return "", nil, err
 	}
@@ -227,7 +233,7 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 }
 
 // naikkan memperbarui alert aktif bila tingkatnya lebih tinggi dari yang tersimpan.
-func naikkan(tx *gorm.DB, id, status, severityLama string, in domain.NewAlert) (bool, error) {
+func naikkan(tx *gorm.DB, id idx.ID, status, severityLama string, in domain.NewAlert) (bool, error) {
 	if domain.SeverityRank(in.Severity) <= domain.SeverityRank(severityLama) {
 		return false, nil
 	}
@@ -256,7 +262,7 @@ func naikkan(tx *gorm.DB, id, status, severityLama string, in domain.NewAlert) (
 const kunciEvent = 710_001
 
 // catatEvent mencatat peristiwa alert untuk aliran SSE dalam transaksi tx.
-func catatEvent(tx *gorm.DB, alertID string) error {
+func catatEvent(tx *gorm.DB, alertID idx.ID) error {
 	if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", kunciEvent).Error; err != nil {
 		return fmt.Errorf("kunci event ews: %w", err)
 	}

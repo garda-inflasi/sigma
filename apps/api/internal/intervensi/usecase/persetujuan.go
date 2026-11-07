@@ -9,7 +9,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
-	"gorm.io/gorm"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 var (
@@ -47,14 +47,12 @@ func (uc *UseCase) ListPersetujuan(ctx context.Context, status string) ([]domain
 // Ajukan meminta persetujuan memindahkan kartu ke tahap persetujuan atau tahap sesudahnya. Rantai
 // persetujuan terdiri dari alur tiap tahap persetujuan yang dilalui; setelah semua langkah disetujui
 // kartu dipindahkan otomatis. Hanya satu permintaan terbuka per kartu.
-func (uc *UseCase) Ajukan(ctx context.Context, kartuID, tahapTujuan, catatan, actorID string) (*domain.Persetujuan, error) {
-	card, err := uc.repo.GetByID(ctx, kartuID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrNotFound
-	}
+func (uc *UseCase) Ajukan(ctx context.Context, ref idx.RujukanUUID, tahapTujuan, catatan, actorID string) (*domain.Persetujuan, error) {
+	card, err := uc.kartu(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
+	kartuID := card.ID
 	defs, err := uc.repo.ListTahap(ctx)
 	if err != nil {
 		return nil, err
@@ -81,7 +79,7 @@ func (uc *UseCase) Ajukan(ctx context.Context, kartuID, tahapTujuan, catatan, ac
 // Putus memutuskan langkah persetujuan yang sedang menunggu. hasPermission harus memenuhi izin langkah itu;
 // pengaju dan pemutus langkah sebelumnya tidak boleh memutus (pemisahan tugas). Keputusan, termasuk
 // pemindahan kartu setelah langkah terakhir, dicatat di audit.
-func (uc *UseCase) Putus(ctx context.Context, id int64, keputusan, catatan, actorID string, hasPermission func(string) bool) (*domain.Persetujuan, error) {
+func (uc *UseCase) Putus(ctx context.Context, id idx.ID, keputusan, catatan, actorID string, hasPermission func(string) bool) (*domain.Persetujuan, error) {
 	catatan = strings.TrimSpace(catatan)
 	if keputusan == domain.KeputusanTolak && catatan == "" {
 		return nil, ErrCatatanWajib

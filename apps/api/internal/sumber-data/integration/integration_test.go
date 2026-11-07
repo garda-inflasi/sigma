@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	sumberRoutes "github.com/garda-inflasi/api/internal/sumber-data/routes"
 	sumberseeder "github.com/garda-inflasi/api/internal/sumber-data/seeder"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -41,6 +44,9 @@ const (
 )
 
 var pg *pgtest.Server
+
+// sid memberi UUID sumber seed dari kodenya (sama dengan hasil migrasi data lama).
+func sid(kode string) string { return sumberseeder.IDSumber(kode) }
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -74,8 +80,8 @@ func sharedSuite(t *testing.T) *suite {
 		require.NoError(t, err)
 		_, err = ingestionseeder.SeedReference(t.Context(), db)
 		require.NoError(t, err)
-		require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE id = 'SRC-BI'`).Error)
-		require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES ('SRC-BI', 'WILAYAH', '101', '1171')`).Error)
+		require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE kode = 'SRC-BI'`).Error)
+		require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '101', '1171')`, sid("SRC-BI")).Error)
 		grid, err := os.ReadFile("../../ingestion/connector/pihps/testdata/grid_kota.json")
 		require.NoError(t, err)
 		fetcher := &ingestiontest.Fetcher{Respons: map[string][]byte{"wilayah=101": grid}}
@@ -140,6 +146,7 @@ func (s *suite) login(t *testing.T, email string) string {
 
 type sumberRow struct {
 	ID             string   `json:"id"`
+	Kode           string   `json:"kode"`
 	Jenis          string   `json:"jenis"`
 	JadwalCron     string   `json:"jadwal_cron"`
 	Status         string   `json:"status"`
@@ -156,10 +163,11 @@ func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 	return res.Data
 }
 
-func (s *suite) statusOf(t *testing.T, id string) string {
+// statusOf membaca status sumber ber-kode itu.
+func (s *suite) statusOf(t *testing.T, kode string) string {
 	t.Helper()
 	var status string
-	require.NoError(t, s.db.Raw(`SELECT status::text FROM sumber_data WHERE id = ?`, id).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT status::text FROM sumber_data WHERE kode = ?`, kode).Scan(&status).Error)
 	return status
 }
 
@@ -188,7 +196,8 @@ func TestSumberData_ListMatchesSeededCatalog(t *testing.T) {
 	require.Len(t, rows, 8)
 	by := map[string]sumberRow{}
 	for _, r := range rows {
-		by[r.ID] = r
+		by[r.Kode] = r
+		assert.Equal(t, sid(r.Kode), r.ID, "id = UUID stabil dari kode, sama dengan hasil migrasi data lama")
 	}
 	assert.Equal(t, "SCRAPER", by["SRC-BAPANAS"].Jenis)
 	assert.Equal(t, "TERTUNDA", by["SRC-BAPANAS"].Status)
@@ -201,7 +210,7 @@ func TestSumberData_ListMatchesSeededCatalog(t *testing.T) {
 
 func TestSumberData_NeverRunSourceSerializesNulls(t *testing.T) {
 	s := sharedSuite(t)
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'BELUM_AKTIF', terakhir_jalan = NULL, keberhasilan_7h = NULL, latensi_ms = 0 WHERE id = 'SRC-OWM'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'BELUM_AKTIF', terakhir_jalan = NULL, keberhasilan_7h = NULL, latensi_ms = 0 WHERE kode = 'SRC-OWM'`).Error)
 
 	row := decode[sumberRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/SRC-OWM", emailLihat, nil))
 
@@ -214,10 +223,34 @@ func TestSumberData_Get(t *testing.T) {
 	s := sharedSuite(t)
 	s.reset(t)
 
-	row := decode[sumberRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/SRC-BI", emailLihat, nil))
-	assert.Equal(t, "SRC-BI", row.ID)
+	t.Run("lewat UUID", func(t *testing.T) {
+		row := decode[sumberRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/"+sid("SRC-BI"), emailLihat, nil))
+		assert.Equal(t, sid("SRC-BI"), row.ID)
+		assert.Equal(t, "SRC-BI", row.Kode)
+	})
 
-	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/sumber-data/TIDAK-ADA", emailLihat, nil).Code)
+	t.Run("lewat kode sebagai alias (tautan lama tetap berlaku)", func(t *testing.T) {
+		row := decode[sumberRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/SRC-BI", emailLihat, nil))
+		assert.Equal(t, sid("SRC-BI"), row.ID)
+		assert.Equal(t, "SRC-BI", row.Kode)
+	})
+
+	t.Run("UUID huruf besar dikanonkan", func(t *testing.T) {
+		row := decode[sumberRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/"+strings.ToUpper(sid("SRC-BI")), emailLihat, nil))
+		assert.Equal(t, sid("SRC-BI"), row.ID)
+	})
+
+	t.Run("tidak ada atau salah bentuk dijawab 404", func(t *testing.T) {
+		for _, ref := range []string{
+			"TIDAK-ADA",                  // kode yang tidak ada
+			idx.UUIDStabil("x", "y"),     // UUID yang sah tetapi tidak ada
+			strings.Repeat("a", 65),      // lebih panjang dari kolom kode
+			"12345",                      // angka murni bukan UUID dan tidak ada sebagai kode
+			"1;DROP TABLE sumber_data--", // teks bebas tidak pernah sampai ke kolom uuid
+		} {
+			assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/sumber-data/"+url.PathEscape(ref), emailLihat, nil).Code, ref)
+		}
+	})
 }
 
 func TestSumberData_BulkJedaAndLanjutkan(t *testing.T) {
@@ -251,8 +284,20 @@ func TestSumberData_BulkJedaAndLanjutkan(t *testing.T) {
 		assert.Equal(t, "TERTUNDA", s.statusOf(t, "SRC-BPS"))
 	})
 
+	t.Run("jeda dan lanjutkan menerima UUID maupun kode, ejaan ganda dihitung satu", func(t *testing.T) {
+		s.reset(t)
+		w := s.call(t, http.MethodPost, "/v1/sumber-data/bulk", emailKelola, map[string]any{
+			"action": "jeda", "ids": []string{sid("SRC-DJPB"), "SRC-DJPB", strings.ToUpper(sid("SRC-OWM"))},
+		})
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, hasil{Berhasil: 2, Gagal: 0}, decode[hasil](t, w))
+		assert.Equal(t, "DIJEDA", s.statusOf(t, "SRC-DJPB"))
+		assert.Equal(t, "DIJEDA", s.statusOf(t, "SRC-OWM"))
+		s.reset(t)
+	})
+
 	t.Run("lanjutkan sumber yang belum pernah berjalan kembali BELUM_AKTIF", func(t *testing.T) {
-		require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA', terakhir_jalan = NULL WHERE id = 'SRC-CS'`).Error)
+		require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA', terakhir_jalan = NULL WHERE kode = 'SRC-CS'`).Error)
 
 		s.call(t, http.MethodPost, "/v1/sumber-data/bulk", emailKelola, map[string]any{"action": "lanjutkan", "ids": []string{"SRC-CS"}})
 
@@ -265,11 +310,12 @@ func TestSumberData_BulkValidation(t *testing.T) {
 	s.reset(t)
 
 	for name, body := range map[string]map[string]any{
-		"aksi tidak dikenal":      {"action": "hapus", "ids": []string{"SRC-BPS"}},
-		"jalankan belum didukung": {"action": "jalankan", "ids": []string{"SRC-BPS"}},
-		"tanpa id":                {"action": "jeda", "ids": []string{}},
-		"id kosong":               {"action": "jeda", "ids": []string{""}},
-		"tanpa aksi":              {"ids": []string{"SRC-BPS"}},
+		"aksi tidak dikenal":       {"action": "hapus", "ids": []string{"SRC-BPS"}},
+		"jalankan belum didukung":  {"action": "jalankan", "ids": []string{"SRC-BPS"}},
+		"tanpa id":                 {"action": "jeda", "ids": []string{}},
+		"id kosong":                {"action": "jeda", "ids": []string{""}},
+		"id lebih panjang dari 64": {"action": "jeda", "ids": []string{strings.Repeat("a", 65)}},
+		"tanpa aksi":               {"ids": []string{"SRC-BPS"}},
 	} {
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/sumber-data/bulk", emailKelola, body).Code, name)
 	}

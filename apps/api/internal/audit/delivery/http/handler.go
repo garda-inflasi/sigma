@@ -13,6 +13,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit/domain"
 	"github.com/garda-inflasi/api/internal/audit/dto"
 	"github.com/garda-inflasi/api/internal/audit/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -52,9 +53,18 @@ func (h *Handler) List(c *gin.Context) {
 	response.Success(c, dto.ToAuditPageResponse(page))
 }
 
+// maksKodeAudit adalah panjang kode ID lama (kolom kode varchar(64)).
+const maksKodeAudit = 64
+
 // GET /v1/audit/:id
+// :id adalah ID BIGINT, atau kode (ID lama baris yang dibuat sebelum migrasi 000115) sebagai alias.
+// ID yang salah bentuk dijawab 404, sama dengan ID yang tidak ada.
 func (h *Handler) Get(c *gin.Context) {
-	detail, err := h.uc.Get(c.Request.Context(), c.Param("id"))
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKodeAudit, "Entri audit tidak ditemukan")
+	if !ok {
+		return
+	}
+	detail, err := h.uc.Get(c.Request.Context(), ref)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			response.NotFound(c, "Entri audit tidak ditemukan")

@@ -56,14 +56,15 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 }
 
 const (
-	idSiklusDemo = "SE-11-DEMO"
+	// kodeSiklusDemo adalah kunci idempotensi siklus contoh (kolom kode, UNIQUE).
+	kodeSiklusDemo = "SE-11-DEMO"
 	// hariTekanan: siklus TEKANAN contoh dimulai enam hari sebelum now, seperti skenario demo
 	// (cabai melonjak sejak awal Oktober).
 	hariTekanan = 6
 )
 
 // SeedDemo mengisi satu siklus TEKANAN aktif untuk Aceh lalu menyegarkan agregat
-// dashboard dari data yang sudah di-seed. Idempoten: id siklus tetap, sehingga
+// dashboard dari data yang sudah di-seed. Idempoten: kode siklus tetap, sehingga
 // tanggal mulai bergeser mengikuti now tanpa menggandakan baris. Hanya untuk demo.
 //
 // Prasyarat: master.reference; agar agregat terisi, jalankan juga harga.demo,
@@ -71,10 +72,10 @@ const (
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	mulai := now.AddDate(0, 0, -hariTekanan).Truncate(time.Second)
 	siklus := siklusdomain.SiklusEkonomi{
-		ID: idSiklusDemo, WilayahKode: siklusdomain.WilayahBawaan, Siklus: siklusdomain.SiklusTekanan, MulaiPada: mulai,
+		Kode: new(kodeSiklusDemo), WilayahKode: siklusdomain.WilayahBawaan, Siklus: siklusdomain.SiklusTekanan, MulaiPada: mulai,
 	}
 	err := db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
+		Columns:   []clause.Column{{Name: "kode"}},
 		DoUpdates: clause.AssignmentColumns([]string{"wilayah_kode", "siklus", "mulai_pada", "akhir_pada"}),
 	}).Create(&siklus).Error
 	if err != nil {

@@ -41,9 +41,9 @@ func (r *Repository) FindActor(ctx context.Context, id string) (*domain.Actor, e
 	return &actor, nil
 }
 
-func (r *Repository) Get(ctx context.Context, id string) (*domain.AuditLog, error) {
+func (r *Repository) Get(ctx context.Context, ref idx.RujukanID) (*domain.AuditLog, error) {
 	var row domain.AuditLog
-	res := r.db.WithContext(ctx).Where("id = ?", id).Limit(1).Find(&row)
+	res := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).Limit(1).Find(&row)
 	if res.Error != nil {
 		return nil, fmt.Errorf("ambil audit log: %w", res.Error)
 	}

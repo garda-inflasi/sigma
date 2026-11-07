@@ -11,6 +11,7 @@ import (
 	eksekutif "github.com/garda-inflasi/api/internal/eksekutif/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 	sumber "github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -30,21 +31,21 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Sumber(ctx context.Context, id string) (*sumber.SumberData, error) {
+func (r *Repository) Sumber(ctx context.Context, ref string) (*sumber.SumberData, error) {
 	var s sumber.SumberData
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&s).Error
+	err := r.db.WithContext(ctx).Where(sumber.Rujukan(ref).Kondisi("id", "kode")).First(&s).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, domain.ErrSumberTidakAda
 	}
 	if err != nil {
-		return nil, fmt.Errorf("baca sumber %s: %w", id, err)
+		return nil, fmt.Errorf("baca sumber %s: %w", ref, err)
 	}
 	return &s, nil
 }
 
 func (r *Repository) SumberAktif(ctx context.Context) ([]sumber.SumberData, error) {
 	var items []sumber.SumberData
-	if err := r.db.WithContext(ctx).Where("status <> ?", sumber.StatusDijeda).Order("id").Find(&items).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("status <> ?", sumber.StatusDijeda).Order("kode").Find(&items).Error; err != nil {
 		return nil, fmt.Errorf("baca sumber aktif: %w", err)
 	}
 	return items, nil
@@ -113,7 +114,7 @@ func (r *Repository) MulaiEksekusi(ctx context.Context, sumberID, pemicu string,
 	return e, nil
 }
 
-func (r *Repository) SimpanMentah(ctx context.Context, m domain.DataMentah) (int64, error) {
+func (r *Repository) SimpanMentah(ctx context.Context, m domain.DataMentah) (idx.ID, error) {
 	sum := sha256.Sum256([]byte(m.Payload))
 	m.Checksum = hex.EncodeToString(sum[:])
 
@@ -128,7 +129,7 @@ func (r *Repository) SimpanMentah(ctx context.Context, m domain.DataMentah) (int
 		return 0, fmt.Errorf("simpan data mentah: %w", err)
 	}
 	if len(ids) == 1 {
-		return ids[0], nil
+		return idx.ID(ids[0]), nil
 	}
 
 	var id int64
@@ -136,7 +137,7 @@ func (r *Repository) SimpanMentah(ctx context.Context, m domain.DataMentah) (int
 	if err != nil {
 		return 0, fmt.Errorf("baca data mentah yang sudah ada: %w", err)
 	}
-	return id, nil
+	return idx.ID(id), nil
 }
 
 func (r *Repository) SimpanSilver(ctx context.Context, h domain.Hasil) error {
@@ -156,9 +157,6 @@ func (r *Repository) SimpanSilver(ctx context.Context, h domain.Hasil) error {
 		if rows := unik(h.Cuaca, func(x domain.CuacaHarian) string {
 			return fmt.Sprint(x.KabupatenKode, "|", x.Tanggal.Format(time.DateOnly), "|", x.Sumber)
 		}); len(rows) > 0 {
-			for i := range rows {
-				rows[i].ID = domain.IDCuaca(rows[i].KabupatenKode, rows[i].Tanggal, rows[i].Sumber)
-			}
 			err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "kabupaten_kode"}, {Name: "tanggal"}, {Name: "sumber"}},
 				DoUpdates: clause.AssignmentColumns([]string{"curah_hujan_mm", "suhu_c", "kelembapan", "anomali", "eksekusi_id", "data_mentah_id"}),

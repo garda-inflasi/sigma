@@ -34,7 +34,7 @@ type ingestionAdapter struct {
 	repo   ingest.Repository
 }
 
-func (a ingestionAdapter) Punya(id string) bool { return a.runner.Punya(id) }
+func (a ingestionAdapter) Punya(kode string) bool { return a.runner.Punya(kode) }
 
 func (a ingestionAdapter) Mulai(ctx context.Context, id, pemicu string, aktor *string) (usecase.Berjalan, error) {
 	run, err := a.runner.Mulai(ctx, id, pemicu, aktor)

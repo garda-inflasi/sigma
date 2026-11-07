@@ -7,10 +7,14 @@ import (
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
 	"github.com/garda-inflasi/api/internal/sumber-data/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
+// SumberDataResponse: ID adalah UUID; Kode adalah kode tampilan (SRC-BI) yang juga diterima sebagai alias di
+// rute /v1/sumber-data/:id.
 type SumberDataResponse struct {
 	ID             string     `json:"id"`
+	Kode           string     `json:"kode"`
 	Nama           string     `json:"nama"`
 	Penyedia       string     `json:"penyedia"`
 	Jenis          string     `json:"jenis"`
@@ -36,7 +40,7 @@ type BulkSumberDataResponse struct {
 
 func ToSumberDataResponse(s domain.SumberData, bisaDijalankan bool) SumberDataResponse {
 	return SumberDataResponse{
-		ID: s.ID, Nama: s.Nama, Penyedia: s.Penyedia, Jenis: s.Jenis, Cakupan: s.Cakupan,
+		ID: s.ID, Kode: s.Kode, Nama: s.Nama, Penyedia: s.Penyedia, Jenis: s.Jenis, Cakupan: s.Cakupan,
 		JadwalCron: s.JadwalCron, Status: s.Status, TerakhirJalan: s.TerakhirJalan,
 		Keberhasilan7h: s.Keberhasilan7h, LatensiMs: s.LatensiMs, RobotsTxtPatuh: s.RobotsTxtPatuh,
 		Atribusi: s.Atribusi, URLDasar: s.URLDasar, BisaDijalankan: bisaDijalankan,
@@ -44,10 +48,10 @@ func ToSumberDataResponse(s domain.SumberData, bisaDijalankan bool) SumberDataRe
 }
 
 // ToSumberDataResponses memetakan katalog; bisaDijalankan menentukan tombol per sumber.
-func ToSumberDataResponses(items []domain.SumberData, bisaDijalankan func(id string) bool) []SumberDataResponse {
+func ToSumberDataResponses(items []domain.SumberData, bisaDijalankan func(kode string) bool) []SumberDataResponse {
 	res := make([]SumberDataResponse, len(items))
 	for i, item := range items {
-		res[i] = ToSumberDataResponse(item, bisaDijalankan(item.ID))
+		res[i] = ToSumberDataResponse(item, bisaDijalankan(item.Kode))
 	}
 	return res
 }
@@ -55,7 +59,7 @@ func ToSumberDataResponses(items []domain.SumberData, bisaDijalankan func(id str
 // EksekusiResponse adalah satu baris riwayat eksekusi ingestion. Ringkasan berisi
 // rincian baris ditolak (alias tak terpetakan dan alasan tidak valid).
 type EksekusiResponse struct {
-	ID                 int64           `json:"id"`
+	ID                 idx.ID          `json:"id"`
 	SumberID           string          `json:"sumber_id"`
 	Pemicu             string          `json:"pemicu"`
 	Status             string          `json:"status"`
@@ -97,8 +101,8 @@ func ToEksekusiResponses(items []ingest.EksekusiSumber) []EksekusiResponse {
 // SampelResponse adalah cuplikan satu payload mentah (bronze). Ukuran adalah panjang
 // payload utuh dalam karakter; Cuplikan memuat awalnya saja.
 type SampelResponse struct {
-	ID              int64     `json:"id"`
-	EksekusiID      int64     `json:"eksekusi_id"`
+	ID              idx.ID    `json:"id"`
+	EksekusiID      idx.ID    `json:"eksekusi_id"`
 	KunciPermintaan string    `json:"kunci_permintaan"`
 	DiambilPada     time.Time `json:"diambil_pada"`
 	Ukuran          int       `json:"ukuran"`

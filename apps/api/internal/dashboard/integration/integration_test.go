@@ -309,7 +309,7 @@ func TestAuthorization(t *testing.T) {
 func TestSiklus_OnlyOneActiveCyclePerRegion(t *testing.T) {
 	s := sharedSuite(t)
 
-	err := s.db.Exec(`INSERT INTO siklus_ekonomi (id, wilayah_kode, siklus, mulai_pada) VALUES ('SE-GANDA', '11', 'NORMAL', now())`).Error
+	err := s.db.Exec(`INSERT INTO siklus_ekonomi (kode, wilayah_kode, siklus, mulai_pada) VALUES ('SE-GANDA', '11', 'NORMAL', now())`).Error
 
 	assert.Error(t, err, "indeks unik parsial menolak siklus aktif kedua")
 }

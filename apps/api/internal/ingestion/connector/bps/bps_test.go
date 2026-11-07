@@ -9,9 +9,13 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// idSumber adalah UUID baris sumber_data konektor ini (garda_uuid_stabil dari kode), sama dengan seed.
+var idSumber = idx.UUIDStabil("sumber_data", Kode)
 
 const kunciRahasia = "RAHASIA-API-BPS"
 
@@ -21,10 +25,10 @@ const konfigLengkap = `{"domain":"1100","variabel":{"ihk":"10","inflasi_mtm":"11
 
 func pemetaan() *domain.Pemetaan {
 	wilayah := func(alias, kode string) domain.PemetaanSumber {
-		return domain.PemetaanSumber{SumberID: SumberID, Jenis: domain.JenisWilayah, Alias: alias, KodeMaster: &kode}
+		return domain.PemetaanSumber{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: alias, KodeMaster: &kode}
 	}
 	komoditas := func(alias, kode string) domain.PemetaanSumber {
-		return domain.PemetaanSumber{SumberID: SumberID, Jenis: domain.JenisKomoditas, Alias: alias, KodeMaster: &kode}
+		return domain.PemetaanSumber{SumberID: idSumber, Jenis: domain.JenisKomoditas, Alias: alias, KodeMaster: &kode}
 	}
 	return domain.NewPemetaan([]domain.PemetaanSumber{
 		wilayah("aceh", "11"), wilayah("banda aceh", "1171"), wilayah("lhokseumawe", "1174"),

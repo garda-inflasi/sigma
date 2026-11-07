@@ -279,7 +279,7 @@ func TestEksekutif_AllBlocksOfficialClearsDemoLabel(t *testing.T) {
 	require.NoError(t, s.db.Exec(`UPDATE andil_inflasi SET sumber = 'BPS', andil = 0.07 WHERE periode = ? AND komoditas_kode = 'BWM'`, bulanLalu).Error)
 	require.NoError(t, s.db.Exec(`UPDATE neraca_pangan SET sumber = 'BAPANAS', produksi_ton = 100, konsumsi_ton = 80 WHERE periode = ? AND komoditas_kode = 'BRS-MED'`, bulanLalu).Error)
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO ruang_fiskal (id, tahun, instrumen, pagu, realisasi, per_tanggal, sumber) VALUES ('RF-RESMI-1', ?, 'BTT', 100, 40, ?, 'DJPB')`, bulanLalu.Year(), bulanLalu).Error)
+		INSERT INTO ruang_fiskal (kode, tahun, instrumen, pagu, realisasi, per_tanggal, sumber) VALUES ('RF-RESMI-1', ?, 'BTT', 100, 40, ?, 'DJPB')`, bulanLalu.Year(), bulanLalu).Error)
 
 	res := decode(t, s.get(t, "/v1/dashboard/eksekutif", emailEksekutif))
 

@@ -197,8 +197,8 @@ func TestRiwayatPeran_MembacaAksiApaPunYangMencatatPeranDanMenyaringSisanya(t *t
 		if sesudah != "" {
 			sd = sesudah
 		}
-		require.NoError(t, s.db.Exec(`INSERT INTO audit_log (id, waktu, aksi, entitas, entitas_id, hasil, sebelum, sesudah)
-			VALUES (md5(random()::text || clock_timestamp()::text), ?::timestamptz, ?, ?, ?, ?, ?::jsonb, ?::jsonb)`,
+		require.NoError(t, s.db.Exec(`INSERT INTO audit_log (waktu, aksi, entitas, entitas_id, hasil, sebelum, sesudah)
+			VALUES (?::timestamptz, ?, ?, ?, ?, ?::jsonb, ?::jsonb)`,
 			waktu, aksi, entitas, entitasID, hasil, sb, sd).Error)
 	}
 	sisip("INVITE_ACCEPT", "pengguna", uid("riw-3"), "BERHASIL", `{"peran":"OPS_MAHASISWA"}`, `{"peran":"OPS_AGREGATOR"}`, "2099-01-01 00:00:00+00")

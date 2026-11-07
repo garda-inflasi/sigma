@@ -2,6 +2,7 @@ package integration
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 type eksekusiRow struct {
-	ID                 int64          `json:"id"`
+	ID                 string         `json:"id"` // BIGINT ditulis sebagai string desimal
 	SumberID           string         `json:"sumber_id"`
 	Pemicu             string         `json:"pemicu"`
 	Status             string         `json:"status"`
@@ -81,6 +82,8 @@ func TestJalankan_MemicuRunNyataDanTercatat(t *testing.T) {
 	mulai := decode[eksekusiRow](t, w)
 	assert.Equal(t, "BERJALAN", mulai.Status, "respons tidak menunggu run selesai")
 	assert.Equal(t, "MANUAL", mulai.Pemicu)
+	assert.Equal(t, sid("SRC-BI"), mulai.SumberID, "eksekusi menunjuk UUID sumber")
+	assert.Regexp(t, `^[1-9][0-9]*$`, mulai.ID, "id eksekusi BIGINT sebagai string desimal")
 
 	hasil := s.tunggu(t, "SRC-BI")
 	assert.Equal(t, mulai.ID, hasil.ID)
@@ -96,7 +99,7 @@ func TestJalankan_MemicuRunNyataDanTercatat(t *testing.T) {
 
 	// Aksi tercatat di audit trail dengan aktornya.
 	var n int64
-	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'JALANKAN_SUMBER' AND entitas_id = 'SRC-BI' AND hasil = 'BERHASIL' AND aktor_email = ?`, emailKelola).Scan(&n).Error)
+	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'JALANKAN_SUMBER' AND entitas = 'sumber_data' AND entitas_id = ? AND hasil = 'BERHASIL' AND aktor_email = ?`, sid("SRC-BI"), emailKelola).Scan(&n).Error)
 	assert.EqualValues(t, 1, n)
 
 	// Katalog memuat statistik dari run nyata, bukan angka contoh.
@@ -131,7 +134,7 @@ func TestJalankan_Penolakan(t *testing.T) {
 	})
 
 	t.Run("dijeda", func(t *testing.T) {
-		require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE id = 'SRC-BI'`).Error)
+		require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE kode = 'SRC-BI'`).Error)
 		assert.Equal(t, http.StatusConflict, s.call(t, http.MethodPost, "/v1/sumber-data/SRC-BI/jalankan", emailKelola, nil).Code)
 		s.reset(t)
 	})
@@ -163,7 +166,11 @@ func TestEksekusi_BatasDanUrutan(t *testing.T) {
 
 	semua := decode[[]eksekusiRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/SRC-BI/eksekusi", emailLihat, nil))
 	require.Len(t, semua, 3)
-	assert.Greater(t, semua[0].ID, semua[1].ID, "terbaru lebih dulu")
+	id0, err0 := strconv.Atoi(semua[0].ID)
+	id1, err1 := strconv.Atoi(semua[1].ID)
+	require.NoError(t, err0)
+	require.NoError(t, err1)
+	assert.Greater(t, id0, id1, "terbaru lebih dulu")
 
 	dua := decode[[]eksekusiRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/SRC-BI/eksekusi?limit=2", emailLihat, nil))
 	assert.Len(t, dua, 2)
@@ -181,13 +188,13 @@ func TestKatalog_MenandaiSumberYangBisaDijalankan(t *testing.T) {
 	s.reset(t)
 
 	rows := decode[[]struct {
-		ID             string `json:"id"`
+		Kode           string `json:"kode"`
 		BisaDijalankan bool   `json:"bisa_dijalankan"`
 	}](t, s.call(t, http.MethodGet, "/v1/sumber-data", emailLihat, nil))
 
 	by := map[string]bool{}
 	for _, r := range rows {
-		by[r.ID] = r.BisaDijalankan
+		by[r.Kode] = r.BisaDijalankan
 	}
 	assert.True(t, by["SRC-BI"])
 	assert.False(t, by["SRC-DJPB"])
@@ -255,8 +262,8 @@ func TestPipeline_AkurasiDariSelisihLapanganVsEksternal(t *testing.T) {
 		('EH-PIPE-2', 'CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 90000, 'kg', 'DIVALIDASI', now())`).Error)
 	require.NoError(t, s.db.Exec(`
 		INSERT INTO harga_eksternal (sumber_id, komoditas_kode, kabupaten_kode, tanggal, tipe, harga, satuan) VALUES
-		('SRC-BI', 'BRS-MED', '1171', (now() AT TIME ZONE 'Asia/Jakarta')::date, 'KONSUMEN', 14000, 'kg'),
-		('SRC-BI', 'CBM-KRT', '1171', (now() AT TIME ZONE 'Asia/Jakarta')::date, 'KONSUMEN', 60000, 'kg')`).Error)
+		(?, 'BRS-MED', '1171', (now() AT TIME ZONE 'Asia/Jakarta')::date, 'KONSUMEN', 14000, 'kg'),
+		(?, 'CBM-KRT', '1171', (now() AT TIME ZONE 'Asia/Jakarta')::date, 'KONSUMEN', 60000, 'kg')`, sid("SRC-BI"), sid("SRC-BI")).Error)
 	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
 
 	p := decode[pipelineRow](t, s.call(t, http.MethodGet, "/v1/sumber-data/pipeline", emailLihat, nil))

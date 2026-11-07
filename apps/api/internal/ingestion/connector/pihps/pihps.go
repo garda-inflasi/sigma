@@ -33,8 +33,8 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 )
 
-// SumberID adalah id baris sumber_data PIHPS Nasional.
-const SumberID = "SRC-BI"
+// Kode adalah kode baris sumber_data PIHPS Nasional (sumber_data.kode).
+const Kode = "SRC-BI"
 
 const (
 	jalurGrid    = "/WebSite/TabelHarga/GetGridDataDaerah"
@@ -58,20 +58,20 @@ type Konektor struct{}
 // New membuat konektor PIHPS.
 func New() *Konektor { return &Konektor{} }
 
-func (*Konektor) SumberID() string { return SumberID }
+func (*Konektor) Kode() string { return Kode }
 
 func (*Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
 	var cfg konfigurasi
 	if len(in.Konfigurasi) > 0 {
 		if err := json.Unmarshal(in.Konfigurasi, &cfg); err != nil {
-			return nil, fmt.Errorf("konfigurasi %s tidak valid: %w", SumberID, err)
+			return nil, fmt.Errorf("konfigurasi %s tidak valid: %w", Kode, err)
 		}
 	}
 	if cfg.ProvinceID == "" {
-		return nil, fmt.Errorf("konfigurasi.province_id %s belum diisi (id provinsi menurut PIHPS)", SumberID)
+		return nil, fmt.Errorf("konfigurasi.province_id %s belum diisi (id provinsi menurut PIHPS)", Kode)
 	}
 	if in.URLDasar == "" {
-		return nil, fmt.Errorf("url_dasar %s belum diisi", SumberID)
+		return nil, fmt.Errorf("url_dasar %s belum diisi", Kode)
 	}
 	hari := cfg.Hari
 	if hari == 0 {
@@ -87,7 +87,7 @@ func (*Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
 
 	wilayah := in.Pemetaan.SemuaWilayah()
 	if len(wilayah) == 0 {
-		return nil, fmt.Errorf("pemetaan_sumber WILAYAH untuk %s kosong: petakan regency_id PIHPS ke kode kabupaten/kota", SumberID)
+		return nil, fmt.Errorf("pemetaan_sumber WILAYAH untuk %s kosong: petakan regency_id PIHPS ke kode kabupaten/kota", Kode)
 	}
 
 	akhir := in.Sekarang
@@ -159,7 +159,7 @@ func (*Konektor) Normalisasi(in domain.Masukan, dok domain.Dokumen) (domain.Hasi
 					hasil.TambahTidakValid("harga di luar batas wajar")
 				default:
 					hasil.Harga = append(hasil.Harga, domain.HargaEksternal{
-						SumberID: SumberID, KomoditasKode: kode, KabupatenKode: kab, Tanggal: tanggal,
+						SumberID: in.SumberID, KomoditasKode: kode, KabupatenKode: kab, Tanggal: tanggal,
 						Tipe: domain.TipeHargaKonsumen, Harga: harga, Satuan: satuan,
 					})
 				}

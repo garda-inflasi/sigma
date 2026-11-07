@@ -62,7 +62,6 @@ export interface PolicyBriefDetailResponse extends PolicyBriefResponse {
   riwayat_versi: VersiBriefResponse[];
 }
 
-/** Brief lengkap dengan isi, sitasi, dan jejak penyusunan (model dan prompt bila LLM dipakai). */
 /** Satu versi isi brief; `id` adalah versi_id yang dirujuk telaah dan revisi. */
 export interface VersiBrief {
   id: string;
@@ -71,6 +70,7 @@ export interface VersiBrief {
   waktu: string;
 }
 
+/** Brief lengkap dengan isi, sitasi, dan jejak penyusunan (model dan prompt bila LLM dipakai). */
 export interface PolicyBriefDetail extends PolicyBrief {
   bagian: BagianBrief[];
   sitasi: SitasiBrief[];

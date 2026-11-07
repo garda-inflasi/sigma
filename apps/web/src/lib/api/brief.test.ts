@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { periodeBulanIni, toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetailResponse } from "./brief";
 
+const UUID_BRIEF = "dfb2ba45-a711-317e-a45e-313f19d1ab43";
+
 const respons = {
-  id: "PB-2026-10",
+  id: UUID_BRIEF,
+  kode: "PB-2026-10",
   periode: "Oktober 2026",
   judul: "Meredam tekanan harga cabai",
   status: "DRAF",
@@ -20,7 +23,8 @@ const respons = {
 describe("toPolicyBrief", () => {
   it("memetakan kolom API ke baris UI", () => {
     assert.deepEqual(toPolicyBrief(respons), {
-      id: "PB-2026-10",
+      id: UUID_BRIEF,
+      kode: "PB-2026-10",
       periode: "Oktober 2026",
       judul: "Meredam tekanan harga cabai",
       status: "DRAF",
@@ -70,6 +74,10 @@ describe("toPolicyBriefDetail", () => {
     prompt_versi: "brief-v1",
     prompt_hash: "abc",
     galat: null,
+    riwayat_versi: [
+      { id: "12", versi: 2, oleh: "Dr. Nurul Aini, S.E., M.E.", waktu: "2026-11-05T09:00:00Z" },
+      { id: "9", versi: 1, oleh: "Dr. Nurul Aini, S.E., M.E.", waktu: "2026-11-02T08:15:00Z" },
+    ],
   };
 
   it("memetakan isi, sitasi, dan jejak model", () => {
@@ -85,8 +93,30 @@ describe("toPolicyBriefDetail", () => {
     assert.equal(d.labelDraf, "Draf AI — wajib ditelaah manusia");
   });
 
+  it("mengekspos ID versi (BIGINT sebagai string) untuk dirujuk telaah dan revisi", () => {
+    const d = toPolicyBriefDetail(detail);
+
+    assert.equal(d.id, UUID_BRIEF, "ID brief UUID dipakai untuk tautan");
+    assert.equal(d.kode, "PB-2026-10", "kode PB-YYYY-MM untuk teks yang dibaca manusia");
+    assert.deepEqual(
+      d.riwayatVersi.map((v) => [v.id, v.versi]),
+      [
+        ["12", 2],
+        ["9", 1],
+      ],
+    );
+    assert.equal(typeof d.riwayatVersi[0].id, "string");
+  });
+
+  it("brief tanpa riwayat versi (respons lama atau draf belum selesai) memetakan larik kosong", () => {
+    const tanpa = { ...detail, riwayat_versi: undefined } as unknown as PolicyBriefDetailResponse;
+
+    assert.deepEqual(toPolicyBriefDetail(tanpa).riwayatVersi, []);
+    assert.deepEqual(toPolicyBriefDetail({ ...detail, riwayat_versi: [] }).riwayatVersi, []);
+  });
+
   it("brief yang belum selesai atau gagal punya isi kosong dan membawa galat", () => {
-    const d = toPolicyBriefDetail({ ...detail, status: "GAGAL", konten: {}, model_llm: null, prompt_versi: null, prompt_hash: null, galat: "kumpulkan data: db down" });
+    const d = toPolicyBriefDetail({ ...detail, status: "GAGAL", konten: {}, model_llm: null, prompt_versi: null, prompt_hash: null, galat: "kumpulkan data: db down", riwayat_versi: [] });
 
     assert.deepEqual(d.bagian, []);
     assert.deepEqual(d.sitasi, []);

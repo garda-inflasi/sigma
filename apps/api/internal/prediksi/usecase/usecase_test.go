@@ -50,7 +50,7 @@ func tanggal(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0,
 
 func contohView(nilai int) *domain.ProyeksiView {
 	return &domain.ProyeksiView{
-		ID: "PRD-X", KomoditasKode: "CBM-KRT", KomoditasNama: "Cabai merah keriting", KabupatenKode: "1171", KabupatenNama: "KOTA BANDA ACEH",
+		ID: 7, ModelID: 3, KomoditasKode: "CBM-KRT", KomoditasNama: "Cabai merah keriting", KabupatenKode: "1171", KabupatenNama: "KOTA BANDA ACEH",
 		TanggalTarget: tanggal(time.November, 19), HorizonHari: 14,
 		Nilai: nilai, Bawah: nilai - 5000, Atas: nilai + 5000, HargaDasar: 50000,
 		Faktor:     `[{"nama":"Stok cold storage","kontribusi":2.1,"detail":"Stok turun"},{"nama":"Curah hujan sentra","kontribusi":5.4,"detail":"2,1× normal"}]`,

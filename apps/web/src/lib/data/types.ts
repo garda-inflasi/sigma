@@ -331,7 +331,10 @@ export interface AuditDetail extends AuditRow {
 }
 
 export interface PolicyBrief {
+  /** UUID brief. Tautan memakai id; teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  /** Kode tampilan PB-YYYY-MM (satu brief per periode); juga diterima API sebagai alias id. */
+  kode?: string;
   periode: string;
   judul: string;
   /** DIPROSES = draf sedang disusun di server; GAGAL = penyusunan gagal dan dapat diulang. */

@@ -124,18 +124,9 @@ var kategoriPK = map[string]KategoriPK{
 }
 
 // tabelBelumSelaras: tabel yang masih melanggar invarian sampai migrasi konversinya diterapkan. Hapus entri
-// tabel begitu migrasinya selesai; nilai mencatat migrasi yang bertanggung jawab.
-var tabelBelumSelaras = map[string]string{
-	// 000114 prediksi, policy-brief
-	"prediksi_harga":     "000114",
-	"prediksi_evaluasi":  "000114",
-	"model_registry":     "000114",
-	"model_promosi":      "000114",
-	"skenario_simulasi":  "000114",
-	"policy_brief":       "000114",
-	"policy_brief_versi": "000114",
-	"brief_job":          "000114",
-}
+// tabel begitu migrasinya selesai; nilai mencatat migrasi yang bertanggung jawab. Kosong sejak 000115: seluruh
+// tabel sudah selaras, jadi tabel baru wajib selaras sejak migrasi pertamanya.
+var tabelBelumSelaras = map[string]string{}
 
 type kolomPK struct {
 	Tabel     string `gorm:"column:tabel"`

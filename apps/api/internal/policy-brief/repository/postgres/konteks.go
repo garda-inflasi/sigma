@@ -171,7 +171,7 @@ func (r *Repository) proyeksi(ctx context.Context, _ time.Time, data *domain.Dat
 	err := r.db.WithContext(ctx).Table("prediksi_harga AS p").
 		Select("DISTINCT ON (p.komoditas_kode) k.nama AS komoditas, p.nilai, p.harga_dasar, p.sumber").
 		Joins("JOIN komoditas k ON k.kode = p.komoditas_kode").
-		Joins("JOIN model_registry m ON m.komoditas_kode = p.komoditas_kode AND m.versi = p.model_versi").
+		Joins("JOIN model_registry m ON m.id = p.model_id").
 		Where("m.status = 'PRODUKSI' AND p.kabupaten_kode = ? AND p.horizon_hari = ?", kabupatenProyeksi, horizonProyeksi).
 		Order("p.komoditas_kode, p.tanggal_target DESC").Scan(&rows).Error
 	if err != nil {

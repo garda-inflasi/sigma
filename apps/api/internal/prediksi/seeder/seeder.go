@@ -15,6 +15,7 @@ import (
 	masterdomain "github.com/garda-inflasi/api/internal/master/domain"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -102,9 +103,10 @@ type DemoSummary struct {
 	Model, Proyeksi int
 }
 
-// SeedDemo meng-upsert registri model dan proyeksi demo. Id baris tetap (tanpa
-// tanggal) sehingga menjalankannya di hari lain menggeser tanggal target, bukan
-// menambah baris. Prasyarat: master.reference (komoditas dan kabupaten).
+// SeedDemo meng-upsert registri model dan proyeksi demo menurut kolom kode (ID lama, tetap tanpa tanggal),
+// sehingga menjalankannya di hari lain menggeser tanggal target, bukan menambah baris; basis data hasil migrasi
+// 000114 (baris lama sudah ber-kode) juga tidak digandakan. ID BIGINT diberikan basis data: proyeksi ditautkan
+// ke model lewat ID yang dibaca setelah model di-upsert. Prasyarat: master.reference (komoditas dan kabupaten).
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	models, err := BuildModels(now)
 	if err != nil {
@@ -117,16 +119,38 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
+			Columns:   []clause.Column{{Name: "kode"}},
 			DoUpdates: clause.AssignmentColumns([]string{"nama", "mape", "drift", "status", "dilatih_pada", "algorithm", "sumber", "catatan"}),
 		}).Create(&models).Error
 		if err != nil {
 			return fmt.Errorf("model_registry: %w", err)
 		}
+
+		// Proyeksi demo berasal dari model PRODUKSI demo (VersiProduksi); ID-nya dibaca dari basis data.
+		var terpasang []struct {
+			ID            idx.ID `gorm:"column:id"`
+			KomoditasKode string `gorm:"column:komoditas_kode"`
+		}
+		err = tx.Table("model_registry").Select("id, komoditas_kode").Where("versi = ?", VersiProduksi).Scan(&terpasang).Error
+		if err != nil {
+			return fmt.Errorf("baca id model_registry: %w", err)
+		}
+		modelPerKomoditas := make(map[string]idx.ID, len(terpasang))
+		for _, m := range terpasang {
+			modelPerKomoditas[m.KomoditasKode] = m.ID
+		}
+		for i := range proyeksi {
+			id, ada := modelPerKomoditas[proyeksi[i].KomoditasKode]
+			if !ada {
+				return fmt.Errorf("prediksi_harga: model %s %s tidak ditemukan", proyeksi[i].KomoditasKode, VersiProduksi)
+			}
+			proyeksi[i].ModelID = id
+		}
+
 		err = tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "id"}},
+			Columns: []clause.Column{{Name: "kode"}},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"tanggal_target", "nilai", "bawah", "atas", "harga_dasar", "faktor", "sumber", "dibuat_pada",
+				"tanggal_target", "nilai", "bawah", "atas", "harga_dasar", "faktor", "sumber", "dibuat_pada", "model_id", "model_versi",
 			}),
 		}).CreateInBatches(&proyeksi, 200).Error
 		if err != nil {
@@ -140,10 +164,16 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	return DemoSummary{Model: len(models), Proyeksi: len(proyeksi)}, nil
 }
 
-func modelID(komoditas, versi string) string { return "MDL-" + komoditas + "-" + versi }
+// modelKode adalah kode tampilan sekaligus ID lama model demo (kunci idempotensi seeder).
+func modelKode(komoditas, versi string) *string {
+	kode := "MDL-" + komoditas + "-" + versi
+	return &kode
+}
 
-func proyeksiID(komoditas, kabupaten string, horizon int) string {
-	return fmt.Sprintf("PRD-%s-%s-%d", komoditas, kabupaten, horizon)
+// proyeksiKode adalah ID lama proyeksi demo (kunci idempotensi seeder); tanpa tanggal.
+func proyeksiKode(komoditas, kabupaten string, horizon int) *string {
+	kode := fmt.Sprintf("PRD-%s-%s-%d", komoditas, kabupaten, horizon)
+	return &kode
 }
 
 // mapeProduksi meniru tabel registri model di mode mock: makin volatil makin besar.
@@ -166,12 +196,12 @@ func BuildModels(now time.Time) ([]domain.ModelRegistry, error) {
 		mape := mapeProduksi(sk.Volatilitas)
 		rows = append(rows,
 			domain.ModelRegistry{
-				ID: modelID(k.Kode, VersiProduksi), KomoditasKode: k.Kode, Nama: namaModel, Versi: VersiProduksi,
+				Kode: modelKode(k.Kode, VersiProduksi), KomoditasKode: k.Kode, Nama: namaModel, Versi: VersiProduksi,
 				Mape: mape, Drift: math.Round(float64(i%5)*0.03*100) / 100, Status: domain.StatusProduksi,
 				DilatihPada: dilatih, Algorithm: &algoritma, Metrics: "{}", FeatureImportance: "[]", Sumber: domain.SumberDemo, Catatan: catatanDemo,
 			},
 			domain.ModelRegistry{
-				ID: modelID(k.Kode, VersiKandidat), KomoditasKode: k.Kode, Nama: namaModel, Versi: VersiKandidat,
+				Kode: modelKode(k.Kode, VersiKandidat), KomoditasKode: k.Kode, Nama: namaModel, Versi: VersiKandidat,
 				Mape: math.Round(mape*0.93*10) / 10, Status: domain.StatusKandidat,
 				DilatihPada: hariKe(now, -1), Algorithm: &algoritma, Metrics: "{}", FeatureImportance: "[]", Sumber: domain.SumberDemo, Catatan: catatanDemo,
 			},
@@ -182,6 +212,7 @@ func BuildModels(now time.Time) ([]domain.ModelRegistry, error) {
 
 // BuildProyeksi menyusun proyeksi demo (model produksi) secara deterministik
 // terhadap now: semua komoditas di KabupatenUtama, komoditas pilot di kabupaten lain.
+// ModelID belum terisi (ID model diberikan basis data); SeedDemo menautkannya.
 func BuildProyeksi(now time.Time) ([]domain.PrediksiHarga, error) {
 	komoditas, kabupaten := masterseeder.Komoditas(), masterseeder.Kabupaten()
 	rng := rand.New(rand.NewPCG(seedPRNG, seedPRNG))
@@ -232,7 +263,7 @@ func proyeksiKomoditas(k masterdomain.Komoditas, kab masterdomain.Kabupaten, sk 
 			return nil, fmt.Errorf("seed prediksi demo: faktor %s: %w", k.Kode, err)
 		}
 		rows[i] = domain.PrediksiHarga{
-			ID: proyeksiID(k.Kode, kab.Kode, h), KomoditasKode: k.Kode, KabupatenKode: kab.Kode,
+			Kode: proyeksiKode(k.Kode, kab.Kode, h), KomoditasKode: k.Kode, KabupatenKode: kab.Kode,
 			TanggalTarget: dasar.AddDate(0, 0, h), HorizonHari: h,
 			Nilai: hargaDari(hargaDasar, pct), Bawah: hargaDari(hargaDasar, pct-lebar), Atas: hargaDari(hargaDasar, pct+lebar),
 			HargaDasar: hargaDasar, ModelVersi: VersiProduksi, Faktor: dokumen, Sumber: domain.SumberDemo,

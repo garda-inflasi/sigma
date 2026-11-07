@@ -13,8 +13,10 @@ var namaBulan = [...]string{
 	"Juli", "Agustus", "September", "Oktober", "November", "Desember",
 }
 
-// BriefID membentuk id brief dari periode, mis. "PB-2026-10".
-func BriefID(periode time.Time) string {
+// KodeBrief membentuk kode brief dari periode, mis. "PB-2026-10". Kode itu kode tampilan sekaligus alias
+// tautan (/v1/policy-brief/PB-2026-10), UNIQUE dan dijaga CHECK berbentuk PB-YYYY-MM di basis data, sehingga satu
+// periode hanya punya satu brief. ID brief sendiri UUID yang diberikan basis data.
+func KodeBrief(periode time.Time) string {
 	return "PB-" + periode.Format(FormatPeriode)
 }
 

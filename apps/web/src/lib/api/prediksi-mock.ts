@@ -27,7 +27,8 @@ export function mockBarisProyeksi(): BarisProyeksi[] {
 export function mockBarisModel(): BarisModel[] {
   return KOMODITAS.flatMap((k, i) => [
     {
-      id: `${k.kode}-231`,
+      id: String(2 * i + 1),
+      kode: `MDL-${k.kode}-v2.3.1`,
       komoditasKode: k.kode,
       komoditas: k.nama,
       versi: "v2.3.1",
@@ -42,7 +43,8 @@ export function mockBarisModel(): BarisModel[] {
       demo: true,
     },
     {
-      id: `${k.kode}-240`,
+      id: String(2 * i + 2),
+      kode: `MDL-${k.kode}-v2.4.0-rc1`,
       komoditasKode: k.kode,
       komoditas: k.nama,
       versi: "v2.4.0-rc1",

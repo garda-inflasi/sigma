@@ -142,13 +142,33 @@ func (s *Server) DSN(dbName string) string {
 	return u.String()
 }
 
-// NewDatabase membuat basis data kosong bernama name; koneksinya ditutup saat
-// tes selesai. Tes dilewati bila server nil (mode -short).
+// NewDatabase membuat basis data kosong bernama name; saat tes selesai koneksinya ditutup dan basis datanya
+// dibuang. Tanpa itu setiap tes meninggalkan satu salinan skema lengkap (puluhan MB) di container sampai
+// paketnya selesai, dan paket besar menumpuk beberapa GB di disk Docker. Tes dilewati bila server nil (mode
+// -short).
 func (s *Server) NewDatabase(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db := s.CreateDatabase(t, name)
-	t.Cleanup(func() { closeDB(db) })
+	t.Cleanup(func() {
+		closeDB(db)
+		s.dropDatabase(t, name)
+	})
 	return db
+}
+
+// dropDatabase membuang basis data tes. Kegagalan hanya dicatat: basis data yang tersisa ikut hilang bersama
+// container, jadi tidak boleh menggagalkan tes yang sudah lulus.
+func (s *Server) dropDatabase(t *testing.T, name string) {
+	admin, err := s.open(adminDB)
+	if err != nil {
+		t.Logf("pgtest: buang basis data %s: %v", name, err)
+		return
+	}
+	defer closeDB(admin)
+	// FORCE memutus koneksi yang masih terbuka (mis. pool yang lupa ditutup kode yang diuji).
+	if err := admin.Exec(`DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`).Error; err != nil {
+		t.Logf("pgtest: buang basis data %s: %v", name, err)
+	}
 }
 
 // CreateDatabase seperti NewDatabase, tetapi koneksinya tidak ditutup otomatis

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -204,7 +205,7 @@ func (r *Repository) SetIzinPeran(ctx context.Context, p domain.SetIzinPeran) (*
 				}
 			}
 			return tx.Exec(`UPDATE roles SET versi = versi + 1, diperbarui_pada = now(),
-				diperbarui_oleh = (SELECT id FROM pengguna WHERE id = ?) WHERE kunci = ?`, p.Oleh, p.Peran).Error
+				diperbarui_oleh = (SELECT id FROM pengguna WHERE id = ?::uuid) WHERE kunci = ?`, aktorUUID(p.Oleh), p.Peran).Error
 		}
 		if slices.Contains(cabut, domain.IzinPengelolaan) {
 			if err := jagaPemegangDalam(tx, tulis); err != nil {
@@ -329,12 +330,12 @@ func (r *Repository) BerikanIzinLangsung(ctx context.Context, g domain.BerikanIz
 
 		// Baris kedaluwarsa diganti; baris yang masih berlaku membuat DO UPDATE tidak menyentuh apa pun.
 		res := tx.Exec(`INSERT INTO user_permissions (pengguna_id, permission_nama, berlaku_sampai, alasan, diberikan_oleh, diberikan_pada)
-			VALUES (?, ?, ?, ?, (SELECT id FROM pengguna WHERE id = ?), now())
+			VALUES (?, ?, ?, ?, (SELECT id FROM pengguna WHERE id = ?::uuid), now())
 			ON CONFLICT (pengguna_id, permission_nama) DO UPDATE
 			   SET berlaku_sampai = EXCLUDED.berlaku_sampai, alasan = EXCLUDED.alasan,
 			       diberikan_oleh = EXCLUDED.diberikan_oleh, diberikan_pada = EXCLUDED.diberikan_pada
 			 WHERE user_permissions.berlaku_sampai IS NOT NULL AND user_permissions.berlaku_sampai <= now()`,
-			g.PenggunaID, g.Izin, g.BerlakuSampai, g.Alasan, g.Oleh)
+			g.PenggunaID, g.Izin, g.BerlakuSampai, g.Alasan, aktorUUID(g.Oleh))
 		if res.Error != nil {
 			if errors.Is(res.Error, gorm.ErrForeignKeyViolated) {
 				return domain.ErrIzinTidakDikenal
@@ -377,4 +378,13 @@ func (r *Repository) CabutIzinLangsung(ctx context.Context, userID, izin string)
 
 func (r *Repository) HitungPemegangPengelolaan(ctx context.Context) (int64, error) {
 	return hitungPemegang(r.db.WithContext(ctx))
+}
+
+// aktorUUID menyiapkan id pelaku untuk subkueri "(SELECT id FROM pengguna WHERE id = ?::uuid)": pelaku yang kosong
+// atau bukan UUID (mis. pemanggil tanpa pengguna) menjadi NULL, bukan galat 22P02 dari kolom uuid.
+func aktorUUID(id string) any {
+	if sah, ok := idx.NormalUUID(id); ok {
+		return sah
+	}
+	return nil
 }

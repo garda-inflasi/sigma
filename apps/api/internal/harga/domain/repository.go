@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 var (
@@ -50,10 +52,10 @@ type Pengiriman struct {
 // Bentrok adalah entri petugas lain yang harganya berbeda pada pasar, komoditas,
 // dan tipe yang sama dalam JendelaBentrok.
 type Bentrok struct {
-	ID          string    `gorm:"column:id"`
+	ID          idx.ID    `gorm:"column:id"`
 	Harga       int       `gorm:"column:harga"`
 	DicatatPada time.Time `gorm:"column:dicatat_pada"`
-	PetugasID   string    `gorm:"column:petugas_id"`
+	PetugasID   string    `gorm:"column:petugas_id;type:uuid"`
 	PetugasNama string    `gorm:"column:petugas_nama"`
 }
 
@@ -94,7 +96,8 @@ const (
 
 type Repository interface {
 	List(ctx context.Context, filter ListFilter) ([]EntriView, int64, error)
-	GetByID(ctx context.Context, id string) (*EntriView, error)
+	// GetByID mencari entri menurut ID BIGINT atau kode lama (alias tautan lama); ErrNotFound bila tidak ada.
+	GetByID(ctx context.Context, ref idx.RujukanID) (*EntriView, error)
 	Ringkasan(ctx context.Context, sejak time.Time) (Ringkasan, error)
 	// Tren merata-ratakan entri berstatus DIVALIDASI atau DIPUBLIKASI di satu kabupaten.
 	Tren(ctx context.Context, komoditasKode, kabupatenKode string, sejak time.Time, interval string) ([]TitikTren, error)
@@ -108,7 +111,7 @@ type Repository interface {
 	Simpan(ctx context.Context, kirim Pengiriman) (HasilSimpan, error)
 	// Transisi menerapkan aksi dalam satu transaksi pada id yang memenuhi Evaluasi dan
 	// mencatat riwayat statusnya. Hasilnya satu per id, urut seperti ids.
-	Transisi(ctx context.Context, ids []string, aksi BulkAction, aktorID, alasan string, waktu time.Time) ([]HasilTransisi, error)
+	Transisi(ctx context.Context, ids []idx.ID, aksi BulkAction, aktorID, alasan string, waktu time.Time) ([]HasilTransisi, error)
 	// Riwayat mengembalikan perpindahan status entri, yang terlama lebih dulu.
-	Riwayat(ctx context.Context, entriID string) ([]RiwayatView, error)
+	Riwayat(ctx context.Context, entriID idx.ID) ([]RiwayatView, error)
 }

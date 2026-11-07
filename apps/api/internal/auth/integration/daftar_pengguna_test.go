@@ -70,7 +70,7 @@ func sisipAkunDaftar(t *testing.T, db *gorm.DB, akun []akunDaftar) {
 			secret = "v1:rahasia-uji"
 		}
 		require.NoError(t, db.Exec(`INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status, mfa_aktif, mfa_secret, terakhir_masuk, dibuat_pada)
-			SELECT ?, ?, ?, password_hash, ?::peran, ?::lapis, ?, ?::status_akun, ?, ?, ?::timestamptz, ?::timestamptz FROM pengguna WHERE id = 'test-user-001'`,
+			SELECT ?, ?, ?, password_hash, ?::peran, ?::lapis, ?, ?::status_akun, ?, ?, ?::timestamptz, ?::timestamptz FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')`,
 			a.id, a.nama, a.email, a.peran, a.lapis, a.lembaga, a.status, a.mfa, secret, masuk, a.dibuat).Error)
 	}
 }
@@ -82,20 +82,20 @@ func seedDaftar(t *testing.T, db *gorm.DB) {
 	seedData(t, db)
 
 	for id, tgl := range map[string]string{
-		"test-user-001": "2025-12-01", "test-user-002": "2025-12-02", "test-user-biasa": "2025-12-03", "test-user-mfa": "2025-12-04",
+		uid("test-user-001"): "2025-12-01", uid("test-user-002"): "2025-12-02", uid("test-user-biasa"): "2025-12-03", uid("test-user-mfa"): "2025-12-04",
 	} {
 		require.NoError(t, db.Exec("UPDATE pengguna SET dibuat_pada = ?::timestamptz WHERE id = ?", tgl+" 08:00:00+00", id).Error)
 	}
 	sisipAkunDaftar(t, db, []akunDaftar{
-		{"dp-01", "Ani Aceh", "ani@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "Lembaga B", "AKTIF", false, "", "2026-01-01 08:00:00+00"},
-		{"dp-02", "budi santoso", "budi@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "lembaga a", "AKTIF", false, "2025-10-01 08:00:00+00", "2026-01-02 08:00:00+00"},
-		{"dp-03", "Citra Dewi", "citra@garda.test", "MANAJER_DATA", "MANAJERIAL", "BPS Aceh", "AKTIF", true, "2025-10-05 08:00:00+00", "2026-01-03 08:00:00+00"},
-		{"dp-04", "Dewi Lestari", "dewi@garda.test", "MANAJER_DATA", "MANAJERIAL", "BPS Aceh", "NONAKTIF", false, "", "2026-01-03 08:00:00+00"},
-		{"dp-05", "Eka Putra", "eka@garda.test", "OPS_KOORDINATOR", "OPERASIONAL", "BI Aceh", "MENUNGGU", false, "", "2026-01-05 08:00:00+00"},
-		{"dp-06", "Fajar Nugraha", "fajar@garda.test", "STRATEGIS_BI", "STRATEGIS", "BI Aceh", "AKTIF", true, "2025-10-02 08:00:00+00", "2026-01-06 08:00:00+00"},
-		{"dp-07", "Gita Ayu", "gita@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "Lembaga A", "AKTIF", false, "2025-10-01 08:00:00+00", "2026-01-07 08:00:00+00"},
-		{"dp-14", "Kembar Nama", "kembar2@garda.test", "MANAJER_PROGRAM", "MANAJERIAL", "Kemenkeu", "AKTIF", true, "2025-09-01 08:00:00+00", "2026-01-11 08:00:00+00"},
-		{"dp-15", "Kembar Nama", "kembar1@garda.test", "MANAJER_PROGRAM", "MANAJERIAL", "Kemenkeu", "AKTIF", false, "", "2026-01-12 08:00:00+00"},
+		{uid("dp-01"), "Ani Aceh", "ani@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "Lembaga B", "AKTIF", false, "", "2026-01-01 08:00:00+00"},
+		{uid("dp-02"), "budi santoso", "budi@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "lembaga a", "AKTIF", false, "2025-10-01 08:00:00+00", "2026-01-02 08:00:00+00"},
+		{uid("dp-03"), "Citra Dewi", "citra@garda.test", "MANAJER_DATA", "MANAJERIAL", "BPS Aceh", "AKTIF", true, "2025-10-05 08:00:00+00", "2026-01-03 08:00:00+00"},
+		{uid("dp-04"), "Dewi Lestari", "dewi@garda.test", "MANAJER_DATA", "MANAJERIAL", "BPS Aceh", "NONAKTIF", false, "", "2026-01-03 08:00:00+00"},
+		{uid("dp-05"), "Eka Putra", "eka@garda.test", "OPS_KOORDINATOR", "OPERASIONAL", "BI Aceh", "MENUNGGU", false, "", "2026-01-05 08:00:00+00"},
+		{uid("dp-06"), "Fajar Nugraha", "fajar@garda.test", "STRATEGIS_BI", "STRATEGIS", "BI Aceh", "AKTIF", true, "2025-10-02 08:00:00+00", "2026-01-06 08:00:00+00"},
+		{uid("dp-07"), "Gita Ayu", "gita@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "Lembaga A", "AKTIF", false, "2025-10-01 08:00:00+00", "2026-01-07 08:00:00+00"},
+		{uid("dp-14"), "Kembar Nama", "kembar2@garda.test", "MANAJER_PROGRAM", "MANAJERIAL", "Kemenkeu", "AKTIF", true, "2025-09-01 08:00:00+00", "2026-01-11 08:00:00+00"},
+		{uid("dp-15"), "Kembar Nama", "kembar1@garda.test", "MANAJER_PROGRAM", "MANAJERIAL", "Kemenkeu", "AKTIF", false, "", "2026-01-12 08:00:00+00"},
 	})
 }
 
@@ -106,9 +106,9 @@ func seedDaftarKarakter(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	seedDaftar(t, db)
 	sisipAkunDaftar(t, db, []akunDaftar{
-		{"dp-08", "Hana 100%", "hana@garda.test", "OPS_AGREGATOR", "OPERASIONAL", "FMIPA USK", "AKTIF", false, "", "2026-01-08 08:00:00+00"},
-		{"dp-09", "A_b Literal", "alit@garda.test", "OPS_AGREGATOR", "OPERASIONAL", "FMIPA USK", "AKTIF", false, "", "2026-01-09 08:00:00+00"},
-		{"dp-10", "Aab Bukan Literal", "aab@garda.test", "OPS_AGREGATOR", "OPERASIONAL", "FMIPA USK", "AKTIF", false, "", "2026-01-10 08:00:00+00"},
+		{uid("dp-08"), "Hana 100%", "hana@garda.test", "OPS_AGREGATOR", "OPERASIONAL", "FMIPA USK", "AKTIF", false, "", "2026-01-08 08:00:00+00"},
+		{uid("dp-09"), "A_b Literal", "alit@garda.test", "OPS_AGREGATOR", "OPERASIONAL", "FMIPA USK", "AKTIF", false, "", "2026-01-09 08:00:00+00"},
+		{uid("dp-10"), "Aab Bukan Literal", "aab@garda.test", "OPS_AGREGATOR", "OPERASIONAL", "FMIPA USK", "AKTIF", false, "", "2026-01-10 08:00:00+00"},
 	})
 }
 
@@ -150,8 +150,8 @@ func TestDaftarPengguna_UrutanBawaanTerbaruDuluDenganTiebreakerID(t *testing.T) 
 	assert.Equal(t, 20, h.Limit, "limit bawaan")
 	// dibuat_pada menurun; dp-03 dan dp-04 kembar waktunya: id menurun memutuskan (dp-04 lebih dulu).
 	assert.Equal(t, []string{
-		"dp-15", "dp-14", "dp-07", "dp-06", "dp-05", "dp-04", "dp-03", "dp-02", "dp-01",
-		"test-user-mfa", "test-user-biasa", "test-user-002", "test-user-001",
+		uid("dp-15"), uid("dp-14"), uid("dp-07"), uid("dp-06"), uid("dp-05"), uid("dp-04"), uid("dp-03"), uid("dp-02"), uid("dp-01"),
+		uid("test-user-mfa"), uid("test-user-biasa"), uid("test-user-002"), uid("test-user-001"),
 	}, h.ids())
 }
 
@@ -209,18 +209,20 @@ func TestDaftarPengguna_UrutanEksplisit(t *testing.T) {
 	t.Run("nama tak peka huruf besar-kecil, nama kembar diputus id", func(t *testing.T) {
 		ids := s.daftarSemua(t, admin, "sort=nama&arah=asc").ids()
 		// Ani, budi (huruf kecil di tengah), Citra, Dewi, Eka, Fajar, Gita, Inactive, Kembar x2, MFA, Pengguna, Test.
+		// Dua "Kembar Nama" diputus id (UUID), jadi urutannya mengikuti urutan UUID-nya, bukan urutan slug.
+		kembar := urutId(uid("dp-14"), uid("dp-15"))
 		assert.Equal(t, []string{
-			"dp-01", "dp-02", "dp-03", "dp-04", "dp-05", "dp-06", "dp-07",
-			"test-user-002", "dp-14", "dp-15", "test-user-mfa", "test-user-biasa", "test-user-001",
+			uid("dp-01"), uid("dp-02"), uid("dp-03"), uid("dp-04"), uid("dp-05"), uid("dp-06"), uid("dp-07"),
+			uid("test-user-002"), kembar[0], kembar[1], uid("test-user-mfa"), uid("test-user-biasa"), uid("test-user-001"),
 		}, ids)
 	})
 
 	t.Run("peran mengikuti enum, bukan abjad", func(t *testing.T) {
 		naik := s.daftarSemua(t, admin, "sort=peran&arah=asc")
-		assert.Equal(t, "dp-06", naik.Items[0].ID, "STRATEGIS_BI paling awal")
-		assert.Equal(t, "test-user-001", naik.Items[totalDaftarUji-1].ID, "ADMIN_SISTEM paling akhir")
+		assert.Equal(t, uid("dp-06"), naik.Items[0].ID, "STRATEGIS_BI paling awal")
+		assert.Equal(t, uid("test-user-001"), naik.Items[totalDaftarUji-1].ID, "ADMIN_SISTEM paling akhir")
 		turun := s.daftarSemua(t, admin, "sort=peran&arah=desc")
-		assert.Equal(t, "test-user-001", turun.Items[0].ID)
+		assert.Equal(t, uid("test-user-001"), turun.Items[0].ID)
 	})
 
 	t.Run("status mengikuti enum AKTIF, NONAKTIF, MENUNGGU", func(t *testing.T) {
@@ -239,8 +241,10 @@ func TestDaftarPengguna_TerakhirMasuk(t *testing.T) {
 	turun := s.daftarSemua(t, admin, "sort=terakhir_masuk&arah=desc").ids()
 
 	// Bertanggal: dp-14 (2025-09-01), dp-02 dan dp-07 (kembar 2025-10-01), dp-06 (10-02), dp-03 (10-05), admin (sekarang).
-	assert.Equal(t, []string{"dp-14", "dp-02", "dp-07", "dp-06", "dp-03", "test-user-001"}, naik[:6])
-	assert.Equal(t, []string{"test-user-001", "dp-03", "dp-06", "dp-07", "dp-02", "dp-14"}, turun[:6],
+	// Kembar diputus id (UUID): menaik pada asc, menurun pada desc.
+	kembar := urutId(uid("dp-02"), uid("dp-07"))
+	assert.Equal(t, []string{uid("dp-14"), kembar[0], kembar[1], uid("dp-06"), uid("dp-03"), uid("test-user-001")}, naik[:6])
+	assert.Equal(t, []string{uid("test-user-001"), uid("dp-03"), uid("dp-06"), kembar[1], kembar[0], uid("dp-14")}, turun[:6],
 		"kembar diputus id menurun pada desc")
 	// 7 akun belum pernah masuk selalu di akhir, juga pada desc, urut id sesuai arah.
 	require.Len(t, naik[6:], 7)
@@ -310,7 +314,7 @@ func TestDaftarPengguna_Filter(t *testing.T) {
 
 	semuaKecuali := func(kecuali ...string) []string {
 		var out []string
-		for _, id := range []string{"dp-01", "dp-02", "dp-03", "dp-04", "dp-05", "dp-06", "dp-07", "dp-14", "dp-15", "test-user-001", "test-user-002", "test-user-biasa", "test-user-mfa"} {
+		for _, id := range []string{uid("dp-01"), uid("dp-02"), uid("dp-03"), uid("dp-04"), uid("dp-05"), uid("dp-06"), uid("dp-07"), uid("dp-14"), uid("dp-15"), uid("test-user-001"), uid("test-user-002"), uid("test-user-biasa"), uid("test-user-mfa")} {
 			if !slices.Contains(kecuali, id) {
 				out = append(out, id)
 			}
@@ -322,19 +326,19 @@ func TestDaftarPengguna_Filter(t *testing.T) {
 		nama, query string
 		want        []string // urutan tidak dipentingkan
 	}{
-		{"peran", "peran=MANAJER_DATA", []string{"dp-03", "dp-04"}},
-		{"peran satu-satunya admin", "peran=ADMIN_SISTEM", []string{"test-user-001"}},
-		{"status NONAKTIF", "status=NONAKTIF", []string{"dp-04", "test-user-002"}},
-		{"status MENUNGGU", "status=MENUNGGU", []string{"dp-05"}},
-		{"lapis STRATEGIS", "lapis=STRATEGIS", []string{"dp-06"}},
-		{"lapis SISTEM", "lapis=SISTEM", []string{"test-user-001"}},
-		{"mfa aktif", "mfa=true", []string{"dp-03", "dp-06", "dp-14", "test-user-mfa"}},
-		{"mfa belum aktif", "mfa=false", semuaKecuali("dp-03", "dp-06", "dp-14", "test-user-mfa")},
-		{"terkunci", "terkunci=true", []string{"dp-02"}},
-		{"tidak terkunci (kunci yang sudah lewat tidak dihitung)", "terkunci=false", semuaKecuali("dp-02")},
-		{"gabungan dengan AND", "peran=OPS_MAHASISWA&status=AKTIF&mfa=false&terkunci=false", []string{"dp-01", "dp-07", "test-user-biasa"}},
+		{"peran", "peran=MANAJER_DATA", []string{uid("dp-03"), uid("dp-04")}},
+		{"peran satu-satunya admin", "peran=ADMIN_SISTEM", []string{uid("test-user-001")}},
+		{"status NONAKTIF", "status=NONAKTIF", []string{uid("dp-04"), uid("test-user-002")}},
+		{"status MENUNGGU", "status=MENUNGGU", []string{uid("dp-05")}},
+		{"lapis STRATEGIS", "lapis=STRATEGIS", []string{uid("dp-06")}},
+		{"lapis SISTEM", "lapis=SISTEM", []string{uid("test-user-001")}},
+		{"mfa aktif", "mfa=true", []string{uid("dp-03"), uid("dp-06"), uid("dp-14"), uid("test-user-mfa")}},
+		{"mfa belum aktif", "mfa=false", semuaKecuali(uid("dp-03"), uid("dp-06"), uid("dp-14"), uid("test-user-mfa"))},
+		{"terkunci", "terkunci=true", []string{uid("dp-02")}},
+		{"tidak terkunci (kunci yang sudah lewat tidak dihitung)", "terkunci=false", semuaKecuali(uid("dp-02"))},
+		{"gabungan dengan AND", "peran=OPS_MAHASISWA&status=AKTIF&mfa=false&terkunci=false", []string{uid("dp-01"), uid("dp-07"), uid("test-user-biasa")}},
 		{"gabungan tanpa hasil", "peran=ADMIN_SISTEM&mfa=true", []string{}},
-		{"terkunci dan peran", "terkunci=true&peran=OPS_MAHASISWA", []string{"dp-02"}},
+		{"terkunci dan peran", "terkunci=true&peran=OPS_MAHASISWA", []string{uid("dp-02")}},
 		{"terkunci dan peran lain", "terkunci=true&peran=MANAJER_DATA", []string{}},
 		{"parameter kosong sama dengan tidak ada", "peran=&status=&lapis=&mfa=&terkunci=", semuaKecuali()},
 	}
@@ -360,7 +364,7 @@ func TestDaftarPengguna_Filter(t *testing.T) {
 	})
 
 	t.Run("dibuka kuncinya tidak lagi terkunci", func(t *testing.T) {
-		require.Equal(t, http.StatusOK, s.bukaKunci(t, admin, "dp-02").Code)
+		require.Equal(t, http.StatusOK, s.bukaKunci(t, admin, uid("dp-02")).Code)
 		assert.Empty(t, s.daftarSemua(t, admin, "terkunci=true").Items)
 		assert.Len(t, s.daftarSemua(t, admin, "terkunci=false").Items, totalDaftarUji)
 	})
@@ -374,18 +378,18 @@ func TestDaftarPengguna_Pencarian(t *testing.T) {
 		nama, query string
 		want        []string
 	}{
-		{"nama tak peka huruf besar-kecil", "search=ANI+ACEH", []string{"dp-01"}},
-		{"potongan nama", "search=santoso", []string{"dp-02"}},
-		{"email", "search=fajar%40garda", []string{"dp-06"}},
-		{"lembaga", "search=bps+aceh", []string{"dp-03", "dp-04"}},
-		{"peran sebagai id", "search=manajer_data", []string{"dp-03", "dp-04"}},
-		{"peran sebagai label dengan spasi", "search=manajer+data", []string{"dp-03", "dp-04"}},
-		{"spasi tepi dibuang", "search=++fajar++", []string{"dp-06"}},
-		{"persen dicari apa adanya", "search=100%25", []string{"dp-08"}},
-		{"garis bawah bukan wildcard", "search=a_b", []string{"dp-09"}},
+		{"nama tak peka huruf besar-kecil", "search=ANI+ACEH", []string{uid("dp-01")}},
+		{"potongan nama", "search=santoso", []string{uid("dp-02")}},
+		{"email", "search=fajar%40garda", []string{uid("dp-06")}},
+		{"lembaga", "search=bps+aceh", []string{uid("dp-03"), uid("dp-04")}},
+		{"peran sebagai id", "search=manajer_data", []string{uid("dp-03"), uid("dp-04")}},
+		{"peran sebagai label dengan spasi", "search=manajer+data", []string{uid("dp-03"), uid("dp-04")}},
+		{"spasi tepi dibuang", "search=++fajar++", []string{uid("dp-06")}},
+		{"persen dicari apa adanya", "search=100%25", []string{uid("dp-08")}},
+		{"garis bawah bukan wildcard", "search=a_b", []string{uid("dp-09")}},
 		{"garis miring terbalik tidak merusak pola", "search=%5C", []string{}},
 		{"tanpa kecocokan", "search=tidak-ada-orang-ini", []string{}},
-		{"dengan filter", "search=aceh&status=AKTIF", []string{"dp-01", "dp-03", "dp-06"}},
+		{"dengan filter", "search=aceh&status=AKTIF", []string{uid("dp-01"), uid("dp-03"), uid("dp-06")}},
 		{"kata kunci hanya spasi sama dengan tanpa pencarian", "search=+++", nil},
 	}
 	for _, tc := range cases {
@@ -476,4 +480,11 @@ func TestDaftarPengguna_UrutanTidakMengubahHimpunan(t *testing.T) {
 		sort.Strings(ids)
 		assert.Equal(t, acuan, ids, kolom)
 	}
+}
+
+// urutId mengurutkan id menaik, seperti basis data mengurutkan kolom uuid: kembar yang diputus id mengikuti urutan UUID.
+func urutId(id ...string) []string {
+	s := slices.Clone(id)
+	slices.Sort(s)
+	return s
 }

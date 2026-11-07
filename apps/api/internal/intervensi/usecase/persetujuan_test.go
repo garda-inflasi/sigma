@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -39,7 +40,7 @@ func (m *mockWorkflow) Ajukan(ctx context.Context, in domain.AjukanInput) (*doma
 	return args.Get(0).(*domain.Persetujuan), args.Error(1)
 }
 
-func (m *mockWorkflow) GetPersetujuan(ctx context.Context, id int64) (*domain.Persetujuan, error) {
+func (m *mockWorkflow) GetPersetujuan(ctx context.Context, id idx.ID) (*domain.Persetujuan, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -64,7 +65,7 @@ func strPtr(s string) *string { return &s }
 
 func permintaan(status string, langkahKini int, pengaju string, keputusan ...string) *domain.Persetujuan {
 	p := &domain.Persetujuan{IntervensiPersetujuan: domain.IntervensiPersetujuan{
-		ID: 7, IntervensiID: "INT-301", Jenis: domain.JenisPindahTahap, TahapTujuan: strPtr("t-fiskal"),
+		ID: 7, IntervensiID: kid("INT-301"), Jenis: domain.JenisPindahTahap, TahapTujuan: strPtr("t-fiskal"),
 		Status: status, LangkahKini: langkahKini, DiajukanOleh: strPtr(pengaju), DiajukanPada: time.Now(),
 	}}
 	izin := []string{"intervensi.setujui", "intervensi.setujui_fiskal"}
@@ -79,31 +80,31 @@ func permintaan(status string, langkahKini int, pengaju string, keputusan ...str
 }
 
 func TestAjukan(t *testing.T) {
-	card := &domain.Intervensi{ID: "INT-301", Siklus: "TEKANAN", Tahap: "t-ews"}
+	card := &domain.Intervensi{ID: kid("INT-301"), Siklus: "TEKANAN", Tahap: "t-ews"}
 
 	t.Run("membuat permintaan dan mengaudit", func(t *testing.T) {
 		uc, repo, wf, rec := newWorkflowUseCase()
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
-		in := domain.AjukanInput{KartuID: "INT-301", Jenis: domain.JenisPindahTahap, TahapTujuan: "t-petakan", Oleh: "u1", Catatan: "siap"}
-		wf.On("Ajukan", mock.Anything, in).Return(permintaan(domain.PersetujuanMenunggu, 1, "u1"), nil)
+		in := domain.AjukanInput{KartuID: kid("INT-301"), Jenis: domain.JenisPindahTahap, TahapTujuan: "t-petakan", Oleh: uid("u1"), Catatan: "siap"}
+		wf.On("Ajukan", mock.Anything, in).Return(permintaan(domain.PersetujuanMenunggu, 1, uid("u1")), nil)
 
-		p, err := uc.Ajukan(context.Background(), "INT-301", "t-petakan", "siap", "u1")
+		p, err := uc.Ajukan(context.Background(), rujukanID("INT-301"), "t-petakan", "siap", uid("u1"))
 
 		require.NoError(t, err)
-		assert.Equal(t, int64(7), p.ID)
+		assert.Equal(t, idx.ID(7), p.ID)
 		entry, _ := rec.Last()
 		assert.Equal(t, "AJUKAN_PERSETUJUAN", entry.Aksi)
-		assert.Equal(t, "u1", entry.AktorID)
+		assert.Equal(t, uid("u1"), entry.AktorID)
 		assert.Equal(t, 2, entry.Metadata["langkah"])
 	})
 
 	t.Run("tahap di luar siklus ditolak sebelum menyentuh workflow", func(t *testing.T) {
 		uc, repo, wf, _ := newWorkflowUseCase()
-		repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 		repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 
-		_, err := uc.Ajukan(context.Background(), "INT-301", "n-pantau", "", "u1")
+		_, err := uc.Ajukan(context.Background(), rujukanID("INT-301"), "n-pantau", "", uid("u1"))
 
 		assert.ErrorIs(t, err, ErrInvalidTahap)
 		wf.AssertNotCalled(t, "Ajukan", mock.Anything, mock.Anything)
@@ -111,19 +112,19 @@ func TestAjukan(t *testing.T) {
 
 	t.Run("kartu tidak ada", func(t *testing.T) {
 		uc, repo, _, _ := newWorkflowUseCase()
-		repo.On("GetByID", mock.Anything, "X").Return(nil, gorm.ErrRecordNotFound)
-		_, err := uc.Ajukan(context.Background(), "X", "t-petakan", "", "u1")
+		repo.On("GetByID", mock.Anything, idx.RujukanUUID{Kode: "X"}).Return(nil, gorm.ErrRecordNotFound)
+		_, err := uc.Ajukan(context.Background(), idx.RujukanUUID{Kode: "X"}, "t-petakan", "", uid("u1"))
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
 
 	t.Run("galat bisnis diteruskan tanpa audit", func(t *testing.T) {
 		for _, bizErr := range []error{ErrTanpaPersetujuan, ErrPersetujuanTerbuka, ErrKartuSelesai} {
 			uc, repo, wf, rec := newWorkflowUseCase()
-			repo.On("GetByID", mock.Anything, "INT-301").Return(card, nil)
+			repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
 			repo.On("ListTahap", mock.Anything).Return(defs(), nil)
 			wf.On("Ajukan", mock.Anything, mock.Anything).Return(nil, bizErr)
 
-			_, err := uc.Ajukan(context.Background(), "INT-301", "t-petakan", "", "u1")
+			_, err := uc.Ajukan(context.Background(), rujukanID("INT-301"), "t-petakan", "", uid("u1"))
 
 			assert.ErrorIs(t, err, bizErr)
 			assert.Empty(t, rec.Entries())
@@ -136,7 +137,7 @@ func TestPutus(t *testing.T) {
 
 	t.Run("penyetuju berizin memutus langkah yang menunggu", func(t *testing.T) {
 		uc, _, wf, rec := newWorkflowUseCase()
-		wf.On("GetPersetujuan", mock.Anything, int64(7)).Return(permintaan(domain.PersetujuanMenunggu, 1, "kelola"), nil)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(7)).Return(permintaan(domain.PersetujuanMenunggu, 1, "kelola"), nil)
 		want := domain.PutusInput{PersetujuanID: 7, LangkahKini: 1, Keputusan: "SETUJU", Oleh: "setuju1", Catatan: "ok"}
 		after := permintaan(domain.PersetujuanMenunggu, 2, "kelola", "setuju1")
 		wf.On("Putus", mock.Anything, want).Return(after, nil)
@@ -153,7 +154,7 @@ func TestPutus(t *testing.T) {
 
 	t.Run("tanpa izin langkah ditolak, dicatat, dan tidak diteruskan", func(t *testing.T) {
 		uc, _, wf, rec := newWorkflowUseCase()
-		wf.On("GetPersetujuan", mock.Anything, int64(7)).Return(permintaan(domain.PersetujuanMenunggu, 2, "kelola", "setuju1"), nil)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(7)).Return(permintaan(domain.PersetujuanMenunggu, 2, "kelola", "setuju1"), nil)
 
 		_, err := uc.Putus(context.Background(), 7, "SETUJU", "", "setuju2", setujui) // langkah 2 butuh setujui_fiskal
 
@@ -167,12 +168,12 @@ func TestPutus(t *testing.T) {
 
 	t.Run("pemisahan tugas: pengaju atau pemutus sebelumnya", func(t *testing.T) {
 		uc, _, wf, _ := newWorkflowUseCase()
-		wf.On("GetPersetujuan", mock.Anything, int64(7)).Return(permintaan(domain.PersetujuanMenunggu, 1, "setuju1"), nil)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(7)).Return(permintaan(domain.PersetujuanMenunggu, 1, "setuju1"), nil)
 		_, err := uc.Putus(context.Background(), 7, "SETUJU", "", "setuju1", setujui)
 		assert.ErrorIs(t, err, ErrPemisahanTugas, "pengaju memutus sendiri")
 
 		uc, _, wf, _ = newWorkflowUseCase()
-		wf.On("GetPersetujuan", mock.Anything, int64(7)).Return(permintaan(domain.PersetujuanMenunggu, 2, "kelola", "setuju1"), nil)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(7)).Return(permintaan(domain.PersetujuanMenunggu, 2, "kelola", "setuju1"), nil)
 		_, err = uc.Putus(context.Background(), 7, "SETUJU", "", "setuju1", allow("intervensi.setujui", "intervensi.setujui_fiskal"))
 		assert.ErrorIs(t, err, ErrPemisahanTugas, "memutus dua langkah")
 		wf.AssertNotCalled(t, "Putus", mock.Anything, mock.Anything)
@@ -187,18 +188,18 @@ func TestPutus(t *testing.T) {
 
 	t.Run("permintaan sudah diputuskan", func(t *testing.T) {
 		uc, _, wf, _ := newWorkflowUseCase()
-		wf.On("GetPersetujuan", mock.Anything, int64(7)).Return(permintaan(domain.PersetujuanDisetujui, 2, "kelola"), nil)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(7)).Return(permintaan(domain.PersetujuanDisetujui, 2, "kelola"), nil)
 		_, err := uc.Putus(context.Background(), 7, "SETUJU", "", "setuju1", setujui)
 		assert.ErrorIs(t, err, ErrPersetujuanSelesai)
 	})
 
 	t.Run("tidak ditemukan dan balapan keputusan", func(t *testing.T) {
 		uc, _, wf, rec := newWorkflowUseCase()
-		wf.On("GetPersetujuan", mock.Anything, int64(9)).Return(nil, domain.ErrPersetujuanNotFound)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(9)).Return(nil, domain.ErrPersetujuanNotFound)
 		_, err := uc.Putus(context.Background(), 9, "SETUJU", "", "u", setujui)
 		assert.ErrorIs(t, err, ErrPersetujuanNotFound)
 
-		wf.On("GetPersetujuan", mock.Anything, int64(7)).Return(permintaan(domain.PersetujuanMenunggu, 1, "kelola"), nil)
+		wf.On("GetPersetujuan", mock.Anything, idx.ID(7)).Return(permintaan(domain.PersetujuanMenunggu, 1, "kelola"), nil)
 		wf.On("Putus", mock.Anything, mock.Anything).Return(nil, domain.ErrPersetujuanSelesai)
 		_, err = uc.Putus(context.Background(), 7, "SETUJU", "", "setuju1", setujui)
 		assert.ErrorIs(t, err, ErrPersetujuanSelesai)

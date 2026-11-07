@@ -34,8 +34,8 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 )
 
-// SumberID adalah id baris sumber_data BPS.
-const SumberID = "SRC-BPS"
+// Kode adalah kode baris sumber_data BPS (sumber_data.kode).
+const Kode = "SRC-BPS"
 
 // EnvKunci adalah variabel lingkungan berisi kunci API BPS.
 const EnvKunci = "BPS_API_KEY"
@@ -75,17 +75,17 @@ type Konektor struct {
 // New membuat konektor BPS dengan kunci API (boleh kosong; run lalu gagal dengan pesan jelas).
 func New(kunciAPI string) *Konektor { return &Konektor{kunci: kunciAPI} }
 
-func (*Konektor) SumberID() string { return SumberID }
+func (*Konektor) Kode() string { return Kode }
 
 func bacaKonfigurasi(raw json.RawMessage) (konfigurasi, error) {
 	var cfg konfigurasi
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &cfg); err != nil {
-			return cfg, fmt.Errorf("konfigurasi %s tidak valid: %w", SumberID, err)
+			return cfg, fmt.Errorf("konfigurasi %s tidak valid: %w", Kode, err)
 		}
 	}
 	if cfg.Domain == "" {
-		return cfg, fmt.Errorf("konfigurasi.domain %s belum diisi (Aceh = 1100)", SumberID)
+		return cfg, fmt.Errorf("konfigurasi.domain %s belum diisi (Aceh = 1100)", Kode)
 	}
 	var kurang []string
 	for _, m := range metrikInflasi {
@@ -94,10 +94,10 @@ func bacaKonfigurasi(raw json.RawMessage) (konfigurasi, error) {
 		}
 	}
 	if len(kurang) > 0 {
-		return cfg, fmt.Errorf("konfigurasi.variabel %s belum lengkap, isi id variabel BPS untuk: %s", SumberID, strings.Join(kurang, ", "))
+		return cfg, fmt.Errorf("konfigurasi.variabel %s belum lengkap, isi id variabel BPS untuk: %s", Kode, strings.Join(kurang, ", "))
 	}
 	if (cfg.Variabel[MetrikAndil] == "") != (cfg.Variabel[MetrikAndilPct] == "") {
-		return cfg, fmt.Errorf("konfigurasi.variabel %s: %s dan %s harus diisi berpasangan", SumberID, MetrikAndil, MetrikAndilPct)
+		return cfg, fmt.Errorf("konfigurasi.variabel %s: %s dan %s harus diisi berpasangan", Kode, MetrikAndil, MetrikAndilPct)
 	}
 	if cfg.TahunSurut != nil && (*cfg.TahunSurut < 0 || *cfg.TahunSurut > tahunSurutMaks) {
 		return cfg, fmt.Errorf("konfigurasi.tahun_surut %d di luar 0-%d", *cfg.TahunSurut, tahunSurutMaks)
@@ -111,10 +111,10 @@ func (k *Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
 		return nil, err
 	}
 	if k.kunci == "" {
-		return nil, fmt.Errorf("kunci API %s belum diisi: set variabel lingkungan %s", SumberID, EnvKunci)
+		return nil, fmt.Errorf("kunci API %s belum diisi: set variabel lingkungan %s", Kode, EnvKunci)
 	}
 	if in.URLDasar == "" {
-		return nil, fmt.Errorf("url_dasar %s belum diisi", SumberID)
+		return nil, fmt.Errorf("url_dasar %s belum diisi", Kode)
 	}
 	surut := tahunSurutDef
 	if cfg.TahunSurut != nil {

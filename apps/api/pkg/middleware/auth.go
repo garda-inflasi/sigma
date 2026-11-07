@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,20 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			})
 			return
 		}
+
+		// pengguna.id adalah UUID (000110). Token yang terbit sebelum migrasi itu membawa slug lama sebagai sub;
+		// kolom uuid menolak teks bebas (22P02 => 500 di pemeriksaan pencabutan dan izin di bawah), jadi ditolak
+		// bersih di sini. Jawabannya sama dengan izin yang basi: klien web menyegarkan sesi dengan refresh token
+		// (yang sudah dimigrasi) dan mendapat token ber-UUID tanpa pengguna harus masuk ulang.
+		userID, ok := idx.NormalUUID(claims.UserID)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code":    PermissionsChangedCode,
+				"message": PermissionsChangedMessage,
+			})
+			return
+		}
+		claims.UserID = userID
 
 		// Tanda tangan sah belum berarti token masih berlaku: logout memasukkan jti ke daftar cabut dan
 		// pencabutan sesi (logout, "Cabut", paksa keluar, reuse refresh token, ganti kata sandi) mematikan

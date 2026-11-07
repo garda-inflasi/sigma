@@ -1,12 +1,17 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // ColdStorageRequest is the query params for GET /v1/cold-storage.
 // Seluruhnya opsional; nilai kosong memakai bawaan di usecase.
 type ColdStorageRequest struct {
-	// ColdStorageID menyaring stok pada satu fasilitas.
-	ColdStorageID string `form:"cold_storage_id" binding:"omitempty,max=255"`
+	// ColdStorageID menyaring stok pada satu fasilitas: UUID atau kode fasilitas (CS-01). Fasilitas yang tidak
+	// ada menghasilkan daftar kosong.
+	ColdStorageID string `form:"cold_storage_id" binding:"omitempty,max=64"`
 	// Q mencari pada nama komoditas atau pemilik.
 	Q     string `form:"q" binding:"omitempty,max=100"`
 	Sort  string `form:"sort" binding:"omitempty,oneof=sisa_masa_simpan komoditas fasilitas volume masuk risiko pemilik"`
@@ -16,8 +21,9 @@ type ColdStorageRequest struct {
 }
 
 type BulkColdStorageRequest struct {
-	Action string   `json:"action" binding:"required,oneof=rencanakan_distribusi rekomendasi_olahan tandai_prioritas_jual buang"`
-	IDs    []string `json:"ids" binding:"required,min=1,max=500,dive,required,max=255"`
+	Action string `json:"action" binding:"required,oneof=rencanakan_distribusi rekomendasi_olahan tandai_prioritas_jual buang"`
+	// IDs adalah ID BIGINT lot (string desimal atau angka); ID yang bukan bilangan bulat positif ditolak (400).
+	IDs []idx.ID `json:"ids" binding:"required,min=1,max=500,dive,required"`
 }
 
 // DetailFasilitasRequest adalah query GET /v1/cold-storage/fasilitas/:id.
@@ -26,9 +32,9 @@ type DetailFasilitasRequest struct {
 	Jam int `form:"jam" binding:"omitempty,min=1,max=720"`
 }
 
-// PembacaanRequest adalah satu pembacaan sensor.
+// PembacaanRequest adalah satu pembacaan sensor. FasilitasID adalah UUID atau kode fasilitas (CS-01).
 type PembacaanRequest struct {
-	FasilitasID   string    `json:"fasilitas_id" binding:"required,max=255"`
+	FasilitasID   string    `json:"fasilitas_id" binding:"required,max=64"`
 	Waktu         time.Time `json:"waktu" binding:"required"`
 	SuhuC         *float64  `json:"suhu_c" binding:"required"`
 	KelembapanPct *float64  `json:"kelembapan_pct"`
@@ -43,10 +49,12 @@ type IngestTelemetriRequest struct {
 // TransaksiRequest adalah isi POST /v1/cold-storage/transaksi. Kolom yang
 // wajib bergantung pada jenis; aturannya divalidasi di usecase.
 type TransaksiRequest struct {
-	Jenis             string     `json:"jenis" binding:"required,oneof=MASUK KELUAR PINDAH"`
-	LotID             string     `json:"lot_id" binding:"max=255"`
-	FasilitasID       string     `json:"fasilitas_id" binding:"max=255"`
-	FasilitasTujuanID string     `json:"fasilitas_tujuan_id" binding:"max=255"`
+	Jenis string `json:"jenis" binding:"required,oneof=MASUK KELUAR PINDAH"`
+	// LotID adalah ID BIGINT lot (string desimal atau angka); ID yang salah bentuk ditolak (400).
+	LotID idx.ID `json:"lot_id"`
+	// FasilitasID dan FasilitasTujuanID adalah UUID atau kode fasilitas (CS-01).
+	FasilitasID       string     `json:"fasilitas_id" binding:"max=64"`
+	FasilitasTujuanID string     `json:"fasilitas_tujuan_id" binding:"max=64"`
 	KomoditasKode     string     `json:"komoditas_kode" binding:"max=255"`
 	Pemilik           string     `json:"pemilik" binding:"max=255"`
 	Alasan            string     `json:"alasan" binding:"max=500"`

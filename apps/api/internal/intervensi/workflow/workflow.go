@@ -143,7 +143,7 @@ func (s *Service) AlertDitulis(ctx context.Context, alert ewsdomain.Alert, _ ews
 		judul = judul[:maksJudul]
 	}
 	kartu, err := s.repo.BuatKartuOtomatis(ctx, domain.KartuOtomatis{
-		AlertID: alert.ID, Siklus: siklus, Judul: judul, Deskripsi: alert.Pesan,
+		AlertID: alert.ID, AlertKode: kodeAlert(alert), Siklus: siklus, Judul: judul, Deskripsi: alert.Pesan,
 		KomoditasKode: *alert.KomoditasKode, KabupatenKode: alert.KabupatenKode, Prioritas: PrioritasUntuk(alert.Severity),
 		HariTenggatCadangan: hariTenggatCadangan, PeranPenanggungJawab: []string{PeranPenanggungJawab}, Sekarang: s.now(),
 	})
@@ -157,8 +157,16 @@ func (s *Service) AlertDitulis(ctx context.Context, alert ewsdomain.Alert, _ ews
 	s.writeAudit(ctx, audit.Entry{
 		Aksi: "BUAT_OTOMATIS", Entitas: "intervensi", EntitasID: kartu.ID, Hasil: audit.HasilBerhasil,
 		Sesudah:  map[string]any{"siklus": kartu.Siklus, "tahap": kartu.Tahap, "judul": kartu.Judul, "prioritas": kartu.Prioritas},
-		Metadata: map[string]any{"ews_alert_id": alert.ID},
+		Metadata: map[string]any{"ews_alert_id": alert.ID.String()},
 	})
+}
+
+// kodeAlert adalah kode tampilan alert (EWS-n) bila ada, untuk teks riwayat kartu.
+func kodeAlert(a ewsdomain.Alert) string {
+	if a.Kode == nil {
+		return ""
+	}
+	return *a.Kode
 }
 
 // CekSLA mengeskalasi kartu yang lebih lama di tahapnya daripada SLA tahap itu dan mengembalikan jumlahnya.

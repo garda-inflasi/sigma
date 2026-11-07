@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,11 +24,28 @@ const telemetriBatch = 200
 // round3 membulatkan ke kilogram (3 desimal ton) agar saldo lot tidak menumpuk galat float.
 func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
 
+// IDFasilitasDariKode mencari UUID fasilitas menurut kode tampilannya (alias CS-01).
+func (r *Repository) IDFasilitasDariKode(ctx context.Context, kode string) (string, error) {
+	var ids []string
+	if err := r.db.WithContext(ctx).Raw("SELECT id::text FROM cold_storage WHERE kode = ?", kode).Scan(&ids).Error; err != nil {
+		return "", fmt.Errorf("cari fasilitas menurut kode: %w", err)
+	}
+	if len(ids) == 0 {
+		return "", domain.ErrFasilitasTidakAda
+	}
+	return ids[0], nil
+}
+
 func (r *Repository) GetFasilitas(ctx context.Context, id string) (*domain.FasilitasView, error) {
 	return fasilitasByID(r.db.WithContext(ctx), id)
 }
 
 func fasilitasByID(db *gorm.DB, id string) (*domain.FasilitasView, error) {
+	// Hanya UUID kanonik yang boleh sampai ke kolom uuid (selain itu galat 22P02 menjadi 500).
+	id, ok := idx.NormalUUID(id)
+	if !ok {
+		return nil, domain.ErrFasilitasTidakAda
+	}
 	var rows []domain.FasilitasView
 	if err := db.Raw(fmt.Sprintf(fasilitasSelect, "WHERE c.id = ?"), id).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("ambil fasilitas: %w", err)
@@ -45,15 +63,31 @@ type fasilitasLock struct {
 	Status       string
 }
 
+// uuidFasilitasLock menjaga agar hanya UUID kanonik yang sampai ke kolom uuid.
+func uuidFasilitasLock(ids []string) ([]string, error) {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		n, ok := idx.NormalUUID(id)
+		if !ok {
+			return nil, domain.ErrFasilitasTidakAda
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
 // lockFasilitas mengunci fasilitas menurut urutan id (mencegah deadlock antar
 // transaksi yang menyentuh pasangan fasilitas sama) dan mengembalikannya per id.
 func lockFasilitas(tx *gorm.DB, ids ...string) (map[string]fasilitasLock, error) {
-	sorted := slices.Clone(ids)
+	sorted, err := uuidFasilitasLock(ids)
+	if err != nil {
+		return nil, err
+	}
 	slices.Sort(sorted)
 	sorted = slices.Compact(sorted)
 
 	var rows []fasilitasLock
-	if err := tx.Raw("SELECT id, kapasitas_ton, status FROM cold_storage WHERE id IN ? ORDER BY id FOR UPDATE", sorted).Scan(&rows).Error; err != nil {
+	if err := tx.Raw("SELECT id::text AS id, kapasitas_ton, status FROM cold_storage WHERE id IN ? ORDER BY id FOR UPDATE", sorted).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("kunci fasilitas: %w", err)
 	}
 	out := make(map[string]fasilitasLock, len(rows))
@@ -179,7 +213,7 @@ func (r *Repository) ListTelemetri(ctx context.Context, fasilitasID string, seja
 func (r *Repository) StokFasilitas(ctx context.Context, fasilitasID string) ([]domain.StokView, error) {
 	items := []domain.StokView{}
 	err := r.db.WithContext(ctx).Table("stok_cold_storage AS s").
-		Select(`s.id, s.cold_storage_id, c.nama AS cold_storage_nama, s.komoditas_kode,
+		Select(`s.id, s.kode, s.cold_storage_id, c.nama AS cold_storage_nama, s.komoditas_kode,
 			k.nama AS komoditas_nama, s.volume_ton, s.masuk_pada, s.kedaluwarsa_pada,
 			s.risiko_food_loss, s.pemilik, s.status`).
 		Joins("JOIN cold_storage c ON c.id = s.cold_storage_id").
@@ -196,11 +230,14 @@ func (r *Repository) StokFasilitas(ctx context.Context, fasilitasID string) ([]d
 func (r *Repository) ListTransaksi(ctx context.Context, fasilitasID string, limit int) ([]domain.TransaksiView, error) {
 	items := []domain.TransaksiView{}
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT t.id, t.lot_id, t.lot_baru_id, t.jenis, t.volume_ton, s.komoditas_kode, k.nama AS komoditas_nama,
-		       t.fasilitas_asal_id, t.fasilitas_tujuan_id, p.nama AS oleh_nama, t.waktu, t.alasan
+		SELECT t.id, t.kode, t.lot_id, t.lot_baru_id, t.jenis, t.volume_ton, s.komoditas_kode, k.nama AS komoditas_nama,
+		       t.fasilitas_asal_id, fa.kode AS fasilitas_asal_kode, t.fasilitas_tujuan_id, ft.kode AS fasilitas_tujuan_kode,
+		       p.nama AS oleh_nama, t.waktu, t.alasan
 		  FROM transaksi_stok t
 		  JOIN stok_cold_storage s ON s.id = t.lot_id
 		  JOIN komoditas k ON k.kode = s.komoditas_kode
+		  LEFT JOIN cold_storage fa ON fa.id = t.fasilitas_asal_id
+		  LEFT JOIN cold_storage ft ON ft.id = t.fasilitas_tujuan_id
 		  LEFT JOIN pengguna p ON p.id = t.oleh_id
 		 WHERE t.fasilitas_asal_id = ? OR t.fasilitas_tujuan_id = ?
 		 ORDER BY t.waktu DESC, t.id DESC
@@ -211,9 +248,9 @@ func (r *Repository) ListTransaksi(ctx context.Context, fasilitasID string, limi
 	return items, nil
 }
 
-func (r *Repository) TandaiPrioritasJual(ctx context.Context, ids []string) ([]domain.BarisBulk, error) {
+func (r *Repository) TandaiPrioritasJual(ctx context.Context, ids []idx.ID) ([]domain.BarisBulk, error) {
 	var rows []struct {
-		ID        string
+		ID        idx.ID
 		VolumeTon float64
 	}
 	err := r.db.WithContext(ctx).Raw(`
@@ -252,7 +289,7 @@ func (r *Repository) CatatTransaksi(ctx context.Context, in domain.TransaksiInpu
 }
 
 // kunciLot mengunci dan membaca lot; lot yang sudah habis dianggap tidak dapat ditransaksikan.
-func kunciLot(tx *gorm.DB, id string) (*domain.StokColdStorage, error) {
+func kunciLot(tx *gorm.DB, id idx.ID) (*domain.StokColdStorage, error) {
 	var lots []domain.StokColdStorage
 	if err := tx.Raw("SELECT * FROM stok_cold_storage WHERE id = ? FOR UPDATE", id).Scan(&lots).Error; err != nil {
 		return nil, fmt.Errorf("kunci lot: %w", err)
@@ -292,9 +329,10 @@ func pastikanMuat(tx *gorm.DB, fas fasilitasLock, tambahan float64) error {
 	return nil
 }
 
-func catat(tx *gorm.DB, in domain.TransaksiInput, volume float64, asal, tujuan string, lotBaru *string) error {
+// catat menulis satu baris buku besar dan mengembalikan ID-nya (identity, dari RETURNING).
+func catat(tx *gorm.DB, in domain.TransaksiInput, volume float64, lotID idx.ID, lotBaru *idx.ID, asal, tujuan string) (idx.ID, error) {
 	row := domain.TransaksiStok{
-		ID: in.ID, LotID: in.LotID, LotBaruID: lotBaru, Jenis: in.Jenis, VolumeTon: volume,
+		LotID: lotID, LotBaruID: lotBaru, Jenis: in.Jenis, VolumeTon: volume,
 		Waktu: in.Waktu, Alasan: in.Alasan, Sumber: domain.SumberApp,
 	}
 	if asal != "" {
@@ -303,12 +341,25 @@ func catat(tx *gorm.DB, in domain.TransaksiInput, volume float64, asal, tujuan s
 	if tujuan != "" {
 		row.FasilitasTujuanID = &tujuan
 	}
-	if in.OlehID != "" {
-		row.OlehID = &in.OlehID
-	}
+	row.OlehID = idx.PtrAtauNil(in.OlehID)
 	if err := tx.Create(&row).Error; err != nil {
-		return fmt.Errorf("catat transaksi: %w", err)
+		return 0, fmt.Errorf("catat transaksi: %w", err)
 	}
+	return row.ID, nil
+}
+
+// buatLot menulis lot baru dan memberinya kode tampilan yang diturunkan dari ID identity-nya (dua langkah
+// dalam transaksi yang sama, jadi kode tidak mungkin bentrok).
+func buatLot(tx *gorm.DB, lot *domain.StokColdStorage) error {
+	lot.ID, lot.Kode = 0, nil
+	if err := tx.Create(lot).Error; err != nil {
+		return err
+	}
+	kode := domain.KodeLot(lot.ID)
+	if err := tx.Model(&domain.StokColdStorage{}).Where("id = ?", lot.ID).Update("kode", kode).Error; err != nil {
+		return fmt.Errorf("beri kode lot: %w", err)
+	}
+	lot.Kode = &kode
 	return nil
 }
 
@@ -334,18 +385,19 @@ func masuk(tx *gorm.DB, in domain.TransaksiInput) (domain.TransaksiHasil, error)
 	}
 	volume := round3(in.VolumeTon)
 	lot := domain.StokColdStorage{
-		ID: in.LotID, ColdStorageID: in.FasilitasID, KomoditasKode: in.KomoditasKode, VolumeTon: volume,
+		ColdStorageID: in.FasilitasID, KomoditasKode: in.KomoditasKode, VolumeTon: volume,
 		MasukPada: in.Waktu, KedaluwarsaPada: kedaluwarsa, Pemilik: in.Pemilik,
 		RisikoFoodLoss: domain.RisikoAwalLot, Status: domain.StatusLotAktif,
 	}
-	if err := tx.Create(&lot).Error; err != nil {
+	if err := buatLot(tx, &lot); err != nil {
 		return domain.TransaksiHasil{}, fmt.Errorf("buat lot: %w", err)
 	}
-	if err := catat(tx, in, volume, "", in.FasilitasID, nil); err != nil {
+	trxID, err := catat(tx, in, volume, lot.ID, nil, "", in.FasilitasID)
+	if err != nil {
 		return domain.TransaksiHasil{}, err
 	}
 	return domain.TransaksiHasil{
-		TransaksiID: in.ID, Jenis: in.Jenis, LotID: lot.ID, VolumeTon: volume, VolumeSisaTon: volume,
+		TransaksiID: trxID, Jenis: in.Jenis, LotID: lot.ID, VolumeTon: volume, VolumeSisaTon: volume,
 		StatusLot: lot.Status,
 		Sesudah:   domain.LotSnapshot{FasilitasID: lot.ColdStorageID, VolumeTon: volume, Status: lot.Status},
 	}, nil
@@ -382,11 +434,12 @@ func keluar(tx *gorm.DB, in domain.TransaksiInput) (domain.TransaksiHasil, error
 		Updates(map[string]any{"volume_ton": sisa, "status": status}).Error; err != nil {
 		return domain.TransaksiHasil{}, fmt.Errorf("kurangi lot: %w", err)
 	}
-	if err := catat(tx, in, volume, lot.ColdStorageID, "", nil); err != nil {
+	trxID, err := catat(tx, in, volume, lot.ID, nil, lot.ColdStorageID, "")
+	if err != nil {
 		return domain.TransaksiHasil{}, err
 	}
 	return domain.TransaksiHasil{
-		TransaksiID: in.ID, Jenis: in.Jenis, LotID: lot.ID, VolumeTon: volume, VolumeSisaTon: sisa, StatusLot: status,
+		TransaksiID: trxID, Jenis: in.Jenis, LotID: lot.ID, VolumeTon: volume, VolumeSisaTon: sisa, StatusLot: status,
 		Sebelum: &sebelum,
 		Sesudah: domain.LotSnapshot{FasilitasID: lot.ColdStorageID, VolumeTon: sisa, Status: status},
 	}, nil
@@ -418,11 +471,12 @@ func pindah(tx *gorm.DB, in domain.TransaksiInput) (domain.TransaksiHasil, error
 		if err := tx.Model(&domain.StokColdStorage{}).Where("id = ?", lot.ID).Update("cold_storage_id", tujuan).Error; err != nil {
 			return domain.TransaksiHasil{}, fmt.Errorf("pindahkan lot: %w", err)
 		}
-		if err := catat(tx, in, volume, asal, tujuan, nil); err != nil {
+		trxID, err := catat(tx, in, volume, lot.ID, nil, asal, tujuan)
+		if err != nil {
 			return domain.TransaksiHasil{}, err
 		}
 		return domain.TransaksiHasil{
-			TransaksiID: in.ID, Jenis: in.Jenis, LotID: lot.ID, VolumeTon: volume, VolumeSisaTon: volume, StatusLot: lot.Status,
+			TransaksiID: trxID, Jenis: in.Jenis, LotID: lot.ID, VolumeTon: volume, VolumeSisaTon: volume, StatusLot: lot.Status,
 			Sebelum: &sebelum,
 			Sesudah: domain.LotSnapshot{FasilitasID: tujuan, VolumeTon: volume, Status: lot.Status},
 		}, nil
@@ -433,16 +487,17 @@ func pindah(tx *gorm.DB, in domain.TransaksiInput) (domain.TransaksiHasil, error
 	if err := tx.Model(&domain.StokColdStorage{}).Where("id = ?", lot.ID).Update("volume_ton", sisa).Error; err != nil {
 		return domain.TransaksiHasil{}, fmt.Errorf("kurangi lot sumber: %w", err)
 	}
-	baru := *lot
-	baru.ID, baru.ColdStorageID, baru.VolumeTon = in.LotBaruID, tujuan, volume
-	if err := tx.Create(&baru).Error; err != nil {
+	baru := *lot // buatLot mengosongkan ID dan kode salinan: identity dan kode baru dari basis data
+	baru.ColdStorageID, baru.VolumeTon = tujuan, volume
+	if err := buatLot(tx, &baru); err != nil {
 		return domain.TransaksiHasil{}, fmt.Errorf("buat lot tujuan: %w", err)
 	}
-	if err := catat(tx, in, volume, asal, tujuan, &baru.ID); err != nil {
+	trxID, err := catat(tx, in, volume, lot.ID, &baru.ID, asal, tujuan)
+	if err != nil {
 		return domain.TransaksiHasil{}, err
 	}
 	return domain.TransaksiHasil{
-		TransaksiID: in.ID, Jenis: in.Jenis, LotID: lot.ID, LotBaruID: &baru.ID, VolumeTon: volume, VolumeSisaTon: sisa,
+		TransaksiID: trxID, Jenis: in.Jenis, LotID: lot.ID, LotBaruID: &baru.ID, VolumeTon: volume, VolumeSisaTon: sisa,
 		StatusLot: lot.Status,
 		Sebelum:   &sebelum,
 		Sesudah:   domain.LotSnapshot{FasilitasID: asal, VolumeTon: sisa, Status: lot.Status},

@@ -16,10 +16,12 @@ type KomoditasRequest struct {
 	KomoditasKode string `json:"komoditas_kode" binding:"required,max=50"`
 }
 
-// BulkModelRequest adalah aksi massal pada registri model menurut id.
+// BulkModelRequest adalah aksi massal pada registri model. Setiap elemen ids adalah ID BIGINT model atau
+// kodenya (mis. MDL-CBM-KRT-v2.3.1, alias ID lama); elemen kosong atau lebih dari 64 karakter ditolak (400),
+// sedangkan rujukan yang tidak ada dilaporkan per model sebagai tidak ditemukan.
 type BulkModelRequest struct {
 	Action string   `json:"action" binding:"required,oneof=promosi arsip"`
-	IDs    []string `json:"ids" binding:"required,min=1,max=100,dive,required"`
+	IDs    []string `json:"ids" binding:"required,min=1,max=100,dive,required,max=64"`
 }
 
 // SimulasiRequest adalah skenario what-if. Field yang tidak diisi berarti netral:

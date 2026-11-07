@@ -9,6 +9,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,10 +29,17 @@ func (r *fakeSimulasiRepo) GetTerbaru(context.Context, string, string, int) (*do
 	return r.view, r.err
 }
 
+// SimpanSkenario meniru basis data: ID BIGINT diberikan saat disimpan (idSkenario), bukan oleh pemanggil.
 func (r *fakeSimulasiRepo) SimpanSkenario(_ context.Context, s *domain.SkenarioSimulasi) error {
+	if r.err != nil {
+		return r.err
+	}
+	s.ID = idSkenario
 	r.disimpan = s
-	return r.err
+	return nil
 }
+
+const idSkenario idx.ID = 42
 
 func netral() ParameterSimulasi {
 	return ParameterSimulasi{KomoditasKode: "CBM-KRT", KabupatenKode: "1171", HorizonHari: 14, HujanPct: CurahHujanNormal}
@@ -97,17 +105,18 @@ func TestSimulasiHitung_MenyimpanSkenarioDanMencatatAudit(t *testing.T) {
 	p := netral()
 	p.PasokanPct = 10
 
-	hasil, err := u.Hitung(t.Context(), "u-1", p)
+	hasil, err := u.Hitung(t.Context(), uid("u-1"), p)
 
 	require.NoError(t, err)
 	assert.Equal(t, 10.5, hasil.HasilPct, "14,0 - 3,5")
-	assert.NotEmpty(t, hasil.ID)
+	assert.Equal(t, idSkenario, hasil.ID, "ID hasil adalah ID BIGINT dari basis data, bukan buatan aplikasi")
 	assert.Equal(t, sekarang, hasil.DibuatPada)
 
 	s := repo.disimpan
 	require.NotNil(t, s)
 	assert.Equal(t, hasil.ID, s.ID)
-	assert.Equal(t, "u-1", s.DibuatOleh)
+	assert.Nil(t, s.Kode, "skenario baru tidak punya kode lama")
+	assert.Equal(t, uid("u-1"), s.DibuatOleh)
 	assert.Equal(t, "CBM-KRT", s.KomoditasKode)
 	assert.Equal(t, 14, s.HorizonHari)
 	var parameter ParameterSimulasi
@@ -117,18 +126,25 @@ func TestSimulasiHitung_MenyimpanSkenarioDanMencatatAudit(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(s.Hasil), &tersimpan))
 	assert.Equal(t, 10.5, tersimpan.HasilPct)
 	assert.Len(t, tersimpan.Efek, 3)
+	assert.NotContains(t, s.Hasil, `"id"`, "ID baru ada sesudah baris disimpan, jadi tidak ikut di snapshot hasil")
 
 	e, ok := rec.Last()
 	require.True(t, ok)
 	assert.Equal(t, "SIMULASI_SKENARIO", e.Aksi)
-	assert.Equal(t, hasil.ID, e.EntitasID)
+	assert.Equal(t, "42", e.EntitasID)
+}
+
+func TestHasilSimulasi_IDDitulisSebagaiStringDesimal(t *testing.T) {
+	raw, err := json.Marshal(HasilSimulasi{ID: 42})
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"id":"42"`)
 }
 
 func TestSimulasiHitung_TanpaProyeksiModelProduksi(t *testing.T) {
 	repo := &fakeSimulasiRepo{}
 	u := NewSimulasi(repo, &audittest.Recorder{}, logger.NewDefault())
 
-	_, err := u.Hitung(t.Context(), "u-1", netral())
+	_, err := u.Hitung(t.Context(), uid("u-1"), netral())
 
 	assert.ErrorIs(t, err, ErrProyeksiTidakAda)
 	assert.Nil(t, repo.disimpan)
@@ -138,7 +154,7 @@ func TestSimulasiHitung_GalatRepositori(t *testing.T) {
 	boom := errors.New("db down")
 	u := NewSimulasi(&fakeSimulasiRepo{view: contohView(57000), err: boom}, &audittest.Recorder{}, logger.NewDefault())
 
-	_, err := u.Hitung(t.Context(), "u-1", netral())
+	_, err := u.Hitung(t.Context(), uid("u-1"), netral())
 
 	assert.ErrorIs(t, err, boom)
 }

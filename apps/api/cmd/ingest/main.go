@@ -6,6 +6,9 @@
 //	                                                    petakan alias sumber ke kode master ("-" = abaikan alias)
 //	ingest konfigurasi <sumber> <json>                  ganti konfigurasi permintaan sumber (objek JSON)
 //
+// <sumber> adalah kode sumber (sumber_data.kode, mis. SRC-BI) atau UUID-nya. Konfigurasi dan konektor merujuk
+// sumber lewat kode; baris riwayat, pemetaan, dan audit memakai UUID.
+//
 // Satu eksekusi tercatat di eksekusi_sumber dan tampil di halaman /sumber-data.
 // Perintah keluar dengan kode non-nol bila eksekusi berstatus GAGAL.
 package main
@@ -72,7 +75,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		args = args[1:]
 	}
 	if len(args) != 1 {
-		return errors.New("jalankan: sebutkan tepat satu id sumber, mis. ingest SRC-BI")
+		return errors.New("jalankan: sebutkan tepat satu sumber (kode atau UUID), mis. ingest SRC-BI")
 	}
 	return jalankan(ctx, db, args[0], out, fetcher)
 }
@@ -86,9 +89,13 @@ func newRunner(db *gorm.DB, fetcher domain.Fetcher) *engine.Runner {
 	return engine.New(postgres.New(db), fetcher, log, ingestion.Konektor()...)
 }
 
-func jalankan(ctx context.Context, db *gorm.DB, sumberID string, out io.Writer, fetcher domain.Fetcher) error {
+func jalankan(ctx context.Context, db *gorm.DB, ref string, out io.Writer, fetcher domain.Fetcher) error {
 	runner := newRunner(db, fetcher)
-	run, err := runner.Mulai(ctx, sumberID, domain.PemicuCLI, nil)
+	s, err := postgres.New(db).Sumber(ctx, ref)
+	if err != nil {
+		return err
+	}
+	run, err := runner.Mulai(ctx, s.ID, domain.PemicuCLI, nil)
 	if err != nil {
 		return err
 	}
@@ -100,11 +107,11 @@ func jalankan(ctx context.Context, db *gorm.DB, sumberID string, out io.Writer, 
 	}
 
 	fmt.Fprintf(out, "ingest %s: eksekusi=%d status=%s dokumen=%d diambil=%d tak_terpetakan=%d tidak_valid=%d\n",
-		e.SumberID, e.ID, e.Status, e.Dokumen, e.BarisDiambil, e.BarisTakTerpetakan, e.BarisTidakValid)
+		s.Kode, e.ID, e.Status, e.Dokumen, e.BarisDiambil, e.BarisTakTerpetakan, e.BarisTidakValid)
 	if e.Galat != nil {
 		fmt.Fprintf(out, "galat: %s\n", *e.Galat)
 	}
-	catatAudit(ctx, db, "JALANKAN_SUMBER", sumberID, map[string]any{"eksekusi_id": e.ID, "status": e.Status})
+	catatAudit(ctx, db, "JALANKAN_SUMBER", s.ID, map[string]any{"kode": s.Kode, "eksekusi_id": e.ID, "status": e.Status})
 
 	if e.BarisDiambil > 0 {
 		if err := refresher.Shared(db, logger.NewDefault()).Refresh(ctx); err != nil {
@@ -125,10 +132,10 @@ func daftar(ctx context.Context, db *gorm.DB, out io.Writer, fetcher domain.Fetc
 	}
 	for _, s := range items {
 		konektor := "tanpa konektor"
-		if runner.Punya(s.ID) {
+		if runner.Punya(s.Kode) {
 			konektor = "konektor tersedia"
 		}
-		fmt.Fprintf(out, "%-12s %-10s %-16s %s\n", s.ID, s.Status, konektor, s.Nama)
+		fmt.Fprintf(out, "%-12s %-10s %-16s %s\n", s.Kode, s.Status, konektor, s.Nama)
 	}
 	return nil
 }
@@ -137,7 +144,7 @@ func pemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer) er
 	if len(args) != 4 {
 		return errors.New("pemetaan: ingest pemetaan <sumber> <KOMODITAS|WILAYAH> <alias> <kode|->")
 	}
-	sumberID, jenis, alias, kode := args[0], strings.ToUpper(args[1]), domain.NormalisasiAlias(args[2]), args[3]
+	ref, jenis, alias, kode := args[0], strings.ToUpper(args[1]), domain.NormalisasiAlias(args[2]), args[3]
 	if jenis != domain.JenisKomoditas && jenis != domain.JenisWilayah {
 		return fmt.Errorf("jenis %q tidak dikenal (KOMODITAS atau WILAYAH)", args[1])
 	}
@@ -145,7 +152,11 @@ func pemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer) er
 		return errors.New("alias kosong")
 	}
 
-	row := domain.PemetaanSumber{SumberID: sumberID, Jenis: jenis, Alias: alias}
+	s, err := postgres.New(db).Sumber(ctx, ref)
+	if err != nil {
+		return err
+	}
+	row := domain.PemetaanSumber{SumberID: s.ID, Jenis: jenis, Alias: alias}
 	if kode == "-" {
 		row.Diabaikan = true
 	} else {
@@ -159,7 +170,7 @@ func pemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer) er
 		row.KodeMaster = &kode
 	}
 
-	err := db.WithContext(ctx).Exec(`
+	err = db.WithContext(ctx).Exec(`
 		INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master, diabaikan, catatan)
 		VALUES (?, ?, ?, ?, ?, 'diatur lewat cmd/ingest')
 		ON CONFLICT (sumber_id, jenis, alias) DO UPDATE
@@ -168,8 +179,8 @@ func pemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer) er
 	if err != nil {
 		return fmt.Errorf("simpan pemetaan: %w", err)
 	}
-	catatAudit(ctx, db, "UBAH_PEMETAAN_SUMBER", sumberID, map[string]any{"jenis": jenis, "alias": alias, "kode": kode})
-	fmt.Fprintf(out, "pemetaan %s %s %q -> %s\n", sumberID, jenis, alias, kode)
+	catatAudit(ctx, db, "UBAH_PEMETAAN_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "jenis": jenis, "alias": alias, "kode": kode})
+	fmt.Fprintf(out, "pemetaan %s %s %q -> %s\n", s.Kode, jenis, alias, kode)
 	return nil
 }
 
@@ -196,15 +207,15 @@ func konfigurasi(ctx context.Context, db *gorm.DB, args []string, out io.Writer)
 	if err := json.Unmarshal([]byte(args[1]), &objek); err != nil {
 		return fmt.Errorf("konfigurasi harus objek JSON: %w", err)
 	}
-	res := db.WithContext(ctx).Exec(`UPDATE sumber_data SET konfigurasi = ?::jsonb WHERE id = ?`, args[1], args[0])
-	if res.Error != nil {
-		return fmt.Errorf("simpan konfigurasi: %w", res.Error)
+	s, err := postgres.New(db).Sumber(ctx, args[0])
+	if err != nil {
+		return err
 	}
-	if res.RowsAffected == 0 {
-		return domain.ErrSumberTidakAda
+	if err := db.WithContext(ctx).Exec(`UPDATE sumber_data SET konfigurasi = ?::jsonb WHERE id = ?`, args[1], s.ID).Error; err != nil {
+		return fmt.Errorf("simpan konfigurasi: %w", err)
 	}
-	catatAudit(ctx, db, "UBAH_KONFIGURASI_SUMBER", args[0], map[string]any{"kunci": sortedKeys(objek)})
-	fmt.Fprintf(out, "konfigurasi %s diperbarui (%d kunci)\n", args[0], len(objek))
+	catatAudit(ctx, db, "UBAH_KONFIGURASI_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "kunci": sortedKeys(objek)})
+	fmt.Fprintf(out, "konfigurasi %s diperbarui (%d kunci)\n", s.Kode, len(objek))
 	return nil
 }
 
@@ -217,8 +228,8 @@ func sortedKeys(m map[string]json.RawMessage) []string {
 	return keys
 }
 
-// catatAudit mencatat aksi operator CLI (tanpa aktor terautentikasi). Kegagalan hanya
-// dilaporkan ke stderr karena aksinya sudah terjadi.
+// catatAudit mencatat aksi operator CLI (tanpa aktor terautentikasi) atas sumber ber-ID (UUID) itu. Kegagalan
+// hanya dilaporkan ke stderr karena aksinya sudah terjadi.
 func catatAudit(ctx context.Context, db *gorm.DB, aksi, sumberID string, metadata map[string]any) {
 	metadata["lewat"] = "cmd/ingest"
 	if operator := os.Getenv("USER"); operator != "" {

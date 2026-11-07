@@ -7,6 +7,8 @@ import (
 	"math"
 	"slices"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Parameter validasi otomatis.
@@ -80,7 +82,8 @@ func (f *FlagValidasi) Scan(src any) error {
 
 // BatasHarga memetakan tabel batas_harga: rentang harga wajar per komoditas (dan kabupaten bila diisi).
 type BatasHarga struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string   `gorm:"column:kode"`
 	KomoditasKode string    `gorm:"column:komoditas_kode"`
 	KabupatenKode *string   `gorm:"column:kabupaten_kode"`
 	BatasMin      int       `gorm:"column:batas_min"`

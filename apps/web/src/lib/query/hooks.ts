@@ -6,6 +6,7 @@ import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import type { AksiModel, SimulasiInput } from "@/lib/api/prediksi";
 import type { UbahAturanInput } from "@/lib/api/ews";
+import { labelKode } from "@/lib/kode";
 import { ringkasHasilKartu, type AksiKartu, type BuatIntervensiInput, type KeputusanPersetujuan } from "@/lib/api/intervensi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
@@ -213,7 +214,7 @@ export function useBuatIntervensi() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: BuatIntervensiInput) => api.intervensi.buat(input),
-    onSuccess: (kartu) => toast.success("Intervensi ditambahkan", { description: `${kartu.id} masuk ke tahap pertama siklusnya. Tercatat di riwayat dan audit trail.` }),
+    onSuccess: (kartu) => toast.success("Intervensi ditambahkan", { description: `${labelKode(kartu)} masuk ke tahap pertama siklusnya. Tercatat di riwayat dan audit trail.` }),
     onError: (err) => toast.error("Intervensi gagal ditambahkan", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
     onSettled: () => qc.invalidateQueries({ queryKey: qk.intervensi.list() }),
   });
@@ -234,7 +235,7 @@ export function useAjukanPersetujuan() {
 export function usePutusPersetujuan() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, keputusan, catatan }: { id: number; keputusan: KeputusanPersetujuan; catatan?: string }) => api.intervensi.putus(id, keputusan, catatan),
+    mutationFn: ({ id, keputusan, catatan }: { id: string; keputusan: KeputusanPersetujuan; catatan?: string }) => api.intervensi.putus(id, keputusan, catatan),
     onSuccess: (p, { keputusan }) => {
       const selesai = p.status !== "MENUNGGU";
       toast.success(keputusan === "SETUJU" ? (selesai ? "Persetujuan selesai" : "Langkah disetujui") : "Permintaan ditolak", {

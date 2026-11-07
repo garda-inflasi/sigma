@@ -8,8 +8,10 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
+	"github.com/garda-inflasi/api/internal/sumber-data/domain"
 	"github.com/garda-inflasi/api/internal/sumber-data/dto"
 	"github.com/garda-inflasi/api/internal/sumber-data/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -32,9 +34,21 @@ func (h *Handler) List(c *gin.Context) {
 	response.Success(c, dto.ToSumberDataResponses(items, h.uc.BisaDijalankan))
 }
 
+const pesanTidakAda = "Sumber data tidak ditemukan"
+
+// rujukan membaca :id: UUID sumber atau kodenya (alias, mis. SRC-BI). Teks kosong atau lebih panjang dari kode
+// dijawab 404, sama dengan sumber yang tidak ada.
+func rujukan(c *gin.Context) (idx.RujukanUUID, bool) {
+	return idx.ParamUUIDAtauKode(c, "id", domain.MaksKode, pesanTidakAda)
+}
+
 // GET /v1/sumber-data/:id
 func (h *Handler) Get(c *gin.Context) {
-	item, err := h.uc.GetByID(c.Request.Context(), c.Param("id"))
+	ref, ok := rujukan(c)
+	if !ok {
+		return
+	}
+	item, err := h.uc.Get(c.Request.Context(), ref)
 	if errors.Is(err, usecase.ErrNotFound) {
 		response.NotFound(c, "Sumber data tidak ditemukan")
 		return
@@ -43,7 +57,7 @@ func (h *Handler) Get(c *gin.Context) {
 		response.InternalError(c, "Gagal mengambil sumber data")
 		return
 	}
-	response.Success(c, dto.ToSumberDataResponse(*item, h.uc.BisaDijalankan(item.ID)))
+	response.Success(c, dto.ToSumberDataResponse(*item, h.uc.BisaDijalankan(item.Kode)))
 }
 
 // POST /v1/sumber-data/bulk
@@ -98,11 +112,15 @@ func limit(c *gin.Context) (int, bool) {
 
 // GET /v1/sumber-data/:id/eksekusi
 func (h *Handler) Eksekusi(c *gin.Context) {
+	ref, ok := rujukan(c)
+	if !ok {
+		return
+	}
 	n, ok := limit(c)
 	if !ok {
 		return
 	}
-	items, err := h.uc.Eksekusi(c.Request.Context(), c.Param("id"), n)
+	items, err := h.uc.Eksekusi(c.Request.Context(), ref, n)
 	if errors.Is(err, usecase.ErrNotFound) {
 		response.NotFound(c, "Sumber data tidak ditemukan")
 		return
@@ -116,11 +134,15 @@ func (h *Handler) Eksekusi(c *gin.Context) {
 
 // GET /v1/sumber-data/:id/sampel
 func (h *Handler) Sampel(c *gin.Context) {
+	ref, ok := rujukan(c)
+	if !ok {
+		return
+	}
 	n, ok := limit(c)
 	if !ok {
 		return
 	}
-	items, err := h.uc.Sampel(c.Request.Context(), c.Param("id"), n)
+	items, err := h.uc.Sampel(c.Request.Context(), ref, n)
 	if errors.Is(err, usecase.ErrNotFound) {
 		response.NotFound(c, "Sumber data tidak ditemukan")
 		return
@@ -134,7 +156,11 @@ func (h *Handler) Sampel(c *gin.Context) {
 
 // POST /v1/sumber-data/:id/jalankan: 202 dengan eksekusi BERJALAN; hasilnya dibaca dari riwayat.
 func (h *Handler) Jalankan(c *gin.Context) {
-	e, err := h.uc.Jalankan(audit.RequestContext(c), c.Param("id"), c.GetString("user_id"))
+	ref, ok := rujukan(c)
+	if !ok {
+		return
+	}
+	e, err := h.uc.Jalankan(audit.RequestContext(c), ref, c.GetString("user_id"))
 	switch {
 	case errors.Is(err, usecase.ErrNotFound), errors.Is(err, ingest.ErrSumberTidakAda):
 		response.NotFound(c, "Sumber data tidak ditemukan")

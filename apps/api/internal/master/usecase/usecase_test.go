@@ -135,7 +135,7 @@ func TestBulkKomoditas_Transitions(t *testing.T) {
 			repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": tc.from, "CBM-KRT": tc.from}, nil)
 			repo.On("UbahStatusKomoditas", mock.Anything, mock.Anything, transisi).Return(true, nil).Twice()
 
-			hasil, err := uc.BulkKomoditas(context.Background(), kode, tc.action, "admin-1")
+			hasil, err := uc.BulkKomoditas(context.Background(), kode, tc.action, uid("admin-1"))
 
 			require.NoError(t, err)
 			assert.Equal(t, 2, hasil.Berhasil)
@@ -144,7 +144,7 @@ func TestBulkKomoditas_Transitions(t *testing.T) {
 			entry, ok := recorder.Last()
 			require.True(t, ok, "aksi yang mengubah data tercatat di audit")
 			assert.Equal(t, "BULK_"+tc.action, entry.Aksi)
-			assert.Equal(t, "admin-1", entry.AktorID)
+			assert.Equal(t, uid("admin-1"), entry.AktorID)
 			assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 			assert.Equal(t, kode, entry.Metadata["kode"])
 			repo.AssertExpectations(t)
@@ -161,7 +161,7 @@ func TestBulkKomoditas_PerItemFailures(t *testing.T) {
 	repo.On("StatusKomoditas", mock.Anything, unik).Return(map[string]string{"BRS-MED": "AKTIF", "CBM-KRT": "DIARSIPKAN"}, nil)
 	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", transisi).Return(true, nil).Once()
 
-	hasil, err := uc.BulkKomoditas(context.Background(), kode, "ajukan_perubahan", "admin-1")
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "ajukan_perubahan", uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Berhasil)
@@ -184,7 +184,7 @@ func TestBulkKomoditas_AllFailedWritesNoAudit(t *testing.T) {
 	kode := []string{"BRS-MED"}
 	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "AKTIF"}, nil)
 
-	hasil, err := uc.BulkKomoditas(context.Background(), kode, "setujui", "admin-1")
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "setujui", uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Gagal)
@@ -198,7 +198,7 @@ func TestBulkKomoditas_RaceLostIsFailedItem(t *testing.T) {
 	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "AKTIF"}, nil)
 	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", mock.Anything).Return(false, nil)
 
-	hasil, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", "admin-1")
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Gagal)
@@ -208,7 +208,7 @@ func TestBulkKomoditas_RaceLostIsFailedItem(t *testing.T) {
 func TestBulkKomoditas_InvalidAction(t *testing.T) {
 	uc, recorder := newTestUseCase(new(mockRepository))
 
-	_, err := uc.BulkKomoditas(context.Background(), []string{"BRS-MED"}, "hapus", "admin-1")
+	_, err := uc.BulkKomoditas(context.Background(), []string{"BRS-MED"}, "hapus", uid("admin-1"))
 
 	assert.ErrorIs(t, err, ErrInvalidAction)
 	assert.Empty(t, recorder.Entries())
@@ -220,7 +220,7 @@ func TestBulkKomoditas_RepoError(t *testing.T) {
 	kode := []string{"BRS-MED"}
 	repo.On("StatusKomoditas", mock.Anything, kode).Return(nil, assert.AnError)
 
-	_, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", "admin-1")
+	_, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", uid("admin-1"))
 
 	assert.Error(t, err)
 	assert.Empty(t, recorder.Entries(), "aksi yang gagal tidak dicatat sebagai berhasil")
@@ -234,7 +234,7 @@ func TestBulkKomoditas_UpdateErrorAborts(t *testing.T) {
 	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "AKTIF"}, nil)
 	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", mock.Anything).Return(false, assert.AnError)
 
-	_, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", "admin-1")
+	_, err := uc.BulkKomoditas(context.Background(), kode, "arsipkan", uid("admin-1"))
 
 	assert.Error(t, err)
 }
@@ -247,7 +247,7 @@ func TestBulkKomoditas_AuditFailureDoesNotFailAction(t *testing.T) {
 	repo.On("StatusKomoditas", mock.Anything, kode).Return(map[string]string{"BRS-MED": "MENUNGGU_PERSETUJUAN"}, nil)
 	repo.On("UbahStatusKomoditas", mock.Anything, "BRS-MED", mock.Anything).Return(true, nil)
 
-	hasil, err := uc.BulkKomoditas(context.Background(), kode, "setujui", "admin-1")
+	hasil, err := uc.BulkKomoditas(context.Background(), kode, "setujui", uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Berhasil)

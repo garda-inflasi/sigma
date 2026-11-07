@@ -7,7 +7,7 @@
 
 - **UI:** [peta-page.tsx](../../apps/web/src/components/spasial/peta-page.tsx) di `/peta`; [region-map](../../apps/web/src/components/map/region-map.tsx) dan versi Mapbox, [marker-pin](../../apps/web/src/components/map/marker-pin.tsx). Surplus–defisit, rute distribusi, kandidat cold storage.
 - **API Go (`spasial`, izin `spasial.lihat`, baca-saja):** `GET /v1/spasial/wilayah` (marker + status dari neraca terbaru), `/neraca` (filter `komoditas`, `periode`), `/rute`, `/kandidat-cold-storage`.
-- **Skema:** view `wilayah` di atas `kabupaten`, tabel `neraca_wilayah`, `rute_distribusi`, `kandidat_cold_storage` (migrasi 000032); entity cocok. Seeder `spasial.demo` (184 neraca, 5 rute, 3 kandidat; semua berlabel `sumber = 'DEMO'`, titik panas selaras dengan alert `ews.demo`). Tidak ada lapis `reference`: neraca pangan tidak boleh di-seed di produksi. Image Postgres tetap `postgres:16-alpine` (tanpa PostGIS).
+- **Skema:** view `wilayah` di atas `kabupaten`, tabel `neraca_wilayah`, `rute_distribusi`, `kandidat_cold_storage` (migrasi 000032); entity cocok. Kunci primer standar sejak 000113 ([Kunci primer](#kunci-primer-000113-)): rute, kandidat, dan rencana optimasi BIGINT, neraca BIGINT dengan UNIQUE alami, jarak dan geometri tetap berkode. Seeder `spasial.demo` (184 neraca, 5 rute, 3 kandidat; semua berlabel `sumber = 'DEMO'`, titik panas selaras dengan alert `ews.demo`). Tidak ada lapis `reference`: neraca pangan tidak boleh di-seed di produksi. Image Postgres tetap `postgres:16-alpine` (tanpa PostGIS).
 - **Web:** `peta-page.tsx` membaca marker, rute, dan kandidat dari API (`lib/api/spasial.ts`); mode mock memakai `mockRute`/`mockKandidatColdStorage`. Mapbox opsional lewat `NEXT_PUBLIC_MAPBOX_TOKEN` (tanpanya peta memakai skema SVG Aceh; lihat `apps/web/README.md`).
 
 ---
@@ -37,10 +37,10 @@
 
 1. **MIG** (`000101_12b_wilayah_geometri.sql`)
    - [x] `wilayah_geometri` (`kabupaten_kode` PK, `geojson` jsonb, kotak pembatas, `sumber` DEMO/RESMI, `keterangan`) + CHECK tipe/bbox/sumber.
-   - [ ] Versi geometri tersimpan per tingkat zoom: tidak dibuat; penyederhanaan dihitung saat dibaca (23 poligon, murah).
+   - [ ] Versi geometri tersimpan per tingkat zoom: tidak dibuat; penyederhanaan dihitung saat dibaca (23 poligon, murah). Bila dibuat, kuncinya tetap berkode atau komposit `(kabupaten_kode, zoom)`; `wilayah_geometri.kabupaten_kode` tetap PK (1:1 kabupaten, FK CASCADE).
 2. **SEED** (`spasial.demo`)
    - [x] Poligon **perkiraan** (selimut cembung di sekitar titik pusat, pasar, dan cold storage), berlabel `DEMO`; **bukan batas administratif**. Data batas resmi (BPS/Geoportal) tidak tersedia offline dan tidak diklaim.
-   - [ ] Impor batas resmi: seeder/impor `RESMI` belum ada (perlu sumber dan lisensi yang dicatat; unduh saat impor, jangan commit berkas besar).
+   - [ ] Impor batas resmi: seeder/impor `RESMI` belum ada (perlu sumber dan lisensi yang dicatat; unduh saat impor, jangan commit berkas besar). Upsert menurut `kabupaten_kode` (PK).
 3. **API/FE**
    - [x] `GET /v1/spasial/geometri?zoom=&bbox=` (FeatureCollection, disederhanakan menurut zoom, `perkiraan` per fitur) dan `GET /v1/spasial/lokasi?lat=&lng=` (wilayah untuk satu titik).
    - [x] Peta skema SVG menggambar poligon berwarna menurut status marker; lapisan Mapbox (fill + line) bila token ada (lapisan Mapbox tidak teruji otomatis, tanpa token). Keterangan "perkiraan" tampil di peta.
@@ -55,7 +55,7 @@
 - [x] Cache matriks jarak `jarak_antar_wilayah` (migrasi `000102_12c_optimasi_rute.sql`): `ESTIMASI` (garis lurus × faktor jalan 1,35, 45 km/jam) diisi saat rencana disimpan; `OSRM` disediakan untuk impor jarak jalan nyata dan tidak ditimpa estimasi. **Impor OSRM/OpenRouteService belum ada** (butuh layanan routing eksternal).
 - [x] Optimasi rute dan biaya logistik: model transportasi min-cost flow eksak (successive shortest path, murni Go, `internal/spasial/domain/optimasi.go`; bukan OR-Tools). Kapasitas = surplus/defisit `neraca_wilayah`; kendala waktu = `maks_jam_tempuh`. Volume tersalur dimaksimalkan lebih dulu, lalu ton-km diminimalkan. Kendala kapasitas kendaraan belum dimodelkan. Setiap perhitungan juga menghitung rencana pembanding serakah (`domain.Serakah`, pasangan terdekat dulu) dan melaporkan `penghematan_persen`; biayanya disimpan di `optimasi_rute.biaya_pembanding` (migrasi `000103`, dasar KPI efisiensi biaya di [16-B](16-kpi.md)).
 - [x] API: `POST /v1/spasial/optimasi-rute` (simulasi `spasial.lihat`; `simpan` butuh `logistik.kelola`, menulis `optimasi_rute` + rute usulan `sumber = OPTIMASI`, menggantikan rencana lama komoditas/periode yang sama, audit `OPTIMASI_RUTE`), `GET /v1/spasial/optimasi-rute` (riwayat).
-- [ ] Skor kandidat cold storage: jarak ke sentra produksi, volume surplus, kapasitas listrik, akses jalan (data kapasitas listrik/akses jalan belum ada; skor demo tetap statis).
+- [ ] Skor kandidat cold storage: jarak ke sentra produksi, volume surplus, kapasitas listrik, akses jalan (data kapasitas listrik/akses jalan belum ada; skor demo tetap statis). `kandidat_cold_storage.id` BIGINT; bila nanti ada rute detail atau ubah status: `/v1/spasial/kandidat-cold-storage/:id` memakai `idx.ParamIDAtauKode` (BIGINT atau kode `KC-…`).
 - [x] Simulasi skenario pasokan (what-if) lewat `penyesuaian` per wilayah (ton) di panel optimasi `/peta`; skenario tidak dapat disimpan. Skenario cuaca/kebijakan, filter periode di UI, dan klik wilayah → detail (tren, EWS, stok terdekat) belum ada.
 - [x] Tes optimasi: kasus hitung tangan (kalahkan serakah 40 vs 1010 ton-km, 450 ton-km seimbang, pasokan kurang, batas waktu, resolusi 0,1 ton), 300 instans acak dibandingkan brute force, kendala kapasitas; usecase dan integrasi (izin, validasi, simpan/gantikan, cache jarak, migrasi Up/Down). Tes komponen peta (data kosong/banyak titik) belum ada.
 
@@ -71,3 +71,23 @@ Tiga endpoint `spasial.lihat` yang tadinya yatim kini dipakai `/peta` (tanpa aks
 - Mode mock: neraca/lokasi/riwayat mock di `lib/api/spasial-mock.ts`.
 - **Tes:** `delivery/http/handler_test.go` (Lokasi 404 tanpa data wilayah / 400 / titik 0,0 / 500; Neraca dan Riwayat kosong menghasilkan `[]`, pemetaan kolom, pembuat terhapus = null); `lib/api/spasial-lokasi.test.ts` (mapper, query, ringkasan, proyeksi balik skema, pesan galat, mock); e2e `apps/web/e2e/peta.spec.ts`.
 - Catatan: menyimpan rencana butuh `logistik.kelola` (MANAJER_PROGRAM, OPS_AGREGATOR); MANAJER_DATA hanya melihat riwayat. Daftar komoditas di filter memakai referensi UI penuh; komoditas tanpa neraca menampilkan keadaan kosong.
+
+---
+
+## Kunci primer (000113, ✅)
+
+Migrasi `000113_pk_coldstorage_spasial.sql`; rujukan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md).
+
+| Tabel | PK | Catatan |
+|---|---|---|
+| `optimasi_rute` | **BIGINT** identity (urut `dibuat_pada`) | `kode` = ID lama `OPT-…`; rencana baru bernama `OPT-000042` (turunan ID; UI menampilkan "Disimpan sebagai …"). `komoditas_kode` → komoditas RESTRICT; `dibuat_oleh` SET NULL. |
+| `rute_distribusi` | **BIGINT** identity | `kode` = ID lama `RT-1106-1171` (kunci seeder); rute hasil optimasi tanpa kode. `optimasi_id` → `optimasi_rute` **CASCADE** (rute milik rencana); `asal_kode`, `tujuan_kode`, `komoditas_kode` RESTRICT. |
+| `kandidat_cold_storage` | **BIGINT** identity | `kode` = ID lama `KC-1173` (kunci seeder). `kabupaten_kode` RESTRICT. |
+| `neraca_wilayah` | **BIGINT** identity + `UNIQUE (komoditas_kode, kabupaten_kode, periode)` | Kunci alami tetap target `ON CONFLICT` upsert seeder. Kabupaten dan komoditas RESTRICT. |
+| `jarak_antar_wilayah` | tetap **komposit** `(asal_kode, tujuan_kode)` | Matriks turunan wilayah: FK ke kabupaten **CASCADE**, indeks `tujuan_kode`. |
+| `wilayah_geometri` | tetap **kode** `kabupaten_kode` | 1:1 kabupaten; FK **CASCADE**. |
+
+- **Rute:** semua rute spasial yang ada berupa daftar (`GET /v1/spasial/{wilayah,neraca,rute,kandidat-cold-storage,geometri,lokasi,optimasi-rute}`, `POST /v1/spasial/optimasi-rute`); belum ada rute `:id`. Bila dibuat, `:id` BIGINT memakai `idx.ParamIDAtauKode` (BIGINT atau kode lama): `/v1/spasial/optimasi-rute/:id` (`OPT-…`), `/v1/spasial/rute/:id` (`RT-…`), `/v1/spasial/kandidat-cold-storage/:id` (`KC-…`); salah bentuk 404. Geometri dan jarak dirujuk menurut kode kabupaten.
+- **Respons:** `id` string desimal dan `kode` pada rute, kandidat, dan riwayat optimasi; `POST /v1/spasial/optimasi-rute` mengembalikan `optimasi_id` (BIGINT string) dan `optimasi_kode` saat `simpan = true`. Menyimpan rencana: `INSERT` rencana (ID dari `RETURNING`), kode `OPT-` dari ID, lalu rute menunjuk ID itu, satu transaksi. Audit `OPTIMASI_RUTE` memakai ID BIGINT.
+- **Seeder `spasial.demo`:** neraca `ON CONFLICT (komoditas_kode, kabupaten_kode, periode)`; rute dan kandidat `ON CONFLICT (kode)`; geometri `ON CONFLICT (kabupaten_kode)`. Idempoten, juga pada basis data hasil migrasi.
+- **Tes:** migrasi data (Up, Down, Up ulang), ON DELETE (rute ikut rencana, kabupaten dan komoditas ditahan, jarak dan geometri ikut kabupaten), simpan optimasi (ID dan kode dari basis data), seeder idempoten.

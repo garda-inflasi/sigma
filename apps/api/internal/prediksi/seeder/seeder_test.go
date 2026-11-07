@@ -2,6 +2,7 @@ package seeder
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 var pg *pgtest.Server
@@ -44,16 +46,16 @@ func TestBuildProyeksi_EveryPilotCommodityHasConsistentProjections(t *testing.T)
 		}
 		got[r.KomoditasKode][r.KabupatenKode][r.HorizonHari] = true
 
-		assert.LessOrEqual(t, r.Bawah, r.Nilai, r.ID)
-		assert.LessOrEqual(t, r.Nilai, r.Atas, r.ID)
-		assert.Positive(t, r.Bawah, r.ID)
-		assert.Positive(t, r.HargaDasar, r.ID)
-		assert.Equal(t, domain.SumberDemo, r.Sumber, r.ID)
-		assert.Equal(t, now.Truncate(24*time.Hour).AddDate(0, 0, r.HorizonHari), r.TanggalTarget, r.ID)
+		assert.LessOrEqual(t, r.Bawah, r.Nilai, *r.Kode)
+		assert.LessOrEqual(t, r.Nilai, r.Atas, *r.Kode)
+		assert.Positive(t, r.Bawah, *r.Kode)
+		assert.Positive(t, r.HargaDasar, *r.Kode)
+		assert.Equal(t, domain.SumberDemo, r.Sumber, *r.Kode)
+		assert.Equal(t, now.Truncate(24*time.Hour).AddDate(0, 0, r.HorizonHari), r.TanggalTarget, *r.Kode)
 
 		var faktor []domain.Faktor
-		require.NoError(t, json.Unmarshal([]byte(r.Faktor), &faktor), r.ID)
-		assert.NotEmpty(t, faktor, r.ID)
+		require.NoError(t, json.Unmarshal([]byte(r.Faktor), &faktor), *r.Kode)
+		assert.NotEmpty(t, faktor, *r.Kode)
 		for _, f := range faktor {
 			assert.NotEmpty(t, f.Nama)
 			assert.NotEmpty(t, f.Detail)
@@ -87,7 +89,7 @@ func TestBuildProyeksi_FactorsAddUpToProjectedChange(t *testing.T) {
 			jumlah += f.Kontribusi
 		}
 		pct := float64(r.Nilai-r.HargaDasar) / float64(r.HargaDasar) * 100
-		assert.InDelta(t, pct, jumlah, 0.5, "%s: jumlah kontribusi harus sebesar perubahan proyeksi", r.ID)
+		assert.InDelta(t, pct, jumlah, 0.5, "%s: jumlah kontribusi harus sebesar perubahan proyeksi", *r.Kode)
 	}
 }
 
@@ -102,7 +104,8 @@ func TestBuildProyeksi_IsDeterministic(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, later, len(a))
 	for i := range a {
-		assert.Equal(t, a[i].ID, later[i].ID, "id tidak bergantung pada tanggal")
+		assert.Zero(t, a[i].ID, "ID BIGINT diberikan basis data, bukan seeder")
+		assert.Equal(t, *a[i].Kode, *later[i].Kode, "kode (kunci idempotensi) tidak bergantung pada tanggal")
 		assert.Equal(t, a[i].Nilai, later[i].Nilai)
 		assert.Equal(t, a[i].TanggalTarget.AddDate(0, 0, 3), later[i].TanggalTarget)
 	}
@@ -134,6 +137,36 @@ func TestBuildModels_OneProductionAndOneCandidatePerCommodity(t *testing.T) {
 	}
 }
 
+func TestBuildModels_KodeUnikDanBerbentukIDLama(t *testing.T) {
+	models, err := BuildModels(now)
+	require.NoError(t, err)
+
+	terlihat := map[string]bool{}
+	for _, m := range models {
+		require.NotNil(t, m.Kode)
+		assert.Zero(t, m.ID, "ID BIGINT diberikan basis data")
+		assert.Equal(t, "MDL-"+m.KomoditasKode+"-"+m.Versi, *m.Kode, "kode = ID lama model demo")
+		assert.LessOrEqual(t, len(*m.Kode), 64)
+		assert.False(t, terlihat[*m.Kode], "kode ganda: %s", *m.Kode)
+		terlihat[*m.Kode] = true
+	}
+}
+
+func TestBuildProyeksi_KodeUnikDanBerbentukIDLama(t *testing.T) {
+	rows, err := BuildProyeksi(now)
+	require.NoError(t, err)
+
+	terlihat := map[string]bool{}
+	for _, r := range rows {
+		require.NotNil(t, r.Kode)
+		assert.Equal(t, fmt.Sprintf("PRD-%s-%s-%d", r.KomoditasKode, r.KabupatenKode, r.HorizonHari), *r.Kode, "kode = ID lama proyeksi demo")
+		assert.Equal(t, VersiProduksi, r.ModelVersi)
+		assert.Zero(t, r.ModelID, "ID model baru diketahui setelah model disimpan; SeedDemo yang menautkannya")
+		assert.False(t, terlihat[*r.Kode], "kode ganda: %s", *r.Kode)
+		terlihat[*r.Kode] = true
+	}
+}
+
 func TestSeedDemo_IsIdempotentAcrossDays(t *testing.T) {
 	db := pg.NewDatabase(t, "prediksi_seeder")
 	pgtest.MigrateUp(t, db)
@@ -162,6 +195,86 @@ func TestSeedDemo_IsIdempotentAcrossDays(t *testing.T) {
 	}
 
 	var tanggal time.Time
-	require.NoError(t, db.Raw("SELECT tanggal_target FROM prediksi_harga WHERE id = 'PRD-CBM-KRT-1171-14'").Scan(&tanggal).Error)
+	require.NoError(t, db.Raw("SELECT tanggal_target FROM prediksi_harga WHERE kode = 'PRD-CBM-KRT-1171-14'").Scan(&tanggal).Error)
 	assert.Equal(t, time.Date(2026, 11, 23, 0, 0, 0, 0, time.UTC), tanggal.UTC())
+}
+
+// idTerpasang membaca ID BIGINT baris berdasarkan kode.
+func idTerpasang(t *testing.T, db *gorm.DB, tabel string) map[string]int64 {
+	t.Helper()
+	var rows []struct {
+		Kode string
+		ID   int64
+	}
+	require.NoError(t, db.Raw("SELECT kode, id FROM "+tabel).Scan(&rows).Error)
+	out := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		out[r.Kode] = r.ID
+	}
+	return out
+}
+
+func TestSeedDemo_IDBigintDiberikanDBDanProyeksiTertautKeModel(t *testing.T) {
+	db := pg.NewDatabase(t, "prediksi_seeder_id")
+	pgtest.MigrateUp(t, db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	_, err = SeedDemo(t.Context(), db, now)
+	require.NoError(t, err)
+
+	modelAwal, proyeksiAwal := idTerpasang(t, db, "model_registry"), idTerpasang(t, db, "prediksi_harga")
+	assert.Len(t, modelAwal, 28)
+	assert.Len(t, proyeksiAwal, 240)
+	assert.Contains(t, modelAwal, "MDL-CBM-KRT-v2.3.1")
+	assert.Contains(t, proyeksiAwal, "PRD-CBM-KRT-1171-14")
+
+	var konsisten int64
+	require.NoError(t, db.Raw(`SELECT count(*) FROM prediksi_harga p JOIN model_registry m ON m.id = p.model_id
+		WHERE m.komoditas_kode = p.komoditas_kode AND m.versi = p.model_versi AND m.status = 'PRODUKSI'`).Scan(&konsisten).Error)
+	assert.EqualValues(t, 240, konsisten, "model_id dan model_versi ditulis konsisten (model PRODUKSI demo)")
+
+	_, err = SeedDemo(t.Context(), db, now.AddDate(0, 0, 2))
+	require.NoError(t, err)
+	assert.Equal(t, modelAwal, idTerpasang(t, db, "model_registry"), "seed ulang tidak mengganti ID baris yang ada")
+	assert.Equal(t, proyeksiAwal, idTerpasang(t, db, "prediksi_harga"))
+}
+
+// TestSeedDemo_DBHasilMigrasiTidakDigandakan: basis data lama (ID varchar) yang sudah dimigrasi 000114 memiliki baris
+// demo ber-kode ID lama; SeedDemo mengenalinya lewat kode, tidak menambah baris, dan mempertahankan ID BIGINT-nya.
+func TestSeedDemo_DBHasilMigrasiTidakDigandakan(t *testing.T) {
+	db := pg.NewDatabase(t, "prediksi_seeder_migrasi")
+	migrator := pgtest.Migrator(t, db)
+	require.NoError(t, migrator.UpTo(t.Context(), 113))
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+
+	// Baris demo berbentuk lama: id varchar = ID lama, FK komposit (komoditas, versi) ke registri.
+	models, err := BuildModels(now)
+	require.NoError(t, err)
+	for _, m := range models {
+		require.NoError(t, db.Exec(`INSERT INTO model_registry (id, komoditas_kode, nama, versi, mape, drift, status, dilatih_pada, algorithm, sumber, catatan)
+			VALUES (?, ?, ?, ?, ?, ?, ?::status_model, ?, ?, ?, ?)`,
+			*m.Kode, m.KomoditasKode, m.Nama, m.Versi, m.Mape, m.Drift, m.Status, m.DilatihPada, m.Algorithm, m.Sumber, m.Catatan).Error)
+	}
+	rows, err := BuildProyeksi(now)
+	require.NoError(t, err)
+	for _, r := range rows {
+		require.NoError(t, db.Exec(`INSERT INTO prediksi_harga (id, komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, nilai, bawah, atas, harga_dasar, model_versi, faktor, sumber, dibuat_pada)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)`,
+			*r.Kode, r.KomoditasKode, r.KabupatenKode, r.TanggalTarget, r.HorizonHari, r.Nilai, r.Bawah, r.Atas, r.HargaDasar, r.ModelVersi, r.Faktor, r.Sumber, r.DibuatPada).Error)
+	}
+	require.NoError(t, migrator.UpTo(t.Context(), 114))
+	modelAwal, proyeksiAwal := idTerpasang(t, db, "model_registry"), idTerpasang(t, db, "prediksi_harga")
+	require.Len(t, modelAwal, 28)
+	require.Len(t, proyeksiAwal, 240)
+
+	sum, err := SeedDemo(t.Context(), db, now.AddDate(0, 0, 3))
+	require.NoError(t, err)
+
+	assert.Equal(t, 28, sum.Model)
+	assert.Equal(t, modelAwal, idTerpasang(t, db, "model_registry"), "tidak ada baris baru dan ID tidak berubah")
+	assert.Equal(t, proyeksiAwal, idTerpasang(t, db, "prediksi_harga"))
+	var tanggal time.Time
+	require.NoError(t, db.Raw("SELECT tanggal_target FROM prediksi_harga WHERE kode = 'PRD-CBM-KRT-1171-14'").Scan(&tanggal).Error)
+	assert.Equal(t, time.Date(2026, 11, 22, 0, 0, 0, 0, time.UTC), tanggal.UTC(), "tanggal target bergeser mengikuti hari seed")
 }

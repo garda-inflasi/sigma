@@ -25,32 +25,32 @@ func TestResolvePermissions_DelegatesUserIDToResolver(t *testing.T) {
 	stub := &stubResolver{izin: []string{"kpi.lihat"}}
 	m.SetPermissionResolver(stub)
 
-	perms, resolved, err := m.ResolvePermissions(context.Background(), &Claims{UserID: "u1", Permissions: []string{"lama"}})
+	perms, resolved, err := m.ResolvePermissions(context.Background(), &Claims{UserID: uid("u1"), Permissions: []string{"lama"}})
 
 	require.NoError(t, err)
 	assert.True(t, resolved)
 	assert.Equal(t, []string{"kpi.lihat"}, perms, "jawaban resolver, bukan klaim token")
-	assert.Equal(t, "u1", stub.gotUID)
+	assert.Equal(t, uid("u1"), stub.gotUID)
 }
 
 func TestResolvePermissions_PropagatesErrors(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
 	m.SetPermissionResolver(&stubResolver{err: ErrPrincipalNotFound})
 
-	_, resolved, err := m.ResolvePermissions(context.Background(), &Claims{UserID: "u1"})
+	_, resolved, err := m.ResolvePermissions(context.Background(), &Claims{UserID: uid("u1")})
 
 	assert.ErrorIs(t, err, ErrPrincipalNotFound)
 	assert.True(t, resolved)
 
 	m.SetPermissionResolver(&stubResolver{err: errors.New("db down")})
-	_, _, err = m.ResolvePermissions(context.Background(), &Claims{UserID: "u1"})
+	_, _, err = m.ResolvePermissions(context.Background(), &Claims{UserID: uid("u1")})
 	assert.Error(t, err)
 }
 
 func TestResolvePermissions_NotResolvedWithoutResolverOrClaims(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
 
-	perms, resolved, err := m.ResolvePermissions(context.Background(), &Claims{UserID: "u1"})
+	perms, resolved, err := m.ResolvePermissions(context.Background(), &Claims{UserID: uid("u1")})
 	require.NoError(t, err)
 	assert.False(t, resolved)
 	assert.Nil(t, perms)
@@ -61,7 +61,7 @@ func TestResolvePermissions_NotResolvedWithoutResolverOrClaims(t *testing.T) {
 	assert.False(t, resolved, "tanpa klaim tidak ada yang dipecahkan")
 
 	m.SetPermissionResolver(nil)
-	_, resolved, _ = m.ResolvePermissions(context.Background(), &Claims{UserID: "u1"})
+	_, resolved, _ = m.ResolvePermissions(context.Background(), &Claims{UserID: uid("u1")})
 	assert.False(t, resolved, "nil melepas resolver")
 }
 

@@ -119,7 +119,7 @@ func BuildFiskal(now time.Time) []domain.RuangFiskal {
 	rows := make([]domain.RuangFiskal, len(fiskalDemo))
 	for i, f := range fiskalDemo {
 		rows[i] = domain.RuangFiskal{
-			ID:    fmt.Sprintf("DEMO-RF-%s-%d", perTanggal.Format("200601"), i+1),
+			Kode:  new(fmt.Sprintf("DEMO-RF-%s-%d", perTanggal.Format("200601"), i+1)),
 			Tahun: perTanggal.Year(), Instrumen: f.Instrumen, Pagu: f.Pagu, Realisasi: f.Realisasi,
 			PerTanggal: perTanggal, Sumber: domain.SumberDemo,
 		}

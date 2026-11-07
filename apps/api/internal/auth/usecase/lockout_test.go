@@ -390,7 +390,7 @@ func TestLockout_MFA_KodeBenarKetikaTerkunciTetapDitolak(t *testing.T) {
 	jamBeku(t, awalUji)
 	repo := new(mockRepository)
 	uc, _, _, secret, challenge := siapMFALogin(t, repo)
-	repo.On("AdvanceMFAStep", mock.Anything, "user-123", mock.Anything).Return(true, nil).Maybe()
+	repo.On("AdvanceMFAStep", mock.Anything, uid("user-123"), mock.Anything).Return(true, nil).Maybe()
 
 	for i := 0; i < 5; i++ {
 		_, err := uc.ValidateMFALogin(context.Background(), challenge, "000000", "10.0.0.1")
@@ -406,7 +406,7 @@ func TestLockout_MFA_LoginLengkapMenghapusHitungan(t *testing.T) {
 	jamBeku(t, awalUji)
 	repo := new(mockRepository)
 	uc, _, _, secret, challenge := siapMFALogin(t, repo)
-	repo.On("AdvanceMFAStep", mock.Anything, "user-123", mock.Anything).Return(true, nil)
+	repo.On("AdvanceMFAStep", mock.Anything, uid("user-123"), mock.Anything).Return(true, nil)
 
 	for i := 0; i < 3; i++ {
 		_, err := uc.ValidateMFALogin(context.Background(), challenge, "000000", "10.0.0.1")
@@ -424,7 +424,7 @@ func TestLockout_MFA_GalatBukanTebakanTidakDihitung(t *testing.T) {
 	jamBeku(t, awalUji)
 	repo := new(mockRepository)
 	uc, _, _, secret, challenge := siapMFALogin(t, repo)
-	repo.On("AdvanceMFAStep", mock.Anything, "user-123", mock.Anything).Return(false, errors.New("db putus"))
+	repo.On("AdvanceMFAStep", mock.Anything, uid("user-123"), mock.Anything).Return(false, errors.New("db putus"))
 
 	_, err := uc.ValidateMFALogin(context.Background(), challenge, kodeSekarang(t, secret), "10.0.0.1")
 
@@ -441,35 +441,35 @@ func TestLockout_MFA_SetupDanGantiKataSandi(t *testing.T) {
 		user := activeUser()
 		sealed, _ := uc.cfg.MFAKey.Seal(totp.GenerateSecret())
 		user.MfaSecret = &sealed
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 		repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 
 		for i := 0; i < 5; i++ {
-			_, err := uc.VerifyMFA(context.Background(), "user-123", "000000", "10.0.0.1")
+			_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "000000", "10.0.0.1")
 			require.ErrorIs(t, err, ErrMFACodeInvalid)
 		}
-		_, err := uc.VerifyMFA(context.Background(), "user-123", "000000", "10.0.0.1")
+		_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "000000", "10.0.0.1")
 		require.ErrorIs(t, err, ErrAccountLocked)
 	})
 	t.Run("kata sandi lama yang salah dihitung dan mengunci; yang benar tidak dihitung", func(t *testing.T) {
 		jamBeku(t, awalUji)
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 
 		for i := 0; i < 4; i++ {
-			_, _, err := uc.ChangePassword(context.Background(), "user-123", sandiSalah, "BaruLagi99!", "10.0.0.1")
+			_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), sandiSalah, "BaruLagi99!", "10.0.0.1")
 			require.ErrorIs(t, err, ErrWrongPassword)
 		}
 		// Kata sandi lama benar (kata sandi baru lemah supaya berhenti sebelum menulis): tidak menambah hitungan.
-		_, _, err := uc.ChangePassword(context.Background(), "user-123", sandiBenar, "lemah", "10.0.0.1")
+		_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), sandiBenar, "lemah", "10.0.0.1")
 		require.ErrorIs(t, err, ErrWeakPassword)
 		assert.Equal(t, 4, repo.keadaan(emailUji).Gagal)
 
-		_, _, err = uc.ChangePassword(context.Background(), "user-123", sandiSalah, "BaruLagi99!", "10.0.0.1")
+		_, _, err = uc.ChangePassword(context.Background(), uid("user-123"), sandiSalah, "BaruLagi99!", "10.0.0.1")
 		require.ErrorIs(t, err, ErrWrongPassword)
-		_, _, err = uc.ChangePassword(context.Background(), "user-123", sandiBenar, "BaruLagi99!", "10.0.0.1")
+		_, _, err = uc.ChangePassword(context.Background(), uid("user-123"), sandiBenar, "BaruLagi99!", "10.0.0.1")
 		require.ErrorIs(t, err, ErrAccountLocked)
 	})
 }
@@ -477,7 +477,7 @@ func TestLockout_MFA_SetupDanGantiKataSandi(t *testing.T) {
 // mfaUser mengembalikan pengguna ber-MFA yang sama dengan yang dipakai siapMFALogin (GetUserByID).
 func (m *mockRepository) mfaUser(t *testing.T, uc *UseCase) *domain.Pengguna {
 	t.Helper()
-	pengguna, err := m.GetUserByID(context.Background(), "user-123")
+	pengguna, err := m.GetUserByID(context.Background(), uid("user-123"))
 	require.NoError(t, err)
 	return pengguna
 }
@@ -497,7 +497,7 @@ func TestLockout_PercobaanSelamaTerkunciDiaudit(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.Equal(t, "LOGIN", entries[0].Aksi)
 	assert.Equal(t, audit.HasilGagal, entries[0].Hasil)
-	assert.Equal(t, "user-123", entries[0].AktorID)
+	assert.Equal(t, uid("user-123"), entries[0].AktorID)
 	assert.Equal(t, "account_locked", entries[0].Metadata["alasan"])
 }
 
@@ -523,10 +523,10 @@ func TestBukaKunciPengguna(t *testing.T) {
 		jamBeku(t, awalUji)
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.kunciTerkunci(emailUji)
 
-		hasil, err := uc.BukaKunciPengguna(context.Background(), "user-123", "admin-1")
+		hasil, err := uc.BukaKunciPengguna(context.Background(), uid("user-123"), uid("admin-1"))
 
 		require.NoError(t, err)
 		assert.True(t, hasil.TerkunciSebelumnya)
@@ -534,9 +534,9 @@ func TestBukaKunciPengguna(t *testing.T) {
 		entry, ok := recorder.Last()
 		require.True(t, ok)
 		assert.Equal(t, "UNLOCK_USER", entry.Aksi)
-		assert.Equal(t, "admin-1", entry.AktorID)
+		assert.Equal(t, uid("admin-1"), entry.AktorID)
 		assert.Equal(t, "pengguna", entry.Entitas)
-		assert.Equal(t, "user-123", entry.EntitasID)
+		assert.Equal(t, uid("user-123"), entry.EntitasID)
 		assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 		assert.Equal(t, true, entry.Metadata["terkunci_sebelumnya"])
 	})
@@ -545,13 +545,13 @@ func TestBukaKunciPengguna(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		siapLogin(repo, activeUser())
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		for i := 0; i < 5; i++ {
 			require.ErrorIs(t, login(uc, emailUji, sandiSalah), ErrInvalidCredentials)
 		}
 		require.ErrorIs(t, login(uc, emailUji, sandiBenar), ErrAccountLocked)
 
-		_, err := uc.BukaKunciPengguna(context.Background(), "user-123", "admin-1")
+		_, err := uc.BukaKunciPengguna(context.Background(), uid("user-123"), uid("admin-1"))
 		require.NoError(t, err)
 
 		require.NoError(t, login(uc, emailUji, sandiBenar))
@@ -560,9 +560,9 @@ func TestBukaKunciPengguna(t *testing.T) {
 		jamBeku(t, awalUji)
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 
-		hasil, err := uc.BukaKunciPengguna(context.Background(), "user-123", "admin-1")
+		hasil, err := uc.BukaKunciPengguna(context.Background(), uid("user-123"), uid("admin-1"))
 
 		require.NoError(t, err)
 		assert.False(t, hasil.TerkunciSebelumnya)
@@ -573,11 +573,11 @@ func TestBukaKunciPengguna(t *testing.T) {
 		sekarang := jamBeku(t, awalUji)
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.kunciTerkunci(emailUji)
 		*sekarang = sekarang.Add(time.Hour)
 
-		hasil, err := uc.BukaKunciPengguna(context.Background(), "user-123", "admin-1")
+		hasil, err := uc.BukaKunciPengguna(context.Background(), uid("user-123"), uid("admin-1"))
 
 		require.NoError(t, err)
 		assert.False(t, hasil.TerkunciSebelumnya)
@@ -587,7 +587,7 @@ func TestBukaKunciPengguna(t *testing.T) {
 		uc, recorder := newTestUseCaseWithAudit(repo)
 		repo.On("GetUserByID", mock.Anything, "hilang").Return(nil, gorm.ErrRecordNotFound)
 
-		_, err := uc.BukaKunciPengguna(context.Background(), "hilang", "admin-1")
+		_, err := uc.BukaKunciPengguna(context.Background(), "hilang", uid("admin-1"))
 
 		assert.ErrorIs(t, err, ErrUserNotFound)
 		assert.Empty(t, recorder.Entries())
@@ -595,9 +595,9 @@ func TestBukaKunciPengguna(t *testing.T) {
 	t.Run("galat basis data bukan 'tidak ada'", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(nil, errors.New("db mati"))
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nil, errors.New("db mati"))
 
-		_, err := uc.BukaKunciPengguna(context.Background(), "user-123", "admin-1")
+		_, err := uc.BukaKunciPengguna(context.Background(), uid("user-123"), uid("admin-1"))
 
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrUserNotFound)
@@ -605,10 +605,10 @@ func TestBukaKunciPengguna(t *testing.T) {
 	t.Run("galat penyimpanan dilaporkan dan tidak diaudit", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.errHapus = errors.New("db mati")
 
-		_, err := uc.BukaKunciPengguna(context.Background(), "user-123", "admin-1")
+		_, err := uc.BukaKunciPengguna(context.Background(), uid("user-123"), uid("admin-1"))
 
 		require.Error(t, err)
 		assert.Empty(t, recorder.Entries())
@@ -622,16 +622,16 @@ func TestKunciPengguna(t *testing.T) {
 	repo.kunciTerkunci("a@example.com")
 	repo.kunciSampai("c@example.com", awalUji.Add(-time.Minute)) // sudah berakhir
 	users := []domain.Pengguna{
-		{ID: "u-a", Email: "A@example.com"},
-		{ID: "u-b", Email: "b@example.com"},
-		{ID: "u-c", Email: "c@example.com"},
+		{ID: uid("u-a"), Email: "A@example.com"},
+		{ID: uid("u-b"), Email: "b@example.com"},
+		{ID: uid("u-c"), Email: "c@example.com"},
 	}
 
 	hasil, err := uc.KunciPengguna(context.Background(), users)
 
 	require.NoError(t, err)
 	assert.Len(t, hasil, 1)
-	assert.Equal(t, awalUji.Add(10*time.Minute), hasil["u-a"])
+	assert.Equal(t, awalUji.Add(10*time.Minute), hasil[uid("u-a")])
 
 	kosong, err := uc.KunciPengguna(context.Background(), nil)
 	require.NoError(t, err)

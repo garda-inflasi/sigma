@@ -10,6 +10,12 @@
 - **API Go (`analytics`, tidak dipakai web):** `/v1/dashboard/summary`, `/v1/inflation/trends`, `/v1/food-balance`, `/v1/fiscal-space`.
 - **Kritis:** repository membaca tabel `ringkasan_eksekutif`, `komoditas_sumbangan`, `daerah_inflasi`, `tren_inflasi`, **semuanya tidak ada di migrasi**; `/v1/dashboard/eksekutif` error pada DB hasil migrasi. Tabel `ruang_fiskal` (`tahun`, `instrumen`, `pagu`, `realisasi`, `per_tanggal`, UNIQUE) ada tetapi tidak dirujuk kode.
 
+### Kunci primer (000115, ✅)
+
+- Tabel agregat dan time-series kini ber-PK **BIGINT identity**, dengan kunci alami lama menjadi **UNIQUE** dan target `ON CONFLICT` upsert impor dan seeder: `inflasi_bulanan` `UNIQUE (wilayah_kode, periode)`, `andil_inflasi` `UNIQUE (periode, wilayah_kode, komoditas_kode)`, `neraca_pangan` `UNIQUE (komoditas_kode, wilayah_kode, periode)`, `ruang_fiskal` `UNIQUE (tahun, instrumen, per_tanggal)`. `ruang_fiskal.id` dulu VARCHAR (`DEMO-RF-202609-1`): ID baru berurut menurut `diimpor_pada`, ID lama di `kode` (UNIQUE).
+- FK: `andil_inflasi.komoditas_kode` dan `neraca_pangan.komoditas_kode` → `komoditas` **RESTRICT** (indeks `idx_andil_inflasi_komoditas_kode`; `neraca_pangan` terlayani awalan UNIQUE). `wilayah_kode` sengaja tanpa FK: berisi kode provinsi (2 digit) atau kabupaten/kota (4 digit), dijaga CHECK panjang.
+- **Tidak ada rute `:id`**: dashboard eksekutif satu endpoint (`GET /v1/dashboard/eksekutif`) dan ID surrogate tidak pernah keluar di respons. Impor resmi (09-B) wajib upsert menurut UNIQUE alami di atas, bukan menurut `id`.
+
 ---
 
 ## 09-A — Eksekutif dari tabel yang benar, berlabel demo *(Fase P, urutan #14)*
@@ -39,7 +45,7 @@
 ## 09-B — Data resmi dan fitur eksekutif *(Fase F, gelombang F-3)*
 
 - [x] Impor inflasi/andil dari BPS lewat ingestion ([05-C](05-sumber-data.md)); angka resmi **didahulukan** atas baris `DEMO` di dashboard (tidak ada pencampuran dalam satu blok), baris `DEMO` tidak pernah menimpa baris resmi, dan label sumber serta waktu impor tampil di hero. Banner demo menyebut blok mana yang masih contoh dan mana yang sudah resmi. **Konektor BPS belum diverifikasi terhadap endpoint nyata** dan butuh `BPS_API_KEY` serta id variabel di konfigurasi sumber.
-- [ ] Impor ruang fiskal dari DJPb dan neraca pangan: belum ada konektor (repository sudah mendahulukan baris resmi bila tabelnya terisi).
+- [ ] Impor ruang fiskal dari DJPb dan neraca pangan: belum ada konektor (repository sudah mendahulukan baris resmi bila tabelnya terisi). Upsert impor memakai `ON CONFLICT (tahun, instrumen, per_tanggal)` untuk `ruang_fiskal` dan `ON CONFLICT (komoditas_kode, wilayah_kode, periode)` untuk `neraca_pangan`; kolom `kode` boleh NULL untuk baris impor.
 - [ ] Koridor inflasi dan proyeksi ke depan memakai model ([11-B](11-prediksi-xai.md)).
 - [ ] Filter wilayah, komoditas, periode (PRD §3.2); ringkasan EWS, rekomendasi AI, status intervensi (dengan cache).
 - [ ] Ekspor tampilan ke PDF/gambar untuk rapat; "data per tanggal/jam" baru ada untuk inflasi (`diimpor_pada`).

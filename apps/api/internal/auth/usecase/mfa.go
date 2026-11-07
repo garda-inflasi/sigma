@@ -25,7 +25,8 @@ const (
 )
 
 // HashKodeCadangan menghitung hash kode cadangan seperti yang disimpan di mfa_kode_cadangan:
-// SHA-256 dari "<id pengguna>:<kode ternormalisasi>". Migrasi 000063 memakai rumus yang sama.
+// SHA-256 dari "<id pengguna>:<kode ternormalisasi>". Migrasi 000063 memakai rumus yang sama. Kode yang terbit
+// sebelum ID pengguna menjadi UUID (000110) di-hash dengan ID lamanya; lihat pakaiKodeCadanganLama.
 func HashKodeCadangan(userID, kode string) string {
 	return sha256Hex(userID + ":" + totp.NormalizeBackupCode(kode))
 }
@@ -255,6 +256,9 @@ func (uc *UseCase) verifySecondFactor(ctx context.Context, user *domain.Pengguna
 	}
 
 	pakai, err := uc.repo.UseBackupCode(ctx, user.ID, HashKodeCadangan(user.ID, code), time.Now())
+	if err == nil && !pakai {
+		pakai, err = uc.pakaiKodeCadanganLama(ctx, user.ID, code)
+	}
 	if err != nil {
 		return "", fmt.Errorf("pakai kode cadangan: %w", err)
 	}
@@ -262,6 +266,18 @@ func (uc *UseCase) verifySecondFactor(ctx context.Context, user *domain.Pengguna
 		return "", ErrMFACodeInvalid
 	}
 	return metodeKodeCadangan, nil
+}
+
+// pakaiKodeCadanganLama mencocokkan kode cadangan yang terbit sebelum migrasi 000110: hash-nya dihitung dari ID
+// lama (slug) akun, bukan UUID-nya, dan tidak bisa dihitung ulang karena kode polosnya tidak disimpan. Akun yang
+// dibuat sesudah migrasi tidak punya ID lama, jadi jalur ini selesai tanpa mencocokkan apa pun. Kode yang
+// diterbitkan ulang (regenerasi, aktivasi MFA) sudah memakai UUID.
+func (uc *UseCase) pakaiKodeCadanganLama(ctx context.Context, userID, code string) (bool, error) {
+	lama, err := uc.repo.IDLamaPengguna(ctx, userID)
+	if err != nil || lama == "" {
+		return false, err
+	}
+	return uc.repo.UseBackupCode(ctx, userID, HashKodeCadangan(lama, code), time.Now())
 }
 
 // RegenerateBackupCodes menerbitkan kode cadangan baru (yang lama hangus) setelah konfirmasi kata sandi,

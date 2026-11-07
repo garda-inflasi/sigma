@@ -12,6 +12,7 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/connector/pihps"
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,12 +41,12 @@ func (s *setup) jalankanSumber(t *testing.T, r *engine.Runner, id string) *domai
 func TestBMKG_CuacaHarianIdempotenDanDiperbarui(t *testing.T) {
 	s := newSetup(t, "ingest_bmkg")
 	// Satu titik pantau (Banda Aceh) agar fixture cukup.
-	require.NoError(t, s.db.Exec(`DELETE FROM pemetaan_sumber WHERE sumber_id = 'SRC-BMKG' AND kode_master <> '1171'`).Error)
+	require.NoError(t, s.db.Exec(`DELETE FROM pemetaan_sumber WHERE sumber_id = (SELECT id FROM sumber_data WHERE kode = 'SRC-BMKG') AND kode_master <> '1171'`).Error)
 	grid := fixture(t, "bmkg/testdata/prakiraan_banda_aceh.json")
 	s.fetcher.Respons["wilayah=11.71.01.2001"] = grid
 	r := s.runnerSemua()
 
-	e := s.jalankanSumber(t, r, bmkg.SumberID)
+	e := s.jalankanSumber(t, r, bmkg.Kode)
 
 	assert.Equal(t, domain.StatusSukses, e.Status)
 	assert.Equal(t, 2, e.BarisDiambil)
@@ -55,8 +56,8 @@ func TestBMKG_CuacaHarianIdempotenDanDiperbarui(t *testing.T) {
 	var lebat struct {
 		CurahHujanMm float64
 		Anomali      bool
-		EksekusiID   *int64
-		DataMentahID *int64
+		EksekusiID   *idx.ID
+		DataMentahID *idx.ID
 	}
 	require.NoError(t, s.db.Raw(`SELECT curah_hujan_mm, anomali, eksekusi_id, data_mentah_id FROM cuaca_harian WHERE tanggal = '2025-10-16'`).Scan(&lebat).Error)
 	assert.Equal(t, 60.0, lebat.CurahHujanMm)
@@ -67,7 +68,7 @@ func TestBMKG_CuacaHarianIdempotenDanDiperbarui(t *testing.T) {
 
 	// Prakiraan diperbarui: nilai baru menggantikan, jumlah baris tetap.
 	s.fetcher.Respons["wilayah=11.71.01.2001"] = []byte(strings.ReplaceAll(string(grid), `"tp": 15.5`, `"tp": 0`))
-	e2 := s.jalankanSumber(t, r, bmkg.SumberID)
+	e2 := s.jalankanSumber(t, r, bmkg.Kode)
 	assert.Equal(t, domain.StatusSukses, e2.Status)
 	assert.EqualValues(t, 2, s.hitung(t, "cuaca_harian"))
 	require.NoError(t, s.db.Raw(`SELECT curah_hujan_mm, anomali, eksekusi_id, data_mentah_id FROM cuaca_harian WHERE tanggal = '2025-10-16'`).Scan(&lebat).Error)
@@ -82,7 +83,7 @@ func konfigurasiBPS() string {
 
 func (s *setup) siapkanBPS(t *testing.T) {
 	t.Helper()
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET konfigurasi = ? WHERE id = 'SRC-BPS'`, konfigurasiBPS()).Error)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET konfigurasi = ? WHERE kode = 'SRC-BPS'`, konfigurasiBPS()).Error)
 	for _, nama := range []string{"ihk", "inflasi_mtm", "inflasi_yoy", "inflasi_ytd", "andil", "andil_inflasi_pct"} {
 		s.fetcher.Respons[fmt.Sprintf("var=%s&th=2025", nama)] = fixture(t, "bps/testdata/"+nama+"_2025.json")
 	}
@@ -102,7 +103,7 @@ func TestBPS_InflasiResmiMenggantikanContohTanpaMenimpaSumberLain(t *testing.T) 
 		('2025-09-01', '11', 'CBM-KRT', 9, 9, 'DEMO')`).Error)
 	r := s.runnerSemua()
 
-	e := s.jalankanSumber(t, r, bps.SumberID)
+	e := s.jalankanSumber(t, r, bps.Kode)
 
 	assert.Equal(t, domain.StatusSukses, e.Status, "%v", e.Galat)
 	assert.Equal(t, 6, e.Dokumen)
@@ -133,7 +134,7 @@ func TestBPS_InflasiResmiMenggantikanContohTanpaMenimpaSumberLain(t *testing.T) 
 	assert.Equal(t, 0.18, andil.Andil)
 
 	// Jalan ulang: idempoten.
-	s.jalankanSumber(t, r, bps.SumberID)
+	s.jalankanSumber(t, r, bps.Kode)
 	var n int64
 	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM inflasi_bulanan WHERE sumber = 'BPS'`).Scan(&n).Error)
 	assert.EqualValues(t, 2, n, "Agustus dan September wilayah 11; Banda Aceh tetap milik BI")
@@ -144,7 +145,7 @@ func TestBPS_TanpaKonfigurasiGagalDenganPesanJelas(t *testing.T) {
 	s := newSetup(t, "ingest_bps_cfg")
 	r := s.runnerSemua()
 
-	e := s.jalankanSumber(t, r, bps.SumberID)
+	e := s.jalankanSumber(t, r, bps.Kode)
 
 	assert.Equal(t, domain.StatusGagal, e.Status)
 	require.NotNil(t, e.Galat)
@@ -158,7 +159,7 @@ func TestBPS_KunciAPITidakBocorKeRiwayat(t *testing.T) {
 	r := engine.New(s.repo, s.fetcher, logger.NewDefault(), bps.New("RAHASIA-API"))
 	r.Sekarang = func() time.Time { return time.Date(2025, 10, 5, 3, 0, 0, 0, time.UTC) }
 
-	s.jalankanSumber(t, r, bps.SumberID)
+	s.jalankanSumber(t, r, bps.Kode)
 
 	var bocor int64
 	require.NoError(t, s.db.Raw(`SELECT (SELECT COUNT(*) FROM data_mentah WHERE kunci_permintaan LIKE '%RAHASIA%' OR payload::text LIKE '%RAHASIA%')
@@ -170,7 +171,7 @@ func TestGold_MembandingkanHargaLapanganDenganEksternal(t *testing.T) {
 	s := newSetup(t, "ingest_gold")
 	s.jalankan(t) // PIHPS: BRS-MED Kota Banda Aceh 2025-10-13 = 13.900
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+		INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 		VALUES ('EH-GOLD-1', 'BRS-MED', 'PSR-1171-01', 'KONSUMEN', 15000, 'kg', 'DIVALIDASI', '2025-10-13 05:00:00+00'),
 		       ('EH-GOLD-2', 'CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 70000, 'kg', 'DIVALIDASI', '2025-10-20 05:00:00+00')`).Error)
 

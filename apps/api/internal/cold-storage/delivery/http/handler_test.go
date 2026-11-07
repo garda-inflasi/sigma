@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	"github.com/garda-inflasi/api/internal/cold-storage/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -30,7 +32,7 @@ type fakeRepo struct {
 	err       error
 
 	gotQuery  domain.StokQuery
-	gotIDs    []string
+	gotIDs    []idx.ID
 	gotAction domain.BulkAction
 	audit     audittest.Recorder
 }
@@ -48,7 +50,7 @@ func (f *fakeRepo) RingkasanStok(context.Context, float64) (domain.RingkasanStok
 	return f.ringkasan, f.err
 }
 
-func (f *fakeRepo) BulkAction(_ context.Context, ids []string, a domain.BulkAction) (domain.BulkResult, error) {
+func (f *fakeRepo) BulkAction(_ context.Context, ids []idx.ID, a domain.BulkAction) (domain.BulkResult, error) {
 	f.gotIDs, f.gotAction = ids, a
 	return f.bulk, f.err
 }
@@ -114,13 +116,13 @@ func TestGetAll_ResponseShape(t *testing.T) {
 	aktual := -20.1
 	repo := &fakeRepo{
 		fasilitas: []domain.FasilitasView{
-			{ID: "CS-02", Nama: "Cold Storage Perikanan Lhokseumawe", KabupatenKode: "1173", KabupatenNama: "KOTA LHOKSEUMAWE",
+			{ID: fas("CS-02"), Kode: new("CS-02"), Nama: "Cold Storage Perikanan Lhokseumawe", KabupatenKode: "1173", KabupatenNama: "KOTA LHOKSEUMAWE",
 				Lat: 5.17, Lng: 97.13, KapasitasTon: 300, TerisiTon: 240, SuhuTargetC: -20, SuhuAktualC: &aktual, Status: "OPERASIONAL"},
-			{ID: "CS-05", Nama: "Gudang Dingin Langsa", KabupatenKode: "1174", KabupatenNama: "KOTA LANGSA", KapasitasTon: 120, SuhuTargetC: 4, Status: "RENCANA"},
+			{ID: fas("CS-05"), Nama: "Gudang Dingin Langsa", KabupatenKode: "1174", KabupatenNama: "KOTA LANGSA", KapasitasTon: 120, SuhuTargetC: 4, Status: "RENCANA"},
 		},
 		stok: domain.StokPage{
 			Items: []domain.StokView{{
-				ID: "STK-1", ColdStorageID: "CS-02", ColdStorageNama: "Cold Storage Perikanan Lhokseumawe",
+				ID: 12, Kode: new("STK-CS02-01"), ColdStorageID: fas("CS-02"), ColdStorageNama: "Cold Storage Perikanan Lhokseumawe",
 				KomoditasKode: "IKN-TGK", KomoditasNama: "Ikan tongkol", VolumeTon: 64.5,
 				MasukPada: now.Add(-101 * 24 * time.Hour), KedaluwarsaPada: now.Add(19 * 24 * time.Hour),
 				RisikoFoodLoss: 0.72, Pemilik: "CV Mina Lhokseumawe",
@@ -130,7 +132,7 @@ func TestGetAll_ResponseShape(t *testing.T) {
 		ringkasan: domain.RingkasanStok{TotalLot: 23, TotalVolumeTon: 812, RisikoTinggiLot: 4, RisikoTinggiTon: 172.7},
 	}
 
-	w := do(newRouter(repo, "u1", "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(repo, uid("u1"), "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
@@ -150,7 +152,10 @@ func TestGetAll_ResponseShape(t *testing.T) {
 
 	require.Len(t, data.Fasilitas, 2)
 	f0 := data.Fasilitas[0]
-	assert.Equal(t, "CS-02", f0["id"])
+	assert.Equal(t, fas("CS-02"), f0["id"], "id fasilitas adalah UUID")
+	assert.Equal(t, "CS-02", f0["kode"], "kode tampilan di field terpisah")
+	assert.Nil(t, data.Fasilitas[1]["kode"], "fasilitas tanpa kode bernilai null")
+	assert.Contains(t, data.Fasilitas[1], "kode", "kunci tetap ada agar kontrak stabil")
 	assert.Equal(t, "KOTA LHOKSEUMAWE", f0["kabupaten_nama"])
 	assert.Equal(t, 240.0, f0["terisi_ton"])
 	assert.Equal(t, 80.0, f0["utilisasi_persen"])
@@ -160,6 +165,9 @@ func TestGetAll_ResponseShape(t *testing.T) {
 
 	require.Len(t, data.Stok, 1)
 	s0 := data.Stok[0]
+	assert.Equal(t, "12", s0["id"], "id lot BIGINT ditulis sebagai string desimal")
+	assert.Equal(t, "STK-CS02-01", s0["kode"])
+	assert.Equal(t, fas("CS-02"), s0["cold_storage_id"])
 	assert.Equal(t, "IKN-TGK", s0["komoditas_kode"])
 	assert.Equal(t, "Ikan tongkol", s0["komoditas_nama"])
 	assert.Equal(t, "Cold Storage Perikanan Lhokseumawe", s0["cold_storage_nama"])
@@ -180,7 +188,7 @@ func TestGetAll_ResponseShape(t *testing.T) {
 }
 
 func TestGetAll_EmptyListsAreArraysNotNull(t *testing.T) {
-	w := do(newRouter(&fakeRepo{}, "u1", "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(&fakeRepo{}, uid("u1"), "coldstorage.lihat"), http.MethodGet, "/cold-storage", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"fasilitas":[]`)
@@ -198,18 +206,27 @@ func TestGetAll_PassesQueryToUseCase(t *testing.T) {
 		"limit":           {"25"},
 	}
 
-	w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage?"+q.Encode(), nil)
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?"+q.Encode(), nil)
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, domain.StokQuery{
-		ColdStorageID: "CS-03", Search: "tomat", Sort: domain.SortVolume, Desc: true, Page: 2, Limit: 25,
-	}, repo.gotQuery)
+		Fasilitas: idx.RujukanUUID{Kode: "CS-03"}, Search: "tomat", Sort: domain.SortVolume, Desc: true, Page: 2, Limit: 25,
+	}, repo.gotQuery, "kode fasilitas diteruskan sebagai alias")
+}
+
+func TestGetAll_FacilityFilterAcceptsUUIDInAnyCase(t *testing.T) {
+	repo := &fakeRepo{}
+
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?cold_storage_id="+strings.ToUpper(fas("CS-03")), nil)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, idx.RujukanUUID{ID: fas("CS-03")}, repo.gotQuery.Fasilitas, "UUID dinormalkan ke huruf kecil")
 }
 
 func TestGetAll_DefaultsWhenNoQuery(t *testing.T) {
 	repo := &fakeRepo{}
 
-	w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, domain.StokQuery{Sort: domain.SortSisaMasaSimpan, Page: 1, Limit: usecase.DefaultLimit}, repo.gotQuery)
@@ -229,11 +246,12 @@ func TestGetAll_InvalidQuery(t *testing.T) {
 		"limit negatif":              "limit=-5",
 		"limit melebihi batas":       "limit=101",
 		"kata kunci terlalu panjang": "q=" + string(longQ),
+		"fasilitas terlalu panjang":  "cold_storage_id=" + strings.Repeat("a", 65),
 	}
 	for name, qs := range cases {
 		t.Run(name, func(t *testing.T) {
 			repo := &fakeRepo{}
-			w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage?"+qs, nil)
+			w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?"+qs, nil)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 			assert.Contains(t, w.Body.String(), "Validasi gagal")
@@ -245,7 +263,7 @@ func TestGetAll_InvalidQuery(t *testing.T) {
 func TestGetAll_ZeroPageAndLimitFallBackToDefaults(t *testing.T) {
 	repo := &fakeRepo{}
 
-	w := do(newRouter(repo, "u1"), http.MethodGet, "/cold-storage?page=0&limit=0", nil)
+	w := do(newRouter(repo, uid("u1")), http.MethodGet, "/cold-storage?page=0&limit=0", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, 1, repo.gotQuery.Page)
@@ -253,7 +271,7 @@ func TestGetAll_ZeroPageAndLimitFallBackToDefaults(t *testing.T) {
 }
 
 func TestGetAll_InternalError(t *testing.T) {
-	w := do(newRouter(&fakeRepo{err: errors.New("db down")}, "u1"), http.MethodGet, "/cold-storage", nil)
+	w := do(newRouter(&fakeRepo{err: errors.New("db down")}, uid("u1")), http.MethodGet, "/cold-storage", nil)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "db down", "detail galat internal tidak boleh bocor")
@@ -263,9 +281,9 @@ func TestGetAll_InternalError(t *testing.T) {
 
 func TestBulk_Success(t *testing.T) {
 	repo := &fakeRepo{bulk: domain.BulkResult{Berhasil: 2, VolumeTon: 65.9}}
-	r := newRouter(repo, "manajer_program", "logistik.kelola")
+	r := newRouter(repo, uid("manajer_program"), "logistik.kelola")
 
-	w := do(r, http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rencanakan_distribusi", "ids": []string{"S1", "S2", "S3"}})
+	w := do(r, http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rencanakan_distribusi", "ids": []string{"1", "2", "3"}})
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	out := decode[map[string]any](t, w)
@@ -273,11 +291,11 @@ func TestBulk_Success(t *testing.T) {
 	assert.Equal(t, 1.0, out["gagal"])
 	assert.Equal(t, 65.9, out["volume_ton"])
 
-	assert.Equal(t, []string{"S1", "S2", "S3"}, repo.gotIDs)
+	assert.Equal(t, []idx.ID{1, 2, 3}, repo.gotIDs)
 	assert.Equal(t, domain.BulkRencanakanDistribusi, repo.gotAction)
 	entry, ok := repo.audit.Last()
 	require.True(t, ok, "aksi massal tercatat di audit")
-	assert.Equal(t, "manajer_program", entry.AktorID)
+	assert.Equal(t, uid("manajer_program"), entry.AktorID)
 	assert.Equal(t, "BULK_rencanakan_distribusi", entry.Aksi)
 }
 
@@ -298,7 +316,7 @@ func TestBulk_PermissionPerAction(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeRepo{bulk: domain.BulkResult{Berhasil: 1}}
-			w := do(newRouter(repo, "u1", tc.perms...), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": tc.action, "ids": []string{"S1"}})
+			w := do(newRouter(repo, uid("u1"), tc.perms...), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": tc.action, "ids": []string{"1"}})
 
 			assert.Equal(t, tc.want, w.Code, w.Body.String())
 			if tc.want == http.StatusForbidden {
@@ -310,25 +328,31 @@ func TestBulk_PermissionPerAction(t *testing.T) {
 }
 
 func TestBulk_Validation(t *testing.T) {
-	tooMany := make([]string, 501)
+	tooMany := make([]int, 501)
 	for i := range tooMany {
-		tooMany[i] = "S"
+		tooMany[i] = i + 1
 	}
 
 	cases := map[string]any{
 		"JSON rusak":         "{not json",
-		"tanpa aksi":         map[string]any{"ids": []string{"S1"}},
-		"aksi tidak dikenal": map[string]any{"action": "hapus", "ids": []string{"S1"}},
+		"tanpa aksi":         map[string]any{"ids": []string{"1"}},
+		"aksi tidak dikenal": map[string]any{"action": "hapus", "ids": []string{"1"}},
 		"tanpa ids":          map[string]any{"action": "rekomendasi_olahan"},
 		"ids kosong":         map[string]any{"action": "rekomendasi_olahan", "ids": []string{}},
 		"id kosong":          map[string]any{"action": "rekomendasi_olahan", "ids": []string{""}},
 		"ids melebihi batas": map[string]any{"action": "rekomendasi_olahan", "ids": tooMany},
 		"id hanya spasi":     map[string]any{"action": "rekomendasi_olahan", "ids": []string{"   "}},
+		"id kode lama":       map[string]any{"action": "rekomendasi_olahan", "ids": []string{"STK-CS01-01"}},
+		"id nol":             map[string]any{"action": "rekomendasi_olahan", "ids": []string{"0"}},
+		"id negatif":         map[string]any{"action": "rekomendasi_olahan", "ids": []string{"-1"}},
+		"id pecahan":         map[string]any{"action": "rekomendasi_olahan", "ids": []any{1.5}},
+		"id uuid":            map[string]any{"action": "rekomendasi_olahan", "ids": []string{fas("CS-01")}},
+		"satu id salah":      map[string]any{"action": "rekomendasi_olahan", "ids": []string{"1", "dua"}},
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
 			repo := &fakeRepo{}
-			w := do(newRouter(repo, "u1", "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", body)
+			w := do(newRouter(repo, uid("u1"), "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", body)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
 			assert.Nil(t, repo.gotIDs)
@@ -339,14 +363,25 @@ func TestBulk_Validation(t *testing.T) {
 func TestBulk_InternalError(t *testing.T) {
 	repo := &fakeRepo{err: errors.New("db down")}
 
-	w := do(newRouter(repo, "u1", "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rekomendasi_olahan", "ids": []string{"S1"}})
+	w := do(newRouter(repo, uid("u1"), "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk", map[string]any{"action": "rekomendasi_olahan", "ids": []string{"1"}})
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "db down")
 }
 
+// ID lot boleh dikirim sebagai angka JSON maupun string desimal.
+func TestBulk_AcceptsNumericAndStringIDs(t *testing.T) {
+	repo := &fakeRepo{bulk: domain.BulkResult{Berhasil: 2}}
+
+	w := do(newRouter(repo, uid("u1"), "coldstorage.kelola"), http.MethodPost, "/cold-storage/bulk",
+		map[string]any{"action": "rekomendasi_olahan", "ids": []any{7, "8", 7}})
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, []idx.ID{7, 8}, repo.gotIDs, "id ganda dirapatkan")
+}
+
 func TestHealth(t *testing.T) {
-	w := do(newRouter(&fakeRepo{}, "u1"), http.MethodGet, "/cold-storage/health", nil)
+	w := do(newRouter(&fakeRepo{}, uid("u1")), http.MethodGet, "/cold-storage/health", nil)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.JSONEq(t, `{"status":"ok"}`, w.Body.String())

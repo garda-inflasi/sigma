@@ -24,6 +24,8 @@ import (
 
 type mockRepository struct {
 	mock.Mock
+	// idLama: ID lama (sebelum migrasi 000110) per UUID akun; kosong untuk akun yang dibuat sesudahnya.
+	idLama map[string]string
 	// kunciFake menyediakan domain.KunciRepository dalam memori (lockout), lihat lockout_fake_test.go.
 	kunciFake
 }
@@ -183,6 +185,11 @@ func (m *mockRepository) UseBackupCode(ctx context.Context, userID, kodeHash str
 	return args.Bool(0), args.Error(1)
 }
 
+// IDLamaPengguna: akun uji dibuat sesudah migrasi 000110, jadi tidak punya ID lama.
+func (m *mockRepository) IDLamaPengguna(ctx context.Context, id string) (string, error) {
+	return m.idLama[id], nil
+}
+
 func (m *mockRepository) CountBackupCodes(ctx context.Context, userID string) (int64, error) {
 	args := m.Called(ctx, userID)
 	return args.Get(0).(int64), args.Error(1)
@@ -240,7 +247,7 @@ func newTestUseCaseWithAudit(repo *mockRepository) (*UseCase, *audittest.Recorde
 func activeUser() *domain.Pengguna {
 	passwordHash, _ := crypto.HashPassword("Test1234!")
 	return &domain.Pengguna{
-		ID:           "user-123",
+		ID:           uid("user-123"),
 		Nama:         "Test User",
 		Email:        "test@example.com",
 		PasswordHash: &passwordHash,
@@ -260,13 +267,13 @@ func TestLogin_Success(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
-	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, uid("user-123"), mock.Anything).Return(nil)
 
 	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, "user-123", result.User.ID)
+	assert.Equal(t, uid("user-123"), result.User.ID)
 	assert.NotEmpty(t, result.AccessToken)
 	assert.NotEmpty(t, result.RefreshToken)
 	assert.False(t, result.MFARequired)
@@ -371,14 +378,14 @@ func TestRefresh_Success(t *testing.T) {
 	// to return a stored token for any hash, then verify the flow.
 	storedToken := &domain.RefreshToken{
 		ID:        1,
-		UserID:    "user-123",
+		UserID:    uid("user-123"),
 		TokenHash: "any-hash-will-match",
 		FamilyID:  "family-uuid",
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 
 	repo.On("GetRefreshTokenByHash", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("RotateRefreshToken", mock.Anything, int64(1), mock.AnythingOfType("*domain.RefreshToken"), mock.Anything).Return(true, nil)
 
 	accessToken, newRefreshToken, err := uc.Refresh(context.Background(), "some-refresh-token", "10.0.0.1")
@@ -413,7 +420,7 @@ func TestRefresh_RevokedToken(t *testing.T) {
 	lama := time.Now().Add(-time.Hour)
 	storedToken := &domain.RefreshToken{
 		ID:        1,
-		UserID:    "user-123",
+		UserID:    uid("user-123"),
 		TokenHash: "revoked-hash",
 		FamilyID:  "family-uuid",
 		RevokedAt: &lama,
@@ -437,7 +444,7 @@ func TestRefresh_ExpiredToken(t *testing.T) {
 
 	storedToken := &domain.RefreshToken{
 		ID:        1,
-		UserID:    "user-123",
+		UserID:    uid("user-123"),
 		TokenHash: "expired-hash",
 		FamilyID:  "family-uuid",
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
@@ -457,10 +464,10 @@ func TestLogout_Success(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 	repo.On("BlacklistJWT", mock.Anything, "jti-123", mock.Anything).Return(nil)
 
-	err := uc.Logout(context.Background(), "user-123", "jti-123")
+	err := uc.Logout(context.Background(), uid("user-123"), "jti-123")
 
 	require.NoError(t, err)
 
@@ -471,9 +478,9 @@ func TestLogout_NoJTI(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
-	err := uc.Logout(context.Background(), "user-123", "")
+	err := uc.Logout(context.Background(), uid("user-123"), "")
 
 	require.NoError(t, err)
 
@@ -487,13 +494,13 @@ func TestGetMe_Success(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user := activeUser()
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-	result, err := uc.GetMe(context.Background(), "user-123")
+	result, err := uc.GetMe(context.Background(), uid("user-123"))
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, "user-123", result.ID)
+	assert.Equal(t, uid("user-123"), result.ID)
 	assert.Equal(t, "test@example.com", result.Email)
 
 	repo.AssertExpectations(t)
@@ -520,12 +527,12 @@ func TestChangePassword_Success(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user := activeUser()
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 
-	accessToken, refreshToken, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+	accessToken, refreshToken, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, accessToken)
@@ -541,12 +548,12 @@ func TestChangePassword_ClearsMandatoryChangeFlagAndIssuesCleanToken(t *testing.
 	user := activeUser()
 	user.WajibGantiPassword = true
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 
-	accessToken, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+	accessToken, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 
 	require.NoError(t, err)
 	assert.False(t, user.WajibGantiPassword)
@@ -564,7 +571,7 @@ func TestLogin_MandatoryChangeFlagIsCarriedByToken(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*domain.RefreshToken")).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
-	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, uid("user-123"), mock.Anything).Return(nil)
 
 	result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -580,10 +587,10 @@ func TestChangePassword_WrongOldPassword(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user := activeUser()
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.AnythingOfType("*domain.LoginAttempt")).Return(nil)
 
-	_, _, err := uc.ChangePassword(context.Background(), "user-123", "WrongOld1!", "NewTest1@", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "WrongOld1!", "NewTest1@", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrWrongPassword)
 
@@ -595,9 +602,9 @@ func TestChangePassword_WeakPassword(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user := activeUser()
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-	_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "weak", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "weak", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrWeakPassword)
 
@@ -609,9 +616,9 @@ func TestChangePassword_PasswordReuse(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user := activeUser()
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-	_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "Test1234!", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrPasswordReuse)
 
@@ -626,7 +633,7 @@ func TestForgotPassword_Success(t *testing.T) {
 	user := activeUser()
 
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
-	repo.On("SaveResetToken", mock.Anything, "user-123", mock.AnythingOfType("string"), mock.Anything).Return(nil)
+	repo.On("SaveResetToken", mock.Anything, uid("user-123"), mock.AnythingOfType("string"), mock.Anything).Return(nil)
 
 	err := uc.ForgotPassword(context.Background(), "test@example.com")
 
@@ -674,16 +681,16 @@ func TestResetPassword_Success(t *testing.T) {
 
 	storedToken := &domain.ResetToken{
 		ID:        1,
-		UserID:    "user-123",
+		UserID:    uid("user-123"),
 		TokenHash: "valid-token-hash",
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 	}
 
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
 	err := uc.ResetPassword(context.Background(), "valid-token-hash", "NewPass1@")
 
@@ -711,7 +718,7 @@ func TestResetPassword_ExpiredToken(t *testing.T) {
 
 	storedToken := &domain.ResetToken{
 		ID:        1,
-		UserID:    "user-123",
+		UserID:    uid("user-123"),
 		TokenHash: "expired-hash",
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
 	}
@@ -732,7 +739,7 @@ func TestResetPassword_UsedToken(t *testing.T) {
 
 	storedToken := &domain.ResetToken{
 		ID:        1,
-		UserID:    "user-123",
+		UserID:    uid("user-123"),
 		TokenHash: "used-hash",
 		ExpiresAt: time.Now().Add(30 * time.Minute),
 		UsedAt:    &now,
@@ -750,9 +757,9 @@ func TestResetPassword_UsedToken(t *testing.T) {
 func TestResetPassword_TokenClaimedByConcurrentRequest(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	storedToken := &domain.ResetToken{ID: 1, UserID: uid("user-123"), ExpiresAt: time.Now().Add(30 * time.Minute)}
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(false, nil)
 
 	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
@@ -765,7 +772,7 @@ func TestResetPassword_TokenClaimedByConcurrentRequest(t *testing.T) {
 func TestResetPassword_WeakPasswordDoesNotConsumeToken(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	storedToken := &domain.ResetToken{ID: 1, UserID: uid("user-123"), ExpiresAt: time.Now().Add(30 * time.Minute)}
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
 
 	err := uc.ResetPassword(context.Background(), "token", "lemahsekali")
@@ -777,12 +784,12 @@ func TestResetPassword_WeakPasswordDoesNotConsumeToken(t *testing.T) {
 func TestResetPassword_SessionRevocationFailureIsReported(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	storedToken := &domain.ResetToken{ID: 1, UserID: "user-123", ExpiresAt: time.Now().Add(30 * time.Minute)}
+	storedToken := &domain.ResetToken{ID: 1, UserID: uid("user-123"), ExpiresAt: time.Now().Add(30 * time.Minute)}
 	repo.On("GetResetToken", mock.Anything, mock.AnythingOfType("string")).Return(storedToken, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("ConsumeResetToken", mock.Anything, int64(1), mock.Anything).Return(true, nil)
 	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db mati"))
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errors.New("db mati"))
 
 	err := uc.ResetPassword(context.Background(), "token", "NewPass1@")
 
@@ -843,7 +850,7 @@ func TestCreateUser_Success(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "new@example.com").Return(nil, errors.New("not found"))
 	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*domain.Pengguna")).Return(nil)
 
-	err := uc.CreateUser(context.Background(), user, "NewUser1!", "admin-1")
+	err := uc.CreateUser(context.Background(), user, "NewUser1!", uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.NotNil(t, user.PasswordHash)
@@ -864,7 +871,7 @@ func TestCreateUser_EmailExists(t *testing.T) {
 
 	repo.On("GetUserByEmail", mock.Anything, "existing@example.com").Return(activeUser(), nil)
 
-	err := uc.CreateUser(context.Background(), user, "NewUser1!", "admin-1")
+	err := uc.CreateUser(context.Background(), user, "NewUser1!", uid("admin-1"))
 
 	assert.ErrorIs(t, err, ErrEmailExists)
 
@@ -880,7 +887,7 @@ func TestCreateUser_WeakPassword(t *testing.T) {
 		Email: "new@example.com",
 	}
 
-	err := uc.CreateUser(context.Background(), user, "weak", "admin-1")
+	err := uc.CreateUser(context.Background(), user, "weak", uid("admin-1"))
 
 	assert.ErrorIs(t, err, ErrWeakPassword)
 

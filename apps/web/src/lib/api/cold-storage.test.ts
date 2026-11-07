@@ -186,6 +186,16 @@ describe("queryMockColdStorage", () => {
     assert.equal(new Set(ids).size, ids.length);
   });
 
+  it("id lot mock berbentuk string desimal dan pemutus seri diurut numerik", () => {
+    assert.ok(all.stok.every((s) => /^[1-9]\d*$/.test(s.id)), "id lot mock seperti id BIGINT API");
+    const campur = {
+      fasilitas: all.fasilitas,
+      stok: [9, 10, 2].map((n) => ({ ...all.stok[0], id: String(n), kode: `STK-${n}` })),
+    };
+    const v = queryMockColdStorage(campur, { limit: 100 });
+    assert.deepEqual(v.stok.map((s) => s.id), ["2", "9", "10"], "kunci urut sama: id naik secara numerik, bukan leksikografis");
+  });
+
   it("halaman di luar jangkauan kosong dengan total tetap", () => {
     const v = queryMockColdStorage(all, { page: 99 });
     assert.deepEqual(v.stok, []);
@@ -228,7 +238,7 @@ describe("queryMockColdStorage", () => {
     // Kunci urut sama (mis. pemilik) → id naik.
     const p = queryMockColdStorage(all, { sort: "pemilik", limit: 100 }).stok;
     for (let i = 1; i < p.length; i++) {
-      if (p[i - 1].pemilik.toLowerCase() === p[i].pemilik.toLowerCase()) assert.ok(p[i - 1].id < p[i].id);
+      if (p[i - 1].pemilik.toLowerCase() === p[i].pemilik.toLowerCase()) assert.ok(Number(p[i - 1].id) < Number(p[i].id), "id BIGINT naik secara numerik");
     }
   });
 

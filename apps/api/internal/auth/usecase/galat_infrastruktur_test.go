@@ -37,13 +37,13 @@ func TestValidateMFALogin_KegagalanSelainKodeSalahTidakMenghitungSebagaiTebakan(
 		},
 		"gagal mencatat langkah TOTP": {
 			siapkan: func(_ *UseCase, repo *mockRepository) {
-				repo.On("AdvanceMFAStep", mock.Anything, "user-123", mock.Anything).Return(false, errDB)
+				repo.On("AdvanceMFAStep", mock.Anything, uid("user-123"), mock.Anything).Return(false, errDB)
 			},
 			kode: nil, // kode TOTP sah dihitung dari rahasia pengguna
 		},
 		"gagal memakai kode cadangan": {
 			siapkan: func(_ *UseCase, repo *mockRepository) {
-				repo.On("UseBackupCode", mock.Anything, "user-123", mock.Anything, mock.Anything).Return(false, errDB)
+				repo.On("UseBackupCode", mock.Anything, uid("user-123"), mock.Anything, mock.Anything).Return(false, errDB)
 			},
 			kode: func(string) string { return "ABCD-EFGH-1234" },
 		},
@@ -84,10 +84,10 @@ func TestVerifyMFA_GagalMengaktifkanTidakMenghitungDanTidakMenerbitkanSesi(t *te
 	sealed, err := uc.cfg.MFAKey.Seal(secret)
 	require.NoError(t, err)
 	user.MfaSecret = &sealed
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything, mock.Anything).Return(errDB)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
+	repo.On("ActivateMFA", mock.Anything, uid("user-123"), mock.Anything, mock.Anything, mock.Anything).Return(errDB)
 
-	_, err = uc.VerifyMFA(context.Background(), "user-123", kodeSekarang(t, secret), "10.0.0.1")
+	_, err = uc.VerifyMFA(context.Background(), uid("user-123"), kodeSekarang(t, secret), "10.0.0.1")
 
 	require.Error(t, err)
 	assert.False(t, user.MfaAktif, "MFA tidak dianggap aktif di salinan pengguna")
@@ -103,9 +103,9 @@ func TestVerifyMFA_RahasiaRusakDilaporkanBukanSebagaiBelumDisiapkan(t *testing.T
 	user := activeUser()
 	rusak := "v1:bukan-ciphertext-sah"
 	user.MfaSecret = &rusak
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-	_, err := uc.VerifyMFA(context.Background(), "user-123", "123456", "10.0.0.1")
+	_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "123456", "10.0.0.1")
 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrMFANotSetup, "menyuruh pengguna mengulang setup akan menimpa rahasia yang masih bisa dipulihkan")
@@ -116,10 +116,10 @@ func TestRegenerateBackupCodes_KataSandiSalahTidakMenyentuhKodeLama(t *testing.T
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 
-	_, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "SalahSandi1!", "10.0.0.1")
+	_, err := uc.RegenerateBackupCodes(context.Background(), uid("user-123"), "SalahSandi1!", "10.0.0.1")
 
 	require.ErrorIs(t, err, ErrWrongPassword)
 	repo.AssertNotCalled(t, "ReplaceBackupCodes", mock.Anything, mock.Anything, mock.Anything)
@@ -130,10 +130,10 @@ func TestRegenerateBackupCodes_GagalMenyimpanTidakMengembalikanKodeYangTidakTers
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("ReplaceBackupCodes", mock.Anything, "user-123", mock.Anything).Return(errDB)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
+	repo.On("ReplaceBackupCodes", mock.Anything, uid("user-123"), mock.Anything).Return(errDB)
 
-	kode, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "Test1234!", "10.0.0.1")
+	kode, err := uc.RegenerateBackupCodes(context.Background(), uid("user-123"), "Test1234!", "10.0.0.1")
 
 	require.Error(t, err)
 	assert.Empty(t, kode, "kode polos yang tidak pernah tersimpan tidak boleh sampai ke pengguna")
@@ -144,10 +144,10 @@ func TestDisableMFA_GagalMenghapusTidakDiauditBerhasil(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("ClearMFA", mock.Anything, "user-123").Return(errDB)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
+	repo.On("ClearMFA", mock.Anything, uid("user-123")).Return(errDB)
 
-	require.Error(t, uc.DisableMFA(context.Background(), "user-123", "Test1234!", "10.0.0.1"))
+	require.Error(t, uc.DisableMFA(context.Background(), uid("user-123"), "Test1234!", "10.0.0.1"))
 	assert.Empty(t, recorder.Entries())
 }
 
@@ -155,7 +155,7 @@ func TestMFAStatus_GalatHitungKodeCadanganDiteruskan(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("CountBackupCodes", mock.Anything, "user-123").Return(int64(0), errDB)
+	repo.On("CountBackupCodes", mock.Anything, uid("user-123")).Return(int64(0), errDB)
 
 	status, err := uc.MFAStatus(context.Background(), user)
 
@@ -166,14 +166,14 @@ func TestMFAStatus_GalatHitungKodeCadanganDiteruskan(t *testing.T) {
 // ── Sesi: pergantian token saat kredensial berubah ───────────────────
 
 func siapGantiSandi(repo *mockRepository) {
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 }
 
 func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t *testing.T) {
 	ctx := WithSession(context.Background(), sidA)
 	ganti := func(uc *UseCase) error {
-		_, _, err := uc.ChangePassword(ctx, "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+		_, _, err := uc.ChangePassword(ctx, uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 		return err
 	}
 
@@ -181,7 +181,7 @@ func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		siapGantiSandi(repo)
-		repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return(nil, errDB)
+		repo.On("ListActiveRefreshTokens", mock.Anything, uid("user-123"), mock.Anything).Return(nil, errDB)
 
 		require.ErrorIs(t, ganti(uc), errDB)
 		repo.AssertNotCalled(t, "RevokeSessions", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -192,8 +192,8 @@ func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		siapGantiSandi(repo)
-		repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return([]domain.RefreshToken{*liveToken(5, sidA)}, nil)
-		repo.On("RevokeSessions", mock.Anything, "user-123", sidA, mock.Anything).Return(nil, errDB)
+		repo.On("ListActiveRefreshTokens", mock.Anything, uid("user-123"), mock.Anything).Return([]domain.RefreshToken{*liveToken(5, sidA)}, nil)
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), sidA, mock.Anything).Return(nil, errDB)
 
 		require.ErrorIs(t, ganti(uc), errDB)
 		repo.AssertNotCalled(t, "CreateRefreshToken", mock.Anything, mock.Anything)
@@ -202,8 +202,8 @@ func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		siapGantiSandi(repo)
-		repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return([]domain.RefreshToken{*liveToken(5, sidA)}, nil)
-		repo.On("RevokeSessions", mock.Anything, "user-123", sidA, mock.Anything).Return([]string{}, nil)
+		repo.On("ListActiveRefreshTokens", mock.Anything, uid("user-123"), mock.Anything).Return([]domain.RefreshToken{*liveToken(5, sidA)}, nil)
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), sidA, mock.Anything).Return([]string{}, nil)
 		repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(errDB)
 
 		require.ErrorIs(t, ganti(uc), errDB)
@@ -213,8 +213,8 @@ func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		siapGantiSandi(repo)
-		repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return([]domain.RefreshToken{*liveToken(5, sidA)}, nil)
-		repo.On("RevokeSessions", mock.Anything, "user-123", sidA, mock.Anything).Return([]string{}, nil)
+		repo.On("ListActiveRefreshTokens", mock.Anything, uid("user-123"), mock.Anything).Return([]domain.RefreshToken{*liveToken(5, sidA)}, nil)
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), sidA, mock.Anything).Return([]string{}, nil)
 		repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 		repo.On("RetireFamilyTokensExcept", mock.Anything, sidA, mock.Anything, mock.Anything).Return(errDB)
 
@@ -224,9 +224,9 @@ func TestReplaceCurrentSession_KegagalanBerhentiSebelumMerusakSesiYangBerjalan(t
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		siapGantiSandi(repo)
-		repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errDB)
+		repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errDB)
 
-		_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "NewTest1@", "10.0.0.1")
+		_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "NewTest1@", "10.0.0.1")
 
 		require.Error(t, err)
 		repo.AssertNotCalled(t, "CreateRefreshToken", mock.Anything, mock.Anything)
@@ -268,7 +268,7 @@ func TestRefreshSession_KalahBerebutLaluTokenAnehTidakMengeluarkanSesi(t *testin
 		uc := newTestUseCase(repo)
 		stored := liveToken(7, sidA)
 		repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(stored, nil).Twice()
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("RotateRefreshToken", mock.Anything, int64(7), mock.Anything, mock.Anything).Return(false, nil)
 
 		_, err := uc.RefreshSession(context.Background(), "rt", "10.0.0.1")
@@ -281,7 +281,7 @@ func TestRefreshSession_KalahBerebutLaluTokenAnehTidakMengeluarkanSesi(t *testin
 		uc := newTestUseCase(repo)
 		repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(liveToken(7, sidA), nil).Once()
 		repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(nil, errDB).Once()
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("RotateRefreshToken", mock.Anything, int64(7), mock.Anything, mock.Anything).Return(false, nil)
 
 		_, err := uc.RefreshSession(context.Background(), "rt", "10.0.0.1")
@@ -334,7 +334,7 @@ func TestReplayOrReuse_JalurTepi(t *testing.T) {
 		nonaktif.Status = "NONAKTIF"
 		repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(baruDirotasi(), nil)
 		repo.On("IsSessionActive", mock.Anything, sidA).Return(true, nil)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(nonaktif, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nonaktif, nil)
 		repo.On("RevokeRefreshTokenFamily", mock.Anything, sidA).Return(nil)
 
 		res, err := uc.RefreshSession(context.Background(), "rt", "10.0.0.1")
@@ -374,9 +374,9 @@ func TestReplayOrReuse_JalurTepi(t *testing.T) {
 func TestLogoutSession_KegagalanPencabutanTidakMemasukkanTokenKeDaftarCabut(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("RevokeSession", mock.Anything, "user-123", sidA, mock.Anything).Return(false, errDB)
+	repo.On("RevokeSession", mock.Anything, uid("user-123"), sidA, mock.Anything).Return(false, errDB)
 
-	err := uc.LogoutSession(WithSession(context.Background(), sidA), "user-123", "jti-1", "")
+	err := uc.LogoutSession(WithSession(context.Background(), sidA), uid("user-123"), "jti-1", "")
 
 	require.Error(t, err)
 	repo.AssertNotCalled(t, "BlacklistJWT", mock.Anything, mock.Anything, mock.Anything)
@@ -386,10 +386,10 @@ func TestLogoutSession_KegagalanPencabutanTidakMemasukkanTokenKeDaftarCabut(t *t
 func TestLogoutSession_GagalMengisiDaftarCabutTidakMenggagalkanKeluar(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("RevokeSession", mock.Anything, "user-123", sidA, mock.Anything).Return(true, nil)
+	repo.On("RevokeSession", mock.Anything, uid("user-123"), sidA, mock.Anything).Return(true, nil)
 	repo.On("BlacklistJWT", mock.Anything, "jti-1", mock.Anything).Return(errDB)
 
-	require.NoError(t, uc.LogoutSession(WithSession(context.Background(), sidA), "user-123", "jti-1", ""),
+	require.NoError(t, uc.LogoutSession(WithSession(context.Background(), sidA), uid("user-123"), "jti-1", ""),
 		"sesinya sudah dicabut, jadi access token mati lewat sid walau daftar cabut gagal ditulis")
 	assert.Equal(t, []string{"LOGOUT"}, auditAksi(recorder))
 }
@@ -399,22 +399,22 @@ func TestLogoutSession_TanpaSidMencabutFamilyDariRefreshTokenHanyaBilaMilikPengg
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(liveToken(7, sidB), nil)
-		repo.On("RevokeSession", mock.Anything, "user-123", sidB, mock.Anything).Return(true, nil)
+		repo.On("RevokeSession", mock.Anything, uid("user-123"), sidB, mock.Anything).Return(true, nil)
 		repo.On("BlacklistJWT", mock.Anything, "jti-1", mock.Anything).Return(nil)
 
-		require.NoError(t, uc.LogoutSession(context.Background(), "user-123", "jti-1", "rt-cookie"))
+		require.NoError(t, uc.LogoutSession(context.Background(), uid("user-123"), "jti-1", "rt-cookie"))
 		repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
 	})
 	t.Run("milik pengguna lain: diabaikan, semua sesi pemanggil dicabut (bukan sesi orang lain)", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		milikLain := liveToken(7, sidB)
-		milikLain.UserID = "user-lain"
+		milikLain.UserID = uid("user-lain")
 		repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(milikLain, nil)
-		repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+		repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 		repo.On("BlacklistJWT", mock.Anything, "jti-1", mock.Anything).Return(nil)
 
-		require.NoError(t, uc.LogoutSession(context.Background(), "user-123", "jti-1", "rt-orang-lain"))
+		require.NoError(t, uc.LogoutSession(context.Background(), uid("user-123"), "jti-1", "rt-orang-lain"))
 		repo.AssertNotCalled(t, "RevokeSession", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
@@ -422,9 +422,9 @@ func TestLogoutSession_TanpaSidMencabutFamilyDariRefreshTokenHanyaBilaMilikPengg
 func TestLogoutSession_TanpaJtiTidakMenulisDaftarCabut(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	repo.On("RevokeSession", mock.Anything, "user-123", sidA, mock.Anything).Return(true, nil)
+	repo.On("RevokeSession", mock.Anything, uid("user-123"), sidA, mock.Anything).Return(true, nil)
 
-	require.NoError(t, uc.LogoutSession(WithSession(context.Background(), sidA), "user-123", "", ""))
+	require.NoError(t, uc.LogoutSession(WithSession(context.Background(), sidA), uid("user-123"), "", ""))
 	repo.AssertNotCalled(t, "BlacklistJWT", mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -432,9 +432,9 @@ func TestLogoutAll_Kegagalan(t *testing.T) {
 	t.Run("pencabutan gagal: tidak ada daftar cabut atau audit", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("RevokeSessions", mock.Anything, "user-123", "", mock.Anything).Return(nil, errDB)
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), "", mock.Anything).Return(nil, errDB)
 
-		_, err := uc.LogoutAll(context.Background(), "user-123", "jti-1")
+		_, err := uc.LogoutAll(context.Background(), uid("user-123"), "jti-1")
 
 		require.Error(t, err)
 		repo.AssertNotCalled(t, "BlacklistJWT", mock.Anything, mock.Anything, mock.Anything)
@@ -443,10 +443,10 @@ func TestLogoutAll_Kegagalan(t *testing.T) {
 	t.Run("daftar cabut gagal: tetap berhasil dan jumlah sesi benar", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("RevokeSessions", mock.Anything, "user-123", "", mock.Anything).Return([]string{sidA, sidB}, nil)
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), "", mock.Anything).Return([]string{sidA, sidB}, nil)
 		repo.On("BlacklistJWT", mock.Anything, "jti-1", mock.Anything).Return(errDB)
 
-		n, err := uc.LogoutAll(context.Background(), "user-123", "jti-1")
+		n, err := uc.LogoutAll(context.Background(), uid("user-123"), "jti-1")
 
 		require.NoError(t, err)
 		assert.Equal(t, 2, n)
@@ -460,15 +460,15 @@ func TestDaftarDanPencabutanSesi_GalatRepositoriDiteruskanTanpaAudit(t *testing.
 	t.Run("ListSessions", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("ListActiveRefreshTokens", mock.Anything, "user-123", mock.Anything).Return(nil, errDB)
-		_, err := uc.ListSessions(context.Background(), "user-123")
+		repo.On("ListActiveRefreshTokens", mock.Anything, uid("user-123"), mock.Anything).Return(nil, errDB)
+		_, err := uc.ListSessions(context.Background(), uid("user-123"))
 		require.ErrorIs(t, err, errDB)
 	})
 	t.Run("RevokeSession: galat basis data bukan 'sesi tidak ditemukan'", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("RevokeSession", mock.Anything, "user-123", sidB, mock.Anything).Return(false, errDB)
-		err := uc.RevokeSession(WithSession(context.Background(), sidA), "user-123", sidB)
+		repo.On("RevokeSession", mock.Anything, uid("user-123"), sidB, mock.Anything).Return(false, errDB)
+		err := uc.RevokeSession(WithSession(context.Background(), sidA), uid("user-123"), sidB)
 		require.ErrorIs(t, err, errDB)
 		assert.NotErrorIs(t, err, ErrSessionNotFound)
 		assert.Empty(t, recorder.Entries())
@@ -476,16 +476,16 @@ func TestDaftarDanPencabutanSesi_GalatRepositoriDiteruskanTanpaAudit(t *testing.
 	t.Run("RevokeOtherSessions", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("RevokeSessions", mock.Anything, "user-123", sidA, mock.Anything).Return(nil, errDB)
-		_, err := uc.RevokeOtherSessions(WithSession(context.Background(), sidA), "user-123")
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), sidA, mock.Anything).Return(nil, errDB)
+		_, err := uc.RevokeOtherSessions(WithSession(context.Background(), sidA), uid("user-123"))
 		require.ErrorIs(t, err, errDB)
 		assert.Empty(t, recorder.Entries())
 	})
 	t.Run("ForceLogoutUser: galat baca pengguna bukan 'pengguna tidak ada'", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(nil, errDB)
-		_, err := uc.ForceLogoutUser(context.Background(), "user-123", "admin-1")
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nil, errDB)
+		_, err := uc.ForceLogoutUser(context.Background(), uid("user-123"), uid("admin-1"))
 		require.ErrorIs(t, err, errDB)
 		assert.NotErrorIs(t, err, ErrUserNotFound)
 		repo.AssertNotCalled(t, "RevokeSessions", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -493,9 +493,9 @@ func TestDaftarDanPencabutanSesi_GalatRepositoriDiteruskanTanpaAudit(t *testing.
 	t.Run("ForceLogoutUser: pencabutan gagal tidak diaudit", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-		repo.On("RevokeSessions", mock.Anything, "user-123", "", mock.Anything).Return(nil, errDB)
-		_, err := uc.ForceLogoutUser(context.Background(), "user-123", "admin-1")
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
+		repo.On("RevokeSessions", mock.Anything, uid("user-123"), "", mock.Anything).Return(nil, errDB)
+		_, err := uc.ForceLogoutUser(context.Background(), uid("user-123"), uid("admin-1"))
 		require.ErrorIs(t, err, errDB)
 		assert.Empty(t, recorder.Entries())
 	})
@@ -530,18 +530,18 @@ func TestKunciPengguna_DaftarKosongTanpaKuerydanGalatDiteruskan(t *testing.T) {
 // ── SSO: kegagalan infrastruktur tidak membuka jalur pintas ──────────
 
 func TestSSOCallback_PembacaanKunciGagalDitolakDanTidakMenautkanAkun(t *testing.T) {
-	f := newSSOFixture(t, ssoUser("u1", "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
 	f.repo.errAktif = errDB
 
 	_, err := f.masuk()
 
 	require.Error(t, err)
-	assert.Nil(t, f.repo.stored("u1").SSOSubject, "akun tidak ditautkan bila status kunci tidak dapat dipastikan")
+	assert.Nil(t, f.repo.stored(uid("u1")).SSOSubject, "akun tidak ditautkan bila status kunci tidak dapat dipastikan")
 	assert.Empty(t, f.repo.refresh, "tidak ada sesi")
 }
 
 func TestSSOCallback_AkunHilangSaatMenautMenolakDanTidakMenerbitkanSesi(t *testing.T) {
-	f := newSSOFixture(t, ssoUser("u1", "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
 	f.repo.linkOverride = func(r *memRepo, userID string) (bool, error) {
 		r.mu.Lock()
 		delete(r.users, userID) // dihapus admin di sela pemeriksaan dan penautan
@@ -576,7 +576,7 @@ func (r *ssoRepoGalat) ConsumeLoginState(ctx context.Context, hash string) (*dom
 }
 
 func TestSSOCallback_GalatBasisDataBukanStateTidakValid(t *testing.T) {
-	f := newSSOFixture(t, ssoUser("u1", "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
 	repo := &ssoRepoGalat{memRepo: f.repo, errState: errDB}
 	f.sso = NewSSO(f.uc, repo, SSOConfig{Provider: f.provider, Now: func() time.Time { return f.now }})
 	state, binding := f.mulai()
@@ -591,13 +591,13 @@ func TestSSOCallback_GalatBasisDataBukanStateTidakValid(t *testing.T) {
 // Regresi desain: bila pencarian menurut subjek gagal karena basis data, TIDAK boleh jatuh ke pencocokan email
 // (itu akan menautkan atau memasukkan akun lewat jalur yang lebih lemah).
 func TestSSOCallback_PencarianSubjekGagalTidakJatuhKePencocokanEmail(t *testing.T) {
-	f := newSSOFixture(t, ssoUser("u1", "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
 	repo := &ssoRepoGalat{memRepo: f.repo, errSubjek: errDB}
 	f.sso = NewSSO(f.uc, repo, SSOConfig{Provider: f.provider, Now: func() time.Time { return f.now }})
 
 	_, err := f.masuk()
 
 	require.ErrorIs(t, err, errDB)
-	assert.Nil(t, f.repo.stored("u1").SSOSubject)
+	assert.Nil(t, f.repo.stored(uid("u1")).SSOSubject)
 	assert.Empty(t, f.repo.refresh)
 }

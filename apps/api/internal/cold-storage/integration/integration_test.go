@@ -341,12 +341,12 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	assert.Equal(t, int64(23), count("transaksi_stok"))
 
 	var masuk time.Time
-	require.NoError(t, db.Raw(`SELECT masuk_pada FROM stok_cold_storage WHERE id = 'STK-CS01-01'`).Scan(&masuk).Error)
+	require.NoError(t, db.Raw(`SELECT masuk_pada FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&masuk).Error)
 	assert.True(t, masuk.Equal(later.Add(-16*24*time.Hour)), "lot STK-CS01-01 berumur 16 hari pada waktu seed terakhir, dapat %s", masuk)
 
 	t.Run("wilayah dirujuk menurut nama master", func(t *testing.T) {
 		var rows []struct{ ID, Nama string }
-		require.NoError(t, db.Raw(`SELECT c.id, kb.nama FROM cold_storage c JOIN kabupaten kb ON kb.kode = c.kabupaten_kode ORDER BY c.id`).Scan(&rows).Error)
+		require.NoError(t, db.Raw(`SELECT c.kode AS id, kb.nama FROM cold_storage c JOIN kabupaten kb ON kb.kode = c.kabupaten_kode ORDER BY c.kode`).Scan(&rows).Error)
 		got := map[string]string{}
 		for _, r := range rows {
 			got[r.ID] = r.Nama
@@ -365,6 +365,78 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 		require.NoError(t, db.Raw(`SELECT COUNT(*) FROM cold_storage WHERE status = 'RENCANA' AND suhu_aktual_c IS NULL`).Scan(&n).Error)
 		assert.Equal(t, int64(1), n)
 	})
+}
+
+// Kunci idempotensi seeder: fasilitas memakai UUID stabil dari kode, lot dan transaksi memakai kode (ID lama).
+func TestSeeder_KeysAreStableUUIDAndKode(t *testing.T) {
+	db := pg.NewDatabase(t, "seed_kunci")
+	pgtest.MigrateUp(t, db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	_, err = seeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	_, err = seeder.SeedDemo(t.Context(), db, time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+
+	var id, kode string
+	for _, k := range []string{"CS-01", "CS-02", "CS-03", "CS-04", "CS-05"} {
+		require.NoError(t, db.Raw(`SELECT id::text FROM cold_storage WHERE kode = ?`, k).Scan(&id).Error)
+		assert.Equal(t, fasID(k), id, "UUID fasilitas %s sama dengan hasil migrasi 000113", k)
+	}
+	assert.Equal(t, "STK-CS01-01", func() string {
+		require.NoError(t, db.Raw(`SELECT kode FROM stok_cold_storage ORDER BY id LIMIT 1`).Scan(&kode).Error)
+		return kode
+	}(), "ID lot BIGINT diberi basis data menurut urutan sisip seed")
+
+	var n int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM transaksi_stok t JOIN stok_cold_storage s ON s.id = t.lot_id
+		WHERE t.kode = 'TRX-DEMO-' || s.kode`).Scan(&n).Error)
+	assert.EqualValues(t, 23, n, "kode transaksi demo = TRX-DEMO- + kode lot, dan menunjuk lotnya")
+}
+
+// Seeder dijalankan pada basis data hasil migrasi 000113 (baris sudah ada dengan UUID stabil dan kode = ID lama):
+// tidak menggandakan baris dan tidak mengubah ID lot yang sudah ada.
+func TestSeeder_RunsIdempotentlyOnMigratedDatabase(t *testing.T) {
+	db := pg.NewDatabase(t, "seed_pasca_migrasi")
+	migrator := pgtest.Migrator(t, db)
+	require.NoError(t, migrator.UpTo(t.Context(), 112))
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	// Bentuk data lama: ID berupa teks. Satu fasilitas, satu lot, satu transaksi, satu pembacaan.
+	execSQL(t, db, `
+		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
+		SELECT 'CS-01', 'Nama Lama', kode, 5.5, 95.3, 400, 4, 'OPERASIONAL' FROM kabupaten WHERE nama = 'KABUPATEN ACEH BESAR';
+		INSERT INTO stok_cold_storage (id, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, kedaluwarsa_pada, pemilik, risiko_food_loss)
+		VALUES ('STK-CS01-01', 'CS-01', 'CBM-KRT', 1, now(), now() + interval '10 day', 'Pemilik Lama', 0.1);
+		INSERT INTO transaksi_stok (id, lot_id, jenis, volume_ton, fasilitas_tujuan_id)
+		VALUES ('TRX-DEMO-STK-CS01-01', 'STK-CS01-01', 'MASUK', 1, 'CS-01');
+	`, "data lama")
+	require.NoError(t, migrator.UpTo(t.Context(), 113))
+
+	var lotSebelum int64
+	require.NoError(t, db.Raw(`SELECT id FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&lotSebelum).Error)
+
+	for range 2 {
+		_, err = seeder.SeedReference(t.Context(), db)
+		require.NoError(t, err)
+		_, err = seeder.SeedDemo(t.Context(), db, time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC))
+		require.NoError(t, err)
+	}
+
+	count := func(table string) int64 {
+		var n int64
+		require.NoError(t, db.Table(table).Count(&n).Error)
+		return n
+	}
+	assert.EqualValues(t, 5, count("cold_storage"), "CS-01 hasil migrasi dipakai ulang, bukan digandakan")
+	assert.EqualValues(t, 23, count("stok_cold_storage"))
+	assert.EqualValues(t, 23, count("transaksi_stok"))
+	var lotSesudah int64
+	require.NoError(t, db.Raw(`SELECT id FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&lotSesudah).Error)
+	assert.Equal(t, lotSebelum, lotSesudah, "ID lot yang sudah ada tidak berubah")
+	var nama string
+	require.NoError(t, db.Raw(`SELECT nama FROM cold_storage WHERE kode = 'CS-01'`).Scan(&nama).Error)
+	assert.Equal(t, "Cold Storage Lambaro", nama, "seed memperbarui baris hasil migrasi")
 }
 
 func TestSeeder_FailsAtomicallyWhenMasterDataMissing(t *testing.T) {
@@ -428,8 +500,8 @@ func TestGetColdStorage_FasilitasCards(t *testing.T) {
 	data, _ := getCold(t, s, userLihatSaja, nil)
 	fasilitas := list(t, data["fasilitas"])
 
-	require.Equal(t, []string{"CS-01", "CS-02", "CS-03", "CS-04", "CS-05"}, ids(fasilitas),
-		"operasional dulu, lalu perawatan, lalu rencana")
+	require.Equal(t, []string{"CS-01", "CS-02", "CS-03", "CS-04", "CS-05"}, kodes(fasilitas),
+		"operasional dulu, lalu perawatan, lalu rencana; urut kode")
 
 	type card struct {
 		nama, wilayah, status string
@@ -446,7 +518,8 @@ func TestGetColdStorage_FasilitasCards(t *testing.T) {
 		"CS-05": {"Gudang Dingin Langsa", "KOTA LANGSA", "RENCANA", 120, 0, 0, 4, nil},
 	}
 	for _, f := range fasilitas {
-		id := f["id"].(string)
+		id := f["kode"].(string)
+		assert.Equal(t, fasID(id), f["id"], "id fasilitas adalah UUID stabil dari kode %s", id)
 		w := want[id]
 		assert.Equal(t, w.nama, f["nama"], id)
 		assert.Equal(t, w.wilayah, f["kabupaten_nama"], id)
@@ -467,7 +540,7 @@ func TestGetColdStorage_DefaultListIsShortestShelfLifeFirst(t *testing.T) {
 	assert.Len(t, stok, 10, "halaman pertama berisi 10 lot")
 	assert.Equal(t, []string{
 		"STK-CS01-01", "STK-CS03-01", "STK-CS03-02", "STK-CS03-03", "STK-CS03-04",
-	}, ids(stok)[:5], "lima baris pertama sama dengan desain halaman")
+	}, kodes(stok)[:5], "lima baris pertama sama dengan desain halaman")
 
 	wantSisa := []float64{5, 6, 6, 7, 10}
 	for i, w := range wantSisa {
@@ -588,7 +661,7 @@ func TestGetColdStorage_SortOrdersEveryColumn(t *testing.T) {
 					case less(cur, prev):
 						assert.Equal(t, "desc", order, "urutan turun tetapi diminta %s pada baris %d", order, i)
 					default:
-						assert.Less(t, stok[i-1]["id"].(string), stok[i]["id"].(string), "kunci sama diputus id naik (baris %d)", i)
+						assert.Less(t, idNum(t, stok[i-1]), idNum(t, stok[i]), "kunci sama diputus id naik secara numerik (baris %d)", i)
 					}
 				}
 			})
@@ -597,10 +670,10 @@ func TestGetColdStorage_SortOrdersEveryColumn(t *testing.T) {
 
 	t.Run("volume terbesar dan risiko tertinggi", func(t *testing.T) {
 		_, byVolume := getCold(t, s, userLihatSaja, url.Values{"sort": {"volume"}, "order": {"desc"}, "limit": {"1"}})
-		assert.Equal(t, "STK-CS02-01", ids(byVolume)[0])
+		assert.Equal(t, "STK-CS02-01", kodes(byVolume)[0])
 
 		_, byRisk := getCold(t, s, userLihatSaja, url.Values{"sort": {"risiko"}, "order": {"desc"}, "limit": {"1"}})
-		assert.Equal(t, "STK-CS02-02", ids(byRisk)[0])
+		assert.Equal(t, "STK-CS02-02", kodes(byRisk)[0])
 	})
 }
 
@@ -612,7 +685,7 @@ func TestGetColdStorage_FilterAndSearch(t *testing.T) {
 
 		assert.Len(t, stok, 7)
 		for _, row := range stok {
-			assert.Equal(t, "CS-03", row["cold_storage_id"])
+			assert.Equal(t, fasID("CS-03"), row["cold_storage_id"])
 		}
 		meta := data["meta"].(map[string]any)
 		assert.Equal(t, 7.0, meta["total"])
@@ -622,6 +695,25 @@ func TestGetColdStorage_FilterAndSearch(t *testing.T) {
 		assert.Equal(t, 23.0, ringkasan["total_lot"], "ringkasan tidak terpengaruh filter")
 		assert.Equal(t, 172.7, ringkasan["risiko_tinggi_ton"])
 		assert.Len(t, list(t, data["fasilitas"]), 5, "kartu fasilitas selalu lengkap")
+	})
+
+	t.Run("filter fasilitas dengan UUID sama dengan kode", func(t *testing.T) {
+		dataKode, stokKode := getCold(t, s, userLihatSaja, url.Values{"cold_storage_id": {"CS-03"}, "limit": {"100"}})
+		dataUUID, stokUUID := getCold(t, s, userLihatSaja, url.Values{"cold_storage_id": {fasID("CS-03")}, "limit": {"100"}})
+		dataBesar, stokBesar := getCold(t, s, userLihatSaja, url.Values{"cold_storage_id": {strings.ToUpper(fasID("CS-03"))}, "limit": {"100"}})
+
+		assert.Equal(t, ids(stokKode), ids(stokUUID))
+		assert.Equal(t, ids(stokKode), ids(stokBesar), "UUID huruf besar dinormalkan")
+		assert.Equal(t, dataKode["meta"], dataUUID["meta"])
+		assert.Equal(t, dataKode["meta"], dataBesar["meta"])
+	})
+
+	t.Run("fasilitas yang tidak ada menghasilkan daftar kosong, bukan galat", func(t *testing.T) {
+		for _, ref := range []string{"CS-99", fasID("CS-99")} {
+			data, stok := getCold(t, s, userLihatSaja, url.Values{"cold_storage_id": {ref}})
+			assert.Empty(t, stok, ref)
+			assert.Equal(t, 0.0, data["meta"].(map[string]any)["total"], ref)
+		}
 	})
 
 	t.Run("fasilitas tanpa stok", func(t *testing.T) {
@@ -656,7 +748,7 @@ func TestGetColdStorage_FilterAndSearch(t *testing.T) {
 
 	t.Run("cari dan filter fasilitas digabung", func(t *testing.T) {
 		_, stok := getCold(t, s, userLihatSaja, url.Values{"q": {"cabai"}, "cold_storage_id": {"CS-03"}})
-		assert.Equal(t, []string{"STK-CS03-04"}, ids(stok))
+		assert.Equal(t, []string{"STK-CS03-04"}, kodes(stok))
 	})
 
 	t.Run("kata kunci dengan tanda kutip tidak merusak query", func(t *testing.T) {
@@ -677,6 +769,7 @@ func TestGetColdStorage_InvalidParams(t *testing.T) {
 		"halaman negatif":      {"page": {"-1"}},
 		"limit melebihi batas": {"limit": {"101"}},
 		"limit bukan angka":    {"limit": {"banyak"}},
+		"fasilitas > 64":       {"cold_storage_id": {strings.Repeat("a", 65)}},
 	}
 	for name, params := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -690,8 +783,25 @@ func TestGetColdStorage_InvalidParams(t *testing.T) {
 // POST /v1/cold-storage/bulk
 // ══════════════════════════════════════════════════════════════════════
 
-func bulk(t *testing.T, s *suite, email, action string, ids ...string) *httptest.ResponseRecorder {
+// bulk mengirim aksi massal. Argumen berupa kode lot seed (STK-CS01-01), kecuali yang diawali "#" (ID angka
+// apa adanya, mis. "#999") atau yang tidak dikenal (dikirim sebagai ID yang tidak ada).
+func bulk(t *testing.T, s *suite, email, action string, lotKode ...string) *httptest.ResponseRecorder {
 	t.Helper()
+	ids := make([]string, len(lotKode))
+	for i, k := range lotKode {
+		switch {
+		case strings.HasPrefix(k, "#"):
+			ids[i] = strings.TrimPrefix(k, "#")
+		case k == "STK-X":
+			ids[i] = "999999998"
+		case k == "STK-Y":
+			ids[i] = "999999997"
+		case strings.HasPrefix(k, "STK-TIDAK-ADA"):
+			ids[i] = lotTakAda
+		default:
+			ids[i] = s.lot(t, k)
+		}
+	}
 	return s.call(t, http.MethodPost, "/v1/cold-storage/bulk", email, map[string]any{"action": action, "ids": ids})
 }
 
@@ -761,10 +871,10 @@ func TestBulk_ResultAuditAndNoSideEffectsOnStock(t *testing.T) {
 		require.NoError(t, s.db.Raw(`
 			SELECT aktor_id, aksi, entitas, entitas_id, hasil, metadata::text AS metadata
 			  FROM audit_log
-			 WHERE aksi = 'BULK_rekomendasi_olahan' AND aktor_id = 'manajer_mutu'
+			 WHERE aksi = 'BULK_rekomendasi_olahan' AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_mutu')
 			 ORDER BY waktu DESC LIMIT 1`).Scan(&row).Error)
 
-		assert.Equal(t, "manajer_mutu", row.AktorID)
+		assert.Equal(t, uid("manajer_mutu"), row.AktorID)
 		assert.Equal(t, "stok_cold_storage", row.Entitas)
 		assert.Equal(t, "2 lot", row.EntitasID)
 		assert.Equal(t, "BERHASIL", row.Hasil)
@@ -775,7 +885,7 @@ func TestBulk_ResultAuditAndNoSideEffectsOnStock(t *testing.T) {
 			VolumeTon float64  `json:"volume_ton"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(row.Metadata), &meta))
-		assert.Equal(t, []string{"STK-CS01-01", "STK-CS03-01", "STK-TIDAK-ADA"}, meta.IDs)
+		assert.Equal(t, append(s.lots(t, "STK-CS01-01", "STK-CS03-01"), lotTakAda), meta.IDs)
 		assert.Equal(t, 1, meta.Gagal)
 		assert.Equal(t, 65.9, meta.VolumeTon)
 	})
@@ -801,10 +911,14 @@ func TestBulk_Validation(t *testing.T) {
 
 	cases := map[string]any{
 		"JSON rusak":         "{bukan json",
-		"aksi tidak dikenal": map[string]any{"action": "hapus", "ids": []string{"STK-CS01-01"}},
+		"aksi tidak dikenal": map[string]any{"action": "hapus", "ids": []string{"1"}},
 		"tanpa ids":          map[string]any{"action": "rekomendasi_olahan"},
 		"ids kosong":         map[string]any{"action": "rekomendasi_olahan", "ids": []string{}},
 		"id hanya spasi":     map[string]any{"action": "rekomendasi_olahan", "ids": []string{"  "}},
+		"id kode lama":       map[string]any{"action": "rekomendasi_olahan", "ids": []string{"STK-CS01-01"}},
+		"id nol":             map[string]any{"action": "rekomendasi_olahan", "ids": []string{"0"}},
+		"id uuid":            map[string]any{"action": "rekomendasi_olahan", "ids": []string{fasID("CS-01")}},
+		"id melebihi int64":  map[string]any{"action": "rekomendasi_olahan", "ids": []string{"9223372036854775808"}},
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

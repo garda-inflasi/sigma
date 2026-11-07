@@ -23,8 +23,9 @@ const (
 	uaIPhone  = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1"
 
 	emailAdmin = "test@gardainflasi.id"
-	userBiasa  = "test-user-biasa"
 )
+
+var userBiasa = uid("test-user-biasa")
 
 // sesiUji adalah satu sesi hasil login: pasangan token dan id sesi (sid).
 type sesiUji struct {
@@ -151,7 +152,7 @@ func TestSesi_LogoutAlsoKillsEarlierAccessTokensOfTheSession(t *testing.T) {
 
 func TestSesi_BlacklistedJTIIsEnforcedForTokensWithoutSid(t *testing.T) {
 	s := setupSuite(t)
-	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
+	legacy, err := s.tokenMgr.CreateAccessToken(uid("test-user-001"), "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, s.status(t, legacy), "token tanpa sid tetap diterima selama jti tidak dicabut")
 
@@ -310,7 +311,7 @@ func TestSesi_ConcurrentRefreshWithSameTokenRotatesExactlyOnce(t *testing.T) {
 	}
 	assert.Equal(t, 1, jumlahPemenang, "tepat satu permintaan menerima refresh token pengganti")
 	assert.EqualValues(t, 1, s.liveTokens(t, a.sid), "tepat satu token hidup tersisa di sesi")
-	assert.EqualValues(t, 0, s.auditCount(t, "TOKEN_REUSE", "test-user-001", ""), "tidak ada deteksi pemakaian ulang palsu")
+	assert.EqualValues(t, 0, s.auditCount(t, "TOKEN_REUSE", uid("test-user-001"), ""), "tidak ada deteksi pemakaian ulang palsu")
 	var reuse int64
 	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TOKEN_REUSE'").Scan(&reuse).Error)
 	assert.Zero(t, reuse)
@@ -395,7 +396,7 @@ func TestSesi_ReuseOutsideGraceRevokesFamilyAccessTokensAndAudits(t *testing.T) 
 	assert.Equal(t, http.StatusOK, s.status(t, lain.access), "sesi perangkat lain tidak terpengaruh")
 
 	var n int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TOKEN_REUSE' AND aktor_id = 'test-user-001' AND metadata->>'family_id' = ?", a.sid).Scan(&n).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TOKEN_REUSE' AND aktor_id = garda_uuid_stabil('pengguna', 'test-user-001') AND metadata->>'family_id' = ?", a.sid).Scan(&n).Error)
 	assert.EqualValues(t, 1, n, "TOKEN_REUSE tercatat")
 }
 
@@ -488,7 +489,7 @@ func TestSesi_RevokeOneSessionKillsItsTokensAtOnceAndIsAudited(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, s.refreshRaw(t, b.refresh).Code, "refresh token-nya gagal")
 	assert.Equal(t, http.StatusOK, s.status(t, a.access), "sesi pemanggil tidak terpengaruh")
 	assert.Len(t, s.daftarSesi(t, a.access), 1)
-	assert.EqualValues(t, 1, s.auditCount(t, "REVOKE_SESSION", "test-user-001", b.sid))
+	assert.EqualValues(t, 1, s.auditCount(t, "REVOKE_SESSION", uid("test-user-001"), b.sid))
 }
 
 func TestSesi_RevokeRejectsCurrentUnknownAndForeignSessions(t *testing.T) {
@@ -538,12 +539,12 @@ func TestSesi_RevokeOthersKeepsOnlyTheCurrentSession(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, s.refreshRaw(t, x.refresh).Code)
 	}
 	assert.Equal(t, http.StatusOK, s.status(t, orangLain.access), "pengguna lain tidak tersentuh")
-	assert.EqualValues(t, 1, s.auditCount(t, "REVOKE_OTHER_SESSIONS", "test-user-001", "test-user-001"))
+	assert.EqualValues(t, 1, s.auditCount(t, "REVOKE_OTHER_SESSIONS", uid("test-user-001"), uid("test-user-001")))
 }
 
 func TestSesi_RevokeOthersWithTokenWithoutSidAsksToLoginAgain(t *testing.T) {
 	s := setupSuite(t)
-	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
+	legacy, err := s.tokenMgr.CreateAccessToken(uid("test-user-001"), "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
 	require.NoError(t, err)
 	s.mulaiSesi(t, emailAdmin, uaMac)
 
@@ -564,14 +565,14 @@ func TestSesi_LogoutEndsOnlyTheCurrentSession(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, s.refreshRaw(t, a.refresh).Code)
 	assert.Equal(t, http.StatusOK, s.status(t, b.access), "perangkat lain tetap masuk")
 	assert.Equal(t, http.StatusOK, s.refreshRaw(t, b.refresh).Code)
-	assert.EqualValues(t, 1, s.auditCount(t, "LOGOUT", "test-user-001", "test-user-001"))
+	assert.EqualValues(t, 1, s.auditCount(t, "LOGOUT", uid("test-user-001"), uid("test-user-001")))
 }
 
 func TestSesi_LogoutWithRefreshTokenBodyFallsBackForTokenWithoutSid(t *testing.T) {
 	s := setupSuite(t)
 	a := s.mulaiSesi(t, emailAdmin, uaMac)
 	b := s.mulaiSesi(t, emailAdmin, uaAndroid)
-	legacy, err := s.tokenMgr.CreateAccessToken("test-user-001", "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
+	legacy, err := s.tokenMgr.CreateAccessToken(uid("test-user-001"), "ADMIN_SISTEM", usecase.IzinBawaan("ADMIN_SISTEM"))
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusOK, s.panggil(t, http.MethodPost, "/v1/auth/logout", map[string]any{"refresh_token": a.refresh}, legacy).Code)
@@ -596,7 +597,7 @@ func TestSesi_LogoutAllEndsEverySessionIncludingCurrent(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, s.refreshRaw(t, x.refresh).Code)
 	}
 	assert.Equal(t, http.StatusOK, s.status(t, orangLain.access))
-	assert.EqualValues(t, 1, s.auditCount(t, "LOGOUT_ALL", "test-user-001", "test-user-001"))
+	assert.EqualValues(t, 1, s.auditCount(t, "LOGOUT_ALL", uid("test-user-001"), uid("test-user-001")))
 }
 
 // ── Admin: paksa keluar ───────────────────────────────────────────────
@@ -618,7 +619,7 @@ func TestSesi_AdminForceLogoutEndsAllSessionsOfTheTargetAndIsAudited(t *testing.
 		assert.Equal(t, http.StatusUnauthorized, s.refreshRaw(t, x.refresh).Code)
 	}
 	assert.Equal(t, http.StatusOK, s.status(t, admin.access), "sesi admin tidak terpengaruh")
-	assert.EqualValues(t, 1, s.auditCount(t, "FORCE_LOGOUT", "test-user-001", userBiasa), "aktornya admin, sasarannya pengguna")
+	assert.EqualValues(t, 1, s.auditCount(t, "FORCE_LOGOUT", uid("test-user-001"), userBiasa), "aktornya admin, sasarannya pengguna")
 	// Pengguna itu bisa masuk lagi.
 	s.mulaiSesi(t, emailBiasa, uaMac)
 }
@@ -629,7 +630,7 @@ func TestSesi_ForceLogoutRequiresPermissionAndKnownUser(t *testing.T) {
 	biasa := s.mulaiSesi(t, emailBiasa, uaAndroid)
 
 	t.Run("tanpa izin pengguna.kelola", func(t *testing.T) {
-		w := s.panggil(t, http.MethodPost, "/v1/users/test-user-001/revoke-sessions", nil, biasa.access)
+		w := s.panggil(t, http.MethodPost, "/v1/users/"+uid("test-user-001")+"/revoke-sessions", nil, biasa.access)
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Equal(t, http.StatusOK, s.status(t, admin.access), "sesi admin tetap hidup")
 	})
@@ -637,8 +638,8 @@ func TestSesi_ForceLogoutRequiresPermissionAndKnownUser(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, s.panggil(t, http.MethodPost, "/v1/users/"+userBiasa+"/revoke-sessions", nil, "").Code)
 	})
 	t.Run("pengguna tidak ada", func(t *testing.T) {
-		assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPost, "/v1/users/tidak-ada/revoke-sessions", nil, admin.access).Code)
-		assert.Zero(t, s.auditCount(t, "FORCE_LOGOUT", "test-user-001", "tidak-ada"))
+		assert.Equal(t, http.StatusNotFound, s.panggil(t, http.MethodPost, "/v1/users/"+uid("tidak-ada")+"/revoke-sessions", nil, admin.access).Code)
+		assert.Zero(t, s.auditCount(t, "FORCE_LOGOUT", uid("test-user-001"), uid("tidak-ada")))
 	})
 }
 
@@ -713,7 +714,7 @@ func TestSesi_AdminActionsRevokeSessionsImmediately(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, s.refreshRaw(t, x.refresh).Code)
 	})
 	t.Run("ganti peran", func(t *testing.T) {
-		require.NoError(t, s.db.Exec("UPDATE pengguna SET password_hash = (SELECT password_hash FROM pengguna WHERE id = 'test-user-001'), wajib_ganti_password = false WHERE id = ?", userBiasa).Error)
+		require.NoError(t, s.db.Exec("UPDATE pengguna SET password_hash = (SELECT password_hash FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')), wajib_ganti_password = false WHERE id = ?", userBiasa).Error)
 		x := s.mulaiSesi(t, emailBiasa, uaIPhone)
 		w := s.panggil(t, http.MethodPut, "/v1/users/"+userBiasa+"/roles", map[string]any{"peran": "OPS_KOORDINATOR"}, admin.access)
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -737,10 +738,10 @@ func TestSesi_DeletingTheUserEndsItsSessions(t *testing.T) {
 	s := setupSuite(t)
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, password_hash, peran, lapis, lembaga, status)
-		SELECT 'user-hapus', 'Dihapus', 'hapus@gardainflasi.id', password_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF' FROM pengguna WHERE id = 'test-user-001'`).Error)
+		SELECT garda_uuid_stabil('pengguna', 'user-hapus'), 'Dihapus', 'hapus@gardainflasi.id', password_hash, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'AKTIF' FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')`).Error)
 	x := s.mulaiSesi(t, "hapus@gardainflasi.id", uaMac)
 
-	require.Equal(t, http.StatusOK, s.panggil(t, http.MethodDelete, "/v1/users/user-hapus", nil, admin.access).Code)
+	require.Equal(t, http.StatusOK, s.panggil(t, http.MethodDelete, "/v1/users/"+uid("user-hapus"), nil, admin.access).Code)
 
 	assert.Equal(t, http.StatusUnauthorized, s.status(t, x.access))
 }

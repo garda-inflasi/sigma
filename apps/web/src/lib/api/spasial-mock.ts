@@ -58,7 +58,8 @@ export function mockLokasi(lat: number, lng: number): LokasiWilayah {
 export function mockRiwayatOptimasi(): RiwayatOptimasi[] {
   return [
     {
-      id: "OPT-mock-1",
+      id: "1",
+      kode: "OPT-000001",
       komoditasKode: "CBM-KRT",
       komoditas: "Cabai merah keriting",
       periode: "2026-11-01",
@@ -69,7 +70,8 @@ export function mockRiwayatOptimasi(): RiwayatOptimasi[] {
       dibuatPada: "2026-11-03T09:15:00Z",
     },
     {
-      id: "OPT-mock-2",
+      id: "2",
+      kode: "OPT-000002",
       komoditasKode: "BWM",
       komoditas: "Bawang merah",
       periode: "2026-11-01",

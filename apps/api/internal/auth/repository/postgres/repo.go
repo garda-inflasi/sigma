@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -21,6 +22,10 @@ func New(db *gorm.DB) *Repository {
 // ── Pengguna ──────────────────────────────────────────────────────────
 
 func (r *Repository) GetUserByID(ctx context.Context, id string) (*domain.Pengguna, error) {
+	// ID yang bukan UUID (mis. sub token lama berisi slug) tidak mungkin ada; jangan kirim ke kolom uuid (22P02).
+	if !idx.ValidUUID(id) {
+		return nil, fmt.Errorf("get user by id: %w", gorm.ErrRecordNotFound)
+	}
 	var user domain.Pengguna
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&user).Error; err != nil {
 		return nil, fmt.Errorf("get user by id: %w", err)
@@ -283,6 +288,21 @@ func (r *Repository) UseBackupCode(ctx context.Context, userID, kodeHash string,
 		return false, fmt.Errorf("pakai kode cadangan: %w", res.Error)
 	}
 	return res.RowsAffected == 1, nil
+}
+
+// IDLamaPengguna membaca ID lama dari pengguna_id_lama (migrasi 000110); "" bila akun tidak punya baris di sana.
+func (r *Repository) IDLamaPengguna(ctx context.Context, id string) (string, error) {
+	if !idx.ValidUUID(id) {
+		return "", nil
+	}
+	var lama []string
+	if err := r.db.WithContext(ctx).Raw("SELECT id_lama FROM pengguna_id_lama WHERE id = ?", id).Scan(&lama).Error; err != nil {
+		return "", fmt.Errorf("baca id lama pengguna: %w", err)
+	}
+	if len(lama) == 0 {
+		return "", nil
+	}
+	return lama[0], nil
 }
 
 func (r *Repository) CountBackupCodes(ctx context.Context, userID string) (int64, error) {

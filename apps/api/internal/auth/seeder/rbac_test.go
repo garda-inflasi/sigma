@@ -148,13 +148,13 @@ func TestSeedRBAC_FKDanConstraintMenjagaIntegritas(t *testing.T) {
 
 	assert.Error(t, db.Exec("INSERT INTO role_permissions (role_kunci, permission_nama) VALUES ('OPS_MAHASISWA', 'izin.palsu')").Error, "izin harus ada di katalog")
 	assert.Error(t, db.Exec("INSERT INTO permissions (nama, deskripsi, kelompok) VALUES ('BukanFormat', 'x', 'y')").Error, "nama izin berformat domain.aksi")
-	assert.Error(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES ('hantu', 'kpi.lihat', 'x')").Error, "pengguna harus ada")
+	assert.Error(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES (garda_uuid_stabil('pengguna', 'hantu'), 'kpi.lihat', 'x')").Error, "pengguna harus ada")
 
-	require.NoError(t, db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga) VALUES ('u1', 'U', 'u1@x.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'L')`).Error)
-	assert.Error(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES ('u1', 'kpi.lihat', '   ')").Error, "alasan wajib")
-	require.NoError(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES ('u1', 'kpi.lihat', 'uji')").Error)
-	assert.Error(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES ('u1', 'kpi.lihat', 'ganda')").Error, "satu baris per (pengguna, izin)")
+	require.NoError(t, db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga) VALUES (garda_uuid_stabil('pengguna', 'u1'), 'U', 'u1@x.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'L')`).Error)
+	assert.Error(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES (garda_uuid_stabil('pengguna', 'u1'), 'kpi.lihat', '   ')").Error, "alasan wajib")
+	require.NoError(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES (garda_uuid_stabil('pengguna', 'u1'), 'kpi.lihat', 'uji')").Error)
+	assert.Error(t, db.Exec("INSERT INTO user_permissions (pengguna_id, permission_nama, alasan) VALUES (garda_uuid_stabil('pengguna', 'u1'), 'kpi.lihat', 'ganda')").Error, "satu baris per (pengguna, izin)")
 
-	require.NoError(t, db.Exec("DELETE FROM pengguna WHERE id = 'u1'").Error)
+	require.NoError(t, db.Exec("DELETE FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'u1')").Error)
 	assert.EqualValues(t, 0, rowCount(t, db, "user_permissions"), "izin langsung ikut terhapus bersama penggunanya")
 }

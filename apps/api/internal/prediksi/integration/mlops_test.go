@@ -61,14 +61,14 @@ func seedRiwayat90(t *testing.T, db *gorm.DB) {
 	for kab, pasar := range kabupatenRiwayat {
 		for i := 1; i <= 90; i++ {
 			require.NoError(t, db.Exec(`
-				INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+				INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 				VALUES (?, 'CBM-KRT', ?, 'KONSUMEN', ?, 'kg', 'DIVALIDASI', ?)`,
 				fmt.Sprintf("H-%s-%d", kab, i), pasar, 50000+i*10, hariIni().AddDate(0, 0, -i).Add(10*time.Hour)).Error)
 		}
 	}
 	// Belum divalidasi dan harga produsen tidak boleh ikut dilatih.
 	require.NoError(t, db.Exec(`
-		INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada) VALUES
+		INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada) VALUES
 		('X1', 'CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 999999, 'kg', 'DIAJUKAN', ?),
 		('X2', 'CBM-KRT', 'PSR-1171-01', 'PRODUSEN', 1000, 'kg', 'DIVALIDASI', ?)`,
 		hariIni().Add(10*time.Hour), hariIni().Add(10*time.Hour)).Error)
@@ -158,6 +158,7 @@ func (s *suite) post(t *testing.T, path, email string, body any) *httptest.Respo
 
 type modelResp struct {
 	ID            string   `json:"id"`
+	Kode          *string  `json:"kode"`
 	KomoditasKode string   `json:"komoditas_kode"`
 	Versi         string   `json:"versi"`
 	Mape          float64  `json:"mape"`

@@ -5,7 +5,7 @@
  *  - anggaran laju BFF, dan
  *  - pembuatan/penghapusan pengguna uji sementara lewat API.
  */
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -251,13 +251,27 @@ export function sandiAcak(): string {
 }
 
 /**
+ * UUID akun seed untuk slug lamanya (`superadmin`, `mahasiswa_1`, ...): UUID versi 3 dari "pengguna:<slug>" di
+ * namespace Garda, sama dengan idx.UUIDStabil (Go) dan garda_uuid_stabil (SQL, migrasi 000109/000110).
+ */
+export function idPenggunaSeed(slug: string): string {
+  const namespace = Buffer.from("5b2f8f3e6a1d4c7e9a523f0d1c8e7b14", "hex");
+  const h = createHash("md5").update(namespace).update(`pengguna:${slug}`).digest();
+  h[6] = (h[6] & 0x0f) | 0x30;
+  h[8] = (h[8] & 0x3f) | 0x80;
+  const x = h.toString("hex");
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
+
+/**
  * Membuat pengguna uji `e2e.<timestamp>.<n>@gardainflasi.id` lewat POST /v1/users sebagai superadmin.
  * Peran OPS_AGREGATOR (bukan wajib MFA, beranda /cold-storage). Server menandainya wajib ganti kata sandi.
  */
 export async function buatPenggunaUji(): Promise<PenggunaUji> {
   const penanda = `${Date.now()}.${++urutan}`;
   const pengguna: PenggunaUji = {
-    id: `e2e_${penanda.replace(".", "_")}`,
+    // pengguna.id adalah UUID; API menerima id dari klien bila UUID sah (POST /v1/users tidak mewajibkannya).
+    id: randomUUID(),
     email: `e2e.${penanda}@gardainflasi.id`,
     sandi: sandiAcak(),
   };

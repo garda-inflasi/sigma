@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -62,7 +63,7 @@ func TestJWTAuth_RevokedSessionIsRejectedImmediately(t *testing.T) {
 	tokenMgr.SetRevocationChecker(checker)
 	router := revocationRouter(tokenMgr)
 
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil, token.WithSession(sidUji))
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil, token.WithSession(sidUji))
 	require.NoError(t, err)
 
 	w := doGet(router, tokenStr)
@@ -80,7 +81,7 @@ func TestJWTAuth_RevokedSessionIsRejectedImmediately(t *testing.T) {
 
 func TestJWTAuth_BlacklistedJTIIsRejected(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil)
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 	claims, err := tokenMgr.VerifyToken(tokenStr)
 	require.NoError(t, err)
@@ -95,7 +96,7 @@ func TestJWTAuth_TokenWithoutSidIsCheckedByJTIOnly(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	checker := &fakeChecker{revokedSID: map[string]bool{"": true}} // sid kosong tidak boleh dianggap dicabut
 	tokenMgr.SetRevocationChecker(checker)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil)
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 
 	w := doGet(revocationRouter(tokenMgr), tokenStr)
@@ -107,7 +108,7 @@ func TestJWTAuth_TokenWithoutSidIsCheckedByJTIOnly(t *testing.T) {
 func TestJWTAuth_CheckerErrorFailsClosedWith503(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	tokenMgr.SetRevocationChecker(&fakeChecker{err: errors.New("connection refused")})
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil, token.WithSession(sidUji))
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil, token.WithSession(sidUji))
 	require.NoError(t, err)
 
 	w := doGet(revocationRouter(tokenMgr), tokenStr)
@@ -117,7 +118,7 @@ func TestJWTAuth_CheckerErrorFailsClosedWith503(t *testing.T) {
 
 func TestJWTAuth_NoCheckerInstalledAllowsToken(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil, token.WithSession(sidUji))
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil, token.WithSession(sidUji))
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, doGet(revocationRouter(tokenMgr), tokenStr).Code)
@@ -138,7 +139,7 @@ func TestManager_SetRevocationCheckerNilRemovesChecker(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
 	tokenMgr.SetRevocationChecker(&fakeChecker{err: errors.New("x")})
 	tokenMgr.SetRevocationChecker(nil)
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil)
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, doGet(revocationRouter(tokenMgr), tokenStr).Code)
@@ -146,7 +147,7 @@ func TestManager_SetRevocationCheckerNilRemovesChecker(t *testing.T) {
 
 func TestTokenLifetimeContext_EndsWhenAccessTokenExpires(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!", token.WithAccessTTL(2*time.Hour))
-	tokenStr, err := tokenMgr.CreateAccessToken("u1", "ADMIN_SISTEM", nil)
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("u1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 	claims, err := tokenMgr.VerifyToken(tokenStr)
 	require.NoError(t, err)
@@ -176,4 +177,44 @@ func TestTokenLifetimeContext_WithoutTokenExpiryStillCancellable(t *testing.T) {
 	assert.False(t, hasDeadline)
 	cancel()
 	assert.Error(t, ctx.Err())
+}
+
+// Token yang terbit sebelum pengguna.id menjadi UUID (migrasi 000110) membawa slug sebagai sub. Ia harus gagal
+// bersih sebagai 401 sebelum menyentuh pemeriksa pencabutan dan resolver izin (yang membaca kolom uuid; teks
+// bebas di sana berarti galat 22P02 => 500/503), dan jawabannya memicu refresh senyap di klien web.
+func TestJWTAuth_TokenLamaDenganSubSlugDijawab401TanpaMenyentuhBasisData(t *testing.T) {
+	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
+	checker := &fakeChecker{revokedSID: map[string]bool{}}
+	resolver := &fakeResolver{izin: map[string][]string{}}
+	tokenMgr.SetRevocationChecker(checker)
+	tokenMgr.SetPermissionResolver(resolver)
+	router := revocationRouter(tokenMgr)
+
+	for _, slug := range []string{"superadmin", "test-user-001", "USR-2024-0001", "", "123", "g:2c5ef7c8"} {
+		tokenStr, err := tokenMgr.CreateAccessToken(slug, "ADMIN_SISTEM", []string{"kpi.lihat"}, token.WithSession(sidUji))
+		require.NoError(t, err)
+
+		w := doGet(router, tokenStr)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code, "sub %q", slug)
+		assert.Contains(t, w.Body.String(), PermissionsChangedCode, "sub %q", slug)
+	}
+	assert.Zero(t, checker.calls.Load(), "pencabutan tidak diperiksa untuk sub yang bukan UUID")
+}
+
+// UUID huruf besar yang sah dinormalkan ke huruf kecil supaya perbandingan "akun sendiri" konsisten.
+func TestJWTAuth_SubUUIDHurufBesarDinormalkanKeHurufKecil(t *testing.T) {
+	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
+	router := gin.New()
+	router.Use(JWTAuth(tokenMgr))
+	router.GET("/uji", func(c *gin.Context) { c.String(http.StatusOK, c.GetString("user_id")) })
+
+	besar := strings.ToUpper(uid("u1"))
+	tokenStr, err := tokenMgr.CreateAccessToken(besar, "ADMIN_SISTEM", nil)
+	require.NoError(t, err)
+
+	w := doGet(router, tokenStr)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, uid("u1"), w.Body.String())
 }

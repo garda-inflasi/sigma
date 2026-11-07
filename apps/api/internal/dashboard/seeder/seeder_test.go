@@ -76,6 +76,43 @@ func TestSeedDemo_CreatesActiveTekananCycleAndFillsAggregates(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count(t, db, "siklus_ekonomi"))
 	var mulai time.Time
-	require.NoError(t, db.Raw("SELECT mulai_pada FROM siklus_ekonomi WHERE id = ?", idSiklusDemo).Scan(&mulai).Error)
+	require.NoError(t, db.Raw("SELECT mulai_pada FROM siklus_ekonomi WHERE kode = ?", kodeSiklusDemo).Scan(&mulai).Error)
 	assert.WithinDuration(t, besok.AddDate(0, 0, -hariTekanan), mulai, time.Second)
+}
+
+// Siklus contoh dikunci dengan kode (UNIQUE), bukan ID identity: baris hasil migrasi 000115 (kode = ID lama)
+// diperbarui di tempat, ID-nya tetap, dan tidak ada baris kedua yang menabrak indeks siklus aktif.
+func TestSeedDemo_SiklusMemakaiKodeDanIDTetap(t *testing.T) {
+	db := pg.NewDatabase(t, "dashboard_siklus_kode")
+	pgtest.MigrateUp(t, db)
+	ctx := t.Context()
+	_, err := masterseeder.SeedReference(ctx, db)
+	require.NoError(t, err)
+	_, err = SeedDemo(ctx, db, seedNow)
+	require.NoError(t, err)
+	var id1 int64
+	require.NoError(t, db.Raw("SELECT id FROM siklus_ekonomi WHERE kode = ?", kodeSiklusDemo).Scan(&id1).Error)
+	require.Positive(t, id1)
+
+	_, err = SeedDemo(ctx, db, seedNow.Add(48*time.Hour))
+	require.NoError(t, err)
+
+	var id2 int64
+	require.NoError(t, db.Raw("SELECT id FROM siklus_ekonomi WHERE kode = ?", kodeSiklusDemo).Scan(&id2).Error)
+	assert.Equal(t, id1, id2, "upsert menurut kode tidak mengganti ID")
+	assert.EqualValues(t, 1, count(t, db, "siklus_ekonomi"))
+}
+
+func TestSeedReference_TargetKPIIdempotenMenurutKunciAlami(t *testing.T) {
+	db := pg.NewDatabase(t, "dashboard_target_alami")
+	pgtest.MigrateUp(t, db)
+	for range 2 {
+		sum, err := SeedReference(t.Context(), db)
+		require.NoError(t, err)
+		assert.Equal(t, 3, sum.Target)
+	}
+	assert.EqualValues(t, 3, count(t, db, "target_kpi"))
+	err := db.Exec(`INSERT INTO target_kpi (indikator, periode_mulai, target, arah) VALUES ('validasi', '2026-01-01', 1, 'NAIK')`).Error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "uq_target_kpi_alami")
 }

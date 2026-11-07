@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,9 +36,11 @@ func (f *fakeRepo) FindActor(_ context.Context, id string) (*domain.Actor, error
 	return nil, domain.ErrActorNotFound
 }
 
-func (f *fakeRepo) Get(_ context.Context, id string) (*domain.AuditLog, error) {
+func (f *fakeRepo) Get(_ context.Context, ref idx.RujukanID) (*domain.AuditLog, error) {
 	for i := range f.rows {
-		if f.rows[i].ID == id {
+		cocokID := ref.ID != 0 && f.rows[i].ID == ref.ID
+		cocokKode := ref.Kode != "" && f.rows[i].Kode != nil && *f.rows[i].Kode == ref.Kode
+		if cocokID || cocokKode {
 			return &f.rows[i], f.err
 		}
 	}
@@ -62,20 +64,21 @@ func newUseCase(repo *fakeRepo) *UseCase {
 }
 
 func TestWrite_SnapshotsActorAndOrigin(t *testing.T) {
-	repo := &fakeRepo{actors: map[string]*domain.Actor{"u1": {ID: "u1", Nama: "Rina", Email: "rina@gardainflasi.id", Peran: "MANAJER_PROGRAM"}}}
+	repo := &fakeRepo{actors: map[string]*domain.Actor{uid("u1"): {ID: uid("u1"), Nama: "Rina", Email: "rina@gardainflasi.id", Peran: "MANAJER_PROGRAM"}}}
 	ctx := domain.WithOrigin(context.Background(), domain.Origin{IP: "10.0.0.7", UserAgent: "uji", CorrelationID: "req-1"})
 
 	err := newUseCase(repo).Write(ctx, domain.Entry{
-		AktorID: "u1", Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: "u2", Hasil: domain.HasilBerhasil,
+		AktorID: uid("u1"), Aksi: "ASSIGN_ROLE", Entitas: "pengguna", EntitasID: uid("u2"), Hasil: domain.HasilBerhasil,
 		Sebelum: map[string]any{"peran": "A"}, Sesudah: map[string]any{"peran": "B"}, Metadata: map[string]any{"k": 1},
 	})
 
 	require.NoError(t, err)
 	require.Len(t, repo.created, 1)
 	row := repo.created[0]
-	assert.NotEmpty(t, row.ID)
+	assert.Zero(t, row.ID, "ID dibuat basis data (BIGINT identity), bukan aplikasi")
+	assert.Nil(t, row.Kode)
 	assert.Equal(t, fixedNow, row.Waktu)
-	assert.Equal(t, "u1", *row.AktorID)
+	assert.Equal(t, uid("u1"), *row.AktorID)
 	assert.Equal(t, "Rina", *row.AktorNama)
 	assert.Equal(t, "rina@gardainflasi.id", *row.AktorEmail)
 	assert.Equal(t, "MANAJER_PROGRAM", *row.AktorPeran)
@@ -128,7 +131,7 @@ func TestWrite_RejectsUnencodableJSON(t *testing.T) {
 func rowsAt(n int) []domain.AuditLog {
 	rows := make([]domain.AuditLog, n)
 	for i := range rows {
-		rows[i] = domain.AuditLog{ID: fmt.Sprintf("id-%02d", i), Waktu: fixedNow.Add(-time.Duration(i) * time.Minute)}
+		rows[i] = domain.AuditLog{ID: idx.ID(100 - i), Waktu: fixedNow.Add(-time.Duration(i) * time.Minute)}
 	}
 	return rows
 }
@@ -164,7 +167,7 @@ func TestList_NextCursorOnlyWhenMoreRows(t *testing.T) {
 
 		cursor, err := decodeCursor(page.NextCursor)
 		require.NoError(t, err)
-		assert.Equal(t, "id-04", cursor.ID, "cursor menunjuk baris terakhir yang dikembalikan")
+		assert.Equal(t, idx.ID(96), cursor.ID, "cursor menunjuk baris terakhir yang dikembalikan")
 		assert.True(t, cursor.Waktu.Equal(page.Items[4].Waktu))
 	})
 
@@ -181,13 +184,13 @@ func TestList_NextCursorOnlyWhenMoreRows(t *testing.T) {
 
 func TestList_PassesDecodedCursorAndFilter(t *testing.T) {
 	repo := &fakeRepo{}
-	cursor := encodeCursor(domain.Cursor{Waktu: fixedNow, ID: "id-09"})
+	cursor := encodeCursor(domain.Cursor{Waktu: fixedNow, ID: 91})
 
 	_, err := newUseCase(repo).List(context.Background(), Query{Cursor: cursor, Filter: domain.Filter{Aksi: "LOGIN"}})
 
 	require.NoError(t, err)
 	require.NotNil(t, repo.gotAfter)
-	assert.Equal(t, "id-09", repo.gotAfter.ID)
+	assert.Equal(t, idx.ID(91), repo.gotAfter.ID)
 	assert.Equal(t, "LOGIN", repo.gotFilter.Aksi)
 }
 
@@ -195,8 +198,13 @@ func TestList_InvalidCursor(t *testing.T) {
 	bad := []string{
 		"%%%",
 		base64.RawURLEncoding.EncodeToString([]byte("tanpa-pemisah")),
-		base64.RawURLEncoding.EncodeToString([]byte("bukan-waktu|id")),
+		base64.RawURLEncoding.EncodeToString([]byte("bukan-waktu|12")),
 		base64.RawURLEncoding.EncodeToString([]byte(fixedNow.Format(time.RFC3339Nano) + "|")),
+		// Cursor lama (ID berupa UUID) dan ID yang bukan bilangan bulat positif ditolak.
+		base64.RawURLEncoding.EncodeToString([]byte(fixedNow.Format(time.RFC3339Nano) + "|" + uid("u1"))),
+		base64.RawURLEncoding.EncodeToString([]byte(fixedNow.Format(time.RFC3339Nano) + "|0")),
+		base64.RawURLEncoding.EncodeToString([]byte(fixedNow.Format(time.RFC3339Nano) + "|-5")),
+		base64.RawURLEncoding.EncodeToString([]byte(fixedNow.Format(time.RFC3339Nano) + "|007")),
 	}
 	for _, cursor := range bad {
 		_, err := newUseCase(&fakeRepo{}).List(context.Background(), Query{Cursor: cursor})

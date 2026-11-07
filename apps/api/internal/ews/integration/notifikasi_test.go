@@ -31,20 +31,20 @@ func (s *suite) outbox(t *testing.T, where string, args ...any) []baris {
 	return rows
 }
 
-func (s *suite) ubahKanalAturan(t *testing.T, id string, kanal []string) {
+func (s *suite) ubahKanalAturan(t *testing.T, kode string, kanal []string) {
 	t.Helper()
 	list := data[[]aturanRow](t, s.call(t, http.MethodGet, "/v1/ews/aturan", emailLihat, nil))
 	for _, a := range list {
-		if a.ID == id {
+		if a.Kode != nil && *a.Kode == kode {
 			body := bodyAturan(a.Versi, a.AmbangWaspada, a.AmbangSiaga, a.AmbangKritis)
 			body["kanal"] = kanal
 			body["cooldown_jam"] = a.CooldownJam
-			w := s.call(t, http.MethodPut, "/v1/ews/aturan/"+id, emailAtur, body)
+			w := s.call(t, http.MethodPut, "/v1/ews/aturan/"+a.ID, emailAtur, body)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			return
 		}
 	}
-	t.Fatalf("aturan %s tidak ada", id)
+	t.Fatalf("aturan %s tidak ada", kode)
 }
 
 func (s *suite) lonjakanCabai(t *testing.T) {
@@ -72,14 +72,14 @@ func TestNotifikasi_EngineAlertEnqueuesPerRecipientAndPreference(t *testing.T) {
 
 	got := s.outbox(t, "")
 	assert.ElementsMatch(t, []baris{
-		{alert, "manajer_data", "EMAIL", "manajer.data@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "manajer_data", "PUSH", "manajer_data", "MENUNGGU", 0},
-		{alert, "manajer_program", "EMAIL", "manajer.program@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "manajer_program", "PUSH", "manajer_program", "MENUNGGU", 0},
-		{alert, "manajer_risiko", "EMAIL", "manajer.risiko@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "koordinator_lapangan", "EMAIL", "koordinator.lapangan@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "user_mfa", "EMAIL", "mfa@gardainflasi.id", "MENUNGGU", 0},
-		{alert, "user_mfa", "PUSH", "user_mfa", "MENUNGGU", 0},
+		{alert, uid("manajer_data"), "EMAIL", "manajer.data@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("manajer_data"), "PUSH", uid("manajer_data"), "MENUNGGU", 0},
+		{alert, uid("manajer_program"), "EMAIL", "manajer.program@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("manajer_program"), "PUSH", uid("manajer_program"), "MENUNGGU", 0},
+		{alert, uid("manajer_risiko"), "EMAIL", "manajer.risiko@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("koordinator_lapangan"), "EMAIL", "koordinator.lapangan@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("user_mfa"), "EMAIL", "mfa@gardainflasi.id", "MENUNGGU", 0},
+		{alert, uid("user_mfa"), "PUSH", uid("user_mfa"), "MENUNGGU", 0},
 	}, got, "risiko tanpa push; koordinator hanya email; peran tanpa ews.akui (strategis, mahasiswa) tidak menerima")
 
 	assert.Zero(t, s.evaluasi(t).Dibuat)
@@ -95,11 +95,11 @@ func TestNotifikasi_SeverityBelowMinimumIsNotQueuedUntilItRises(t *testing.T) {
 	require.Equal(t, 1, s.evaluasi(t).Dibuat)
 	assert.Empty(t, s.outbox(t, ""), "WASPADA di bawah tingkat minimum bawaan SIAGA")
 
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'H2'`).Error) // +13% = SIAGA
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'H2'`).Error) // +13% = SIAGA
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
 	assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH'"), 5, "lima pengguna berperan penindak menerima begitu alert mencapai SIAGA")
 
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 60000 WHERE id = 'H2'`).Error) // +20% = KRITIS
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 60000 WHERE kode = 'H2'`).Error) // +20% = KRITIS
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
 	assert.Len(t, s.outbox(t, ""), 5, "yang sudah dinotifikasi tidak dinotifikasi ulang")
 }
@@ -144,7 +144,7 @@ func TestNotifikasi_DispatchDeliversRetriesAndRecordsWithoutAdapter(t *testing.T
 		require.Len(t, email.got, 5)
 		assert.Contains(t, email.got[0].Judul, "Lonjakan harga cabai")
 		assert.Equal(t, "KRITIS", email.got[0].Severity)
-		assert.Equal(t, "/ews?id="+email.got[0].AlertID, email.got[0].TautanPath)
+		assert.Equal(t, "/ews?id="+email.got[0].AlertID.String(), email.got[0].TautanPath, "tautan memakai ID desimal alert")
 
 		assert.Len(t, s.outbox(t, "WHERE kanal = 'EMAIL' AND status = 'TERKIRIM'"), 5)
 		assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH' AND status = 'DICATAT'"), 5)
@@ -223,16 +223,18 @@ func TestNotifikasi_AutoEscalationOfUnacknowledgedAlerts(t *testing.T) {
 	require.NoError(t, err)
 	// Alert demo BARU >= SIAGA yang lebih tua dari 10 menit: EWS-1001 (27m), EWS-1002 (50m), EWS-1003 (73m).
 	// EWS-1000 baru 4 menit; EWS-0902 WASPADA; surplus INFO.
-	assert.Equal(t, []string{"EWS-1001", "EWS-1002", "EWS-1003"}, ids)
+	var kode []string
+	require.NoError(t, s.db.Raw(`SELECT kode FROM ews_alert WHERE id IN ? ORDER BY id`, ids).Scan(&kode).Error)
+	assert.Equal(t, []string{"EWS-1001", "EWS-1002", "EWS-1003"}, kode)
 
 	var rows []struct {
-		ID, Status, Catatan string
-		DieskalasiOlehID    *string
-		Oleh                *string
+		Kode, Status, Catatan string
+		DieskalasiOlehID      *string
+		Oleh                  *string
 	}
-	require.NoError(t, s.db.Raw(`SELECT a.id, a.status, r.catatan, a.dieskalasi_oleh_id, r.oleh
+	require.NoError(t, s.db.Raw(`SELECT a.kode, a.status, r.catatan, a.dieskalasi_oleh_id, r.oleh
 		FROM ews_alert a JOIN ews_riwayat r ON r.alert_id = a.id AND r.ke = 'DIESKALASI'
-		WHERE a.id IN ('EWS-1001','EWS-1002','EWS-1003') ORDER BY a.id`).Scan(&rows).Error)
+		WHERE a.kode IN ('EWS-1001','EWS-1002','EWS-1003') ORDER BY a.id`).Scan(&rows).Error)
 	require.Len(t, rows, 3)
 	for _, r := range rows {
 		assert.Equal(t, "DIESKALASI", r.Status)
@@ -241,12 +243,15 @@ func TestNotifikasi_AutoEscalationOfUnacknowledgedAlerts(t *testing.T) {
 		assert.Nil(t, r.DieskalasiOlehID)
 	}
 	var status string
-	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE id = 'EWS-1000'`).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE kode = 'EWS-1000'`).Scan(&status).Error)
 	assert.Equal(t, "BARU", status)
 
-	var audited int
-	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'ESKALASI_OTOMATIS'`).Scan(&audited).Error)
-	assert.Equal(t, 3, audited)
+	var audited []string
+	require.NoError(t, s.db.Raw(`SELECT entitas_id FROM audit_log WHERE aksi = 'ESKALASI_OTOMATIS' ORDER BY entitas_id::bigint`).Scan(&audited).Error)
+	assert.Len(t, audited, 3)
+	for i, id := range ids {
+		assert.Equal(t, id.String(), audited[i], "audit mencatat ID alert desimal")
+	}
 
 	again, err := svc.Eskalasi(t.Context())
 	require.NoError(t, err)
@@ -299,11 +304,11 @@ func TestNotifikasi_PreferencesAndPushSubscriptionEndpoints(t *testing.T) {
 			SeverityMin string
 			Aktif       bool
 		}
-		require.NoError(t, s.db.Raw(`SELECT severity_min, aktif FROM preferensi_notifikasi WHERE pengguna_id = 'koordinator_lapangan' AND kanal = 'PUSH'`).Scan(&row).Error)
+		require.NoError(t, s.db.Raw(`SELECT severity_min, aktif FROM preferensi_notifikasi WHERE pengguna_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan') AND kanal = 'PUSH'`).Scan(&row).Error)
 		assert.Equal(t, "WASPADA", row.SeverityMin)
 		assert.False(t, row.Aktif)
 		var audited int
-		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'UBAH_PREFERENSI_NOTIFIKASI' AND aktor_id = 'koordinator_lapangan'`).Scan(&audited).Error)
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'UBAH_PREFERENSI_NOTIFIKASI' AND aktor_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan')`).Scan(&audited).Error)
 		assert.Equal(t, 1, audited)
 	})
 
@@ -323,7 +328,7 @@ func TestNotifikasi_PreferencesAndPushSubscriptionEndpoints(t *testing.T) {
 		require.Equal(t, http.StatusOK, s.call(t, http.MethodPut, pushPath, emailPenuh, langganan).Code, "endpoint yang sama berpindah ke pemilik baru")
 		var owner string
 		require.NoError(t, s.db.Raw(`SELECT pengguna_id FROM langganan_push WHERE endpoint = ?`, langganan["endpoint"]).Scan(&owner).Error)
-		assert.Equal(t, "manajer_risiko", owner)
+		assert.Equal(t, uid("manajer_risiko"), owner)
 
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPut, pushPath, emailAkui, map[string]any{"endpoint": "bukan-url", "p256dh": "k", "auth": "a"}).Code)
 		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodDelete, pushPath, emailAkui, map[string]any{"endpoint": langganan["endpoint"]}).Code, "bukan pemiliknya")

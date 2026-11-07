@@ -3,7 +3,8 @@ import { coldStorageApi } from "@/lib/bff/api-client";
 import { handleRouteError, requireSession } from "@/lib/bff/handler";
 import { errorResponse, privateJsonResponse } from "@/lib/bff/security-headers";
 
-const MAX_ID = 255;
+/** UUID fasilitas atau kodenya (CS-01); sama dengan batas di backend (kolom kode varchar(64)). */
+const MAX_ID = 64;
 
 /**
  * GET /api/cold-storage/fasilitas/:id → Go GET /v1/cold-storage/fasilitas/:id

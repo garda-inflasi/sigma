@@ -112,7 +112,7 @@ const dataUndangan = {
   message: "Created",
   data: {
     user: {
-      id: "USR-1",
+      id: "ef45e253-50b5-3808-9710-90ed1484f293",
       nama: "Budi Santoso",
       email: "budi@garda.test",
       peran: "OPS_MAHASISWA",
@@ -173,7 +173,7 @@ describe("POST /api/pengguna/undang", () => {
           kabupaten_kode: "1171",
           status: "AKTIF",
           password: "Rahasia#1",
-          id: "USR-PALSU",
+          id: "2721eb4a-2e83-314e-89f0-a5bf74f2083b",
         }),
         KONTEKS,
       ),
@@ -397,7 +397,7 @@ describe("GET /api/pengguna/ekspor", () => {
     new NextRequest(`http://web:3000/api/pengguna/ekspor${query}`, {
       method: "GET",
     });
-  const csv = "\ufeffid;nama\r\nUSR-1;Budi\r\n";
+  const csv = "\ufeffid;nama\r\nef45e253-50b5-3808-9710-90ed1484f293;Budi\r\n";
 
   it("tanpa sesi 401", async () => {
     const go = goMenjawab(200, csv);

@@ -1,7 +1,12 @@
 // Package domain berisi model dan kontrak repository modul spasial.
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Status marker peta menurut deviasi harga (persen terhadap rata-rata 7 hari).
 const (
@@ -44,11 +49,13 @@ type Wilayah struct {
 func (Wilayah) TableName() string { return "wilayah" }
 
 // NeracaWilayah memetakan tabel neraca_wilayah: surplus (+) atau defisit (-) pasokan
-// dalam ton dan deviasi harga untuk satu komoditas, wilayah, dan periode.
+// dalam ton dan deviasi harga untuk satu komoditas, wilayah, dan periode. ID adalah BIGINT identity;
+// kunci alaminya (komoditas_kode, kabupaten_kode, periode) UNIQUE dan menjadi target upsert seeder.
 type NeracaWilayah struct {
-	KomoditasKode     string    `gorm:"column:komoditas_kode;primaryKey"`
-	KabupatenKode     string    `gorm:"column:kabupaten_kode;primaryKey"`
-	Periode           time.Time `gorm:"column:periode;primaryKey"`
+	ID                idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	KomoditasKode     string    `gorm:"column:komoditas_kode"`
+	KabupatenKode     string    `gorm:"column:kabupaten_kode"`
+	Periode           time.Time `gorm:"column:periode"`
 	SurplusDefisitTon float64   `gorm:"column:surplus_defisit_ton"`
 	DeltaHargaPct     float64   `gorm:"column:delta_harga_pct"`
 	Sumber            string    `gorm:"column:sumber"`
@@ -56,9 +63,11 @@ type NeracaWilayah struct {
 
 func (NeracaWilayah) TableName() string { return "neraca_wilayah" }
 
-// RuteDistribusi memetakan tabel rute_distribusi.
+// RuteDistribusi memetakan tabel rute_distribusi. ID adalah BIGINT identity; Kode adalah ID lama (RT-1106-1171)
+// pada data seed dan migrasi, dan kosong untuk rute yang dibuat optimasi (tidak ditampilkan dengan kode).
 type RuteDistribusi struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string   `gorm:"column:kode"`
 	AsalKode      string    `gorm:"column:asal_kode"`
 	TujuanKode    string    `gorm:"column:tujuan_kode"`
 	KomoditasKode string    `gorm:"column:komoditas_kode"`
@@ -70,7 +79,7 @@ type RuteDistribusi struct {
 	Sumber        string    `gorm:"column:sumber"`
 	DibuatPada    time.Time `gorm:"column:dibuat_pada;default:now()"`
 	// OptimasiID menunjuk rencana optimasi yang menghasilkan rute ini (kosong untuk rute lain).
-	OptimasiID *string `gorm:"column:optimasi_id"`
+	OptimasiID *idx.ID `gorm:"column:optimasi_id"`
 }
 
 func (RuteDistribusi) TableName() string { return "rute_distribusi" }
@@ -78,7 +87,8 @@ func (RuteDistribusi) TableName() string { return "rute_distribusi" }
 // KandidatColdStorage memetakan tabel kandidat_cold_storage. KomponenSkor adalah
 // dokumen JSON {nama komponen: nilai 0-100}.
 type KandidatColdStorage struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string   `gorm:"column:kode"`
 	KabupatenKode string    `gorm:"column:kabupaten_kode"`
 	Lokasi        string    `gorm:"column:lokasi"`
 	Skor          int       `gorm:"column:skor"`
@@ -183,9 +193,11 @@ type JarakAntarWilayah struct {
 func (JarakAntarWilayah) TableName() string { return "jarak_antar_wilayah" }
 
 // OptimasiRute memetakan tabel optimasi_rute: satu rencana distribusi yang disimpan.
-// Parameter adalah dokumen JSON parameter yang dipakai.
+// Parameter adalah dokumen JSON parameter yang dipakai. ID adalah BIGINT identity; Kode adalah kode tampilan
+// (OPT-000042, atau ID lama pada data migrasi) yang ditampilkan UI saat rencana disimpan.
 type OptimasiRute struct {
-	ID                string    `gorm:"column:id;primaryKey"`
+	ID                idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode              *string   `gorm:"column:kode"`
 	KomoditasKode     string    `gorm:"column:komoditas_kode"`
 	Periode           time.Time `gorm:"column:periode"`
 	Parameter         string    `gorm:"column:parameter;type:jsonb"`
@@ -195,7 +207,7 @@ type OptimasiRute struct {
 	// BiayaPembanding adalah biaya rencana serakah (pasangan terdekat dulu) untuk
 	// volume yang sama; kosong bila volumenya berbeda sehingga tidak sebanding.
 	BiayaPembanding *int64    `gorm:"column:biaya_pembanding"`
-	DibuatOleh      *string   `gorm:"column:dibuat_oleh"`
+	DibuatOleh      *string   `gorm:"column:dibuat_oleh;type:uuid"`
 	DibuatPada      time.Time `gorm:"column:dibuat_pada;default:now()"`
 }
 
@@ -207,3 +219,7 @@ type RencanaOptimasi struct {
 	KomoditasNama  string
 	DibuatOlehNama *string
 }
+
+// KodeOptimasi adalah kode tampilan rencana optimasi baru. Diturunkan dari ID identity yang unik, sehingga dua
+// rencana tidak pernah mendapat kode yang sama; ID lama (OPT- dan 12 karakter heksadesimal) berbeda bentuk.
+func KodeOptimasi(id idx.ID) string { return fmt.Sprintf("OPT-%06d", int64(id)) }

@@ -86,6 +86,11 @@ func compareEntity(entity any, actual dbSchema) []string {
 		case !typeCompatible(field.DataType, col):
 			problems = append(problems, fmt.Sprintf("%s: kolom %s.%s bertipe %s di migrasi, entity memakai %s (%s)",
 				name, parsed.Table, field.DBName, col.UDTName, field.DataType, field.FieldType))
+		case col.UDTName == "uuid" && !strings.EqualFold(field.TagSettings["TYPE"], "uuid"):
+			// docs/SKEMA-DATABASE.md §4: kolom uuid harus dideklarasikan type:uuid supaya GORM dan pembaca kode
+			// tahu nilainya UUID (bukan teks bebas) dan AutoMigrate/tes tidak membuat varchar.
+			problems = append(problems, fmt.Sprintf("%s: kolom %s.%s bertipe uuid di migrasi; tag GORM harus memuat type:uuid",
+				name, parsed.Table, field.DBName))
 		}
 	}
 	return problems

@@ -7,6 +7,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +22,7 @@ func round1(v float64) float64 { return math.Round(v*10) / 10 }
 func TestFasilitasSeeds_Shape(t *testing.T) {
 	wilayah := map[string]string{}
 	for _, f := range fasilitasSeeds {
-		wilayah[f.Wilayah] = "11" + f.ID[len(f.ID)-2:] // kode tiruan, cukup unik per fasilitas
+		wilayah[f.Wilayah] = "11" + f.Kode[len(f.Kode)-2:] // kode tiruan, cukup unik per fasilitas
 	}
 
 	got := BuildFasilitas(wilayah)
@@ -29,9 +30,12 @@ func TestFasilitasSeeds_Shape(t *testing.T) {
 	require.Len(t, got, 5)
 	ids := map[string]bool{}
 	for _, f := range got {
+		require.NotNil(t, f.Kode)
 		assert.False(t, ids[f.ID], "id ganda: %s", f.ID)
 		ids[f.ID] = true
-		assert.NotEmpty(t, f.KabupatenKode, "wilayah %s harus terpetakan", f.ID)
+		assert.Equal(t, idx.UUIDStabil("cold_storage", *f.Kode), f.ID, "ID fasilitas = UUID stabil dari kode, sama dengan hasil migrasi 000113")
+		assert.True(t, idx.ValidUUID(f.ID))
+		assert.NotEmpty(t, f.KabupatenKode, "wilayah %s harus terpetakan", *f.Kode)
 		assert.Positive(t, f.KapasitasTon)
 		assert.Contains(t, []string{"OPERASIONAL", "PERAWATAN", "RENCANA"}, f.Status)
 	}
@@ -39,9 +43,9 @@ func TestFasilitasSeeds_Shape(t *testing.T) {
 	// Hanya fasilitas rencana yang belum punya telemetri.
 	for _, f := range got {
 		if f.Status == "RENCANA" {
-			assert.Nil(t, f.SuhuAktualC, "%s belum dibangun", f.ID)
+			assert.Nil(t, f.SuhuAktualC, "%s belum dibangun", *f.Kode)
 		} else {
-			assert.NotNil(t, f.SuhuAktualC, "%s harus punya suhu aktual", f.ID)
+			assert.NotNil(t, f.SuhuAktualC, "%s harus punya suhu aktual", *f.Kode)
 		}
 	}
 }
@@ -55,8 +59,8 @@ func TestStokSeeds_FacilityVolumesMatchUtilisationCards(t *testing.T) {
 	}
 
 	require.Len(t, got, len(want), "fasilitas rencana (CS-05) tidak boleh punya stok")
-	for id, vol := range want {
-		assert.Equal(t, vol, round1(got[id]), "volume %s", id)
+	for kode, vol := range want {
+		assert.Equal(t, vol, round1(got[FasilitasID(kode)]), "volume %s", kode)
 	}
 }
 
@@ -77,18 +81,20 @@ func TestStokSeeds_HighRiskVolume(t *testing.T) {
 func TestStokSeeds_ValidRows(t *testing.T) {
 	fasilitas := map[string]bool{}
 	for _, f := range fasilitasSeeds {
-		fasilitas[f.ID] = true
+		fasilitas[FasilitasID(f.Kode)] = true
 	}
 
 	stok := BuildStok(seedNow)
 
 	assert.Len(t, stok, 23, "cukup untuk tiga halaman berisi 10 baris")
-	ids := map[string]bool{}
+	kodeLot := map[string]bool{}
 	for _, s := range stok {
-		assert.False(t, ids[s.ID], "id ganda: %s", s.ID)
-		ids[s.ID] = true
+		require.NotNil(t, s.Kode)
+		assert.Zero(t, s.ID, "ID BIGINT diberi basis data, bukan seeder")
+		assert.False(t, kodeLot[*s.Kode], "kode ganda: %s", *s.Kode)
+		kodeLot[*s.Kode] = true
 
-		assert.True(t, fasilitas[s.ColdStorageID], "%s merujuk fasilitas tak dikenal %s", s.ID, s.ColdStorageID)
+		assert.True(t, fasilitas[s.ColdStorageID], "%s merujuk fasilitas tak dikenal %s", *s.Kode, s.ColdStorageID)
 		assert.NotEmpty(t, s.KomoditasKode)
 		assert.NotEmpty(t, s.Pemilik)
 		assert.Positive(t, s.VolumeTon)
@@ -96,8 +102,8 @@ func TestStokSeeds_ValidRows(t *testing.T) {
 		assert.GreaterOrEqual(t, s.RisikoFoodLoss, 0.0)
 		assert.LessOrEqual(t, s.RisikoFoodLoss, 1.0)
 
-		assert.True(t, s.MasukPada.Before(seedNow), "%s sudah masuk", s.ID)
-		assert.True(t, s.KedaluwarsaPada.After(seedNow), "%s belum kedaluwarsa", s.ID)
+		assert.True(t, s.MasukPada.Before(seedNow), "%s sudah masuk", *s.Kode)
+		assert.True(t, s.KedaluwarsaPada.After(seedNow), "%s belum kedaluwarsa", *s.Kode)
 	}
 }
 
@@ -124,7 +130,7 @@ func TestStokSeeds_ShortestShelfLifeFirst(t *testing.T) {
 	}
 	var lots []lot
 	for _, s := range BuildStok(seedNow) {
-		lots = append(lots, lot{s.ID, int(math.Round(s.KedaluwarsaPada.Sub(seedNow).Hours() / 24))})
+		lots = append(lots, lot{*s.Kode, int(math.Round(s.KedaluwarsaPada.Sub(seedNow).Hours() / 24))})
 	}
 
 	// Urut menurut (sisa, id) seperti ORDER BY di repository.
@@ -164,4 +170,53 @@ func TestFasilitasSeeds_UseMasterRegions(t *testing.T) {
 	for _, f := range fasilitasSeeds {
 		assert.True(t, master[f.Wilayah], "wilayah %q tidak ada di master.reference", f.Wilayah)
 	}
+}
+
+// Transaksi demo: kode = "TRX-DEMO-" + kode lot, tanpa ID buatan seeder, dan menunjuk ID lot yang diberikan.
+func TestBuildTransaksi_UsesLotIDsFromDatabaseAndKode(t *testing.T) {
+	lotID := map[string]idx.ID{}
+	for i, s := range stokSeeds {
+		lotID[s.Kode] = idx.ID(100 + i)
+	}
+
+	trx, err := BuildTransaksi(seedNow, lotID)
+
+	require.NoError(t, err)
+	require.Len(t, trx, 23)
+	for i, x := range trx {
+		require.NotNil(t, x.Kode)
+		assert.Equal(t, "TRX-DEMO-"+stokSeeds[i].Kode, *x.Kode)
+		assert.Zero(t, x.ID)
+		assert.Equal(t, idx.ID(100+i), x.LotID)
+		assert.Equal(t, domain.TransaksiMasuk, x.Jenis)
+		require.NotNil(t, x.FasilitasTujuanID)
+		assert.Equal(t, FasilitasID(stokSeeds[i].Fasilitas), *x.FasilitasTujuanID)
+	}
+}
+
+func TestBuildTransaksi_RejectsLotThatIsNotInTheDatabase(t *testing.T) {
+	_, err := BuildTransaksi(seedNow, map[string]idx.ID{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "STK-CS01-01")
+}
+
+func TestBuildTelemetri_UsesFacilityUUIDAndKeepsCS04Spike(t *testing.T) {
+	rows := BuildTelemetri(seedNow)
+
+	require.Len(t, rows, 4*titikTelemetri)
+	valid := map[string]bool{}
+	for _, f := range fasilitasSeeds {
+		if f.SuhuAktualC != nil {
+			valid[FasilitasID(f.Kode)] = true
+		}
+	}
+	var luar int
+	for _, r := range rows {
+		assert.True(t, valid[r.FasilitasID], "fasilitas_id harus UUID fasilitas beroperasi: %s", r.FasilitasID)
+		if r.FasilitasID == FasilitasID("CS-04") && r.SuhuC > 6 {
+			luar++
+		}
+	}
+	assert.GreaterOrEqual(t, luar, 2, "lonjakan suhu CS-04 tetap ada walau kuncinya kini UUID")
 }

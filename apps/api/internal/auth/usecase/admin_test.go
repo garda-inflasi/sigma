@@ -34,14 +34,14 @@ func TestUpdateUser_PergantianPeranMencabutSemuaSesi(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser() // OPS_MAHASISWA / OPS
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
-	updated, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Peran: ptr("MANAJER_DATA")}, "admin-1")
+	updated, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Peran: ptr("MANAJER_DATA")}, uid("admin-1"))
 
 	require.NoError(t, err)
-	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, "user-123")
+	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, uid("user-123"))
 	assert.Equal(t, "MANAJER_DATA", updated.Peran)
 	assert.Equal(t, roleLapis["MANAJER_DATA"], updated.Lapis, "lapis mengikuti peran bila tidak ditimpa")
 	entry, ok := recorder.Last()
@@ -61,10 +61,10 @@ func TestUpdateUser_TidakMencabutSesiBilaPeranDanStatusTidakBerubah(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc := newTestUseCase(repo)
-			repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+			repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 			repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-			_, err := uc.UpdateUser(context.Background(), "user-123", patch, "admin-1")
+			_, err := uc.UpdateUser(context.Background(), uid("user-123"), patch, uid("admin-1"))
 
 			require.NoError(t, err)
 			repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
@@ -78,14 +78,14 @@ func TestUpdateUser_StatusSelainAktifMencabutSesi(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc := newTestUseCase(repo)
-			repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+			repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 			repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-			repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+			repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
-			_, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Status: ptr(status)}, "admin-1")
+			_, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Status: ptr(status)}, uid("admin-1"))
 
 			require.NoError(t, err)
-			repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, "user-123")
+			repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, uid("user-123"))
 		})
 	}
 }
@@ -93,11 +93,11 @@ func TestUpdateUser_StatusSelainAktifMencabutSesi(t *testing.T) {
 func TestUpdateUser_KegagalanMencabutSesiDilaporkanDanDitandaiDiAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db putus"))
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errors.New("db putus"))
 
-	_, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Peran: ptr("OPS_KOORDINATOR")}, "admin-1")
+	_, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Peran: ptr("OPS_KOORDINATOR")}, uid("admin-1"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "revoke sessions")
@@ -112,11 +112,11 @@ func TestUpdateUser_KegagalanMencabutSesiDilaporkanDanDitandaiDiAudit(t *testing
 func TestUpdateUser_LapisEksplisitMengalahkanTurunanPeran(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
-	updated, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Peran: ptr("MANAJER_DATA"), Lapis: ptr("KHUSUS")}, "admin-1")
+	updated, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Peran: ptr("MANAJER_DATA"), Lapis: ptr("KHUSUS")}, uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, "KHUSUS", updated.Lapis)
@@ -125,9 +125,9 @@ func TestUpdateUser_LapisEksplisitMengalahkanTurunanPeran(t *testing.T) {
 func TestUpdateUser_PeranTakDikenalDitolakTanpaMenulisApaPun(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 
-	_, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Peran: ptr("SUPER_ADMIN")}, "admin-1")
+	_, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Peran: ptr("SUPER_ADMIN")}, uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrRoleNotFound)
 	repo.AssertNotCalled(t, "PatchUser", mock.Anything, mock.Anything, mock.Anything)
@@ -138,11 +138,11 @@ func TestUpdateUser_EmailDipakaiPenggunaLainDitolak(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	lain := activeUser()
-	lain.ID = "user-lain"
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	lain.ID = uid("user-lain")
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("GetUserByEmail", mock.Anything, "lain@example.com").Return(lain, nil)
 
-	_, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Email: ptr("lain@example.com")}, "admin-1")
+	_, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Email: ptr("lain@example.com")}, uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrEmailExists)
 	repo.AssertNotCalled(t, "PatchUser", mock.Anything, mock.Anything, mock.Anything)
@@ -152,11 +152,11 @@ func TestUpdateUser_EmailMilikSendiriBukanKonflik(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	sendiri := activeUser()
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("GetUserByEmail", mock.Anything, "Test@Example.com").Return(sendiri, nil) // ID sama, beda huruf
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	updated, err := uc.UpdateUser(context.Background(), "user-123", UserPatch{Email: ptr("Test@Example.com")}, "admin-1")
+	updated, err := uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Email: ptr("Test@Example.com")}, uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, "Test@Example.com", updated.Email)
@@ -166,12 +166,12 @@ func TestUpdateUser_PenggunaTakAdaDanGalatSimpan(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	repo.On("GetUserByID", mock.Anything, "hilang").Return(nil, gorm.ErrRecordNotFound)
-	_, err := uc.UpdateUser(context.Background(), "hilang", UserPatch{Nama: ptr("x")}, "admin-1")
+	_, err := uc.UpdateUser(context.Background(), "hilang", UserPatch{Nama: ptr("x")}, uid("admin-1"))
 	require.ErrorIs(t, err, ErrUserNotFound)
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("PatchUser", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("db putus"))
-	_, err = uc.UpdateUser(context.Background(), "user-123", UserPatch{Nama: ptr("x")}, "admin-1")
+	_, err = uc.UpdateUser(context.Background(), uid("user-123"), UserPatch{Nama: ptr("x")}, uid("admin-1"))
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrUserNotFound)
 	assert.Empty(t, recorder.Entries())
@@ -183,7 +183,7 @@ func TestDeleteUser_TidakBolehMenghapusDiriSendiri(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	err := uc.DeleteUser(context.Background(), "admin-1", "admin-1")
+	err := uc.DeleteUser(context.Background(), uid("admin-1"), uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrCannotDeleteSelf)
 	repo.AssertNotCalled(t, "GetUserByID", mock.Anything, mock.Anything)
@@ -193,18 +193,18 @@ func TestDeleteUser_TidakBolehMenghapusDiriSendiri(t *testing.T) {
 func TestDeleteUser_BerhasilMengauditDanMenjagaSesiTerputus(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-	repo.On("DeleteUser", mock.Anything, "user-123").Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
+	repo.On("DeleteUser", mock.Anything, uid("user-123")).Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
-	require.NoError(t, uc.DeleteUser(context.Background(), "user-123", "admin-1"))
+	require.NoError(t, uc.DeleteUser(context.Background(), uid("user-123"), uid("admin-1")))
 
-	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, "user-123")
+	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, uid("user-123"))
 	entry, ok := recorder.Last()
 	require.True(t, ok)
 	assert.Equal(t, "DELETE_USER", entry.Aksi)
-	assert.Equal(t, "admin-1", entry.AktorID)
-	assert.Equal(t, "user-123", entry.EntitasID)
+	assert.Equal(t, uid("admin-1"), entry.AktorID)
+	assert.Equal(t, uid("user-123"), entry.EntitasID)
 }
 
 // Regresi: penghapusan ditolak basis data (pengguna masih dirujuk) tidak boleh sudah mengeluarkan pengguna dari
@@ -212,10 +212,10 @@ func TestDeleteUser_BerhasilMengauditDanMenjagaSesiTerputus(t *testing.T) {
 func TestDeleteUser_PenghapusanDitolakTidakMencabutSesi(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-	repo.On("DeleteUser", mock.Anything, "user-123").Return(fmt.Errorf("hapus: %w", gorm.ErrForeignKeyViolated))
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
+	repo.On("DeleteUser", mock.Anything, uid("user-123")).Return(fmt.Errorf("hapus: %w", gorm.ErrForeignKeyViolated))
 
-	err := uc.DeleteUser(context.Background(), "user-123", "admin-1")
+	err := uc.DeleteUser(context.Background(), uid("user-123"), uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrUserHasReferences)
 	repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
@@ -226,11 +226,11 @@ func TestDeleteUser_PenggunaTakAdaDanGalatLain(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	repo.On("GetUserByID", mock.Anything, "hilang").Return(nil, gorm.ErrRecordNotFound)
-	require.ErrorIs(t, uc.DeleteUser(context.Background(), "hilang", "admin-1"), ErrUserNotFound)
+	require.ErrorIs(t, uc.DeleteUser(context.Background(), "hilang", uid("admin-1")), ErrUserNotFound)
 
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-	repo.On("DeleteUser", mock.Anything, "user-123").Return(errors.New("koneksi putus"))
-	err := uc.DeleteUser(context.Background(), "user-123", "admin-1")
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
+	repo.On("DeleteUser", mock.Anything, uid("user-123")).Return(errors.New("koneksi putus"))
+	err := uc.DeleteUser(context.Background(), uid("user-123"), uid("admin-1"))
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrUserHasReferences, "galat umum bukan 'masih dirujuk'")
 }
@@ -238,11 +238,11 @@ func TestDeleteUser_PenggunaTakAdaDanGalatLain(t *testing.T) {
 func TestDeleteUser_GagalMencabutSesiSesudahHapusTidakMenggagalkan(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-	repo.On("DeleteUser", mock.Anything, "user-123").Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("tabel sudah kosong"))
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
+	repo.On("DeleteUser", mock.Anything, uid("user-123")).Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errors.New("tabel sudah kosong"))
 
-	require.NoError(t, uc.DeleteUser(context.Background(), "user-123", "admin-1"))
+	require.NoError(t, uc.DeleteUser(context.Background(), uid("user-123"), uid("admin-1")))
 	_, ok := recorder.Last()
 	assert.True(t, ok, "pengguna sudah terhapus: audit tetap dicatat")
 }
@@ -253,30 +253,30 @@ func TestResetPasswordAdmin_MengubahKataSandiWajibGantiDanMencabutSesi(t *testin
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser()
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 
-	require.NoError(t, uc.ResetPasswordAdmin(context.Background(), "user-123", "Baru#12345", "admin-1"))
+	require.NoError(t, uc.ResetPasswordAdmin(context.Background(), uid("user-123"), "Baru#12345", uid("admin-1")))
 
 	require.NotNil(t, user.PasswordHash)
 	assert.True(t, crypto.VerifyPassword("Baru#12345", *user.PasswordHash))
 	assert.False(t, crypto.VerifyPassword("Test1234!", *user.PasswordHash), "kata sandi lama tidak berlaku lagi")
 	assert.True(t, user.WajibGantiPassword, "kata sandi yang ditetapkan admin wajib diganti pemiliknya")
 	require.NotNil(t, user.PasswordDiubahPada)
-	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, "user-123")
+	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, uid("user-123"))
 	entry, ok := recorder.Last()
 	require.True(t, ok)
 	assert.Equal(t, "RESET_PASSWORD_ADMIN", entry.Aksi)
-	assert.Equal(t, "admin-1", entry.AktorID)
-	assert.Equal(t, "user-123", entry.EntitasID)
+	assert.Equal(t, uid("admin-1"), entry.AktorID)
+	assert.Equal(t, uid("user-123"), entry.EntitasID)
 }
 
 func TestResetPasswordAdmin_KataSandiLemahDitolakSebelumMenyentuhPengguna(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	err := uc.ResetPasswordAdmin(context.Background(), "user-123", "lemah", "admin-1")
+	err := uc.ResetPasswordAdmin(context.Background(), uid("user-123"), "lemah", uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrWeakPassword)
 	repo.AssertNotCalled(t, "GetUserByID", mock.Anything, mock.Anything)
@@ -288,15 +288,15 @@ func TestResetPasswordAdmin_JalurGalat(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetUserByID", mock.Anything, "hilang").Return(nil, gorm.ErrRecordNotFound)
-		require.ErrorIs(t, uc.ResetPasswordAdmin(context.Background(), "hilang", "Baru#12345", "admin-1"), ErrUserNotFound)
+		require.ErrorIs(t, uc.ResetPasswordAdmin(context.Background(), "hilang", "Baru#12345", uid("admin-1")), ErrUserNotFound)
 	})
 	t.Run("gagal menyimpan: sesi tidak dicabut dan tidak diaudit", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("db putus"))
 
-		require.Error(t, uc.ResetPasswordAdmin(context.Background(), "user-123", "Baru#12345", "admin-1"))
+		require.Error(t, uc.ResetPasswordAdmin(context.Background(), uid("user-123"), "Baru#12345", uid("admin-1")))
 
 		repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)
 		assert.Empty(t, recorder.Entries())
@@ -304,11 +304,11 @@ func TestResetPasswordAdmin_JalurGalat(t *testing.T) {
 	t.Run("gagal mencabut sesi dilaporkan", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(errors.New("db putus"))
+		repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(errors.New("db putus"))
 
-		err := uc.ResetPasswordAdmin(context.Background(), "user-123", "Baru#12345", "admin-1")
+		err := uc.ResetPasswordAdmin(context.Background(), uid("user-123"), "Baru#12345", uid("admin-1"))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "revoke sessions")
@@ -322,7 +322,7 @@ func TestBulkUserAction_AksiTakDikenalDitolakTanpaMenyentuhRepositori(t *testing
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	n, err := uc.BulkUserAction(context.Background(), []string{"a"}, "hapus_semua", "admin-1")
+	n, err := uc.BulkUserAction(context.Background(), []string{"a"}, "hapus_semua", uid("admin-1"))
 
 	require.ErrorIs(t, err, ErrInvalidAction)
 	assert.Zero(t, n)
@@ -343,14 +343,14 @@ func TestBulkUserAction_SetiapAksiDiteruskanDanDiaudit(t *testing.T) {
 			ids := []string{"a", "b", "c"}
 			repo.On("BulkUpdateUsers", mock.Anything, ids, domainAksi).Return(int64(2), nil)
 
-			n, err := uc.BulkUserAction(context.Background(), ids, aksi, "admin-1")
+			n, err := uc.BulkUserAction(context.Background(), ids, aksi, uid("admin-1"))
 
 			require.NoError(t, err)
 			assert.EqualValues(t, 2, n)
 			entry, ok := recorder.Last()
 			require.True(t, ok)
 			assert.Equal(t, "BULK_"+aksi, entry.Aksi)
-			assert.Equal(t, "admin-1", entry.AktorID)
+			assert.Equal(t, uid("admin-1"), entry.AktorID)
 			assert.Equal(t, "2 pengguna", entry.EntitasID, "jumlah yang benar-benar berubah, bukan yang diminta")
 			assert.Equal(t, ids, entry.Metadata["ids"])
 			assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
@@ -363,7 +363,7 @@ func TestBulkUserAction_GalatRepositoriDibungkusDanTidakDiaudit(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	repo.On("BulkUpdateUsers", mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("db putus"))
 
-	_, err := uc.BulkUserAction(context.Background(), []string{"a"}, "nonaktifkan", "admin-1")
+	_, err := uc.BulkUserAction(context.Background(), []string{"a"}, "nonaktifkan", uid("admin-1"))
 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidAction, "galat basis data bukan aksi tak valid")
@@ -476,7 +476,7 @@ func TestLogin_GagalMencatatMasukTerakhirTidakMenggagalkanLogin(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(activeUser(), nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
-	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(errors.New("db lambat"))
+	repo.On("TouchLastLogin", mock.Anything, uid("user-123"), mock.Anything).Return(errors.New("db lambat"))
 
 	res, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -539,9 +539,9 @@ func TestLogin_GagalMengembalikanPercobaanTidakMenggagalkanTantanganMFA(t *testi
 func TestRefresh_PemilikTokenTakTerbacaBukanTokenTidakSah(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	stored := &domain.RefreshToken{ID: 7, UserID: "user-123", FamilyID: "fam-1", ExpiresAt: time.Now().Add(time.Hour)}
+	stored := &domain.RefreshToken{ID: 7, UserID: uid("user-123"), FamilyID: "fam-1", ExpiresAt: time.Now().Add(time.Hour)}
 	repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(stored, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(nil, errors.New("koneksi putus"))
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nil, errors.New("koneksi putus"))
 
 	_, _, err := uc.Refresh(context.Background(), "rt", "10.0.0.1")
 
@@ -553,9 +553,9 @@ func TestRefresh_PemilikTokenTakTerbacaBukanTokenTidakSah(t *testing.T) {
 func TestRefresh_PemilikTokenSudahDihapusDianggapTidakSah(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	stored := &domain.RefreshToken{ID: 7, UserID: "user-123", FamilyID: "fam-1", ExpiresAt: time.Now().Add(time.Hour)}
+	stored := &domain.RefreshToken{ID: 7, UserID: uid("user-123"), FamilyID: "fam-1", ExpiresAt: time.Now().Add(time.Hour)}
 	repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(stored, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(nil, gorm.ErrRecordNotFound)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nil, gorm.ErrRecordNotFound)
 
 	_, _, err := uc.Refresh(context.Background(), "rt", "10.0.0.1")
 
@@ -565,9 +565,9 @@ func TestRefresh_PemilikTokenSudahDihapusDianggapTidakSah(t *testing.T) {
 func TestRefresh_GagalMenyimpanPenggantiTidakMengeluarkanSesi(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	stored := &domain.RefreshToken{ID: 7, UserID: "user-123", FamilyID: "fam-1", ExpiresAt: time.Now().Add(time.Hour)}
+	stored := &domain.RefreshToken{ID: 7, UserID: uid("user-123"), FamilyID: "fam-1", ExpiresAt: time.Now().Add(time.Hour)}
 	repo.On("GetRefreshTokenByHash", mock.Anything, mock.Anything).Return(stored, nil)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 	repo.On("RotateRefreshToken", mock.Anything, int64(7), mock.Anything, mock.Anything).Return(false, errors.New("deadlock"))
 
 	_, _, err := uc.Refresh(context.Background(), "rt", "10.0.0.1")
@@ -605,7 +605,7 @@ func TestForgotPassword_PengirimanEmailTidakMenahanPermintaan(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	uc.emailSender = email.New(email.Config{Host: "127.0.0.1", Port: addr.Port, From: "noreply@garda.test"})
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(activeUser(), nil)
-	repo.On("SaveResetToken", mock.Anything, "user-123", mock.Anything, mock.Anything).Return(nil)
+	repo.On("SaveResetToken", mock.Anything, uid("user-123"), mock.Anything, mock.Anything).Return(nil)
 
 	mulai := time.Now()
 	err = uc.ForgotPassword(context.Background(), "test@example.com")
@@ -623,7 +623,7 @@ func TestForgotPassword_GagalMenyimpanTokenDilaporkan(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(activeUser(), nil)
-	repo.On("SaveResetToken", mock.Anything, "user-123", mock.Anything, mock.Anything).Return(errors.New("db putus"))
+	repo.On("SaveResetToken", mock.Anything, uid("user-123"), mock.Anything, mock.Anything).Return(errors.New("db putus"))
 
 	err := uc.ForgotPassword(context.Background(), "test@example.com")
 
@@ -634,13 +634,13 @@ func TestForgotPassword_GagalMenyimpanTokenDilaporkan(t *testing.T) {
 // ── ResetPassword dan ChangePassword: cabang galat ───────────────────
 
 func TestResetPassword_JalurGalat(t *testing.T) {
-	tokenSah := &domain.ResetToken{ID: 4, UserID: "user-123", ExpiresAt: time.Now().Add(time.Hour)}
+	tokenSah := &domain.ResetToken{ID: 4, UserID: uid("user-123"), ExpiresAt: time.Now().Add(time.Hour)}
 
 	t.Run("pemilik token sudah dihapus: token tidak dipakai", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetResetToken", mock.Anything, mock.Anything).Return(tokenSah, nil)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(nil, gorm.ErrRecordNotFound)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nil, gorm.ErrRecordNotFound)
 
 		require.ErrorIs(t, uc.ResetPassword(context.Background(), "tkn", "Baru#12345"), ErrUserNotFound)
 		repo.AssertNotCalled(t, "ConsumeResetToken", mock.Anything, mock.Anything, mock.Anything)
@@ -649,7 +649,7 @@ func TestResetPassword_JalurGalat(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetResetToken", mock.Anything, mock.Anything).Return(tokenSah, nil)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 
 		require.ErrorIs(t, uc.ResetPassword(context.Background(), "tkn", "Test1234!"), ErrPasswordReuse)
 		repo.AssertNotCalled(t, "ConsumeResetToken", mock.Anything, mock.Anything, mock.Anything)
@@ -658,7 +658,7 @@ func TestResetPassword_JalurGalat(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetResetToken", mock.Anything, mock.Anything).Return(tokenSah, nil)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("ConsumeResetToken", mock.Anything, int64(4), mock.Anything).Return(false, errors.New("db putus"))
 
 		err := uc.ResetPassword(context.Background(), "tkn", "Baru#12345")
@@ -671,7 +671,7 @@ func TestResetPassword_JalurGalat(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		repo.On("GetResetToken", mock.Anything, mock.Anything).Return(tokenSah, nil)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("ConsumeResetToken", mock.Anything, int64(4), mock.Anything).Return(true, nil)
 		repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("db putus"))
 
@@ -693,9 +693,9 @@ func TestChangePassword_JalurGalat(t *testing.T) {
 		uc := newTestUseCase(repo)
 		user := activeUser()
 		user.PasswordHash = nil
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-		_, _, err := uc.ChangePassword(context.Background(), "user-123", "apa-saja", "Baru#12345", "10.0.0.1")
+		_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "apa-saja", "Baru#12345", "10.0.0.1")
 
 		require.ErrorIs(t, err, ErrWrongPassword)
 		assert.Nil(t, repo.keadaan(emailUji), "tidak ada rahasia yang diperiksa, jadi tidak ada percobaan yang dipesan")
@@ -704,10 +704,10 @@ func TestChangePassword_JalurGalat(t *testing.T) {
 		jamBeku(t, awalUji)
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.kunciTerkunci(emailUji)
 
-		_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "Baru#12345", "10.0.0.1")
+		_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "Baru#12345", "10.0.0.1")
 
 		require.ErrorIs(t, err, ErrAccountLocked)
 		repo.AssertNotCalled(t, "SetPassword", mock.Anything, mock.Anything, mock.Anything)
@@ -715,10 +715,10 @@ func TestChangePassword_JalurGalat(t *testing.T) {
 	t.Run("gagal memesan percobaan: ditolak, bukan dilewati", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.errMulai = errors.New("db putus")
 
-		_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "Baru#12345", "10.0.0.1")
+		_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "Baru#12345", "10.0.0.1")
 
 		require.Error(t, err)
 		repo.AssertNotCalled(t, "SetPassword", mock.Anything, mock.Anything, mock.Anything)
@@ -726,11 +726,11 @@ func TestChangePassword_JalurGalat(t *testing.T) {
 	t.Run("gagal menyimpan kata sandi baru", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 		repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 		repo.On("SetPassword", mock.Anything, mock.Anything, mock.Anything).Return(errors.New("db putus"))
 
-		_, _, err := uc.ChangePassword(context.Background(), "user-123", "Test1234!", "Baru#12345", "10.0.0.1")
+		_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), "Test1234!", "Baru#12345", "10.0.0.1")
 
 		require.Error(t, err)
 		repo.AssertNotCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, mock.Anything)

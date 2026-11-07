@@ -38,15 +38,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { id, nama, email, password, peran, lapis, lembaga } = body;
 
-    if (!id || !nama || !email || !password || !peran || !lapis || !lembaga) {
+    if (!nama || !email || !password || !peran || !lapis || !lembaga) {
       return errorResponse(
-        "ID, nama, email, kata sandi, peran, lapis, dan lembaga wajib diisi.",
+        "Nama, email, kata sandi, peran, lapis, dan lembaga wajib diisi.",
         400
       );
     }
 
+    // `id` opsional: kosong berarti API membuat UUID acak. Bila diisi, API yang memvalidasi (UUID sah, 400/409).
     await userApi.create(session.accessToken, {
-      id,
+      ...(id ? { id } : {}),
       nama,
       email,
       password,

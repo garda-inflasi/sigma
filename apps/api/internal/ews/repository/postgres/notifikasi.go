@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm/clause"
 )
 
@@ -16,7 +17,7 @@ var _ domain.NotifikasiRepository = (*Repository)(nil)
 // bawaan (aktif, tingkat minimum SIAGA). Urutan enum severity menjadikan >= valid.
 const antrekanSQL = `
 INSERT INTO ews_notifikasi (alert_id, pengguna_id, kanal, tujuan, jadwal_berikut)
-SELECT a.id, u.id, k.kanal, CASE k.kanal WHEN 'EMAIL' THEN u.email ELSE u.id END, @now
+SELECT a.id, u.id, k.kanal, CASE k.kanal WHEN 'EMAIL' THEN u.email ELSE u.id::text END, @now
   FROM ews_alert a
   JOIN aturan_ews r ON r.id = a.aturan_id
   CROSS JOIN LATERAL unnest(r.kanal) AS k(kanal)
@@ -28,7 +29,7 @@ SELECT a.id, u.id, k.kanal, CASE k.kanal WHEN 'EMAIL' THEN u.email ELSE u.id END
 ON CONFLICT (alert_id, pengguna_id, kanal) DO NOTHING
 RETURNING id`
 
-func (r *Repository) Antrekan(ctx context.Context, alertID string, peran []string, now time.Time) (int, error) {
+func (r *Repository) Antrekan(ctx context.Context, alertID idx.ID, peran []string, now time.Time) (int, error) {
 	if len(peran) == 0 {
 		return 0, nil
 	}
@@ -142,8 +143,8 @@ func (r *Repository) HapusLanggananKadaluwarsa(ctx context.Context, endpoint str
 	return nil
 }
 
-func (r *Repository) EskalasiOtomatis(ctx context.Context, now time.Time, batas time.Duration, minimum string) ([]string, error) {
-	var ids []string
+func (r *Repository) EskalasiOtomatis(ctx context.Context, now time.Time, batas time.Duration, minimum string) ([]idx.ID, error) {
+	var ids []idx.ID
 	err := r.db.WithContext(ctx).Raw(`
 		WITH prev AS (
 			SELECT id FROM ews_alert

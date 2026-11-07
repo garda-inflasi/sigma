@@ -172,7 +172,8 @@ describe("titikDariSkema", () => {
 describe("toRiwayatOptimasi", () => {
   it("memetakan ringkasan rencana, termasuk pembuat yang sudah terhapus", () => {
     const base = {
-      id: "OPT-1",
+      id: "7",
+      kode: "OPT-000007",
       komoditas_kode: "BWM",
       komoditas_nama: "Bawang merah",
       periode: "2026-11-01",
@@ -184,7 +185,8 @@ describe("toRiwayatOptimasi", () => {
     assert.deepEqual(
       toRiwayatOptimasi({ ...base, dibuat_oleh: "Manajer Data" }),
       {
-        id: "OPT-1",
+        id: "7",
+        kode: "OPT-000007",
         komoditasKode: "BWM",
         komoditas: "Bawang merah",
         periode: "2026-11-01",

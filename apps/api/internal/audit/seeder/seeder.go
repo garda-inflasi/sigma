@@ -1,6 +1,6 @@
 // Package seeder mengisi contoh jejak audit (hanya demo). Baris audit bersifat
-// append-only, jadi seeder memakai DO NOTHING: menjalankannya ulang tidak
-// mengubah atau menambah apa pun.
+// append-only, jadi seeder memakai DO NOTHING pada kode (demo-audit-NNNN, kunci
+// alami baris demo): menjalankannya ulang tidak mengubah atau menambah apa pun.
 package seeder
 
 import (
@@ -25,8 +25,8 @@ const (
 	jumlahEntri = 80
 	// seedPRNG membuat urutan acak sama di setiap jalan.
 	seedPRNG = 20260930
-	// idPrefix menandai baris demo agar mudah disaring.
-	idPrefix = "demo-audit-"
+	// kodePrefix menandai baris demo agar mudah disaring; kode (UNIQUE) adalah kunci idempotensi seeder.
+	kodePrefix = "demo-audit-"
 )
 
 type aksiContoh struct {
@@ -55,7 +55,10 @@ var aksiContohSeeds = []aksiContoh{
 // dari now. Prasyarat: akun demo sudah ada (auth.demo).
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	rows := BuildEntri(now)
-	err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&rows, 50).Error
+	err := db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "kode"}},
+		DoNothing: true,
+	}).CreateInBatches(&rows, 50).Error
 	if err != nil {
 		return DemoSummary{}, fmt.Errorf("seed audit demo: %w", err)
 	}
@@ -75,7 +78,7 @@ func BuildEntri(now time.Time) []domain.AuditLog {
 		waktu := now.Add(-time.Duration(i*17+rng.IntN(15)) * time.Minute)
 
 		row := domain.AuditLog{
-			ID: fmt.Sprintf("%s%04d", idPrefix, i+1), Waktu: waktu,
+			Kode: new(fmt.Sprintf("%s%04d", kodePrefix, i+1)), Waktu: waktu,
 			AktorID: &pelaku.ID, AktorNama: &pelaku.Nama, AktorEmail: &pelaku.Email, AktorPeran: &pelaku.Peran,
 			Aksi: contoh.Aksi, Entitas: contoh.Entitas, EntitasID: pelaku.ID,
 			Hasil: hasilContoh(rng), IP: new(fmt.Sprintf("10.0.%d.%d", rng.IntN(4), 10+rng.IntN(200))),

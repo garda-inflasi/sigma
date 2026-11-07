@@ -24,9 +24,9 @@ var pbrSeq atomic.Int64
 
 var pbrAcuan = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 
-const (
-	pbrUserA = "pembersihan-user-a"
-	pbrUserB = "pembersihan-user-b"
+var (
+	pbrUserA = uid("pembersihan-user-a")
+	pbrUserB = uid("pembersihan-user-b")
 )
 
 func pbrDB(t *testing.T) *gorm.DB {
@@ -375,8 +375,8 @@ func TestPembersihan_KonteksSelesaiMenghentikanDenganGalat(t *testing.T) {
 func TestPembersihan_AlurRefreshTetapUtuhSetelahPembersihan(t *testing.T) {
 	s := setupSuite(t)
 	// Sisipkan baris mati yang harus ikut tersapu bersama baris sungguhan di basis data yang sama.
-	pbrRefresh(t, s.db, "mati-lama", "test-user-001", time.Now().Add(-time.Hour), true)
-	pbrReset(t, s.db, "reset-mati", "test-user-001", time.Now().Add(-30*24*time.Hour), nil)
+	pbrRefresh(t, s.db, "mati-lama", uid("test-user-001"), time.Now().Add(-time.Hour), true)
+	pbrReset(t, s.db, "reset-mati", uid("test-user-001"), time.Now().Add(-30*24*time.Hour), nil)
 
 	_, lama := s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 	rotasi := s.serveRequest(t, http.MethodPost, "/v1/auth/refresh", map[string]any{"refresh_token": lama}, nil)

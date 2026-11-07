@@ -2,13 +2,13 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -36,7 +36,7 @@ func (m *mockRepository) RingkasanStok(ctx context.Context, ambang float64) (dom
 	return args.Get(0).(domain.RingkasanStok), args.Error(1)
 }
 
-func (m *mockRepository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction) (domain.BulkResult, error) {
+func (m *mockRepository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction) (domain.BulkResult, error) {
 	args := m.Called(ctx, ids, action)
 	return args.Get(0).(domain.BulkResult), args.Error(1)
 }
@@ -72,12 +72,12 @@ func TestGetAll_Success(t *testing.T) {
 
 	aktual := 3.5
 	fasilitas := []domain.FasilitasView{
-		{ID: "CS-01", Nama: "Cold Storage A", KapasitasTon: 400, TerisiTon: 346.99999999999994, SuhuTargetC: 4, SuhuAktualC: &aktual, Status: "OPERASIONAL"},
-		{ID: "CS-05", Nama: "Gudang Rencana", KapasitasTon: 120, Status: "RENCANA"},
+		{ID: fas("CS-01"), Nama: "Cold Storage A", KapasitasTon: 400, TerisiTon: 346.99999999999994, SuhuTargetC: 4, SuhuAktualC: &aktual, Status: "OPERASIONAL"},
+		{ID: fas("CS-05"), Nama: "Gudang Rencana", KapasitasTon: 120, Status: "RENCANA"},
 	}
 	stok := domain.StokPage{
 		Items: []domain.StokView{
-			{ID: "S1", ColdStorageID: "CS-01", VolumeTon: 34.900000000000006, KedaluwarsaPada: fixedNow.Add(5 * 24 * time.Hour)},
+			{ID: 1, ColdStorageID: fas("CS-01"), VolumeTon: 34.900000000000006, KedaluwarsaPada: fixedNow.Add(5 * 24 * time.Hour)},
 		},
 		Total:          23,
 		TotalVolumeTon: 812.0000000000001,
@@ -119,7 +119,7 @@ func TestGetAll_ZeroCapacityDoesNotDivideByZero(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	repo.On("ListFasilitas", mock.Anything).Return([]domain.FasilitasView{{ID: "CS-X", KapasitasTon: 0, TerisiTon: 5}}, nil)
+	repo.On("ListFasilitas", mock.Anything).Return([]domain.FasilitasView{{ID: fas("CS-X"), KapasitasTon: 0, TerisiTon: 5}}, nil)
 	repo.On("ListStok", mock.Anything, defaultQuery).Return(domain.StokPage{}, nil)
 	repo.On("RingkasanStok", mock.Anything, domain.RisikoTinggiAmbang).Return(domain.RingkasanStok{}, nil)
 
@@ -152,8 +152,8 @@ func TestGetAll_NormalizesQuery(t *testing.T) {
 		},
 		{
 			name: "teks dipangkas dan nilai sah dipertahankan",
-			in:   domain.StokQuery{ColdStorageID: " CS-01 ", Search: "  cabai  ", Sort: domain.SortVolume, Desc: true, Page: 3, Limit: 25},
-			want: domain.StokQuery{ColdStorageID: "CS-01", Search: "cabai", Sort: domain.SortVolume, Desc: true, Page: 3, Limit: 25},
+			in:   domain.StokQuery{Fasilitas: idx.RujukanUUID{Kode: "CS-01"}, Search: "  cabai  ", Sort: domain.SortVolume, Desc: true, Page: 3, Limit: 25},
+			want: domain.StokQuery{Fasilitas: idx.RujukanUUID{Kode: "CS-01"}, Search: "cabai", Sort: domain.SortVolume, Desc: true, Page: 3, Limit: 25},
 		},
 	}
 
@@ -253,7 +253,7 @@ func TestBulkAction_RencanakanDistribusi(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	ids := []string{"S1", "S2"}
+	ids := []idx.ID{1, 2}
 	repo.On("BulkAction", mock.Anything, ids, domain.BulkRencanakanDistribusi).Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.89999999999999, IDDitemukan: ids}, nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rencanakan_distribusi", IDs: ids})
@@ -261,7 +261,7 @@ func TestBulkAction_RencanakanDistribusi(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, BulkOutcome{
 		Berhasil: 2, Gagal: 0, VolumeTon: 65.9,
-		Baris: []domain.BarisBulk{{ID: "S1", Berhasil: true}, {ID: "S2", Berhasil: true}},
+		Baris: []domain.BarisBulk{{ID: 1, Berhasil: true}, {ID: 2, Berhasil: true}},
 	}, out)
 	repo.AssertExpectations(t)
 }
@@ -270,7 +270,7 @@ func TestBulkAction_RekomendasiOlahan(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 
-	ids := []string{"S1"}
+	ids := []idx.ID{1}
 	repo.On("BulkAction", mock.Anything, ids, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{Berhasil: 1, VolumeTon: 12.9}, nil)
 
 	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: ids})
@@ -283,7 +283,7 @@ func TestBulkAction_RekomendasiOlahan(t *testing.T) {
 func TestBulkAction_InvalidAction(t *testing.T) {
 	uc := newTestUseCase(new(mockRepository))
 
-	_, err := uc.BulkAction(context.Background(), BulkInput{Action: "hapus", IDs: []string{"S1"}})
+	_, err := uc.BulkAction(context.Background(), BulkInput{Action: "hapus", IDs: []idx.ID{1}})
 
 	assert.ErrorIs(t, err, ErrInvalidAction)
 }
@@ -291,7 +291,7 @@ func TestBulkAction_InvalidAction(t *testing.T) {
 func TestBulkAction_NoIDs(t *testing.T) {
 	uc := newTestUseCase(new(mockRepository))
 
-	for _, ids := range [][]string{nil, {}, {"", "  "}} {
+	for _, ids := range [][]idx.ID{nil, {}, {0, 0}} {
 		_, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: ids})
 		assert.ErrorIs(t, err, ErrNoIDs)
 	}
@@ -300,9 +300,9 @@ func TestBulkAction_NoIDs(t *testing.T) {
 func TestBulkAction_TooManyIDs(t *testing.T) {
 	uc := newTestUseCase(new(mockRepository))
 
-	ids := make([]string, MaxBulkIDs+1)
+	ids := make([]idx.ID, MaxBulkIDs+1)
 	for i := range ids {
-		ids[i] = fmt.Sprintf("S%d", i)
+		ids[i] = idx.ID(i + 1)
 	}
 
 	_, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: ids})
@@ -315,14 +315,14 @@ func TestBulkAction_DeduplicatesAndCountsMissingAsFailed(t *testing.T) {
 	uc := newTestUseCase(repo)
 
 	// Hanya id unik, tak kosong, yang diteruskan ke repository.
-	repo.On("BulkAction", mock.Anything, []string{"S1", "S2", "S3"}, domain.BulkRekomendasiOlahan).
+	repo.On("BulkAction", mock.Anything, []idx.ID{1, 2, 3}, domain.BulkRekomendasiOlahan).
 		Return(domain.BulkResult{Berhasil: 2, VolumeTon: 40}, nil)
 
-	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"S1", "S2", "S1", " ", "S3"}})
+	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []idx.ID{1, 2, 1, 0, 3}})
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, out.Berhasil)
-	assert.Equal(t, 1, out.Gagal, "S3 tidak ditemukan")
+	assert.Equal(t, 1, out.Gagal, "lot 3 tidak ditemukan")
 	repo.AssertExpectations(t)
 }
 
@@ -330,11 +330,11 @@ func TestBulkAction_RecordsAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 
-	repo.On("BulkAction", mock.Anything, []string{"S1", "S2"}, domain.BulkRencanakanDistribusi).
+	repo.On("BulkAction", mock.Anything, []idx.ID{1, 2}, domain.BulkRencanakanDistribusi).
 		Return(domain.BulkResult{Berhasil: 2, VolumeTon: 65.9}, nil)
 
 	_, err := uc.BulkAction(context.Background(), BulkInput{
-		Action: "rencanakan_distribusi", IDs: []string{"S1", "S2"}, ActorID: "manajer_program",
+		Action: "rencanakan_distribusi", IDs: []idx.ID{1, 2}, ActorID: uid("manajer_program"),
 	})
 
 	require.NoError(t, err)
@@ -345,22 +345,22 @@ func TestBulkAction_RecordsAudit(t *testing.T) {
 	assert.Equal(t, "stok_cold_storage", logged.Entitas)
 	assert.Equal(t, "2 lot", logged.EntitasID)
 	assert.Equal(t, audit.HasilBerhasil, logged.Hasil)
-	assert.Equal(t, "manajer_program", logged.AktorID)
-	assert.Equal(t, map[string]any{"ids": []string{"S1", "S2"}, "gagal": 0, "volume_ton": 65.9}, logged.Metadata)
+	assert.Equal(t, uid("manajer_program"), logged.AktorID)
+	assert.Equal(t, map[string]any{"ids": []idx.ID{1, 2}, "gagal": 0, "volume_ton": 65.9}, logged.Metadata)
 }
 
 func TestBulkAction_AuditWithoutActorAndAllMissing(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 
-	repo.On("BulkAction", mock.Anything, []string{"X"}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{}, nil)
+	repo.On("BulkAction", mock.Anything, []idx.ID{99}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{}, nil)
 
-	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"X"}})
+	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []idx.ID{99}})
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkOutcome{
 		Gagal: 1,
-		Baris: []domain.BarisBulk{{ID: "X", Pesan: "Lot tidak ditemukan atau sudah habis"}},
+		Baris: []domain.BarisBulk{{ID: 99, Pesan: "Lot tidak ditemukan atau sudah habis"}},
 	}, out)
 	logged, ok := recorder.Last()
 	require.True(t, ok)
@@ -373,9 +373,9 @@ func TestBulkAction_AuditFailureDoesNotFailAction(t *testing.T) {
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	recorder.Err = assert.AnError
 
-	repo.On("BulkAction", mock.Anything, []string{"S1"}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{Berhasil: 1, VolumeTon: 5}, nil)
+	repo.On("BulkAction", mock.Anything, []idx.ID{1}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{Berhasil: 1, VolumeTon: 5}, nil)
 
-	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"S1"}})
+	out, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []idx.ID{1}})
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, out.Berhasil)
@@ -385,9 +385,9 @@ func TestBulkAction_RepoError(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 
-	repo.On("BulkAction", mock.Anything, []string{"S1"}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{}, assert.AnError)
+	repo.On("BulkAction", mock.Anything, []idx.ID{1}, domain.BulkRekomendasiOlahan).Return(domain.BulkResult{}, assert.AnError)
 
-	_, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []string{"S1"}})
+	_, err := uc.BulkAction(context.Background(), BulkInput{Action: "rekomendasi_olahan", IDs: []idx.ID{1}})
 
 	assert.ErrorIs(t, err, assert.AnError)
 	assert.Empty(t, recorder.Entries(), "aksi yang gagal diproses tidak dicatat sebagai selesai")

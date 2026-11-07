@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/pkg/crypto"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -113,13 +113,13 @@ func tokenUndanganBaru() (raw, hash string, err error) {
 	return raw, sha256Hex(raw), nil
 }
 
-// idPenggunaBaru membuat id akun undangan: "USR-" + 16 heksadesimal acak (64 bit, tabrakan diabaikan).
+// idPenggunaBaru membuat id akun undangan: UUID acak (versi 4), bentuk yang sama dengan gen_random_uuid().
 func idPenggunaBaru() (string, error) {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
+	id, err := uuid.NewRandom()
+	if err != nil {
 		return "", fmt.Errorf("buat id pengguna: %w", err)
 	}
-	return "USR-" + strings.ToUpper(hex.EncodeToString(b)), nil
+	return id.String(), nil
 }
 
 // ── Validasi isian ────────────────────────────────────────────────────

@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Status siklus hidup brief (enum status_brief). DIPROSES dan GAGAL adalah status
 // penyusunan asinkron: brief baru berstatus DIPROSES sampai draf siap (DRAF) atau gagal (GAGAL).
@@ -33,17 +37,18 @@ const (
 	JobGagal    = "GAGAL"
 )
 
-// PolicyBrief memetakan tabel policy_brief. ID berbentuk PB-YYYY-MM sehingga satu
-// periode hanya bisa punya satu brief.
+// PolicyBrief memetakan tabel policy_brief. ID adalah UUID yang diberikan basis data. Kode berbentuk PB-YYYY-MM
+// (NOT NULL, UNIQUE, dijaga CHECK) sehingga satu periode hanya bisa punya satu brief; kode juga alias URL.
 type PolicyBrief struct {
-	ID            string `gorm:"column:id;primaryKey"`
+	ID            string `gorm:"column:id;type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Kode          string `gorm:"column:kode" json:"kode"`
 	Periode       string `gorm:"column:periode"`
 	Judul         string `gorm:"column:judul"`
 	Status        string `gorm:"column:status;default:DRAF"`
 	Ringkasan     string `gorm:"column:ringkasan;type:text"`
 	Rekomendasi   string `gorm:"column:rekomendasi;type:jsonb"`
 	Halaman       int    `gorm:"column:halaman"`
-	DisusunOlehID string `gorm:"column:disusun_oleh_id"`
+	DisusunOlehID string `gorm:"column:disusun_oleh_id;type:uuid"`
 	// Konten adalah dokumen JSON Konten (narasi per bagian dan lampiran sitasi);
 	// SnapshotData berisi fakta yang dipakai saat penyusunan.
 	Konten       string  `gorm:"column:konten;type:jsonb;default:{}"`
@@ -62,10 +67,12 @@ func (PolicyBrief) TableName() string {
 	return "policy_brief"
 }
 
-// BriefJob memetakan tabel brief_job: satu percobaan penyusunan brief.
+// BriefJob memetakan tabel brief_job: satu percobaan penyusunan brief. ID BIGINT diberikan basis data; Kode
+// berisi ID lama (UUID) pada job sebelum migrasi 000114 dan kosong pada job baru.
 type BriefJob struct {
-	ID      string     `gorm:"column:id;primaryKey"`
-	BriefID string     `gorm:"column:brief_id"`
+	ID      idx.ID     `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	Kode    *string    `gorm:"column:kode" json:"kode"`
+	BriefID string     `gorm:"column:brief_id;type:uuid"`
 	Status  string     `gorm:"column:status"`
 	Mulai   time.Time  `gorm:"column:mulai;default:now()"`
 	Selesai *time.Time `gorm:"column:selesai"`
@@ -76,12 +83,14 @@ func (BriefJob) TableName() string {
 	return "brief_job"
 }
 
-// BriefVersi memetakan tabel policy_brief_versi: isi brief pada satu versi.
+// BriefVersi memetakan tabel policy_brief_versi: isi brief pada satu versi. ID BIGINT (versi_id) diberikan
+// basis data dan dirujuk oleh telaah dan revisi; (BriefID, Versi) tetap unik dan Versi adalah nomor urut per brief.
 type BriefVersi struct {
-	BriefID string    `gorm:"column:brief_id;primaryKey"`
-	Versi   int       `gorm:"column:versi;primaryKey"`
+	ID      idx.ID    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	BriefID string    `gorm:"column:brief_id;type:uuid"`
+	Versi   int       `gorm:"column:versi"`
 	Konten  string    `gorm:"column:konten;type:jsonb"`
-	Oleh    string    `gorm:"column:oleh"`
+	Oleh    string    `gorm:"column:oleh;type:uuid"`
 	Waktu   time.Time `gorm:"column:waktu;default:now()"`
 }
 
@@ -93,6 +102,7 @@ func (BriefVersi) TableName() string {
 // penyusun (join pengguna) dan jumlah butir rekomendasi.
 type BriefView struct {
 	ID                string    `gorm:"column:id"`
+	Kode              string    `gorm:"column:kode"`
 	Periode           string    `gorm:"column:periode"`
 	Judul             string    `gorm:"column:judul"`
 	Status            string    `gorm:"column:status"`
@@ -105,12 +115,22 @@ type BriefView struct {
 	Diperbarui        time.Time `gorm:"column:diperbarui"`
 }
 
-// DetailView adalah BriefView lengkap dengan isi dan jejak penyusunannya.
+// VersiView adalah satu versi isi brief: ID BIGINT (versi_id), nomor urut, siapa yang menulis (nama), dan kapan.
+type VersiView struct {
+	ID    idx.ID    `gorm:"column:id"`
+	Versi int       `gorm:"column:versi"`
+	Oleh  string    `gorm:"column:oleh"`
+	Waktu time.Time `gorm:"column:waktu"`
+}
+
+// DetailView adalah BriefView lengkap dengan isi dan jejak penyusunannya. RiwayatVersi (versi terbaru lebih dulu)
+// diisi oleh use case dari policy_brief_versi.
 type DetailView struct {
-	BriefView   `gorm:"embedded"`
-	Konten      string  `gorm:"column:konten"`
-	ModelLLM    *string `gorm:"column:model_llm"`
-	PromptVersi *string `gorm:"column:prompt_versi"`
-	PromptHash  *string `gorm:"column:prompt_hash"`
-	Galat       *string `gorm:"column:galat"`
+	BriefView    `gorm:"embedded"`
+	Konten       string      `gorm:"column:konten"`
+	ModelLLM     *string     `gorm:"column:model_llm"`
+	PromptVersi  *string     `gorm:"column:prompt_versi"`
+	PromptHash   *string     `gorm:"column:prompt_hash"`
+	Galat        *string     `gorm:"column:galat"`
+	RiwayatVersi []VersiView `gorm:"-"`
 }

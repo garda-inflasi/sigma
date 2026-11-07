@@ -8,9 +8,13 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// idSumber adalah UUID baris sumber_data konektor ini (garda_uuid_stabil dari kode), sama dengan seed.
+var idSumber = idx.UUIDStabil("sumber_data", Kode)
 
 func fixture(t *testing.T) []byte {
 	t.Helper()
@@ -23,8 +27,8 @@ func masukan() domain.Masukan {
 	return domain.Masukan{
 		URLDasar: "https://api.bmkg.go.id/",
 		Pemetaan: domain.NewPemetaan([]domain.PemetaanSumber{
-			{SumberID: SumberID, Jenis: domain.JenisWilayah, Alias: "11.71.01.2001", KodeMaster: new("1171")},
-			{SumberID: SumberID, Jenis: domain.JenisWilayah, Alias: "11.74.01.2001", KodeMaster: new("1174")},
+			{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "11.71.01.2001", KodeMaster: new("1171")},
+			{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "11.74.01.2001", KodeMaster: new("1174")},
 		}, nil),
 	}
 }

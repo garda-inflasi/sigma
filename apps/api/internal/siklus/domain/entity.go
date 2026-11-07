@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Siklus ekonomi (enum siklus).
 const (
@@ -12,9 +16,11 @@ const (
 // WilayahBawaan adalah kode provinsi Aceh: siklus dominan yang mewarnai seluruh antarmuka.
 const WilayahBawaan = "11"
 
-// SiklusEkonomi memetakan tabel siklus_ekonomi.
+// SiklusEkonomi memetakan tabel siklus_ekonomi. PK-nya ID BIGINT identity; Kode memuat ID lama
+// (mis. SE-11-DEMO) dan menjadi kunci idempotensi seeder demo. wilayah_kode -> provinsi (RESTRICT).
 type SiklusEkonomi struct {
-	ID          string     `gorm:"column:id;primaryKey"`
+	ID          idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode        *string    `gorm:"column:kode"`
 	WilayahKode string     `gorm:"column:wilayah_kode"`
 	Siklus      string     `gorm:"column:siklus"`
 	MulaiPada   time.Time  `gorm:"column:mulai_pada"`

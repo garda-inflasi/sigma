@@ -26,7 +26,7 @@ import { mockTugasDetail } from "./lapangan-mock";
 import { toRingkasanEksekutif, type RingkasanEksekutifResponse } from "./eksekutif";
 import { kpiMock, kpiRiwayatMock, toKpiIndikator, toKpiRiwayat, type KpiIndikator, type KpiResponse as KpiIndikatorResponse, type KpiRiwayat, type KpiRiwayatResponse } from "./kpi";
 import {
-  toBatalPushBody, toEwsAlert, toEwsAturan, toEwsDetail, toEwsRiwayat, toPreferensiBody, toPreferensiView, toUbahAturanBody,
+  cocokRujukanAlert, toBatalPushBody, toEwsAlert, toEwsAturan, toEwsDetail, toEwsRiwayat, toPreferensiBody, toPreferensiView, toUbahAturanBody,
   type EvaluasiEws, type EwsAlertResponse, type EwsAturan, type EwsAturanResponse, type EwsDetail, type EwsRiwayat, type EwsRiwayatResponse, type PreferensiNotifikasi, type PreferensiNotifikasiResponse, type PreferensiView, type UbahAturanInput,
 } from "./ews";
 import {
@@ -155,7 +155,7 @@ export const api = {
     /** Rencana distribusi optimal surplus → defisit; `simpan` menulisnya sebagai usulan rute. */
     optimasi: (p: OptimasiParams): Promise<RencanaOptimasi> =>
       MODE_MOCK
-        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], penghematanPersen: null, optimasiId: null }), 400, 800)
+        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], penghematanPersen: null, optimasiId: null, optimasiKode: null }), 400, 800)
         : apiFetch<OptimasiResponse>("/v1/spasial/optimasi-rute", { method: "POST", body: JSON.stringify(toOptimasiBody(p)) }).then(toRencanaOptimasi),
     /** Poligon wilayah (perkiraan pada data demo); mode mock tidak punya geometri. */
     geometri: (zoom: number): Promise<GeometriWilayah[]> =>
@@ -194,11 +194,14 @@ export const api = {
   ews: {
     list: (): Promise<EwsAlert[]> =>
       MODE_MOCK ? mockDelay(m.mockEws) : apiFetch<EwsAlertResponse[]>("/v1/ews?limit=200").then((rows) => rows.map(toEwsAlert)),
-    /** Satu alert lengkap (jejak pengakuan, eskalasi, penutupan); 404 (ApiError) bila tidak ada. */
+    /**
+     * Satu alert lengkap (jejak pengakuan, eskalasi, penutupan); 404 (ApiError) bila tidak ada. `id` boleh
+     * ID desimal atau kode lama (EWS-0901): server menerima keduanya (alias tautan lama).
+     */
     detail: (id: string): Promise<EwsDetail> =>
       MODE_MOCK
         ? mockDelay(() => {
-            const a = m.mockEws().find((x) => x.id === id);
+            const a = m.mockEws().find((x) => cocokRujukanAlert(x, id));
             if (!a) throw new ApiError(404, "Alert EWS tidak ditemukan");
             return mockEwsDetail(a);
           })
@@ -207,7 +210,7 @@ export const api = {
     riwayat: (id: string): Promise<EwsRiwayat[]> =>
       MODE_MOCK
         ? mockDelay(() => {
-            const a = m.mockEws().find((x) => x.id === id);
+            const a = m.mockEws().find((x) => cocokRujukanAlert(x, id));
             return a ? mockEwsRiwayat(a) : [];
           })
         : apiFetch<EwsRiwayatResponse[]>(`/v1/ews/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toEwsRiwayat)),
@@ -217,8 +220,8 @@ export const api = {
     /** Mengubah ambang aturan; 409 (ApiError) bila aturan sudah diubah pengguna lain sejak dibaca. */
     ubahAturan: (id: string, input: UbahAturanInput): Promise<EwsAturan> =>
       MODE_MOCK
-        ? mockDelay(() => ({ ...m.mockEwsAturan().find((a) => a.id === id)!, ...input, versi: input.versi + 1 }), 200, 400)
-        : apiFetch<EwsAturanResponse>(`/v1/ews/aturan/${id}`, { method: "PUT", body: JSON.stringify(toUbahAturanBody(input)) }).then(toEwsAturan),
+        ? mockDelay(() => ({ ...m.mockEwsAturan().find((a) => a.id === id || a.kode === id)!, ...input, versi: input.versi + 1 }), 200, 400)
+        : apiFetch<EwsAturanResponse>(`/v1/ews/aturan/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(toUbahAturanBody(input)) }).then(toEwsAturan),
     /** Menjalankan rule engine sekarang (di luar jadwal). */
     evaluasi: (): Promise<EvaluasiEws> =>
       MODE_MOCK
@@ -260,7 +263,7 @@ export const api = {
     /** Riwayat satu kartu, terlama dahulu. 404 (ApiError) bila kartu tidak ada. */
     riwayat: (id: string): Promise<RiwayatKartu[]> =>
       MODE_MOCK
-        ? mockDelay(() => riwayatMock(m.mockKanban().find((k) => k.id === id) ?? m.mockKanban()[0]).map(toRiwayat), 150, 300)
+        ? mockDelay(() => riwayatMock(m.mockKanban().find((k) => k.id === id || k.kode === id) ?? m.mockKanban()[0]).map(toRiwayat), 150, 300)
         : apiFetch<RiwayatResponse[]>(`/v1/intervensi/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toRiwayat)),
     /** Membuat kartu di tahap pertama siklusnya; butuh backend. */
     buat: (input: BuatIntervensiInput): Promise<KartuBaru> =>
@@ -271,7 +274,7 @@ export const api = {
     pindah: (id: string, tahap: string, urutan: number, versi: number): Promise<{ versi: number }> =>
       MODE_MOCK
         ? mockDelay({ versi: versi + 1 }, 200, 400)
-        : apiFetch<{ versi: number }>(`/v1/intervensi/${id}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan, versi }) }),
+        : apiFetch<{ versi: number }>(`/v1/intervensi/${encodeURIComponent(id)}/tahap`, { method: "PATCH", body: JSON.stringify({ tahap, urutan, versi }) }),
     /** Antrean permintaan persetujuan (terbaru dahulu); status kosong = semua. */
     persetujuan: (status?: Persetujuan["status"]): Promise<Persetujuan[]> =>
       MODE_MOCK
@@ -281,12 +284,12 @@ export const api = {
     ajukan: (id: string, tahapTujuan: string, catatan = ""): Promise<Persetujuan> =>
       MODE_MOCK
         ? Promise.reject(new Error("Persetujuan membutuhkan backend aktif."))
-        : apiFetch<PersetujuanResponse>(`/v1/intervensi/${id}/persetujuan`, { method: "POST", body: JSON.stringify({ tahap_tujuan: tahapTujuan, catatan }) }).then(toPersetujuan),
+        : apiFetch<PersetujuanResponse>(`/v1/intervensi/${encodeURIComponent(id)}/persetujuan`, { method: "POST", body: JSON.stringify({ tahap_tujuan: tahapTujuan, catatan }) }).then(toPersetujuan),
     /** Memutuskan langkah yang menunggu; TOLAK wajib bercatatan. */
-    putus: (id: number, keputusan: KeputusanPersetujuan, catatan = ""): Promise<Persetujuan> =>
+    putus: (id: string, keputusan: KeputusanPersetujuan, catatan = ""): Promise<Persetujuan> =>
       MODE_MOCK
         ? Promise.reject(new Error("Persetujuan membutuhkan backend aktif."))
-        : apiFetch<PersetujuanResponse>(`/v1/intervensi/persetujuan/${id}/keputusan`, { method: "POST", body: JSON.stringify({ keputusan, catatan }) }).then(toPersetujuan),
+        : apiFetch<PersetujuanResponse>(`/v1/intervensi/persetujuan/${encodeURIComponent(id)}/keputusan`, { method: "POST", body: JSON.stringify({ keputusan, catatan }) }).then(toPersetujuan),
     /** Menugaskan kartu ke pengguna yang masuk, atau mengeskalasinya ke Dewan Pengarah; hasil per kartu. */
     aksi: (aksi: AksiKartu, ids: string[]): Promise<BulkKartuResult> =>
       MODE_MOCK
@@ -306,7 +309,7 @@ export const api = {
         : coldStorageClient.detail(id),
     transaksi: (p: TransaksiPayload): Promise<TransaksiHasil> =>
       MODE_MOCK
-        ? mockDelay(() => ({ transaksiId: "TRX-MOCK", lotId: "lotId" in p ? p.lotId : "STK-MOCK", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
+        ? mockDelay(() => ({ transaksiId: "1", lotId: "lotId" in p ? p.lotId : "1", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
         : coldStorageClient.transaksi(p),
     /** Ubah kapasitas, batas alarm suhu, atau status fasilitas (izin `coldstorage.kelola`, tercatat di audit). */
     ubahFasilitas: (id: string, p: UbahFasilitasPayload): Promise<FasilitasColdStorage> =>

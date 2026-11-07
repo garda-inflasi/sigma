@@ -24,7 +24,7 @@ func (s *Suite) simpanTokenReset(t *testing.T, raw string, kedaluwarsa time.Time
 	t.Helper()
 	hash := sha256.Sum256([]byte(raw))
 	require.NoError(t, s.db.Exec(
-		"INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ('test-user-001', ?, ?)",
+		"INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (garda_uuid_stabil('pengguna', 'test-user-001'), ?, ?)",
 		hex.EncodeToString(hash[:]), kedaluwarsa).Error)
 }
 
@@ -58,7 +58,7 @@ func TestIntegration_ResetPassword_FullFlow(t *testing.T) {
 	})
 	t.Run("tercatat di audit trail", func(t *testing.T) {
 		var n int64
-		require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'RESET_PASSWORD' AND entitas_id = 'test-user-001'").Scan(&n).Error)
+		require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'RESET_PASSWORD' AND entitas_id = garda_uuid_stabil('pengguna', 'test-user-001')::text").Scan(&n).Error)
 		assert.EqualValues(t, 1, n)
 	})
 }
@@ -127,7 +127,7 @@ func TestIntegration_ResetPassword_InvalidatesOtherOutstandingTokens(t *testing.
 
 func TestIntegration_ResetPassword_ClearsMandatoryChangeFlag(t *testing.T) {
 	s := setupSuite(t)
-	require.NoError(t, s.db.Exec("UPDATE pengguna SET wajib_ganti_password = true WHERE id = 'test-user-001'").Error)
+	require.NoError(t, s.db.Exec("UPDATE pengguna SET wajib_ganti_password = true WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')").Error)
 	s.simpanTokenReset(t, "token-sah", time.Now().Add(30*time.Minute))
 
 	require.Equal(t, http.StatusOK, s.reset(t, "token-sah", passwordBaru).Code)

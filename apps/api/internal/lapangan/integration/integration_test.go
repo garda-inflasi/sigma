@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -127,6 +129,7 @@ func (s *suite) login(t *testing.T, email string) string {
 
 type tugas struct {
 	ID        string   `json:"id"`
+	Kode      *string  `json:"kode"`
 	Judul     string   `json:"judul"`
 	PasarID   string   `json:"pasar_id"`
 	PasarNama string   `json:"pasar_nama"`
@@ -216,7 +219,13 @@ func TestGet_OwnerAndManagerOnly(t *testing.T) {
 	w := s.call(t, http.MethodGet, path, emailMahasiswa1, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	detail := data[tugasDetail](t, w)
-	assert.Equal(t, "TGS-mahasiswa_1-1", detail.ID)
+	// Rujukan lewat kode lama (alias) menjawab tugas yang sama dengan ID BIGINT-nya.
+	require.NotNil(t, detail.Kode)
+	assert.Equal(t, "TGS-mahasiswa_1-1", *detail.Kode)
+	_, err := strconv.ParseInt(detail.ID, 10, 64)
+	require.NoError(t, err, "id string angka: %q", detail.ID)
+	lewatID := data[tugasDetail](t, s.call(t, http.MethodGet, "/v1/lapangan/tugas/"+detail.ID, emailMahasiswa1, nil))
+	assert.Equal(t, detail, lewatID)
 	require.Len(t, detail.Rincian, len(detail.Komoditas), "rincian mencakup semua komoditas tugas")
 	for i, kode := range detail.Komoditas {
 		assert.Equal(t, kode, detail.Rincian[i].Kode, "urutan rincian sama dengan tugas")
@@ -226,6 +235,8 @@ func TestGet_OwnerAndManagerOnly(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, path, emailMahasiswa2, nil).Code, "tugas petugas lain tidak terlihat")
 	assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, path, emailKoordinator, nil).Code, "tugas.kelola melihat tugas petugas lain")
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/lapangan/tugas/tidak-ada", emailMahasiswa1, nil).Code)
+	assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, "/v1/lapangan/tugas/"+detail.ID, emailKoordinator, nil).Code)
+	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/lapangan/tugas/"+detail.ID, emailMahasiswa2, nil).Code, "ID BIGINT tidak membuka tugas petugas lain")
 }
 
 func TestBulk_TandaiSelesai(t *testing.T) {
@@ -237,7 +248,7 @@ func TestBulk_TandaiSelesai(t *testing.T) {
 	// Target belum terpenuhi (0 dari 2): tidak ditutup.
 	assert.Equal(t, hasilBulk{Gagal: 1}, data[hasilBulk](t, bulk(emailMahasiswa1, "tandai_selesai", "TGS-mahasiswa_1-2")))
 
-	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE id = 'TGS-mahasiswa_1-2'").Error)
+	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE kode = 'TGS-mahasiswa_1-2'").Error)
 
 	// Petugas lain tidak boleh menutup tugas ini.
 	assert.Equal(t, hasilBulk{Gagal: 1}, data[hasilBulk](t, bulk(emailMahasiswa2, "tandai_selesai", "TGS-mahasiswa_1-2")))
@@ -250,11 +261,11 @@ func TestBulk_TandaiSelesai(t *testing.T) {
 	assert.Equal(t, "SELESAI", got.Status)
 
 	var selesaiPada *time.Time
-	require.NoError(t, s.db.Raw("SELECT selesai_pada FROM tugas_lapangan WHERE id = 'TGS-mahasiswa_1-2'").Scan(&selesaiPada).Error)
+	require.NoError(t, s.db.Raw("SELECT selesai_pada FROM tugas_lapangan WHERE kode = 'TGS-mahasiswa_1-2'").Scan(&selesaiPada).Error)
 	assert.NotNil(t, selesaiPada)
 
 	var audit int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TUGAS_TANDAI_SELESAI' AND aktor_id = 'mahasiswa_1'").Scan(&audit).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'TUGAS_TANDAI_SELESAI' AND aktor_id = garda_uuid_stabil('pengguna', 'mahasiswa_1')").Scan(&audit).Error)
 	assert.EqualValues(t, 1, audit, "aksi tercatat di audit trail")
 
 	// Sudah selesai: menutup lagi tidak mengubah apa pun.
@@ -263,7 +274,7 @@ func TestBulk_TandaiSelesai(t *testing.T) {
 
 func TestBulk_ManagerClosesOthersTask(t *testing.T) {
 	s := sharedSuite(t)
-	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE id = 'TGS-mahasiswa_3-2'").Error)
+	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE kode = 'TGS-mahasiswa_3-2'").Error)
 
 	w := s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", emailKoordinator, map[string]any{"action": "tandai_selesai", "ids": []string{"TGS-mahasiswa_3-2"}})
 
@@ -289,6 +300,7 @@ func TestBulk_BadRequestsAndAuthorization(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"action": "hapus", "ids": []string{"a"}}))
 	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"action": "tandai_selesai", "ids": []string{}}))
+	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"action": "tandai_selesai", "ids": []string{strings.Repeat("T", 65)}}), "rujukan lebih dari 64 karakter")
 	assert.Equal(t, http.StatusBadRequest, post(emailMahasiswa1, map[string]any{"ids": []string{"a"}}))
 	assert.Equal(t, http.StatusForbidden, post(emailTanpaIzin, map[string]any{"action": "tandai_selesai", "ids": []string{"a"}}))
 	assert.Equal(t, http.StatusUnauthorized, post("", map[string]any{"action": "tandai_selesai", "ids": []string{"a"}}))

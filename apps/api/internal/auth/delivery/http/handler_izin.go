@@ -7,6 +7,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -68,7 +69,11 @@ func (h *Handler) UpdateRolePermissions(c *gin.Context) {
 // GET /v1/users/:id/permissions
 // Izin seorang pengguna: dari perannya, langsung (aktif dan kedaluwarsa), dan yang berlaku sekarang.
 func (h *Handler) ListUserPermissions(c *gin.Context) {
-	info, err := h.uc.ListUserPermissions(c.Request.Context(), c.Param("id"))
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
+	info, err := h.uc.ListUserPermissions(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, usecase.ErrUserNotFound) {
 			response.NotFound(c, "Pengguna tidak ditemukan")
@@ -89,7 +94,10 @@ func (h *Handler) ListUserPermissions(c *gin.Context) {
 // Memberi izin langsung dengan alasan wajib dan masa berlaku opsional (pengguna.kelola). Izin yang sudah dimiliki
 // lewat peran atau masih berlaku sebagai izin langsung dijawab 409. Tercatat di audit (GRANT_USER_PERMISSION).
 func (h *Handler) GrantUserPermission(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 
 	var req dto.GrantUserPermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -124,7 +132,11 @@ func (h *Handler) GrantUserPermission(c *gin.Context) {
 // DELETE /v1/users/:id/permissions/:izin
 // Mencabut izin langsung (aktif maupun kedaluwarsa). Tercatat di audit (REVOKE_USER_PERMISSION).
 func (h *Handler) RevokeUserPermission(c *gin.Context) {
-	id, izin := c.Param("id"), c.Param("izin")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
+	izin := c.Param("izin")
 
 	if err := h.uc.RevokeUserPermission(audit.RequestContext(c), id, izin, c.GetString("user_id")); err != nil {
 		if errors.Is(err, usecase.ErrIzinLangsungTidakAda) {

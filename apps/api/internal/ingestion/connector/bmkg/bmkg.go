@@ -25,8 +25,8 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 )
 
-// SumberID adalah id baris sumber_data BMKG.
-const SumberID = "SRC-BMKG"
+// Kode adalah kode baris sumber_data BMKG (sumber_data.kode).
+const Kode = "SRC-BMKG"
 
 // Sumber adalah nilai kolom cuaca_harian.sumber.
 const Sumber = "BMKG"
@@ -49,15 +49,15 @@ type Konektor struct{}
 // New membuat konektor BMKG.
 func New() *Konektor { return &Konektor{} }
 
-func (*Konektor) SumberID() string { return SumberID }
+func (*Konektor) Kode() string { return Kode }
 
 func (*Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
 	if in.URLDasar == "" {
-		return nil, fmt.Errorf("url_dasar %s belum diisi", SumberID)
+		return nil, fmt.Errorf("url_dasar %s belum diisi", Kode)
 	}
 	wilayah := in.Pemetaan.SemuaWilayah()
 	if len(wilayah) == 0 {
-		return nil, fmt.Errorf("pemetaan_sumber WILAYAH untuk %s kosong: petakan kode adm4 BMKG ke kode kabupaten/kota", SumberID)
+		return nil, fmt.Errorf("pemetaan_sumber WILAYAH untuk %s kosong: petakan kode adm4 BMKG ke kode kabupaten/kota", Kode)
 	}
 	reqs := make([]domain.Permintaan, len(wilayah))
 	for i, w := range wilayah {

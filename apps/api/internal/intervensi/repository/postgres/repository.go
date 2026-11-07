@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
@@ -23,20 +24,28 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// kartuRow adalah baris daftar: kartu beserta kode tampilan alert EWS pemicunya.
+type kartuRow struct {
+	domain.Intervensi `gorm:"embedded"`
+	EwsAlertKode      *string `gorm:"column:ews_alert_kode;->"`
+}
+
 func (r *Repository) List(ctx context.Context, q domain.ListQuery) ([]domain.Kartu, error) {
-	query := r.db.WithContext(ctx).Model(&domain.Intervensi{})
+	query := r.db.WithContext(ctx).Table("intervensi AS i").
+		Select("i.*, a.kode AS ews_alert_kode").
+		Joins("LEFT JOIN ews_alert a ON a.id = i.ews_alert_id")
 	if q.Siklus != "" {
-		query = query.Where("siklus = ?", q.Siklus)
+		query = query.Where("i.siklus = ?", q.Siklus)
 	}
 	if q.Tahap != "" {
-		query = query.Where("tahap = ?", q.Tahap)
+		query = query.Where("i.tahap = ?", q.Tahap)
 	}
 	if q.Prioritas != "" {
-		query = query.Where("prioritas = ?", q.Prioritas)
+		query = query.Where("i.prioritas = ?", q.Prioritas)
 	}
 
-	var items []domain.Intervensi
-	if err := query.Order("siklus, tahap, urutan, dibuat_pada, id").Find(&items).Error; err != nil {
+	var items []kartuRow
+	if err := query.Order("i.siklus, i.tahap, i.urutan, i.dibuat_pada, i.id").Scan(&items).Error; err != nil {
 		return nil, fmt.Errorf("daftar intervensi: %w", err)
 	}
 	cards := make([]domain.Kartu, len(items))
@@ -47,7 +56,7 @@ func (r *Repository) List(ctx context.Context, q domain.ListQuery) ([]domain.Kar
 	ids := make([]string, len(items))
 	index := make(map[string]int, len(items))
 	for i, it := range items {
-		cards[i].Intervensi = it
+		cards[i].Intervensi, cards[i].EwsAlertKode = it.Intervensi, it.EwsAlertKode
 		ids[i] = it.ID
 		index[it.ID] = i
 	}
@@ -81,9 +90,9 @@ func (r *Repository) ListTahap(ctx context.Context) ([]domain.TahapDef, error) {
 	return defs, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id string) (*domain.Intervensi, error) {
+func (r *Repository) GetByID(ctx context.Context, ref idx.RujukanUUID) (*domain.Intervensi, error) {
 	var item domain.Intervensi
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Take(&item).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).Take(&item).Error; err != nil {
 		return nil, fmt.Errorf("ambil intervensi: %w", err)
 	}
 	return &item, nil
@@ -92,10 +101,13 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*domain.Intervensi
 func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap string) (*domain.Intervensi, error) {
 	var created domain.Intervensi
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// ID (UUID) dibuat basis data. Kode tampilan INT-n berasal dari sequence khusus kode, jadi tidak bisa
+		// bentrok antar-instance.
 		var seq int64
-		if err := tx.Raw("SELECT nextval('intervensi_id_seq')").Scan(&seq).Error; err != nil {
+		if err := tx.Raw("SELECT nextval('intervensi_kode_seq')").Scan(&seq).Error; err != nil {
 			return fmt.Errorf("nomor intervensi: %w", err)
 		}
+		kode := fmt.Sprintf("INT-%d", seq)
 		var urutan int
 		err := tx.Raw("SELECT COALESCE(MAX(urutan) + 1, 0) FROM intervensi WHERE siklus = ? AND tahap = ?", in.Siklus, tahap).Scan(&urutan).Error
 		if err != nil {
@@ -103,9 +115,9 @@ func (r *Repository) Create(ctx context.Context, in domain.NewIntervensi, tahap 
 		}
 
 		created = domain.Intervensi{
-			ID: fmt.Sprintf("INT-%d", seq), Siklus: in.Siklus, Tahap: tahap, Urutan: urutan, Judul: in.Judul,
+			Kode: &kode, Siklus: in.Siklus, Tahap: tahap, Urutan: urutan, Judul: in.Judul,
 			Deskripsi: in.Deskripsi, KomoditasKode: in.KomoditasKode, KabupatenKode: in.KabupatenKode,
-			Prioritas: in.Prioritas, Tenggat: in.Tenggat, EwsAlertID: in.EwsAlertID, DibuatOlehID: &in.DibuatOlehID,
+			Prioritas: in.Prioritas, Tenggat: in.Tenggat, EwsAlertID: in.EwsAlertID, DibuatOlehID: idx.PtrAtauNil(in.DibuatOlehID),
 		}
 		if err := tx.Create(&created).Error; err != nil {
 			return err

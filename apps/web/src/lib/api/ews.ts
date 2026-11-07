@@ -8,7 +8,10 @@ import type { Severity } from "@/lib/design/tokens";
 import { formatWilayah } from "./cold-storage";
 
 export interface EwsAlertResponse {
+  /** ID BIGINT sebagai string desimal ("12"). */
   id: string;
+  /** Kode tampilan (ID lama, mis. EWS-0901); baris yang dibuat tanpa kode bernilai null. */
+  kode?: string | null;
   severity: Severity;
   jenis: JenisEws;
   judul: string;
@@ -27,11 +30,13 @@ export interface EwsAlertResponse {
   diakui_oleh_id?: string | null;
   diakui_pada?: string | null;
   aturan_id?: string | null;
+  /** Kode tampilan aturan pemicu (mis. ATR-LH-CBM-KRT). */
+  aturan_kode?: string | null;
   dieskalasi_pada?: string | null;
   selesai_pada?: string | null;
 }
 
-/** Satu perubahan status alert (GET /v1/ews/{id}/riwayat); oleh kosong berarti sistem. */
+/** Satu perubahan status alert (GET /v1/ews/{id}/riwayat); oleh kosong berarti sistem. `id` string desimal. */
 export interface EwsRiwayatResponse {
   id: string;
   dari: StatusEws | null;
@@ -54,6 +59,7 @@ export interface EwsRiwayat {
 /** Alert lengkap dari GET /v1/ews/{id}: baris daftar ditambah jejak pengakuan, eskalasi, dan penutupan. */
 export interface EwsDetail extends EwsAlert {
   aturanId?: string;
+  aturanKode?: string;
   diakuiPada?: string;
   dieskalasiPada?: string;
   selesaiPada?: string;
@@ -61,6 +67,7 @@ export interface EwsDetail extends EwsAlert {
 
 export interface EwsAturanResponse {
   id: string;
+  kode?: string | null;
   komoditas_kode: string | null;
   komoditas_nama: string | null;
   kabupaten_kode: string | null;
@@ -78,6 +85,8 @@ export interface EwsAturanResponse {
 
 export interface EwsAturan {
   id: string;
+  /** Kode tampilan (mis. ATR-LH-CBM-KRT); alias rute lama. */
+  kode?: string;
   komoditasKode?: string;
   komoditasNama?: string;
   kabupatenKode?: string;
@@ -125,6 +134,7 @@ const SATUAN: readonly EwsAlert["satuanNilai"][] = ["%", "mm", "ton"];
 export function toEwsAlert(r: EwsAlertResponse): EwsAlert {
   return {
     id: r.id,
+    kode: r.kode ?? undefined,
     severity: r.severity,
     jenis: r.jenis,
     judul: r.judul,
@@ -146,6 +156,7 @@ export function toEwsDetail(r: EwsAlertResponse): EwsDetail {
   return {
     ...toEwsAlert(r),
     aturanId: r.aturan_id ?? undefined,
+    aturanKode: r.aturan_kode ?? undefined,
     diakuiPada: r.diakui_pada ?? undefined,
     dieskalasiPada: r.dieskalasi_pada ?? undefined,
     selesaiPada: r.selesai_pada ?? undefined,
@@ -159,6 +170,7 @@ export function toEwsRiwayat(r: EwsRiwayatResponse): EwsRiwayat {
 export function toEwsAturan(r: EwsAturanResponse): EwsAturan {
   return {
     id: r.id,
+    kode: r.kode ?? undefined,
     komoditasKode: r.komoditas_kode ?? undefined,
     komoditasNama: r.komoditas_nama ?? undefined,
     kabupatenKode: r.kabupaten_kode ?? undefined,
@@ -188,6 +200,15 @@ export function toUbahAturanBody(i: UbahAturanInput) {
     aktif: i.aktif,
     keterangan: i.keterangan,
   };
+}
+
+/**
+ * Apakah rujukan dari tautan (`/ews?id=…`) menunjuk alert ini? Tautan baru memakai ID desimal; tautan lama
+ * dari email atau push yang sudah terkirim memakai kode (EWS-0901), yang tetap berlaku sebagai alias.
+ */
+export function cocokRujukanAlert(a: Pick<EwsAlert, "id" | "kode">, rujukan: string | null | undefined): boolean {
+  if (!rujukan) return false;
+  return a.id === rujukan || a.kode === rujukan;
 }
 
 /** Galat bila ambang tidak positif dan menaik (waspada < siaga < kritis); null bila sah. */

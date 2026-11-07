@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/lapangan/domain"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -54,9 +55,10 @@ var templates = []templat{
 	{"Survei harga konsumen pagi", []string{"CBM-KRT", "BWM", "BRS-MED", "TLR"}, domain.TipeKonsumen, -22, 4, 4, domain.StatusSelesai},
 }
 
-// SeedDemo mengisi tugas demo. Idempoten: id tugas ditentukan oleh akun dan
-// urutan templat, sehingga menjalankannya ulang menyegarkan tenggat relatif
-// terhadap now tanpa menggandakan baris. Hanya untuk demo.
+// SeedDemo mengisi tugas demo. Idempoten: kode tugas (TGS-<slug akun>-<urutan templat>) ditentukan oleh akun dan
+// urutan templat, sehingga menjalankannya ulang menyegarkan tenggat relatif terhadap now tanpa menggandakan
+// baris. Kodenya sama dengan ID lama, jadi basis data hasil migrasi 000111 dan basis data baru memberi hasil yang
+// sama; ID BIGINT diberi basis data. Hanya untuk demo.
 //
 // Prasyarat: seeder master.reference dan auth.demo sudah dijalankan.
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
@@ -67,7 +69,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	tugas := Build(in, now)
 
 	err = db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
+		Columns:   []clause.Column{{Name: "kode"}},
 		UpdateAll: true,
 	}).Create(&tugas).Error
 	if err != nil {
@@ -112,8 +114,9 @@ func Build(in Input, now time.Time) []domain.TugasLapangan {
 	for _, p := range in.Petugas {
 		for i, t := range templates {
 			tenggat := now.Add(time.Duration(t.TenggatJam) * time.Hour).Truncate(time.Second)
+			kode := fmt.Sprintf("TGS-%s-%d", seedkit.SlugPengguna(p.ID), i+1)
 			tugas := domain.TugasLapangan{
-				ID:            fmt.Sprintf("TGS-%s-%d", p.ID, i+1),
+				Kode:          &kode,
 				Judul:         t.Judul,
 				PasarID:       p.PasarID,
 				PetugasID:     p.ID,

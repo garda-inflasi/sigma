@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func testKeyring() *crypto.Keyring {
@@ -58,7 +60,7 @@ func TestLogin_MFAActiveReturnsChallengeWithoutSession(t *testing.T) {
 	assert.Empty(t, result.RefreshToken)
 	userID, err := uc.token.VerifyMFAChallengeToken(result.MFAToken)
 	require.NoError(t, err)
-	assert.Equal(t, "user-123", userID)
+	assert.Equal(t, uid("user-123"), userID)
 	repo.AssertNotCalled(t, "CreateRefreshToken", mock.Anything, mock.Anything)
 	assert.Empty(t, recorder.Entries(), "login baru tercatat setelah faktor kedua terbukti")
 }
@@ -85,7 +87,7 @@ func TestLogin_MandatoryRoleWithoutMFAGetsSetupOnlySession(t *testing.T) {
 			repo.On("GetUserByEmail", mock.Anything, "test@example.com").Return(user, nil)
 			repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 			repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
-			repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
+			repo.On("TouchLastLogin", mock.Anything, uid("user-123"), mock.Anything).Return(nil)
 
 			result, err := uc.Login(context.Background(), "test@example.com", "Test1234!", "10.0.0.1")
 
@@ -117,12 +119,12 @@ func TestSetupMFA_StoresSealedSecretAndReturnsProvisioningData(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user := activeUser()
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	var tersimpan string
-	repo.On("SetMFASecret", mock.Anything, "user-123", mock.Anything).
+	repo.On("SetMFASecret", mock.Anything, uid("user-123"), mock.Anything).
 		Run(func(args mock.Arguments) { tersimpan = args.String(2) }).Return(nil)
 
-	setup, err := uc.SetupMFA(context.Background(), "user-123")
+	setup, err := uc.SetupMFA(context.Background(), uid("user-123"))
 
 	require.NoError(t, err)
 	assert.Contains(t, setup.ProvisioningURI, "otpauth://totp/")
@@ -142,9 +144,9 @@ func TestSetupMFA_Rejections(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		user, _ := userMFA(t, uc)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-		_, err := uc.SetupMFA(context.Background(), "user-123")
+		_, err := uc.SetupMFA(context.Background(), uid("user-123"))
 
 		assert.ErrorIs(t, err, ErrMFAAlreadyActive)
 	})
@@ -162,7 +164,7 @@ func TestSetupMFA_Rejections(t *testing.T) {
 		uc := newTestUseCase(repo)
 		uc.cfg.MFAKey = nil
 
-		_, err := uc.SetupMFA(context.Background(), "user-123")
+		_, err := uc.SetupMFA(context.Background(), uid("user-123"))
 
 		assert.ErrorIs(t, err, ErrMFAUnavailable)
 		repo.AssertNotCalled(t, "SetMFASecret", mock.Anything, mock.Anything, mock.Anything)
@@ -179,26 +181,26 @@ func TestVerifyMFA_ActivatesIssuesBackupCodesAndReplacesSession(t *testing.T) {
 	sealed, err := uc.cfg.MFAKey.Seal(secret)
 	require.NoError(t, err)
 	user.MfaSecret = &sealed
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	var tersimpan []string
-	repo.On("ActivateMFA", mock.Anything, "user-123", mock.Anything, mock.Anything, mock.Anything).
+	repo.On("ActivateMFA", mock.Anything, uid("user-123"), mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) { tersimpan = args.Get(2).([]string) }).Return(nil)
-	repo.On("RevokeAllUserRefreshTokens", mock.Anything, "user-123").Return(nil)
+	repo.On("RevokeAllUserRefreshTokens", mock.Anything, uid("user-123")).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
 
-	hasil, err := uc.VerifyMFA(context.Background(), "user-123", kodeSekarang(t, secret), "10.0.0.1")
+	hasil, err := uc.VerifyMFA(context.Background(), uid("user-123"), kodeSekarang(t, secret), "10.0.0.1")
 
 	require.NoError(t, err)
 	require.Len(t, hasil.KodeCadangan, JumlahKodeCadangan)
 	require.Len(t, tersimpan, JumlahKodeCadangan)
 	for i, kode := range hasil.KodeCadangan {
-		assert.Equal(t, HashKodeCadangan("user-123", kode), tersimpan[i], "yang tersimpan hash, bukan kode")
+		assert.Equal(t, HashKodeCadangan(uid("user-123"), kode), tersimpan[i], "yang tersimpan hash, bukan kode")
 		assert.NotContains(t, tersimpan[i], kode)
 	}
 	claims, err := uc.token.VerifyToken(hasil.AccessToken)
 	require.NoError(t, err)
 	assert.False(t, claims.MFASetupRequired, "sesi baru tidak lagi dibatasi ke setup MFA")
-	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, "user-123")
+	repo.AssertCalled(t, "RevokeAllUserRefreshTokens", mock.Anything, uid("user-123"))
 	entry, _ := recorder.Last()
 	assert.Equal(t, "MFA_VERIFY", entry.Aksi)
 }
@@ -210,12 +212,12 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 		user := activeUser()
 		sealed, _ := uc.cfg.MFAKey.Seal(totp.GenerateSecret())
 		user.MfaSecret = &sealed
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 		repo.On("CreateLoginAttempt", mock.Anything, mock.MatchedBy(func(a *domain.LoginAttempt) bool {
 			return !a.Success && a.FailureReason != nil && *a.FailureReason == "mfa_setup_invalid"
 		})).Return(nil)
 
-		_, err := uc.VerifyMFA(context.Background(), "user-123", "000000", "10.0.0.1")
+		_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "000000", "10.0.0.1")
 
 		assert.ErrorIs(t, err, ErrMFACodeInvalid)
 		repo.AssertNotCalled(t, "ActivateMFA", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -223,9 +225,9 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 	t.Run("setup belum dimulai", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 
-		_, err := uc.VerifyMFA(context.Background(), "user-123", "123456", "ip")
+		_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "123456", "ip")
 
 		assert.ErrorIs(t, err, ErrMFANotSetup)
 	})
@@ -233,9 +235,9 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		user, _ := userMFA(t, uc)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-		_, err := uc.VerifyMFA(context.Background(), "user-123", "123456", "ip")
+		_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "123456", "ip")
 
 		assert.ErrorIs(t, err, ErrMFAAlreadyActive)
 	})
@@ -245,10 +247,10 @@ func TestVerifyMFA_Rejections(t *testing.T) {
 		user := activeUser()
 		sealed, _ := uc.cfg.MFAKey.Seal(totp.GenerateSecret())
 		user.MfaSecret = &sealed
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 		repo.kunciTerkunci("test@example.com")
 
-		_, err := uc.VerifyMFA(context.Background(), "user-123", "123456", "ip")
+		_, err := uc.VerifyMFA(context.Background(), uid("user-123"), "123456", "ip")
 
 		assert.ErrorIs(t, err, ErrAccountLocked)
 	})
@@ -262,17 +264,17 @@ func siapMFALogin(t *testing.T, repo *mockRepository) (*UseCase, *audittest.Reco
 	user, secret := userMFA(t, uc)
 	challenge, err := uc.token.CreateMFAChallengeToken(user.ID)
 	require.NoError(t, err)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.Anything).Return(nil)
-	repo.On("TouchLastLogin", mock.Anything, "user-123", mock.Anything).Return(nil)
+	repo.On("TouchLastLogin", mock.Anything, uid("user-123"), mock.Anything).Return(nil)
 	return uc, recorder, user, secret, challenge
 }
 
 func TestValidateMFALogin_TOTPIssuesSessionOnce(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder, user, secret, challenge := siapMFALogin(t, repo)
-	repo.On("AdvanceMFAStep", mock.Anything, "user-123", mock.AnythingOfType("int64")).Return(true, nil).Once()
+	repo.On("AdvanceMFAStep", mock.Anything, uid("user-123"), mock.AnythingOfType("int64")).Return(true, nil).Once()
 
 	result, err := uc.ValidateMFALogin(context.Background(), challenge, kodeSekarang(t, secret), "10.0.0.1")
 
@@ -290,7 +292,7 @@ func TestValidateMFALogin_TOTPIssuesSessionOnce(t *testing.T) {
 func TestValidateMFALogin_ReplayedCodeIsRejected(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _, _, secret, challenge := siapMFALogin(t, repo)
-	repo.On("AdvanceMFAStep", mock.Anything, "user-123", mock.Anything).Return(false, nil)
+	repo.On("AdvanceMFAStep", mock.Anything, uid("user-123"), mock.Anything).Return(false, nil)
 
 	_, err := uc.ValidateMFALogin(context.Background(), challenge, kodeSekarang(t, secret), "10.0.0.1")
 
@@ -317,9 +319,9 @@ func TestValidateMFALogin_WrongCodeCountsAsFailedAttempt(t *testing.T) {
 func TestValidateMFALogin_BackupCodeWorksOnce(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder, _, _, challenge := siapMFALogin(t, repo)
-	hash := HashKodeCadangan("user-123", "abcde-23456")
-	repo.On("UseBackupCode", mock.Anything, "user-123", hash, mock.Anything).Return(true, nil).Once()
-	repo.On("UseBackupCode", mock.Anything, "user-123", hash, mock.Anything).Return(false, nil).Once()
+	hash := HashKodeCadangan(uid("user-123"), "abcde-23456")
+	repo.On("UseBackupCode", mock.Anything, uid("user-123"), hash, mock.Anything).Return(true, nil).Once()
+	repo.On("UseBackupCode", mock.Anything, uid("user-123"), hash, mock.Anything).Return(false, nil).Once()
 
 	result, err := uc.ValidateMFALogin(context.Background(), challenge, " abcde-23456 ", "10.0.0.1")
 	require.NoError(t, err)
@@ -328,6 +330,47 @@ func TestValidateMFALogin_BackupCodeWorksOnce(t *testing.T) {
 
 	_, err = uc.ValidateMFALogin(context.Background(), challenge, "ABCDE23456", "10.0.0.1")
 	assert.ErrorIs(t, err, ErrMFACodeInvalid, "kode cadangan yang sudah terpakai ditolak")
+}
+
+// Kode cadangan yang terbit sebelum pengguna.id menjadi UUID (000110) di-hash dari "<id lama>:<kode>". Akun hasil
+// migrasi punya ID lama; kode lamanya tetap berlaku (sekali pakai), sedangkan akun baru tidak punya jalur kedua.
+func TestValidateMFALogin_KodeCadanganSebelumMigrasiUUIDTetapBerlaku(t *testing.T) {
+	repo := &mockRepository{idLama: map[string]string{uid("user-123"): "user-123"}}
+	uc, recorder, _, _, challenge := siapMFALogin(t, repo)
+	hashBaru := HashKodeCadangan(uid("user-123"), "ABCDE23456")
+	hashLama := HashKodeCadangan("user-123", "ABCDE23456")
+	require.NotEqual(t, hashBaru, hashLama)
+	repo.On("UseBackupCode", mock.Anything, uid("user-123"), hashBaru, mock.Anything).Return(false, nil)
+	repo.On("UseBackupCode", mock.Anything, uid("user-123"), hashLama, mock.Anything).Return(true, nil).Once()
+
+	result, err := uc.ValidateMFALogin(context.Background(), challenge, "ABCDE23456", "10.0.0.1")
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, result.AccessToken)
+	assert.Equal(t, map[string]any{"mfa": "kode_cadangan"}, recorder.Entries()[0].Metadata)
+}
+
+func TestValidateMFALogin_AkunBaruTanpaIDLamaTidakMencobaJalurKedua(t *testing.T) {
+	repo := new(mockRepository) // idLama kosong: akun dibuat sesudah migrasi
+	uc, _, _, _, challenge := siapMFALogin(t, repo)
+	repo.On("UseBackupCode", mock.Anything, uid("user-123"), HashKodeCadangan(uid("user-123"), "ABCDE23456"), mock.Anything).Return(false, nil).Once()
+
+	_, err := uc.ValidateMFALogin(context.Background(), challenge, "ABCDE23456", "10.0.0.1")
+
+	assert.ErrorIs(t, err, ErrMFACodeInvalid)
+	repo.AssertNumberOfCalls(t, "UseBackupCode", 1)
+}
+
+func TestValidateMFALogin_TokenTantanganDenganSubSlugLamaDitolakBersih(t *testing.T) {
+	repo := &mockRepository{}
+	uc := newTestUseCase(repo)
+	challenge, err := uc.token.CreateMFAChallengeToken("test-user-001") // token terbit sebelum migrasi 000110
+	require.NoError(t, err)
+	repo.On("GetUserByID", mock.Anything, "test-user-001").Return(nil, fmt.Errorf("get user by id: %w", gorm.ErrRecordNotFound))
+
+	_, err = uc.ValidateMFALogin(context.Background(), challenge, "123456", "10.0.0.1")
+
+	assert.ErrorIs(t, err, ErrMFAChallengeInvalid, "401 bersih, bukan galat basis data")
 }
 
 func TestValidateMFALogin_InvalidChallenge(t *testing.T) {
@@ -340,7 +383,7 @@ func TestValidateMFALogin_InvalidChallenge(t *testing.T) {
 	})
 	t.Run("access token bukan token tantangan", func(t *testing.T) {
 		uc := newTestUseCase(new(mockRepository))
-		access, err := uc.token.CreateAccessToken("user-123", "ADMIN_SISTEM", nil)
+		access, err := uc.token.CreateAccessToken(uid("user-123"), "ADMIN_SISTEM", nil)
 		require.NoError(t, err)
 
 		_, err = uc.ValidateMFALogin(context.Background(), access, "123456", "ip")
@@ -372,7 +415,7 @@ func TestValidateMFALogin_LockedAccount(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
 	challenge, _ := uc.token.CreateMFAChallengeToken(user.ID)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.kunciTerkunci("test@example.com")
 
 	_, err := uc.ValidateMFALogin(context.Background(), challenge, "123456", "ip")
@@ -387,30 +430,30 @@ func TestRegenerateBackupCodes(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCaseWithAudit(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 	var tersimpan []string
-	repo.On("ReplaceBackupCodes", mock.Anything, "user-123", mock.Anything).
+	repo.On("ReplaceBackupCodes", mock.Anything, uid("user-123"), mock.Anything).
 		Run(func(args mock.Arguments) { tersimpan = args.Get(2).([]string) }).Return(nil)
 
-	kode, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "Test1234!", "10.0.0.1")
+	kode, err := uc.RegenerateBackupCodes(context.Background(), uid("user-123"), "Test1234!", "10.0.0.1")
 
 	require.NoError(t, err)
 	require.Len(t, kode, JumlahKodeCadangan)
-	assert.Equal(t, hashKode("user-123", kode), tersimpan)
+	assert.Equal(t, hashKode(uid("user-123"), kode), tersimpan)
 	entry, _ := recorder.Last()
 	assert.Equal(t, "MFA_BACKUP_REGENERATE", entry.Aksi)
 
-	_, err = uc.RegenerateBackupCodes(context.Background(), "user-123", "SalahSandi1!", "10.0.0.1")
+	_, err = uc.RegenerateBackupCodes(context.Background(), uid("user-123"), "SalahSandi1!", "10.0.0.1")
 	assert.ErrorIs(t, err, ErrWrongPassword)
 }
 
 func TestRegenerateBackupCodes_RequiresActiveMFA(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
 
-	_, err := uc.RegenerateBackupCodes(context.Background(), "user-123", "Test1234!", "10.0.0.1")
+	_, err := uc.RegenerateBackupCodes(context.Background(), uid("user-123"), "Test1234!", "10.0.0.1")
 
 	assert.ErrorIs(t, err, ErrMFANotSetup)
 }
@@ -420,10 +463,10 @@ func TestDisableMFA(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
 		user, _ := userMFA(t, uc)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-		repo.On("ClearMFA", mock.Anything, "user-123").Return(nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
+		repo.On("ClearMFA", mock.Anything, uid("user-123")).Return(nil)
 
-		require.NoError(t, uc.DisableMFA(context.Background(), "user-123", "Test1234!", "10.0.0.1"))
+		require.NoError(t, uc.DisableMFA(context.Background(), uid("user-123"), "Test1234!", "10.0.0.1"))
 
 		entry, _ := recorder.Last()
 		assert.Equal(t, "MFA_DISABLE", entry.Aksi)
@@ -432,10 +475,10 @@ func TestDisableMFA(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		user, _ := userMFA(t, uc)
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 		repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 
-		assert.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", "SalahSandi1!", "10.0.0.1"), ErrWrongPassword)
+		assert.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), "SalahSandi1!", "10.0.0.1"), ErrWrongPassword)
 		repo.AssertNotCalled(t, "ClearMFA", mock.Anything, mock.Anything)
 	})
 	t.Run("ditolak bila MFA diwajibkan", func(t *testing.T) {
@@ -444,9 +487,9 @@ func TestDisableMFA(t *testing.T) {
 		uc.cfg.MFAEnforce = true
 		user, _ := userMFA(t, uc)
 		user.Peran = "ADMIN_SISTEM"
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-		assert.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", "Test1234!", "10.0.0.1"), ErrMFAMandatory)
+		assert.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), "Test1234!", "10.0.0.1"), ErrMFAMandatory)
 		repo.AssertNotCalled(t, "ClearMFA", mock.Anything, mock.Anything)
 	})
 	t.Run("akun tanpa kata sandi tidak bisa dikonfirmasi", func(t *testing.T) {
@@ -454,9 +497,9 @@ func TestDisableMFA(t *testing.T) {
 		uc := newTestUseCase(repo)
 		user, _ := userMFA(t, uc)
 		user.PasswordHash = nil
-		repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+		repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
-		assert.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", "apa saja", "10.0.0.1"), ErrWrongPassword)
+		assert.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), "apa saja", "10.0.0.1"), ErrWrongPassword)
 	})
 	t.Run("pengguna tidak ada", func(t *testing.T) {
 		repo := new(mockRepository)
@@ -479,7 +522,7 @@ func TestMFAStatus(t *testing.T) {
 	assert.Equal(t, MFAStatus{SetupDiwajibkan: true, Wajib: true}, status)
 
 	aktif, _ := userMFA(t, uc)
-	repo.On("CountBackupCodes", mock.Anything, "user-123").Return(int64(7), nil)
+	repo.On("CountBackupCodes", mock.Anything, uid("user-123")).Return(int64(7), nil)
 	status, err = uc.MFAStatus(context.Background(), aktif)
 	require.NoError(t, err)
 	require.NotNil(t, status.KodeCadanganTersisa)
@@ -488,7 +531,7 @@ func TestMFAStatus(t *testing.T) {
 }
 
 func TestHashKodeCadangan_NormalizesAndIsPerUser(t *testing.T) {
-	assert.Equal(t, HashKodeCadangan("u1", "ABCDE23456"), HashKodeCadangan("u1", " abcde-23456 "))
-	assert.NotEqual(t, HashKodeCadangan("u1", "ABCDE23456"), HashKodeCadangan("u2", "ABCDE23456"), "garam per pengguna")
-	assert.Len(t, HashKodeCadangan("u1", "x"), 64)
+	assert.Equal(t, HashKodeCadangan(uid("u1"), "ABCDE23456"), HashKodeCadangan(uid("u1"), " abcde-23456 "))
+	assert.NotEqual(t, HashKodeCadangan(uid("u1"), "ABCDE23456"), HashKodeCadangan(uid("u2"), "ABCDE23456"), "garam per pengguna")
+	assert.Len(t, HashKodeCadangan(uid("u1"), "x"), 64)
 }

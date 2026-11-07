@@ -17,7 +17,7 @@ func TestEvaluasi_AllStatusActionCombinations(t *testing.T) {
 		domain.BulkTolak:      {domain.StatusDiajukan},
 		domain.BulkKembalikan: {domain.StatusDiajukan, domain.StatusDivalidasi},
 	}
-	pencatat, aktor := "mahasiswa_1", "mahasiswa_1"
+	pencatat, aktor := uid("mahasiswa_1"), uid("mahasiswa_1")
 
 	for aksi, dari := range sah {
 		for _, status := range semuaStatus {
@@ -45,7 +45,7 @@ func TestEvaluasi_SeparationOfDuties(t *testing.T) {
 }
 
 func TestEvaluasi_AjukanOnlyByOwner(t *testing.T) {
-	pemilik, lain := "mahasiswa_1", "mahasiswa_2"
+	pemilik, lain := uid("mahasiswa_1"), uid("mahasiswa_2")
 
 	assert.Empty(t, domain.Evaluasi(domain.BulkAjukan, domain.StatusDraf, &pemilik, pemilik))
 	assert.Equal(t, domain.SebabBukanPemilik, domain.Evaluasi(domain.BulkAjukan, domain.StatusDraf, &pemilik, lain))

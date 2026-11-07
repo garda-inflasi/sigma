@@ -100,7 +100,7 @@ func seedRiwayat(t *testing.T, db *gorm.DB) {
 	}
 	for _, e := range entri {
 		require.NoError(t, db.Exec(`
-			INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+			INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 			VALUES (?, 'CBM-KRT', ?, ?::tipe_harga, ?, 'kg', ?::status_entri, ?)`,
 			e.id, e.pasar, e.tipe, e.harga, e.status, dasar.AddDate(0, 0, -e.hariLalu).Add(10*time.Hour)).Error)
 	}
@@ -350,9 +350,9 @@ func TestPrediksi_DetailNotFound(t *testing.T) {
 
 func TestPrediksi_OnlyProductionModelIsServed(t *testing.T) {
 	s := sharedSuite(t)
-	require.NoError(t, s.db.Exec(`UPDATE model_registry SET status = 'ARSIP' WHERE id = 'MDL-TMT-v2.3.1'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE model_registry SET status = 'ARSIP' WHERE kode = 'MDL-TMT-v2.3.1'`).Error)
 	t.Cleanup(func() {
-		require.NoError(t, s.db.Exec(`UPDATE model_registry SET status = 'PRODUKSI' WHERE id = 'MDL-TMT-v2.3.1'`).Error)
+		require.NoError(t, s.db.Exec(`UPDATE model_registry SET status = 'PRODUKSI' WHERE kode = 'MDL-TMT-v2.3.1'`).Error)
 	})
 
 	assert.Equal(t, http.StatusNotFound, s.call(t, "/v1/prediksi/TMT", emailBerhak).Code, "tanpa model produksi tidak ada proyeksi")
@@ -367,6 +367,7 @@ func TestPrediksi_RegistryListsModelsWithStatus(t *testing.T) {
 
 	got := decode[[]struct {
 		ID            string  `json:"id"`
+		Kode          *string `json:"kode"`
 		KomoditasKode string  `json:"komoditas_kode"`
 		KomoditasNama string  `json:"komoditas_nama"`
 		Versi         string  `json:"versi"`
@@ -386,11 +387,17 @@ func TestPrediksi_RegistryListsModelsWithStatus(t *testing.T) {
 		assert.NotEmpty(t, m.DilatihPada)
 	}
 	assert.Equal(t, map[string]int{"PRODUKSI": 14, "KANDIDAT": 14}, status)
-	assert.Equal(t, "MDL-BRS-MED-v2.4.0-rc1", got[0].ID, "berurut komoditas lalu pelatihan terbaru")
+	require.NotNil(t, got[0].Kode)
+	require.NotNil(t, got[1].Kode)
+	assert.Equal(t, "MDL-BRS-MED-v2.4.0-rc1", *got[0].Kode, "berurut komoditas lalu pelatihan terbaru")
 	assert.Equal(t, 2.0, got[0].Mape)
-	assert.Equal(t, "MDL-BRS-MED-v2.3.1", got[1].ID)
+	assert.Equal(t, "MDL-BRS-MED-v2.3.1", *got[1].Kode)
 	assert.Equal(t, 2.2, got[1].Mape)
 	assert.Equal(t, "PRODUKSI", got[1].Status)
+	for _, m := range got {
+		assert.Regexp(t, `^[1-9][0-9]*$`, m.ID, "ID model adalah angka desimal (BIGINT), bukan lagi teks MDL-...")
+		assert.NotEqual(t, *m.Kode, m.ID)
+	}
 }
 
 func TestPrediksi_ExportIsDownloadableCSV(t *testing.T) {

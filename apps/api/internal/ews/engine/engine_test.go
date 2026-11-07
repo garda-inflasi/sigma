@@ -9,13 +9,14 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var aturanLonjakan = domain.AturanEws{
-	ID: "ATR-LH-CBM-KRT", Jenis: domain.JenisLonjakanHarga, AmbangWaspada: 8, AmbangSiaga: 12, AmbangKritis: 18,
+	ID: 1, Jenis: domain.JenisLonjakanHarga, AmbangWaspada: 8, AmbangSiaga: 12, AmbangKritis: 18,
 	JendelaHari: 7, CooldownJam: 24,
 }
 
@@ -50,14 +51,14 @@ func TestBaru_MessagesPerJenis(t *testing.T) {
 	assert.Equal(t, 24, lonjakan.CooldownJam)
 	assert.Equal(t, 91, lonjakan.SkorDampak, "kritis 80 + int(21,44/18*10) = 91")
 
-	stok := baru(domain.AturanEws{ID: "ATR-KS", Jenis: domain.JenisKelangkaanStok, AmbangWaspada: 25, AmbangSiaga: 40, AmbangKritis: 55, JendelaHari: 5},
+	stok := baru(domain.AturanEws{ID: 2, Jenis: domain.JenisKelangkaanStok, AmbangWaspada: 25, AmbangSiaga: 40, AmbangKritis: 55, JendelaHari: 5},
 		domain.Pengukuran{KomoditasKode: &kode, KomoditasNama: "Cabai merah keriting", KabupatenKode: "1108", KabupatenNama: "KOTA LANGSA", Nilai: -32, Terbaru: 12.5},
 		domain.SeverityWaspada)
 	assert.Equal(t, "Stok cabai merah keriting menipis", stok.Judul)
 	assert.Equal(t, "Stok layak simpan turun 32,0% dalam 5 hari di Kota Langsa; tersisa 12,5 ton.", stok.Pesan)
 	assert.EqualValues(t, -32, stok.Nilai, "nilai tersimpan negatif seperti seed")
 
-	cuaca := baru(domain.AturanEws{ID: "ATR-CU", Jenis: domain.JenisAnomaliCuaca, AmbangWaspada: 100, AmbangSiaga: 140, AmbangKritis: 200, JendelaHari: 10},
+	cuaca := baru(domain.AturanEws{ID: 3, Jenis: domain.JenisAnomaliCuaca, AmbangWaspada: 100, AmbangSiaga: 140, AmbangKritis: 200, JendelaHari: 10},
 		domain.Pengukuran{KabupatenKode: "1106", KabupatenNama: "ACEH TENGAH", Nilai: 148, Terbaru: 148}, domain.SeveritySiaga)
 	assert.Equal(t, "mm", cuaca.SatuanNilai)
 	assert.Equal(t, "Curah hujan kumulatif 148 mm dalam 10 hari di Aceh Tengah.", cuaca.Pesan)
@@ -81,8 +82,8 @@ func TestAngka_IndonesianFormat(t *testing.T) {
 type fakeRepo struct {
 	mu       sync.Mutex
 	aturan   []domain.AturanEws
-	ukuran   map[string][]domain.Pengukuran
-	ukurErr  map[string]error
+	ukuran   map[idx.ID][]domain.Pengukuran
+	ukurErr  map[idx.ID]error
 	aktif    map[string]domain.Alert // dedup_key -> alert aktif
 	ditulis  []domain.NewAlert
 	terapErr error
@@ -109,7 +110,9 @@ func (f *fakeRepo) Terapkan(_ context.Context, in domain.NewAlert, _ time.Time) 
 		f.aktif[in.DedupKey] = lama
 		return domain.HasilDinaikkan, &lama, nil
 	}
-	alert := domain.Alert{EwsAlert: domain.EwsAlert{ID: "EWS-" + in.DedupKey, Severity: in.Severity, Jenis: in.Jenis, Nilai: in.Nilai}}
+	id := idx.ID(len(f.aktif) + 1)
+	kode := "EWS-" + in.DedupKey
+	alert := domain.Alert{EwsAlert: domain.EwsAlert{ID: id, Kode: &kode, Severity: in.Severity, Jenis: in.Jenis, Nilai: in.Nilai}}
 	f.aktif[in.DedupKey] = alert
 	return domain.HasilDibuat, &alert, nil
 }
@@ -139,7 +142,7 @@ func newEngine(repo *fakeRepo, observers ...domain.Observer) (*Engine, *audittes
 func TestEvaluasi_CreatesRaisesAndSkips(t *testing.T) {
 	repo := &fakeRepo{
 		aturan: []domain.AturanEws{aturanLonjakan},
-		ukuran: map[string][]domain.Pengukuran{aturanLonjakan.ID: {
+		ukuran: map[idx.ID][]domain.Pengukuran{aturanLonjakan.ID: {
 			pengukuran("1171", 21), pengukuran("1108", 9), pengukuran("1106", 3), // kritis, waspada, di bawah ambang
 		}},
 		aktif: map[string]domain.Alert{},
@@ -168,20 +171,21 @@ func TestEvaluasi_CreatesRaisesAndSkips(t *testing.T) {
 	assert.Equal(t, domain.SeveritySiaga, spy.alerts[2].Severity)
 
 	var aksi []string
-	for _, entry := range rec.Entries() {
+	for i, entry := range rec.Entries() {
 		aksi = append(aksi, entry.Aksi)
 		assert.Empty(t, entry.AktorID, "aksi mesin tercatat tanpa aktor pengguna")
 		assert.Equal(t, "ews_alert", entry.Entitas)
+		assert.Equal(t, spy.alerts[i].ID.String(), entry.EntitasID, "audit mencatat ID alert (desimal), bukan kode tampilan")
 	}
 	assert.Equal(t, []string{"BUAT_OTOMATIS", "BUAT_OTOMATIS", "NAIK_TINGKAT"}, aksi)
 }
 
 func TestEvaluasi_FailuresAreCountedAndDoNotStopOtherRules(t *testing.T) {
-	rusak := domain.AturanEws{ID: "ATR-RUSAK", Jenis: domain.JenisLonjakanHarga, AmbangWaspada: 1, AmbangSiaga: 2, AmbangKritis: 3}
+	rusak := domain.AturanEws{ID: 9, Jenis: domain.JenisLonjakanHarga, AmbangWaspada: 1, AmbangSiaga: 2, AmbangKritis: 3}
 	repo := &fakeRepo{
 		aturan:  []domain.AturanEws{rusak, aturanLonjakan},
-		ukuran:  map[string][]domain.Pengukuran{aturanLonjakan.ID: {pengukuran("1171", 21)}},
-		ukurErr: map[string]error{rusak.ID: errors.New("db putus")},
+		ukuran:  map[idx.ID][]domain.Pengukuran{aturanLonjakan.ID: {pengukuran("1171", 21)}},
+		ukurErr: map[idx.ID]error{rusak.ID: errors.New("db putus")},
 		aktif:   map[string]domain.Alert{},
 	}
 	e, _ := newEngine(repo)
@@ -194,7 +198,7 @@ func TestEvaluasi_FailuresAreCountedAndDoNotStopOtherRules(t *testing.T) {
 
 func TestEvaluasi_WriteErrorIsCounted(t *testing.T) {
 	repo := &fakeRepo{
-		aturan: []domain.AturanEws{aturanLonjakan}, ukuran: map[string][]domain.Pengukuran{aturanLonjakan.ID: {pengukuran("1171", 21)}},
+		aturan: []domain.AturanEws{aturanLonjakan}, ukuran: map[idx.ID][]domain.Pengukuran{aturanLonjakan.ID: {pengukuran("1171", 21)}},
 		aktif: map[string]domain.Alert{}, terapErr: errors.New("deadlock"),
 	}
 	e, _ := newEngine(repo)
@@ -218,7 +222,7 @@ func TestRun_DisabledIntervalReturnsImmediately(t *testing.T) {
 }
 
 func TestRun_EvaluatesImmediatelyAndStopsOnCancel(t *testing.T) {
-	repo := &fakeRepo{aturan: []domain.AturanEws{aturanLonjakan}, ukuran: map[string][]domain.Pengukuran{aturanLonjakan.ID: {pengukuran("1171", 21)}}, aktif: map[string]domain.Alert{}}
+	repo := &fakeRepo{aturan: []domain.AturanEws{aturanLonjakan}, ukuran: map[idx.ID][]domain.Pengukuran{aturanLonjakan.ID: {pengukuran("1171", 21)}}, aktif: map[string]domain.Alert{}}
 	e, _ := newEngine(repo)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})

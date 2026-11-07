@@ -41,6 +41,10 @@ type Koordinat struct{ Lat, Lng float64 }
 // SeedDemo meng-upsert neraca (periode = awal bulan now), rute, dan kandidat.
 // Idempoten dalam bulan yang sama. Hanya untuk demo.
 //
+// Kunci idempotensi: neraca menurut kunci alami (komoditas_kode, kabupaten_kode, periode), rute dan kandidat
+// menurut kode (ID lama RT-1106-1171, KC-1173), geometri menurut kabupaten_kode. ID BIGINT diberi basis data
+// dan tidak pernah ditulis seeder, jadi baris hasil migrasi 000113 dipakai ulang tanpa menggandakan.
+//
 // Prasyarat: seeder master.reference sudah dijalankan.
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	var sum DemoSummary
@@ -79,8 +83,8 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 			cols []string
 		}{
 			{"neraca", &neraca, []string{"komoditas_kode", "kabupaten_kode", "periode"}, []string{"surplus_defisit_ton", "delta_harga_pct", "sumber"}},
-			{"rute", &rute, []string{"id"}, []string{"asal_kode", "tujuan_kode", "komoditas_kode", "volume_ton", "jarak_km", "jam_tempuh", "biaya", "status", "sumber", "dibuat_pada"}},
-			{"kandidat", &kandidat, []string{"id"}, []string{"kabupaten_kode", "lokasi", "skor", "komponen_skor", "alasan", "status", "sumber", "dibuat_pada"}},
+			{"rute", &rute, []string{"kode"}, []string{"asal_kode", "tujuan_kode", "komoditas_kode", "volume_ton", "jarak_km", "jam_tempuh", "biaya", "status", "sumber", "dibuat_pada"}},
+			{"kandidat", &kandidat, []string{"kode"}, []string{"kabupaten_kode", "lokasi", "skor", "komponen_skor", "alasan", "status", "sumber", "dibuat_pada"}},
 			{"geometri", &geometri, []string{"kabupaten_kode"}, []string{"geojson", "min_lat", "min_lng", "max_lat", "max_lng", "sumber", "keterangan", "diperbarui_pada"}},
 		}
 		for _, step := range steps {
@@ -178,8 +182,9 @@ func BuildRute(neraca []domain.NeracaWilayah, koordinat map[string]Koordinat, no
 		}
 		km := jarakMeter(asal, tujuan) / 1000 * faktorJalan
 		volume := math.Round(8 + t.delta*1.6)
+		kode := fmt.Sprintf("RT-%s-%s", sentra.kode, t.kode)
 		out = append(out, domain.RuteDistribusi{
-			ID: fmt.Sprintf("RT-%s-%s", sentra.kode, t.kode), AsalKode: sentra.kode, TujuanKode: t.kode,
+			Kode: &kode, AsalKode: sentra.kode, TujuanKode: t.kode,
 			KomoditasKode: sentra.komoditas, VolumeTon: volume, JarakKm: int(math.Round(km)),
 			JamTempuh: math.Round(km/kecepatanKm*10) / 10, Biaya: int64(math.Round(km * volume * tarifTonKm)),
 			Status: "USULAN", Sumber: SumberDemo, DibuatPada: now.UTC(),
@@ -196,8 +201,9 @@ func BuildKandidat(now time.Time) ([]domain.KandidatColdStorage, error) {
 		if err != nil {
 			return nil, fmt.Errorf("komponen skor %s: %w", k.id, err)
 		}
+		kode := k.id
 		out[i] = domain.KandidatColdStorage{
-			ID: k.id, KabupatenKode: k.kabupaten, Lokasi: k.lokasi, Skor: Skor(k.komponen),
+			Kode: &kode, KabupatenKode: k.kabupaten, Lokasi: k.lokasi, Skor: Skor(k.komponen),
 			KomponenSkor: string(komponen), Alasan: k.alasan, Status: k.status, Sumber: SumberDemo, DibuatPada: now.UTC(),
 		}
 	}

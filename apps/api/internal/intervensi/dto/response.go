@@ -5,6 +5,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	"github.com/garda-inflasi/api/internal/intervensi/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // PenanggungJawabResponse adalah pengguna yang ditugasi pada kartu.
@@ -22,6 +23,7 @@ type ProgresResponse struct {
 // KartuResponse adalah satu kartu kanban.
 type KartuResponse struct {
 	ID              string                    `json:"id"`
+	Kode            *string                   `json:"kode"`
 	Siklus          string                    `json:"siklus"`
 	Tahap           string                    `json:"tahap"`
 	Urutan          int                       `json:"urutan"`
@@ -33,7 +35,8 @@ type KartuResponse struct {
 	Tenggat         time.Time                 `json:"tenggat"`
 	RekomendasiAI   bool                      `json:"rekomendasi_ai"`
 	Progres         ProgresResponse           `json:"progres"`
-	EwsAlertID      *string                   `json:"ews_alert_id"`
+	EwsAlertID      *idx.ID                   `json:"ews_alert_id"`
+	EwsAlertKode    *string                   `json:"ews_alert_kode"`
 	PenanggungJawab []PenanggungJawabResponse `json:"penanggung_jawab"`
 	DibuatPada      time.Time                 `json:"dibuat_pada"`
 	SelesaiPada     *time.Time                `json:"selesai_pada"`
@@ -54,8 +57,9 @@ type TahapResponse struct {
 
 // CreateIntervensiResponse mengembalikan id kartu baru beserta tahap awalnya.
 type CreateIntervensiResponse struct {
-	ID    string `json:"id"`
-	Tahap string `json:"tahap"`
+	ID    string  `json:"id"`
+	Kode  *string `json:"kode"`
+	Tahap string  `json:"tahap"`
 }
 
 func ToKartuResponse(k domain.Kartu) KartuResponse {
@@ -64,11 +68,11 @@ func ToKartuResponse(k domain.Kartu) KartuResponse {
 		pj[i] = PenanggungJawabResponse{ID: p.ID, Nama: p.Nama}
 	}
 	return KartuResponse{
-		ID: k.ID, Siklus: k.Siklus, Tahap: k.Tahap, Urutan: k.Urutan, Judul: k.Judul, Deskripsi: k.Deskripsi,
+		ID: k.ID, Kode: k.Kode, Siklus: k.Siklus, Tahap: k.Tahap, Urutan: k.Urutan, Judul: k.Judul, Deskripsi: k.Deskripsi,
 		KomoditasKode: k.KomoditasKode, KabupatenKode: k.KabupatenKode, Prioritas: k.Prioritas,
 		Tenggat: k.Tenggat, RekomendasiAI: k.RekomendasiAI,
 		Progres:    ProgresResponse{Selesai: k.ChecklistSelesai, Total: k.ChecklistTotal},
-		EwsAlertID: k.EwsAlertID, PenanggungJawab: pj, DibuatPada: k.DibuatPada, SelesaiPada: k.SelesaiPada,
+		EwsAlertID: k.EwsAlertID, EwsAlertKode: k.EwsAlertKode, PenanggungJawab: pj, DibuatPada: k.DibuatPada, SelesaiPada: k.SelesaiPada,
 		Versi: k.Versi, DieskalasiPada: k.DieskalasiPada,
 	}
 }
@@ -114,7 +118,7 @@ type BulkIntervensiResponse struct {
 
 // RiwayatResponse adalah satu peristiwa kartu; OlehID kosong berarti sistem.
 type RiwayatResponse struct {
-	ID       int64     `json:"id"`
+	ID       idx.ID    `json:"id"`
 	Aksi     string    `json:"aksi"`
 	Dari     *string   `json:"dari"`
 	Ke       *string   `json:"ke"`
@@ -154,7 +158,7 @@ type LangkahPersetujuanResponse struct {
 
 // PersetujuanResponse adalah permintaan persetujuan beserta rantai langkahnya.
 type PersetujuanResponse struct {
-	ID              int64                        `json:"id"`
+	ID              idx.ID                       `json:"id"`
 	IntervensiID    string                       `json:"intervensi_id"`
 	KartuJudul      string                       `json:"kartu_judul"`
 	KartuTahap      string                       `json:"kartu_tahap"`

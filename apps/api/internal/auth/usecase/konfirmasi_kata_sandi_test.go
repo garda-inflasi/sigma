@@ -31,21 +31,21 @@ func daftarAksiKonfirmasi() []aksiKonfirmasi {
 		{
 			nama: "nonaktifkan MFA",
 			jalankan: func(uc *UseCase, sandi string) error {
-				return uc.DisableMFA(context.Background(), "user-123", sandi, "10.0.0.1")
+				return uc.DisableMFA(context.Background(), uid("user-123"), sandi, "10.0.0.1")
 			},
 			siap: func(repo *mockRepository) string {
-				repo.On("ClearMFA", mock.Anything, "user-123").Return(nil)
+				repo.On("ClearMFA", mock.Anything, uid("user-123")).Return(nil)
 				return "ClearMFA"
 			},
 		},
 		{
 			nama: "kode cadangan baru",
 			jalankan: func(uc *UseCase, sandi string) error {
-				_, err := uc.RegenerateBackupCodes(context.Background(), "user-123", sandi, "10.0.0.1")
+				_, err := uc.RegenerateBackupCodes(context.Background(), uid("user-123"), sandi, "10.0.0.1")
 				return err
 			},
 			siap: func(repo *mockRepository) string {
-				repo.On("ReplaceBackupCodes", mock.Anything, "user-123", mock.Anything).Return(nil)
+				repo.On("ReplaceBackupCodes", mock.Anything, uid("user-123"), mock.Anything).Return(nil)
 				return "ReplaceBackupCodes"
 			},
 		},
@@ -77,7 +77,7 @@ func siapKonfirmasi(t *testing.T, aksi aksiKonfirmasi) (*mockRepository, *UseCas
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
 	terlarang := aksi.siap(repo)
 	return repo, uc, terlarang
@@ -128,21 +128,21 @@ func TestKonfirmasiKataSandi_SalahDicatatDiLoginAttemptsDenganAlasanTersendiri(t
 	jamBeku(t, awalUji)
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
-	repo.On("ClearMFA", mock.Anything, "user-123").Return(nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
+	repo.On("ClearMFA", mock.Anything, uid("user-123")).Return(nil)
 	var dicatat []*domain.LoginAttempt
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) { dicatat = append(dicatat, args.Get(1).(*domain.LoginAttempt)) }).Return(nil)
 
-	require.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", sandiSalah, "10.0.0.7"), ErrWrongPassword)
-	require.NoError(t, uc.DisableMFA(context.Background(), "user-123", sandiBenar, "10.0.0.7"))
+	require.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), sandiSalah, "10.0.0.7"), ErrWrongPassword)
+	require.NoError(t, uc.DisableMFA(context.Background(), uid("user-123"), sandiBenar, "10.0.0.7"))
 
 	require.Len(t, dicatat, 1, "hanya tebakan salah yang dicatat")
 	assert.False(t, dicatat[0].Success)
 	require.NotNil(t, dicatat[0].FailureReason)
 	assert.Equal(t, "wrong_password_confirm", *dicatat[0].FailureReason)
 	require.NotNil(t, dicatat[0].UserID)
-	assert.Equal(t, "user-123", *dicatat[0].UserID)
+	assert.Equal(t, uid("user-123"), *dicatat[0].UserID)
 	require.NotNil(t, dicatat[0].IP)
 	assert.Equal(t, "10.0.0.7", *dicatat[0].IP)
 }
@@ -153,18 +153,18 @@ func TestKonfirmasiKataSandi_MemakaiKunciYangSamaDenganLoginDanGantiKataSandi(t 
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
 	siapLogin(repo, user)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
 	// Tiga tebakan lewat login, dua lewat konfirmasi kata sandi: satu hitungan per email.
 	for i := 0; i < 3; i++ {
 		require.ErrorIs(t, login(uc, emailUji, sandiSalah), ErrInvalidCredentials)
 	}
 	for i := 0; i < 2; i++ {
-		require.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", sandiSalah, "10.0.0.1"), ErrWrongPassword)
+		require.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), sandiSalah, "10.0.0.1"), ErrWrongPassword)
 	}
 
 	assert.ErrorIs(t, login(uc, emailUji, sandiBenar), ErrAccountLocked)
-	_, _, err := uc.ChangePassword(context.Background(), "user-123", sandiBenar, "BaruLagi99!", "10.0.0.1")
+	_, _, err := uc.ChangePassword(context.Background(), uid("user-123"), sandiBenar, "BaruLagi99!", "10.0.0.1")
 	assert.ErrorIs(t, err, ErrAccountLocked)
 	repo.AssertNotCalled(t, "ClearMFA", mock.Anything, mock.Anything)
 }
@@ -200,10 +200,10 @@ func TestKonfirmasiKataSandi_AkunTanpaKataSandiTidakDihitung(t *testing.T) {
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
 	user.PasswordHash = nil
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 
 	for i := 0; i < 8; i++ {
-		require.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", "apa saja", "10.0.0.1"), ErrWrongPassword)
+		require.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), "apa saja", "10.0.0.1"), ErrWrongPassword)
 	}
 
 	assert.Nil(t, repo.keadaan(emailUji), "sama dengan ChangePassword: akun SSO tanpa kata sandi tidak mengunci dirinya")
@@ -214,15 +214,15 @@ func TestKonfirmasiKataSandi_KunciBerakhirAksiJalanLagi(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
 	user, _ := userMFA(t, uc)
-	repo.On("GetUserByID", mock.Anything, "user-123").Return(user, nil)
+	repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(user, nil)
 	repo.On("CreateLoginAttempt", mock.Anything, mock.Anything).Return(nil)
-	repo.On("ClearMFA", mock.Anything, "user-123").Return(nil)
+	repo.On("ClearMFA", mock.Anything, uid("user-123")).Return(nil)
 	for i := 0; i < 5; i++ {
-		require.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", sandiSalah, "10.0.0.1"), ErrWrongPassword)
+		require.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), sandiSalah, "10.0.0.1"), ErrWrongPassword)
 	}
-	require.ErrorIs(t, uc.DisableMFA(context.Background(), "user-123", sandiBenar, "10.0.0.1"), ErrAccountLocked)
+	require.ErrorIs(t, uc.DisableMFA(context.Background(), uid("user-123"), sandiBenar, "10.0.0.1"), ErrAccountLocked)
 
 	*sekarang = sekarang.Add(15 * time.Minute)
 
-	require.NoError(t, uc.DisableMFA(context.Background(), "user-123", sandiBenar, "10.0.0.1"))
+	require.NoError(t, uc.DisableMFA(context.Background(), uid("user-123"), sandiBenar, "10.0.0.1"))
 }

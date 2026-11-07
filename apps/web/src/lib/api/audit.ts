@@ -10,7 +10,10 @@ import { fetchSesi } from "@/lib/auth/sesi-client";
 
 /** Satu baris audit sebagaimana dikirim backend Go. */
 export interface AuditLogResponse {
+  /** ID BIGINT ditulis sebagai string desimal; dipakai apa adanya di `GET /v1/audit/:id`. */
   id: string;
+  /** ID lama (UUID teks atau demo-audit-NNNN); hanya baris yang ada sebelum migrasi 000115. Alias `id` di rute detail. */
+  kode?: string;
   waktu: string;
   aktor_id?: string;
   aktor_nama?: string;

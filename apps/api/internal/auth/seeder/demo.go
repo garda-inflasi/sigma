@@ -9,6 +9,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/internal/seedkit"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,6 +28,7 @@ type DemoSummary struct {
 }
 
 type akunDemo struct {
+	// ID adalah slug lama akun demo; UUID barisnya seedkit.IDPengguna(ID), sama dengan hasil migrasi 000110.
 	ID, Nama, Email, Peran, Lapis, Lembaga string
 	KabupatenKode                          string // kode BPS; kosong = tanpa wilayah
 	Status                                 string
@@ -72,14 +74,17 @@ var akunDemoSeeds = []akunDemo{
 // bersegel dan ter-hash seperti data sungguhan, tetapi nilainya tertulis di sini).
 const (
 	DemoMFASecret = "JBSWY3DPEHPK3PXP"
-	demoMFAAkunID = "user_mfa"
+	demoMFASlug   = "user_mfa"
 )
+
+// DemoMFAAkunID adalah UUID akun demo user_mfa.
+var DemoMFAAkunID = seedkit.IDPengguna(demoMFASlug)
 
 // DemoKodeCadangan adalah kode cadangan akun demo user_mfa.
 var DemoKodeCadangan = []string{"BACKUP01", "BACKUP02", "BACKUP03"}
 
 // SeedDemo mengisi 25 akun demo (semua 14 peran, satu NONAKTIF, satu MFA aktif).
-// Idempoten: baris di-upsert menurut id dan dikembalikan ke keadaan awal. Hanya
+// Idempoten: baris di-upsert menurut email (kunci alami; id-nya UUID stabil dari slug) dan dikembalikan ke keadaan awal. Hanya
 // untuk pengembangan; kata sandi seluruh akun adalah DemoPassword. Rahasia MFA akun demo
 // disegel dengan AES_KEY (lingkungan, atau kunci pengembangan bila kosong) dan kode cadangannya di-hash.
 func SeedDemo(ctx context.Context, db *gorm.DB) (DemoSummary, error) {
@@ -101,7 +106,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB) (DemoSummary, error) {
 	akun := BuildDemoAkun()
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "id"}},
+			Columns: []clause.Column{{Name: "email"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"nama", "email", "password_hash", "peran", "lapis", "lembaga", "kabupaten_kode", "status",
 				"mfa_aktif", "mfa_secret", "mfa_langkah_terakhir", "wajib_ganti_password",
@@ -111,15 +116,15 @@ func SeedDemo(ctx context.Context, db *gorm.DB) (DemoSummary, error) {
 			return fmt.Errorf("seed akun demo: %w", err)
 		}
 
-		if err := tx.Exec("UPDATE pengguna SET mfa_secret = ? WHERE id = ?", sealed, demoMFAAkunID).Error; err != nil {
+		if err := tx.Exec("UPDATE pengguna SET mfa_secret = ? WHERE id = ?", sealed, DemoMFAAkunID).Error; err != nil {
 			return fmt.Errorf("seed rahasia MFA demo: %w", err)
 		}
-		if err := tx.Exec("DELETE FROM mfa_kode_cadangan WHERE user_id = ?", demoMFAAkunID).Error; err != nil {
+		if err := tx.Exec("DELETE FROM mfa_kode_cadangan WHERE user_id = ?", DemoMFAAkunID).Error; err != nil {
 			return fmt.Errorf("bersihkan kode cadangan demo: %w", err)
 		}
 		kode := make([]domain.KodeCadanganMFA, len(DemoKodeCadangan))
 		for i, k := range DemoKodeCadangan {
-			kode[i] = domain.KodeCadanganMFA{UserID: demoMFAAkunID, KodeHash: usecase.HashKodeCadangan(demoMFAAkunID, k)}
+			kode[i] = domain.KodeCadanganMFA{UserID: DemoMFAAkunID, KodeHash: usecase.HashKodeCadangan(DemoMFAAkunID, k)}
 		}
 		if err := tx.Create(&kode).Error; err != nil {
 			return fmt.Errorf("seed kode cadangan demo: %w", err)
@@ -138,7 +143,7 @@ func BuildDemoAkun() []domain.Pengguna {
 	out := make([]domain.Pengguna, len(akunDemoSeeds))
 	for i, a := range akunDemoSeeds {
 		p := domain.Pengguna{
-			ID: a.ID, Nama: a.Nama, Email: a.Email, PasswordHash: &hash,
+			ID: seedkit.IDPengguna(a.ID), Nama: a.Nama, Email: a.Email, PasswordHash: &hash,
 			Peran: a.Peran, Lapis: a.Lapis, Lembaga: a.Lembaga, Status: "AKTIF",
 		}
 		if a.Status != "" {

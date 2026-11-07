@@ -8,6 +8,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/spasial/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,11 @@ type fakeOptimasiRepo struct {
 	cache   []domain.JarakAntarWilayah
 	err     error
 	saveErr error
+
+	// Keadaan yang diterima repositori: aplikasi tidak boleh mengisi ID maupun kode.
+	idDiterima   idx.ID
+	kodeDiterima *string
+	ruteDiterima []domain.RuteDistribusi
 }
 
 func (f *fakeOptimasiRepo) ListMarker(context.Context) ([]domain.Marker, error) {
@@ -39,9 +45,25 @@ func (f *fakeOptimasiRepo) ListJarak(context.Context) ([]domain.JarakAntarWilaya
 	return f.jarak, f.err
 }
 
-func (f *fakeOptimasiRepo) SimpanOptimasi(_ context.Context, r domain.OptimasiRute, rute []domain.RuteDistribusi, jarak []domain.JarakAntarWilayah) error {
-	f.rencana, f.rute, f.cache = &r, rute, jarak
-	return f.saveErr
+// idRencanaUji adalah ID yang "diberikan basis data" oleh fake saat rencana disimpan.
+const idRencanaUji idx.ID = 17
+
+func (f *fakeOptimasiRepo) SimpanOptimasi(_ context.Context, r *domain.OptimasiRute, rute []domain.RuteDistribusi, jarak []domain.JarakAntarWilayah) error {
+	f.idDiterima, f.kodeDiterima = r.ID, r.Kode
+	f.ruteDiterima = append([]domain.RuteDistribusi(nil), rute...)
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	// Meniru repositori sungguhan: identity dan kode dibuat saat INSERT, rute menunjuk ID rencana.
+	r.ID = idRencanaUji
+	kode := domain.KodeOptimasi(r.ID)
+	r.Kode = &kode
+	for i := range rute {
+		id := r.ID
+		rute[i].OptimasiID = &id
+	}
+	f.rencana, f.rute, f.cache = r, rute, jarak
+	return nil
 }
 
 func (f *fakeOptimasiRepo) ListOptimasi(context.Context, int) ([]domain.RencanaOptimasi, error) {
@@ -93,7 +115,8 @@ func TestHitung_PlansFromNetPositionsUsingEstimatedRoadDistance(t *testing.T) {
 	assert.Empty(t, out.SurplusSisa)
 	// 20 ton x 111,2 km x Rp4.200 + 10 ton x 222,4 km x Rp4.200
 	assert.EqualValues(t, 20*111.2*4200+10*222.4*4200, out.TotalBiaya)
-	assert.Empty(t, out.OptimasiID, "tidak disimpan")
+	assert.Zero(t, out.OptimasiID, "tidak disimpan")
+	assert.Empty(t, out.OptimasiKode)
 	assert.Nil(t, repo.rencana)
 	require.NotNil(t, out.BiayaPembanding, "satu pemasok: rencana serakah menyalurkan volume yang sama")
 	assert.Equal(t, out.TotalBiaya, *out.BiayaPembanding)
@@ -162,13 +185,15 @@ func TestHitung_SaveWritesPlanRoutesCacheAndAudit(t *testing.T) {
 	}
 	opt, rec := newOpt(repo)
 
-	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", Simpan: true, ActorID: "manajer_program"})
+	out, err := opt.Hitung(t.Context(), OptimasiInput{KomoditasKode: "CBM-KRT", Simpan: true, ActorID: uid("manajer_program")})
 
 	require.NoError(t, err)
 	require.NotNil(t, repo.rencana)
-	assert.Equal(t, out.OptimasiID, repo.rencana.ID)
-	assert.Regexp(t, `^OPT-[0-9A-F]{12}$`, out.OptimasiID)
-	assert.Equal(t, "manajer_program", *repo.rencana.DibuatOleh)
+	assert.Equal(t, idRencanaUji, out.OptimasiID, "ID rencana datang dari repositori (RETURNING), bukan buatan aplikasi")
+	assert.Equal(t, "OPT-000017", out.OptimasiKode)
+	assert.Zero(t, repo.idDiterima, "aplikasi tidak mengisi ID rencana")
+	assert.Nil(t, repo.kodeDiterima, "aplikasi tidak mengisi kode rencana")
+	assert.Equal(t, uid("manajer_program"), *repo.rencana.DibuatOleh)
 	assert.Equal(t, 30.0, repo.rencana.TotalVolumeTon)
 	assert.JSONEq(t, `{"tarif_ton_km":4200,"faktor_jalan":1.35,"kecepatan_km":45,"maks_jam_tempuh":0}`, repo.rencana.Parameter)
 
@@ -179,7 +204,11 @@ func TestHitung_SaveWritesPlanRoutesCacheAndAudit(t *testing.T) {
 		assert.Equal(t, out.OptimasiID, *r.OptimasiID)
 		assert.Equal(t, "CBM-KRT", r.KomoditasKode)
 	}
-	assert.Regexp(t, `^RT-OPT-[0-9A-F]{12}-01$`, repo.rute[0].ID)
+	for _, r := range repo.ruteDiterima {
+		assert.Zero(t, r.ID, "aplikasi tidak membuat ID rute")
+		assert.Nil(t, r.Kode, "rute baru tidak diberi kode buatan aplikasi")
+		assert.Nil(t, r.OptimasiID, "tautan ke rencana diisi repositori sesudah ID rencana ada")
+	}
 
 	require.Len(t, repo.cache, 1, "hanya pasangan hasil estimasi (A-B) yang di-cache; A-C sudah ada di cache")
 	assert.Equal(t, "B", repo.cache[0].TujuanKode)
@@ -188,8 +217,9 @@ func TestHitung_SaveWritesPlanRoutesCacheAndAudit(t *testing.T) {
 	last, ok := rec.Last()
 	require.True(t, ok)
 	assert.Equal(t, "OPTIMASI_RUTE", last.Aksi)
-	assert.Equal(t, out.OptimasiID, last.EntitasID)
-	assert.Equal(t, "manajer_program", last.AktorID)
+	assert.Equal(t, "17", last.EntitasID)
+	assert.Equal(t, "OPT-000017", last.Metadata["kode"])
+	assert.Equal(t, uid("manajer_program"), last.AktorID)
 }
 
 func TestHitung_RejectsInvalidInputBeforeTouchingTheDatabase(t *testing.T) {

@@ -262,7 +262,7 @@ func TestAuthRateLimit(t *testing.T) {
 
 func TestJWTAuth_ValidToken(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := tokenMgr.CreateAccessToken("user-123", "ADMIN_SISTEM", []string{"pengguna.kelola"})
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("user-123"), "ADMIN_SISTEM", []string{"pengguna.kelola"})
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -281,7 +281,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	perms, _ := c.Get("permissions")
 	jti, _ := c.Get("jti")
 
-	assert.Equal(t, "user-123", userID)
+	assert.Equal(t, uid("user-123"), userID)
 	assert.Equal(t, "ADMIN_SISTEM", role)
 	assert.Equal(t, []string{"pengguna.kelola"}, perms)
 	assert.NotEmpty(t, jti)
@@ -319,7 +319,7 @@ func TestJWTAuth_InvalidBearerFormat(t *testing.T) {
 
 func TestJWTAuth_ExpiredToken(t *testing.T) {
 	tokenMgr := token.NewManager("test-secret-key-32-chars!!", token.WithAccessTTL(-1*time.Hour))
-	tokenStr, err := tokenMgr.CreateAccessToken("user-123", "ADMIN_SISTEM", nil)
+	tokenStr, err := tokenMgr.CreateAccessToken(uid("user-123"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -534,7 +534,7 @@ func TestAccessLog_WithUserID(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/test", nil)
 	c.Set("request_id", "req_test")
-	c.Set("user_id", "user-123")
+	c.Set("user_id", uid("user-123"))
 	c.Status(http.StatusOK)
 
 	handler := AccessLog(log)

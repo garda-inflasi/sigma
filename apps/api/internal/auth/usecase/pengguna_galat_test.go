@@ -27,19 +27,21 @@ var errKoneksiPutus = errors.New("koneksi putus")
 func TestMuatPengguna_GalatBasisDataBukanPenggunaTakAda(t *testing.T) {
 	ctx := context.Background()
 	aksi := map[string]func(uc *UseCase) error{
-		"GetUser": func(uc *UseCase) error { _, err := uc.GetUser(ctx, "user-123"); return err },
+		"GetUser": func(uc *UseCase) error { _, err := uc.GetUser(ctx, uid("user-123")); return err },
 		"UpdateUser": func(uc *UseCase) error {
-			_, err := uc.UpdateUser(ctx, "user-123", UserPatch{Nama: ptr("x")}, "admin-1")
+			_, err := uc.UpdateUser(ctx, uid("user-123"), UserPatch{Nama: ptr("x")}, uid("admin-1"))
 			return err
 		},
-		"DeleteUser":         func(uc *UseCase) error { return uc.DeleteUser(ctx, "user-123", "admin-1") },
-		"ResetPasswordAdmin": func(uc *UseCase) error { return uc.ResetPasswordAdmin(ctx, "user-123", "Baru#Sandi123", "admin-1") },
+		"DeleteUser": func(uc *UseCase) error { return uc.DeleteUser(ctx, uid("user-123"), uid("admin-1")) },
+		"ResetPasswordAdmin": func(uc *UseCase) error {
+			return uc.ResetPasswordAdmin(ctx, uid("user-123"), "Baru#Sandi123", uid("admin-1"))
+		},
 	}
 	for nama, jalankan := range aksi {
 		t.Run(nama, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc, recorder := newTestUseCaseWithAudit(repo)
-			repo.On("GetUserByID", mock.Anything, "user-123").Return(nil, errKoneksiPutus)
+			repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(nil, errKoneksiPutus)
 
 			err := jalankan(uc)
 
@@ -61,14 +63,14 @@ func TestMuatPengguna_TidakAdaTetapErrUserNotFoundMeski_Terbungkus(t *testing.T)
 
 	_, err := uc.GetUser(context.Background(), "hilang")
 	require.ErrorIs(t, err, ErrUserNotFound)
-	require.ErrorIs(t, uc.DeleteUser(context.Background(), "hilang", "admin-1"), ErrUserNotFound)
-	require.ErrorIs(t, uc.ResetPasswordAdmin(context.Background(), "hilang", "Baru#Sandi123", "admin-1"), ErrUserNotFound)
+	require.ErrorIs(t, uc.DeleteUser(context.Background(), "hilang", uid("admin-1")), ErrUserNotFound)
+	require.ErrorIs(t, uc.ResetPasswordAdmin(context.Background(), "hilang", "Baru#Sandi123", uid("admin-1")), ErrUserNotFound)
 }
 
 // ── CreateUser ────────────────────────────────────────────────────────
 
 func penggunaBaruUji() *domain.Pengguna {
-	return &domain.Pengguna{ID: "u-baru", Nama: "Baru", Email: "baru@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP"}
+	return &domain.Pengguna{ID: uid("u-baru"), Nama: "Baru", Email: "baru@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP"}
 }
 
 func TestCreateUser_Penolakan(t *testing.T) {
@@ -77,14 +79,14 @@ func TestCreateUser_Penolakan(t *testing.T) {
 	t.Run("kata sandi lemah ditolak sebelum menyentuh repositori", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		err := uc.CreateUser(ctx, penggunaBaruUji(), "12345678", "admin-1")
+		err := uc.CreateUser(ctx, penggunaBaruUji(), "12345678", uid("admin-1"))
 		require.ErrorIs(t, err, ErrWeakPassword)
 	})
 	t.Run("email sudah terdaftar", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, recorder := newTestUseCaseWithAudit(repo)
 		repo.On("GetUserByEmail", mock.Anything, "baru@garda.test").Return(activeUser(), nil)
-		err := uc.CreateUser(ctx, penggunaBaruUji(), "Baru#Sandi123", "admin-1")
+		err := uc.CreateUser(ctx, penggunaBaruUji(), "Baru#Sandi123", uid("admin-1"))
 		require.ErrorIs(t, err, ErrEmailExists)
 		repo.AssertNotCalled(t, "CreateUser", mock.Anything, mock.Anything)
 		assert.Empty(t, recorder.Entries())
@@ -94,7 +96,7 @@ func TestCreateUser_Penolakan(t *testing.T) {
 		uc, recorder := newTestUseCaseWithAudit(repo)
 		repo.On("GetUserByEmail", mock.Anything, "baru@garda.test").Return(nil, gorm.ErrRecordNotFound)
 		repo.On("CreateUser", mock.Anything, mock.Anything).Return(errKoneksiPutus)
-		err := uc.CreateUser(ctx, penggunaBaruUji(), "Baru#Sandi123", "admin-1")
+		err := uc.CreateUser(ctx, penggunaBaruUji(), "Baru#Sandi123", uid("admin-1"))
 		require.ErrorIs(t, err, errKoneksiPutus)
 		assert.NotErrorIs(t, err, ErrEmailExists)
 		assert.Empty(t, recorder.Entries())
@@ -108,7 +110,7 @@ func TestCreateUser_BerhasilWajibGantiDanAuditTanpaRahasia(t *testing.T) {
 	var disimpan *domain.Pengguna
 	repo.On("CreateUser", mock.Anything, mock.Anything).Run(func(a mock.Arguments) { disimpan = a.Get(1).(*domain.Pengguna) }).Return(nil)
 
-	require.NoError(t, uc.CreateUser(context.Background(), penggunaBaruUji(), "Baru#Sandi123", "admin-1"))
+	require.NoError(t, uc.CreateUser(context.Background(), penggunaBaruUji(), "Baru#Sandi123", uid("admin-1")))
 
 	require.NotNil(t, disimpan.PasswordHash)
 	assert.NotEqual(t, "Baru#Sandi123", *disimpan.PasswordHash, "hanya hash yang disimpan")
@@ -128,7 +130,7 @@ func TestAssignRole_Penolakan(t *testing.T) {
 	t.Run("peran di luar katalog ditolak tanpa menyentuh repositori", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
-		_, err := uc.AssignRole(ctx, "user-123", "SUPERADMIN", "admin-1")
+		_, err := uc.AssignRole(ctx, uid("user-123"), "SUPERADMIN", uid("admin-1"))
 		require.ErrorIs(t, err, ErrRoleNotFound)
 	})
 	for nama, tc := range map[string]struct {
@@ -142,9 +144,9 @@ func TestAssignRole_Penolakan(t *testing.T) {
 		t.Run(nama, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc, recorder := newTestUseCaseWithAudit(repo)
-			repo.On("PatchUser", mock.Anything, "user-123", mock.Anything).Return(tc.dari)
+			repo.On("PatchUser", mock.Anything, uid("user-123"), mock.Anything).Return(tc.dari)
 
-			_, err := uc.AssignRole(ctx, "user-123", "MANAJER_DATA", "admin-1")
+			_, err := uc.AssignRole(ctx, uid("user-123"), "MANAJER_DATA", uid("admin-1"))
 
 			require.ErrorIs(t, err, tc.ingin)
 			if tc.ingin == errKoneksiPutus {
@@ -170,10 +172,10 @@ func TestUpdateUser_GalatPenulisanDipetakan(t *testing.T) {
 		t.Run(nama, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc, recorder := newTestUseCaseWithAudit(repo)
-			repo.On("GetUserByID", mock.Anything, "user-123").Return(activeUser(), nil)
-			repo.On("PatchUser", mock.Anything, "user-123", mock.Anything).Return(tc.dari)
+			repo.On("GetUserByID", mock.Anything, uid("user-123")).Return(activeUser(), nil)
+			repo.On("PatchUser", mock.Anything, uid("user-123"), mock.Anything).Return(tc.dari)
 
-			_, err := uc.UpdateUser(ctx, "user-123", UserPatch{Nama: ptr("x")}, "admin-1")
+			_, err := uc.UpdateUser(ctx, uid("user-123"), UserPatch{Nama: ptr("x")}, uid("admin-1"))
 
 			require.ErrorIs(t, err, tc.ingin)
 			assert.Empty(t, recorder.Entries())
@@ -274,15 +276,15 @@ func TestKatalogDanIzinLangsung_GalatPenyimpananTidakMenyamarSebagaiMasukanSalah
 		"ListRoles":       func() error { _, err := uc.ListRoles(ctx); return err },
 		"ListPermissions": func() error { _, err := uc.ListPermissions(ctx); return err },
 		"UpdateRolePermissions": func() error {
-			_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"harga.lihat"}, "admin-1")
+			_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"harga.lihat"}, uid("admin-1"))
 			return err
 		},
-		"ListUserPermissions": func() error { _, err := uc.ListUserPermissions(ctx, "u-1"); return err },
+		"ListUserPermissions": func() error { _, err := uc.ListUserPermissions(ctx, uid("u-1")); return err },
 		"GrantUserPermission": func() error {
-			_, err := uc.GrantUserPermission(ctx, GrantInput{UserID: "u-1", Izin: "harga.ekspor", Alasan: "audit"}, "admin-1")
+			_, err := uc.GrantUserPermission(ctx, GrantInput{UserID: uid("u-1"), Izin: "harga.ekspor", Alasan: "audit"}, uid("admin-1"))
 			return err
 		},
-		"RevokeUserPermission": func() error { return uc.RevokeUserPermission(ctx, "u-1", "harga.ekspor", "admin-1") },
+		"RevokeUserPermission": func() error { return uc.RevokeUserPermission(ctx, uid("u-1"), "harga.ekspor", uid("admin-1")) },
 	}
 	for nama, jalankan := range semua {
 		t.Run(nama, func(t *testing.T) {
@@ -299,19 +301,19 @@ func TestUpdateRolePermissions_PeranHilangDanIzinDitolakPenyimpanan(t *testing.T
 	ctx := context.Background()
 	t.Run("peran tidak ada di basis data", func(t *testing.T) {
 		uc := ucIzinBermasalah(fmt.Errorf("baca peran: %w", gorm.ErrRecordNotFound))
-		_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, nil, "admin-1")
+		_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, nil, uid("admin-1"))
 		require.ErrorIs(t, err, ErrRoleNotFound)
 	})
 	t.Run("nama izin ditolak kunci asing", func(t *testing.T) {
 		uc := ucIzinBermasalah(domain.ErrIzinTidakDikenal)
-		_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"harga.lihat"}, "admin-1")
+		_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"harga.lihat"}, uid("admin-1"))
 		require.ErrorIs(t, err, ErrIzinTidakDikenal)
 	})
 }
 
 func TestGrantUserPermission_PenolakanPenyimpanan(t *testing.T) {
 	ctx := context.Background()
-	in := GrantInput{UserID: "u-1", Izin: "harga.ekspor", Alasan: "audit"}
+	in := GrantInput{UserID: uid("u-1"), Izin: "harga.ekspor", Alasan: "audit"}
 	for nama, tc := range map[string]struct {
 		dari  error
 		ingin error
@@ -323,13 +325,13 @@ func TestGrantUserPermission_PenolakanPenyimpanan(t *testing.T) {
 	} {
 		t.Run(nama, func(t *testing.T) {
 			uc := ucIzinBermasalah(tc.dari)
-			_, err := uc.GrantUserPermission(ctx, in, "admin-1")
+			_, err := uc.GrantUserPermission(ctx, in, uid("admin-1"))
 			require.ErrorIs(t, err, tc.ingin)
 		})
 	}
 	t.Run("pencabutan tanpa izin langsung", func(t *testing.T) {
 		uc := ucIzinBermasalah(domain.ErrIzinLangsungTidakAda)
-		require.ErrorIs(t, uc.RevokeUserPermission(ctx, "u-1", "harga.ekspor", "admin-1"), ErrIzinLangsungTidakAda)
+		require.ErrorIs(t, uc.RevokeUserPermission(ctx, uid("u-1"), "harga.ekspor", uid("admin-1")), ErrIzinLangsungTidakAda)
 	})
 	t.Run("daftar izin pengguna yang tidak ada", func(t *testing.T) {
 		uc := ucIzinBermasalah(gorm.ErrRecordNotFound)
@@ -345,14 +347,14 @@ func TestCreateUser_PeranDanLapisHarusDikenalSebelumMenyentuhRepositori(t *testi
 		uc := newTestUseCase(repo)
 		u := penggunaBaruUji()
 		u.Peran = "SUPERADMIN"
-		require.ErrorIs(t, uc.CreateUser(ctx, u, "Baru#Sandi123", "admin-1"), ErrRoleNotFound)
+		require.ErrorIs(t, uc.CreateUser(ctx, u, "Baru#Sandi123", uid("admin-1")), ErrRoleNotFound)
 	})
 	t.Run("lapis di luar enum", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc := newTestUseCase(repo)
 		u := penggunaBaruUji()
 		u.Lapis = "OPS"
-		err := uc.CreateUser(ctx, u, "Baru#Sandi123", "admin-1")
+		err := uc.CreateUser(ctx, u, "Baru#Sandi123", uid("admin-1"))
 		var validasi *GalatValidasi
 		require.ErrorAs(t, err, &validasi)
 		assert.Contains(t, validasi.Pesan, "Lapis tidak dikenal")
@@ -364,6 +366,6 @@ func TestCreateUser_PeranDanLapisHarusDikenalSebelumMenyentuhRepositori(t *testi
 		repo.On("CreateUser", mock.Anything, mock.Anything).Return(nil)
 		u := penggunaBaruUji()
 		u.Lapis = "SISTEM"
-		require.NoError(t, uc.CreateUser(ctx, u, "Baru#Sandi123", "admin-1"))
+		require.NoError(t, uc.CreateUser(ctx, u, "Baru#Sandi123", uid("admin-1")))
 	})
 }

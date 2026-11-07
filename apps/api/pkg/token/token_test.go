@@ -40,7 +40,7 @@ func TestNewManagerWithOptions(t *testing.T) {
 
 func TestCreateAccessToken(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := m.CreateAccessToken("user-123", "ADMIN_SISTEM", []string{"pengguna.kelola", "master.lihat"})
+	tokenStr, err := m.CreateAccessToken(uid("user-123"), "ADMIN_SISTEM", []string{"pengguna.kelola", "master.lihat"})
 	require.NoError(t, err)
 	require.NotEmpty(t, tokenStr)
 
@@ -49,7 +49,7 @@ func TestCreateAccessToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, claims)
 
-	assert.Equal(t, "user-123", claims.UserID)
+	assert.Equal(t, uid("user-123"), claims.UserID)
 	assert.Equal(t, "ADMIN_SISTEM", claims.Role)
 	assert.Equal(t, []string{"pengguna.kelola", "master.lihat"}, claims.Permissions)
 	assert.Equal(t, "garda-auth", claims.Issuer)
@@ -63,7 +63,7 @@ func TestCreateAccessToken(t *testing.T) {
 func TestCreateAccessToken_ProfileClaims(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
 
-	tokenStr, err := m.CreateAccessToken("mahasiswa_1", "OPS_MAHASISWA", nil,
+	tokenStr, err := m.CreateAccessToken(uid("mahasiswa_1"), "OPS_MAHASISWA", nil,
 		WithProfile("Aulia Rahman", "mahasiswa.1@gardainflasi.id", "FMIPA USK", "1171"))
 	require.NoError(t, err)
 	claims, err := m.VerifyToken(tokenStr)
@@ -73,7 +73,7 @@ func TestCreateAccessToken_ProfileClaims(t *testing.T) {
 	assert.Equal(t, "FMIPA USK", claims.Org)
 	assert.Equal(t, "1171", claims.Kab)
 
-	tanpa, err := m.CreateAccessToken("superadmin", "ADMIN_SISTEM", nil, WithProfile("Super Admin", "a@x.id", "BPPSDMP", ""))
+	tanpa, err := m.CreateAccessToken(uid("superadmin"), "ADMIN_SISTEM", nil, WithProfile("Super Admin", "a@x.id", "BPPSDMP", ""))
 	require.NoError(t, err)
 	raw, _, err := jwt.NewParser().ParseUnverified(tanpa, jwt.MapClaims{})
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestVerifyToken_InvalidSignature(t *testing.T) {
 	m1 := NewManager("secret-one-1234567890123456")
 	m2 := NewManager("secret-two-1234567890123456")
 
-	tokenStr, err := m1.CreateAccessToken("user-1", "OPS_MAHASISWA", nil)
+	tokenStr, err := m1.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", nil)
 	require.NoError(t, err)
 
 	_, err = m2.VerifyToken(tokenStr)
@@ -93,7 +93,7 @@ func TestVerifyToken_InvalidSignature(t *testing.T) {
 
 func TestVerifyToken_Expired(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!", WithAccessTTL(-1*time.Hour))
-	tokenStr, err := m.CreateAccessToken("user-1", "OPS_MAHASISWA", nil)
+	tokenStr, err := m.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", nil)
 	require.NoError(t, err)
 
 	_, err = m.VerifyToken(tokenStr)
@@ -106,11 +106,11 @@ func TestVerifyToken_InvalidAlgorithm(t *testing.T) {
 
 	// Create a token with a different algorithm (HS512)
 	claims := &Claims{
-		UserID: "user-1",
+		UserID: uid("user-1"),
 		Role:   "OPS_MAHASISWA",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        "test-jti",
-			Subject:   "user-1",
+			Subject:   uid("user-1"),
 			Issuer:    "garda-auth",
 			Audience:  jwt.ClaimStrings{"garda-api"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
@@ -130,11 +130,11 @@ func TestVerifyToken_NoneAlgorithm(t *testing.T) {
 
 	// Create a token with "none" algorithm (alg=none attack)
 	claims := &Claims{
-		UserID: "user-1",
+		UserID: uid("user-1"),
 		Role:   "ADMIN_SISTEM",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        "test-jti",
-			Subject:   "user-1",
+			Subject:   uid("user-1"),
 			Issuer:    "garda-auth",
 			Audience:  jwt.ClaimStrings{"garda-api"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
@@ -150,7 +150,7 @@ func TestVerifyToken_NoneAlgorithm(t *testing.T) {
 
 func TestVerifyToken_WrongIssuer(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!", WithIssuer("wrong-issuer"))
-	tokenStr, err := m.CreateAccessToken("user-1", "OPS_MAHASISWA", nil)
+	tokenStr, err := m.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", nil)
 	require.NoError(t, err)
 
 	// Verify with default issuer
@@ -213,14 +213,14 @@ func TestGetAudience(t *testing.T) {
 
 func TestVerifyToken_ClockSkew(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!", WithAccessTTL(15*time.Second))
-	tokenStr, err := m.CreateAccessToken("user-1", "OPS_MAHASISWA", nil)
+	tokenStr, err := m.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", nil)
 	require.NoError(t, err)
 
 	// Should still verify within clock skew
 	claims, err := m.VerifyToken(tokenStr)
 	require.NoError(t, err)
 	require.NotNil(t, claims)
-	assert.Equal(t, "user-1", claims.UserID)
+	assert.Equal(t, uid("user-1"), claims.UserID)
 }
 
 func TestVerifyToken_EmptyToken(t *testing.T) {
@@ -237,7 +237,7 @@ func TestVerifyToken_MalformedToken(t *testing.T) {
 
 func TestCreateAccessToken_EmptyPermissions(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := m.CreateAccessToken("user-1", "OPS_MAHASISWA", []string{})
+	tokenStr, err := m.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", []string{})
 	require.NoError(t, err)
 
 	claims, err := m.VerifyToken(tokenStr)
@@ -247,7 +247,7 @@ func TestCreateAccessToken_EmptyPermissions(t *testing.T) {
 
 func TestCreateAccessToken_NilPermissions(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars!!")
-	tokenStr, err := m.CreateAccessToken("user-1", "OPS_MAHASISWA", nil)
+	tokenStr, err := m.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", nil)
 	require.NoError(t, err)
 
 	claims, err := m.VerifyToken(tokenStr)
@@ -258,17 +258,17 @@ func TestCreateAccessToken_NilPermissions(t *testing.T) {
 func TestMFAChallengeToken_RoundTripAndIsolation(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars-minimum!")
 
-	challenge, err := m.CreateMFAChallengeToken("user-1")
+	challenge, err := m.CreateMFAChallengeToken(uid("user-1"))
 	require.NoError(t, err)
 
 	userID, err := m.VerifyMFAChallengeToken(challenge)
 	require.NoError(t, err)
-	assert.Equal(t, "user-1", userID)
+	assert.Equal(t, uid("user-1"), userID)
 
 	_, err = m.VerifyToken(challenge)
 	assert.Error(t, err, "token tantangan bukan access token")
 
-	access, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", []string{"x"})
+	access, err := m.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", []string{"x"})
 	require.NoError(t, err)
 	_, err = m.VerifyMFAChallengeToken(access)
 	assert.Error(t, err, "access token tidak bisa dipakai sebagai tantangan MFA")
@@ -280,7 +280,7 @@ func TestMFAChallengeToken_RoundTripAndIsolation(t *testing.T) {
 func TestMFAChallengeToken_ExpiresAfterTTL(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars-minimum!")
 	kedaluwarsa := &Claims{
-		UserID: "user-1",
+		UserID: uid("user-1"),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer: m.issuer, Audience: jwt.ClaimStrings{mfaAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
@@ -297,13 +297,13 @@ func TestMFAChallengeToken_ExpiresAfterTTL(t *testing.T) {
 func TestAccessToken_CarriesMFASetupRequiredClaim(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars-minimum!")
 
-	raw, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", nil, WithMFASetupRequired(true))
+	raw, err := m.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", nil, WithMFASetupRequired(true))
 	require.NoError(t, err)
 	claims, err := m.VerifyToken(raw)
 	require.NoError(t, err)
 	assert.True(t, claims.MFASetupRequired)
 
-	plain, err := m.CreateAccessToken("user-1", "ADMIN_SISTEM", nil)
+	plain, err := m.CreateAccessToken(uid("user-1"), "ADMIN_SISTEM", nil)
 	require.NoError(t, err)
 	claims, err = m.VerifyToken(plain)
 	require.NoError(t, err)
@@ -313,14 +313,14 @@ func TestAccessToken_CarriesMFASetupRequiredClaim(t *testing.T) {
 func TestMFAChallengeToken_MembawaMetodeLoginDanTidakMenggandakannyaDiAccessToken(t *testing.T) {
 	m := NewManager("test-secret-key-32-chars-minimum!")
 
-	dariSSO, err := m.CreateMFAChallengeToken("user-1", WithLoginMethod("sso_google"))
+	dariSSO, err := m.CreateMFAChallengeToken(uid("user-1"), WithLoginMethod("sso_google"))
 	require.NoError(t, err)
 	isi, err := m.VerifyMFAChallenge(dariSSO)
 	require.NoError(t, err)
-	assert.Equal(t, "user-1", isi.UserID)
+	assert.Equal(t, uid("user-1"), isi.UserID)
 	assert.Equal(t, "sso_google", isi.LoginMethod)
 
-	dariKataSandi, err := m.CreateMFAChallengeToken("user-1")
+	dariKataSandi, err := m.CreateMFAChallengeToken(uid("user-1"))
 	require.NoError(t, err)
 	isi, err = m.VerifyMFAChallenge(dariKataSandi)
 	require.NoError(t, err)
@@ -329,7 +329,7 @@ func TestMFAChallengeToken_MembawaMetodeLoginDanTidakMenggandakannyaDiAccessToke
 	// Pembungkus lama tetap mengembalikan id pengguna untuk kedua bentuk token.
 	userID, err := m.VerifyMFAChallengeToken(dariSSO)
 	require.NoError(t, err)
-	assert.Equal(t, "user-1", userID)
+	assert.Equal(t, uid("user-1"), userID)
 
 	// Klaim ikut tanda tangan: token yang dimodifikasi ditolak, bukan dibaca dengan metode lain.
 	parts := strings.Split(dariSSO, ".")

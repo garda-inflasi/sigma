@@ -51,6 +51,9 @@ func TestMLOps_LatihMenulisKandidatDanProyeksiBersumberModel(t *testing.T) {
 	assert.Equal(t, "KANDIDAT", m.Status)
 	assert.Equal(t, "MODEL", m.Sumber)
 	assert.Equal(t, 2.5, m.Mape)
+	assert.Regexp(t, `^[1-9][0-9]*$`, m.ID, "ID model dari basis data (BIGINT)")
+	require.NotNil(t, m.Kode)
+	assert.Equal(t, "MDL-CBM-KRT-"+m.Versi, *m.Kode, "kode tampilan model tetap MDL-<komoditas>-<versi>")
 	require.NotNil(t, m.BaselineMape)
 	assert.Equal(t, 3.0, *m.BaselineMape)
 	assert.Contains(t, m.Catatan, "backtest")
@@ -66,12 +69,15 @@ func TestMLOps_LatihMenulisKandidatDanProyeksiBersumberModel(t *testing.T) {
 
 	t.Run("proyeksi tersimpan sebagai MODEL dengan interval berurutan", func(t *testing.T) {
 		assert.Equal(t, 6, s.hitung(t, `SELECT COUNT(*) FROM prediksi_harga WHERE sumber = 'MODEL' AND model_versi = ?`, m.Versi), "2 kabupaten × 3 horizon")
+		assert.Equal(t, 6, s.hitung(t, `SELECT COUNT(*) FROM prediksi_harga p JOIN model_registry r ON r.id = p.model_id
+			WHERE p.sumber = 'MODEL' AND r.id = ? AND r.versi = p.model_versi AND r.komoditas_kode = p.komoditas_kode`, m.ID), "model_id dan model_versi ditulis konsisten")
+		assert.Equal(t, 6, s.hitung(t, `SELECT COUNT(*) FROM prediksi_harga WHERE model_id = ? AND kode IS NULL`, m.ID), "proyeksi hasil ML tanpa kode lama")
 		assert.Equal(t, 0, s.hitung(t, `SELECT COUNT(*) FROM prediksi_harga WHERE sumber = 'MODEL' AND NOT (bawah <= nilai AND nilai <= atas)`))
 		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_registry WHERE id = ? AND artefak_uri = 'ml://garda-ml/test' AND metrics->>'baseline_mape' = '3' AND jsonb_typeof(metrics->'seri'->'1171'->'params') = 'object'`, m.ID))
 	})
 
 	t.Run("tercatat di audit", func(t *testing.T) {
-		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'LATIH_MODEL' AND entitas_id = ? AND aktor_id = 'manajer_data'`, m.ID))
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'LATIH_MODEL' AND entitas_id = ? AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID))
 	})
 
 	t.Run("kandidat belum dipakai: proyeksi yang tampil tetap demo", func(t *testing.T) {
@@ -191,10 +197,10 @@ func TestMLOps_EvaluasiMenghitungGalatNyata(t *testing.T) {
 	// Proyeksi yang jatuh tempo kemarin; realisasi kemarin (i=1) = 50.010. Proyeksi 51.010 => galat +2,00%.
 	kemarin := hariIni().AddDate(0, 0, -1)
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO prediksi_harga (id, komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, nilai, bawah, atas, harga_dasar, model_versi, faktor, sumber)
-		VALUES ('PRM-UJI', 'CBM-KRT', '1171', ?, 7, 51010, 50000, 52000, 50000, ?, '[]', 'MODEL')`, kemarin.Format(time.DateOnly), m.Versi).Error)
+		INSERT INTO prediksi_harga (kode, komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, nilai, bawah, atas, harga_dasar, model_id, model_versi, faktor, sumber)
+		VALUES ('PRM-UJI', 'CBM-KRT', '1171', ?, 7, 51010, 50000, 52000, 50000, ?, ?, '[]', 'MODEL')`, kemarin.Format(time.DateOnly), m.ID, m.Versi).Error)
 	// Proyeksi demo yang jatuh tempo tidak dievaluasi.
-	require.NoError(t, s.db.Exec(`UPDATE prediksi_harga SET tanggal_target = ? WHERE id = 'PRD-CBM-KRT-1171-14'`, kemarin.Format(time.DateOnly)).Error)
+	require.NoError(t, s.db.Exec(`UPDATE prediksi_harga SET tanggal_target = ? WHERE kode = 'PRD-CBM-KRT-1171-14'`, kemarin.Format(time.DateOnly)).Error)
 
 	for i, want := range []int{1, 0} {
 		w := s.post(t, "/v1/prediksi/evaluasi", emailKelola, map[string]string{})
@@ -205,7 +211,7 @@ func TestMLOps_EvaluasiMenghitungGalatNyata(t *testing.T) {
 	}
 
 	var galat float64
-	require.NoError(t, s.db.Raw(`SELECT galat_pct FROM prediksi_evaluasi WHERE prediksi_id = 'PRM-UJI'`).Scan(&galat).Error)
+	require.NoError(t, s.db.Raw(`SELECT galat_pct FROM prediksi_evaluasi WHERE prediksi_id = (SELECT id FROM prediksi_harga WHERE kode = 'PRM-UJI')`).Scan(&galat).Error)
 	assert.InDelta(t, 2.0, galat, 0.001)
 	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM prediksi_evaluasi`))
 

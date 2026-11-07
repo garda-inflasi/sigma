@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit/domain"
-	"github.com/google/uuid"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 const (
@@ -56,8 +56,8 @@ func (uc *UseCase) buildRow(ctx context.Context, entry domain.Entry) (*domain.Au
 		waktu = uc.now()
 	}
 	origin := domain.OriginFrom(ctx)
+	// ID tidak diisi: basis data memberinya (BIGINT identity).
 	row := &domain.AuditLog{
-		ID:            uuid.NewString(),
 		Waktu:         waktu,
 		Aksi:          entry.Aksi,
 		Entitas:       entry.Entitas,
@@ -150,15 +150,15 @@ type Detail struct {
 }
 
 // Get mengembalikan satu entri beserta diff sebelum/sesudah; domain.ErrNotFound
-// bila id tidak ada.
-func (uc *UseCase) Get(ctx context.Context, id string) (Detail, error) {
-	row, err := uc.repo.Get(ctx, id)
+// bila ID (atau kode ID lama) tidak ada.
+func (uc *UseCase) Get(ctx context.Context, ref idx.RujukanID) (Detail, error) {
+	row, err := uc.repo.Get(ctx, ref)
 	if err != nil {
 		return Detail{}, err
 	}
 	changes, err := domain.DiffState(row.Sebelum, row.Sesudah)
 	if err != nil {
-		return Detail{}, fmt.Errorf("diff audit %s: %w", id, err)
+		return Detail{}, fmt.Errorf("diff audit %s: %w", row.ID, err)
 	}
 	return Detail{Row: *row, Perubahan: changes}, nil
 }
@@ -195,7 +195,7 @@ func (uc *UseCase) Export(ctx context.Context, filter domain.Filter, emit func(d
 }
 
 func encodeCursor(c domain.Cursor) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(c.Waktu.UTC().Format(time.RFC3339Nano) + "|" + c.ID))
+	return base64.RawURLEncoding.EncodeToString([]byte(c.Waktu.UTC().Format(time.RFC3339Nano) + "|" + c.ID.String()))
 }
 
 func decodeCursor(raw string) (domain.Cursor, error) {
@@ -203,8 +203,14 @@ func decodeCursor(raw string) (domain.Cursor, error) {
 	if err != nil {
 		return domain.Cursor{}, ErrInvalidCursor
 	}
-	waktu, id, found := strings.Cut(string(decoded), "|")
-	if !found || id == "" {
+	waktu, teksID, found := strings.Cut(string(decoded), "|")
+	if !found {
+		return domain.Cursor{}, ErrInvalidCursor
+	}
+	// Cursor lama (sebelum ID menjadi BIGINT) membawa UUID teks dan ditolak di sini: cursor hanya berlaku untuk
+	// satu penelusuran, klien memulai lagi dari halaman pertama.
+	id, err := idx.Parse(teksID)
+	if err != nil {
 		return domain.Cursor{}, ErrInvalidCursor
 	}
 	t, err := time.Parse(time.RFC3339Nano, waktu)

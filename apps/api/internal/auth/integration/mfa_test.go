@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
+	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/totp"
 	"github.com/stretchr/testify/assert"
@@ -98,7 +99,7 @@ func TestIntegration_MFALogin_ChallengeThenSession(t *testing.T) {
 	})
 	t.Run("login dan MFA tercatat di audit", func(t *testing.T) {
 		var n int64
-		require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = 'test-user-mfa' AND hasil = 'BERHASIL' AND metadata->>'mfa' = 'totp'").Scan(&n).Error)
+		require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'LOGIN' AND aktor_id = garda_uuid_stabil('pengguna', 'test-user-mfa') AND hasil = 'BERHASIL' AND metadata->>'mfa' = 'totp'").Scan(&n).Error)
 		assert.EqualValues(t, 2, n)
 	})
 }
@@ -131,8 +132,27 @@ func TestIntegration_MFALogin_BackupCodes(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, pakai("TIDAKADA99"))
 
 	var terpakai int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = 'test-user-mfa' AND dipakai_pada IS NOT NULL").Scan(&terpakai).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = garda_uuid_stabil('pengguna', 'test-user-mfa') AND dipakai_pada IS NOT NULL").Scan(&terpakai).Error)
 	assert.EqualValues(t, 2, terpakai)
+}
+
+// Kode cadangan yang terbit sebelum migrasi 000110 di-hash dari "<id lama>:<kode>" dan tidak bisa dihitung ulang
+// saat ID menjadi UUID. Akun hasil migrasi punya baris di pengguna_id_lama; kode lamanya tetap berlaku, sekali pakai.
+func TestIntegration_MFALogin_KodeCadanganSebelumMigrasiUUIDTetapBerlaku(t *testing.T) {
+	s := setupSuite(t)
+	require.NoError(t, s.db.Exec("DELETE FROM mfa_kode_cadangan WHERE user_id = garda_uuid_stabil('pengguna', 'test-user-mfa')").Error)
+	require.NoError(t, s.db.Exec("INSERT INTO pengguna_id_lama (id, id_lama) VALUES (garda_uuid_stabil('pengguna', 'test-user-mfa'), 'test-user-mfa')").Error)
+	require.NoError(t, s.db.Exec("INSERT INTO mfa_kode_cadangan (user_id, kode_hash) VALUES (garda_uuid_stabil('pengguna', 'test-user-mfa'), ?)",
+		usecase.HashKodeCadangan("test-user-mfa", "LAMA0001")).Error)
+
+	pakai := func(kode string) int {
+		challenge := s.mulaiLoginMFA(t, emailMFA)
+		return s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate", map[string]any{"mfa_token": challenge, "code": kode}, nil).Code
+	}
+
+	assert.Equal(t, http.StatusOK, pakai("LAMA0001"), "kode lama dicocokkan dengan ID lama akun")
+	assert.Equal(t, http.StatusUnauthorized, pakai("LAMA0001"), "tetap sekali pakai")
+	assert.Equal(t, http.StatusUnauthorized, pakai("LAMA9999"), "kode yang bukan miliknya ditolak")
 }
 
 func TestIntegration_MFASetup_ActivationFlow(t *testing.T) {
@@ -153,7 +173,7 @@ func TestIntegration_MFASetup_ActivationFlow(t *testing.T) {
 
 	t.Run("rahasia tersimpan bersegel, bukan polos", func(t *testing.T) {
 		var tersimpan string
-		require.NoError(t, s.db.Raw("SELECT mfa_secret FROM pengguna WHERE id = 'test-user-001'").Scan(&tersimpan).Error)
+		require.NoError(t, s.db.Raw("SELECT mfa_secret FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-001')").Scan(&tersimpan).Error)
 		assert.True(t, strings.HasPrefix(tersimpan, "v1:"), tersimpan)
 		assert.NotContains(t, tersimpan, setup.Secret)
 	})
@@ -176,7 +196,7 @@ func TestIntegration_MFASetup_ActivationFlow(t *testing.T) {
 
 	t.Run("kode cadangan tersimpan sebagai hash", func(t *testing.T) {
 		var hashes []string
-		require.NoError(t, s.db.Raw("SELECT kode_hash FROM mfa_kode_cadangan WHERE user_id = 'test-user-001'").Scan(&hashes).Error)
+		require.NoError(t, s.db.Raw("SELECT kode_hash FROM mfa_kode_cadangan WHERE user_id = garda_uuid_stabil('pengguna', 'test-user-001')").Scan(&hashes).Error)
 		require.Len(t, hashes, 10)
 		for _, h := range hashes {
 			assert.Len(t, h, 64)
@@ -227,7 +247,7 @@ func TestIntegration_MFASetup_ActivationFlow(t *testing.T) {
 
 		s.loginAs(t, "test@gardainflasi.id", "Test1234!")
 		var sisa int64
-		require.NoError(t, s.db.Raw("SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = 'test-user-001'").Scan(&sisa).Error)
+		require.NoError(t, s.db.Raw("SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = garda_uuid_stabil('pengguna', 'test-user-001')").Scan(&sisa).Error)
 		assert.Zero(t, sisa, "kode cadangan ikut dihapus")
 	})
 }
@@ -320,7 +340,7 @@ func TestIntegration_MFAEnforced_NonMandatoryRolesAreUnaffected(t *testing.T) {
 
 func TestIntegration_MFAEnforced_BulkWajibkanMFAAppliesToAnyRole(t *testing.T) {
 	s := newSuite(t, seedData, penegakan(t))
-	require.NoError(t, s.db.Exec("UPDATE pengguna SET mfa_wajib = true WHERE id = 'test-user-biasa'").Error)
+	require.NoError(t, s.db.Exec("UPDATE pengguna SET mfa_wajib = true WHERE id = garda_uuid_stabil('pengguna', 'test-user-biasa')").Error)
 
 	access, _ := s.loginAs(t, emailBiasa, "Test1234!")
 

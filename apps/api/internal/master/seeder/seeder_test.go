@@ -201,11 +201,47 @@ func TestSeedReference_DoesNotTouchNonReferenceData(t *testing.T) {
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, db.Exec(`
 		INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga)
-		VALUES ('u-uji-seed', 'U', 'u-uji-seed@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'X')`).Error)
+		VALUES (garda_uuid_stabil('pengguna', 'u-uji-seed'), 'U', 'u-uji-seed@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'X')`).Error)
 	before := rowCount(t, db, "pengguna")
 
 	_, err := SeedReference(t.Context(), db)
 	require.NoError(t, err)
 
 	assert.Equal(t, before, rowCount(t, db, "pengguna"))
+}
+
+// TestSeedReference_FKMasterRestrictDanSeedTidakMenghapus: FK antar master (kabupaten -> provinsi, pasar -> kabupaten)
+// dan dari data transaksi ke master berlaku ON DELETE RESTRICT (SKEMA §2): master yang masih dirujuk tidak bisa dihapus
+// (23503), dan seeder, yang hanya meng-upsert, tetap berjalan di atas data yang merujuk master.
+func TestSeedReference_FKMasterRestrictDanSeedTidakMenghapus(t *testing.T) {
+	db := pg.NewDatabase(t, "master_seed_restrict")
+	pgtest.MigrateUp(t, db)
+	_, err := SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`
+		INSERT INTO entri_harga (komoditas_kode, pasar_id, tipe, harga, satuan, dicatat_pada)
+		VALUES ('CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 52000, 'kg', now())`).Error)
+
+	tolak := func(sql string) {
+		t.Helper()
+		err := db.Exec(sql).Error
+		require.Error(t, err, sql)
+		assert.Contains(t, err.Error(), "23503", sql)
+	}
+	tolak(`DELETE FROM provinsi WHERE kode = '11'`)
+	tolak(`DELETE FROM kabupaten WHERE kode = '1171'`)
+	tolak(`DELETE FROM pasar WHERE id = 'PSR-1171-01'`)
+	tolak(`DELETE FROM komoditas WHERE kode = 'CBM-KRT'`)
+
+	before := rowCounts(t, db)
+	_, err = SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	assert.Equal(t, before, rowCounts(t, db))
+
+	// Pasar tanpa rujukan bisa dihapus; kabupaten baru baru bisa dihapus setelah pasarnya hilang.
+	require.NoError(t, db.Exec(`INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode) VALUES ('1199', 'Uji', 'KOTA', 'U', 5, 97, '11')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO pasar (id, nama, kabupaten_kode, lat, lng) VALUES ('PSR-1199-01', 'Uji', '1199', 5, 97)`).Error)
+	tolak(`DELETE FROM kabupaten WHERE kode = '1199'`)
+	require.NoError(t, db.Exec(`DELETE FROM pasar WHERE id = 'PSR-1199-01'`).Error)
+	require.NoError(t, db.Exec(`DELETE FROM kabupaten WHERE kode = '1199'`).Error)
 }

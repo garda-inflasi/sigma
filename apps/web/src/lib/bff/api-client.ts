@@ -254,7 +254,8 @@ export interface ListUsersResponse {
 }
 
 export interface CreateUserRequest {
-  id: string;
+  /** Opsional: kosong berarti API membuat UUID acak. Bila diisi harus UUID yang sah. */
+  id?: string;
   nama: string;
   email: string;
   password: string;

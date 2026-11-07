@@ -9,8 +9,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/harga/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
-	"github.com/google/uuid"
 )
 
 var (
@@ -71,14 +71,14 @@ func (uc *UseCase) ListHarga(ctx context.Context, filter domain.ListFilter) ([]d
 	return items, total, nil
 }
 
-// GetHargaByID mengembalikan satu entri.
-func (uc *UseCase) GetHargaByID(ctx context.Context, id string) (*domain.EntriView, error) {
-	entri, err := uc.repo.GetByID(ctx, id)
+// GetHargaByID mengembalikan satu entri menurut ID BIGINT atau kode lama (alias tautan lama).
+func (uc *UseCase) GetHargaByID(ctx context.Context, ref idx.RujukanID) (*domain.EntriView, error) {
+	entri, err := uc.repo.GetByID(ctx, ref)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrNotFound
 		}
-		uc.log.Error("get harga failed", map[string]interface{}{"id": id, "error": err.Error()})
+		uc.log.Error("get harga failed", map[string]interface{}{"id": ref.ID.String(), "kode": ref.Kode, "error": err.Error()})
 		return nil, fmt.Errorf("get harga: %w", err)
 	}
 	return entri, nil
@@ -181,8 +181,9 @@ func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID st
 		return HasilKirim{}, fmt.Errorf("cari referensi harga: %w", err)
 	}
 
+	// ID tidak diisi: basis data yang memberinya (BIGINT identity) dan GORM membacanya lewat RETURNING saat Simpan.
+	// Kode dibiarkan NULL: UI memakai kode ?? id, dan baris baru tidak punya kode tampilan.
 	entri := &domain.EntriHarga{
-		ID:            uuid.NewString(),
 		KomoditasKode: in.KomoditasKode,
 		PasarID:       in.PasarID,
 		Tipe:          in.Tipe,
@@ -230,7 +231,7 @@ func (uc *UseCase) CreateHarga(ctx context.Context, in CreateInput, petugasID st
 	}
 
 	uc.catat(ctx, audit.Entry{
-		AktorID: petugasID, Aksi: "HARGA_INPUT", Entitas: "entri_harga", EntitasID: entri.ID,
+		AktorID: petugasID, Aksi: "HARGA_INPUT", Entitas: "entri_harga", EntitasID: entri.ID.String(),
 		Hasil: audit.HasilBerhasil, Sesudah: entri,
 	})
 	return HasilKirim{Entri: entri}, nil
@@ -244,7 +245,7 @@ const (
 
 // RincianBulk menjelaskan satu entri yang dilewati pada aksi massal.
 type RincianBulk struct {
-	ID    string
+	ID    idx.ID
 	Sebab string
 }
 
@@ -259,7 +260,7 @@ type HasilBulk struct {
 // BulkAction menjalankan aksi massal sesuai state machine domain.Evaluasi. Entri yang tidak ditemukan,
 // statusnya tidak memenuhi syarat aksi, atau yang melanggar pemisahan tugas dilewati dan dilaporkan di
 // Rincian. Alasan wajib untuk tolak dan tampil bagi penginput. Pemeriksaan izin aktor ada di delivery.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID, alasan string) (HasilBulk, error) {
+func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, aksi, aktorID, alasan string) (HasilBulk, error) {
 	action := domain.BulkAction(aksi)
 	if !action.Valid() {
 		return HasilBulk{}, ErrInvalidAction
@@ -280,7 +281,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID, 
 	}
 
 	var out HasilBulk
-	var berubah []string
+	var berubah []idx.ID
 	for _, h := range hasil {
 		if h.Diterapkan() {
 			berubah = append(berubah, h.ID)
@@ -312,19 +313,19 @@ func syaratAlasan(action domain.BulkAction) string {
 	return fmt.Sprintf("maksimal %d karakter", MaxAlasan)
 }
 
-// Riwayat mengembalikan perpindahan status entri. Pemanggil tanpa hak melihat semua entri
-// (semua false) hanya boleh membuka entri yang ia catat sendiri.
-func (uc *UseCase) Riwayat(ctx context.Context, id, pemanggilID string, semua bool) ([]domain.RiwayatView, error) {
-	entri, err := uc.GetHargaByID(ctx, id)
+// Riwayat mengembalikan perpindahan status entri (ID BIGINT atau kode lama). Pemanggil tanpa hak melihat semua
+// entri (semua false) hanya boleh membuka entri yang ia catat sendiri.
+func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) ([]domain.RiwayatView, error) {
+	entri, err := uc.GetHargaByID(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
 	if !semua && (entri.PetugasID == nil || *entri.PetugasID != pemanggilID) {
 		return nil, ErrNotFound
 	}
-	items, err := uc.repo.Riwayat(ctx, id)
+	items, err := uc.repo.Riwayat(ctx, entri.ID)
 	if err != nil {
-		uc.log.Error("riwayat harga failed", map[string]interface{}{"id": id, "error": err.Error()})
+		uc.log.Error("riwayat harga failed", map[string]interface{}{"id": entri.ID.String(), "error": err.Error()})
 		return nil, fmt.Errorf("riwayat harga: %w", err)
 	}
 	return items, nil
@@ -337,11 +338,11 @@ func (uc *UseCase) catat(ctx context.Context, entry audit.Entry) {
 	}
 }
 
-func dedup(ids []string) []string {
-	seen := make(map[string]struct{}, len(ids))
-	out := make([]string, 0, len(ids))
+func dedup(ids []idx.ID) []idx.ID {
+	seen := make(map[idx.ID]struct{}, len(ids))
+	out := make([]idx.ID, 0, len(ids))
 	for _, id := range ids {
-		if _, dup := seen[id]; dup || id == "" {
+		if _, dup := seen[id]; dup || id == 0 {
 			continue
 		}
 		seen[id] = struct{}{}

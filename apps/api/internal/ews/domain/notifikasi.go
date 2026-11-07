@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Kanal notifikasi. DASHBOARD dilayani aliran SSE, bukan outbox.
@@ -34,9 +36,9 @@ const SeverityMinBawaan = SeveritySiaga
 
 // EwsNotifikasi memetakan tabel ews_notifikasi.
 type EwsNotifikasi struct {
-	ID            int64      `gorm:"column:id;primaryKey;->"`
-	AlertID       string     `gorm:"column:alert_id"`
-	PenggunaID    string     `gorm:"column:pengguna_id"`
+	ID            idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	AlertID       idx.ID     `gorm:"column:alert_id"`
+	PenggunaID    string     `gorm:"column:pengguna_id;type:uuid"`
 	Kanal         string     `gorm:"column:kanal"`
 	Tujuan        string     `gorm:"column:tujuan"`
 	Status        string     `gorm:"column:status;default:MENUNGGU"`
@@ -51,7 +53,7 @@ func (EwsNotifikasi) TableName() string { return "ews_notifikasi" }
 
 // PreferensiNotifikasi memetakan tabel preferensi_notifikasi.
 type PreferensiNotifikasi struct {
-	PenggunaID  string    `gorm:"column:pengguna_id;primaryKey"`
+	PenggunaID  string    `gorm:"column:pengguna_id;type:uuid;primaryKey"`
 	Kanal       string    `gorm:"column:kanal;primaryKey"`
 	SeverityMin string    `gorm:"column:severity_min"`
 	Aktif       bool      `gorm:"column:aktif"`
@@ -63,7 +65,7 @@ func (PreferensiNotifikasi) TableName() string { return "preferensi_notifikasi" 
 // LanggananPush memetakan tabel langganan_push (satu perangkat).
 type LanggananPush struct {
 	ID         int64     `gorm:"column:id;primaryKey;->"`
-	PenggunaID string    `gorm:"column:pengguna_id"`
+	PenggunaID string    `gorm:"column:pengguna_id;type:uuid"`
 	Endpoint   string    `gorm:"column:endpoint"`
 	P256dh     string    `gorm:"column:p256dh"`
 	Auth       string    `gorm:"column:auth"`
@@ -81,11 +83,11 @@ type Pesan struct {
 	PenggunaID string
 	// Tujuan: alamat email untuk EMAIL; id pengguna untuk PUSH (langganan dicari adaptor).
 	Tujuan   string
-	AlertID  string
+	AlertID  idx.ID
 	Severity string
 	Judul    string
 	Isi      string
-	// TautanPath adalah jalur halaman alert di aplikasi, mis. /ews?id=EWS-2000.
+	// TautanPath adalah jalur halaman alert di aplikasi, mis. /ews?id=12.
 	TautanPath string
 }
 
@@ -101,7 +103,7 @@ type NotifikasiRepository interface {
 	// Antrekan memasukkan notifikasi alert untuk pengguna aktif dengan salah satu peran
 	// yang memenuhi preferensi (kanal diizinkan aturan alert, tingkat >= minimum, aktif).
 	// Idempoten per (alert, pengguna, kanal); mengembalikan jumlah baris baru.
-	Antrekan(ctx context.Context, alertID string, peran []string, now time.Time) (int, error)
+	Antrekan(ctx context.Context, alertID idx.ID, peran []string, now time.Time) (int, error)
 	// Klaim mengambil paling banyak limit notifikasi jatuh tempo dan menunda jadwalnya
 	// sebesar lease agar tidak diambil pekerja lain selagi dikirim.
 	Klaim(ctx context.Context, now time.Time, limit int, lease time.Duration) ([]Pesan, error)
@@ -119,5 +121,5 @@ type NotifikasiRepository interface {
 
 	// EskalasiOtomatis mengeskalasi alert BARU berseverity >= minimum yang berumur lebih dari
 	// batas dan mengembalikan id-nya (riwayat dicatat oleh sistem).
-	EskalasiOtomatis(ctx context.Context, now time.Time, batas time.Duration, minimum string) ([]string, error)
+	EskalasiOtomatis(ctx context.Context, now time.Time, batas time.Duration, minimum string) ([]idx.ID, error)
 }

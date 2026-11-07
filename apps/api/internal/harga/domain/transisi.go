@@ -3,6 +3,8 @@ package domain
 import (
 	"slices"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Sebab sebuah entri dilewati pada aksi massal.
@@ -69,10 +71,10 @@ func Evaluasi(aksi BulkAction, status string, petugasID *string, aktorID string)
 // RiwayatStatusEntri memetakan tabel riwayat_status_entri: satu perpindahan status.
 type RiwayatStatusEntri struct {
 	ID      int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	EntriID string    `gorm:"column:entri_id"`
+	EntriID idx.ID    `gorm:"column:entri_id"`
 	Dari    *string   `gorm:"column:dari"`
 	Ke      string    `gorm:"column:ke"`
-	Oleh    *string   `gorm:"column:oleh"`
+	Oleh    *string   `gorm:"column:oleh;type:uuid"`
 	Waktu   time.Time `gorm:"column:waktu;default:now()"`
 	Alasan  *string   `gorm:"column:alasan"`
 }
@@ -85,7 +87,7 @@ func (RiwayatStatusEntri) TableName() string {
 type RiwayatView struct {
 	Dari     *string   `gorm:"column:dari"`
 	Ke       string    `gorm:"column:ke"`
-	Oleh     *string   `gorm:"column:oleh"`
+	Oleh     *string   `gorm:"column:oleh;type:uuid"`
 	OlehNama *string   `gorm:"column:oleh_nama"`
 	Waktu    time.Time `gorm:"column:waktu"`
 	Alasan   *string   `gorm:"column:alasan"`
@@ -93,7 +95,7 @@ type RiwayatView struct {
 
 // HasilTransisi adalah nasib satu id pada aksi massal; Sebab terisi bila dilewati.
 type HasilTransisi struct {
-	ID    string
+	ID    idx.ID
 	Sebab string
 }
 

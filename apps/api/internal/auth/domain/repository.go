@@ -62,6 +62,10 @@ type Repository interface {
 	ReplaceBackupCodes(ctx context.Context, userID string, kodeHash []string) error
 	// UseBackupCode menandai satu kode cadangan terpakai; true hanya bila kode ada dan belum terpakai.
 	UseBackupCode(ctx context.Context, userID, kodeHash string, now time.Time) (bool, error)
+	// IDLamaPengguna mengembalikan ID lama (slug sebelum migrasi 000110) akun, atau "" bila akun dibuat sesudah
+	// migrasi. Hash kode cadangan MFA dihitung dari "<id>:<kode>" sehingga tidak bisa dihitung ulang saat ID menjadi
+	// UUID; kode yang terbit sebelum migrasi tetap dicocokkan dengan ID lamanya (HashKodeCadangan).
+	IDLamaPengguna(ctx context.Context, id string) (string, error)
 	// CountBackupCodes menghitung kode cadangan yang belum terpakai.
 	CountBackupCodes(ctx context.Context, userID string) (int64, error)
 	// AdvanceMFAStep memajukan langkah TOTP terakhir; false bila langkah itu sudah pernah dipakai.

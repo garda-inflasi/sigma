@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -43,12 +44,19 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// alertQuery menggabungkan nama komoditas dan kabupaten.
-func (r *Repository) alertQuery(ctx context.Context) *gorm.DB {
-	return r.db.WithContext(ctx).Table("ews_alert AS a").
-		Select("a.*, k.nama AS komoditas_nama, w.nama AS kabupaten_nama").
+// kolomAlert dan gabungAlert melengkapi alert dengan nama komoditas, nama kabupaten, dan kode aturan pemicunya.
+const kolomAlert = "a.*, k.nama AS komoditas_nama, w.nama AS kabupaten_nama, t.kode AS aturan_kode"
+
+func gabungAlert(q *gorm.DB) *gorm.DB {
+	return q.
 		Joins("LEFT JOIN komoditas k ON k.kode = a.komoditas_kode").
-		Joins("JOIN kabupaten w ON w.kode = a.kabupaten_kode")
+		Joins("JOIN kabupaten w ON w.kode = a.kabupaten_kode").
+		Joins("LEFT JOIN aturan_ews t ON t.id = a.aturan_id")
+}
+
+// alertQuery menggabungkan nama komoditas dan kabupaten serta kode aturan.
+func (r *Repository) alertQuery(ctx context.Context) *gorm.DB {
+	return gabungAlert(r.db.WithContext(ctx).Table("ews_alert AS a")).Select(kolomAlert)
 }
 
 func (r *Repository) List(ctx context.Context, q domain.ListQuery) ([]domain.Alert, int64, error) {
@@ -72,10 +80,8 @@ func (r *Repository) List(ctx context.Context, q domain.ListQuery) ([]domain.Ale
 	}
 
 	var items []domain.Alert
-	err := filtered.Session(&gorm.Session{}).
-		Select("a.*, k.nama AS komoditas_nama, w.nama AS kabupaten_nama").
-		Joins("LEFT JOIN komoditas k ON k.kode = a.komoditas_kode").
-		Joins("JOIN kabupaten w ON w.kode = a.kabupaten_kode").
+	err := gabungAlert(filtered.Session(&gorm.Session{})).
+		Select(kolomAlert).
 		Order("a.dibuat_pada DESC, a.id").
 		Limit(q.Limit).Offset((q.Page - 1) * q.Limit).
 		Scan(&items).Error
@@ -85,9 +91,9 @@ func (r *Repository) List(ctx context.Context, q domain.ListQuery) ([]domain.Ale
 	return items, total, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id string) (*domain.Alert, error) {
+func (r *Repository) GetByID(ctx context.Context, ref idx.RujukanID) (*domain.Alert, error) {
 	var item domain.Alert
-	res := r.alertQuery(ctx).Where("a.id = ?", id).Limit(1).Scan(&item)
+	res := r.alertQuery(ctx).Where(ref.Kondisi("a.id", "a.kode")).Limit(1).Scan(&item)
 	if res.Error != nil {
 		return nil, fmt.Errorf("ambil alert ews: %w", res.Error)
 	}
@@ -97,7 +103,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*domain.Alert, err
 	return &item, nil
 }
 
-func (r *Repository) ListRiwayat(ctx context.Context, alertID string) ([]domain.Riwayat, error) {
+func (r *Repository) ListRiwayat(ctx context.Context, alertID idx.ID) ([]domain.Riwayat, error) {
 	var items []domain.Riwayat
 	err := r.db.WithContext(ctx).Table("ews_riwayat AS r").
 		Select("r.*, u.nama AS oleh_nama").
@@ -127,13 +133,13 @@ func (r *Repository) ListAturan(ctx context.Context) ([]domain.Aturan, error) {
 	return items, nil
 }
 
-func (r *Repository) GetAturan(ctx context.Context, id string) (*domain.Aturan, error) {
-	return getAturan(aturanQuery(r.db.WithContext(ctx)), id)
+func (r *Repository) GetAturan(ctx context.Context, ref idx.RujukanID) (*domain.Aturan, error) {
+	return getAturan(aturanQuery(r.db.WithContext(ctx)), ref)
 }
 
-func getAturan(q *gorm.DB, id string) (*domain.Aturan, error) {
+func getAturan(q *gorm.DB, ref idx.RujukanID) (*domain.Aturan, error) {
 	var item domain.Aturan
-	res := q.Where("t.id = ?", id).Limit(1).Scan(&item)
+	res := q.Where(ref.Kondisi("t.id", "t.kode")).Limit(1).Scan(&item)
 	if res.Error != nil {
 		return nil, fmt.Errorf("ambil aturan ews: %w", res.Error)
 	}
@@ -143,7 +149,7 @@ func getAturan(q *gorm.DB, id string) (*domain.Aturan, error) {
 	return &item, nil
 }
 
-func (r *Repository) UpdateAturan(ctx context.Context, id string, upd domain.AturanUpdate, userID string) (*domain.Aturan, error) {
+func (r *Repository) UpdateAturan(ctx context.Context, id idx.ID, upd domain.AturanUpdate, userID string) (*domain.Aturan, error) {
 	var updated *domain.Aturan
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Exec(`
@@ -179,7 +185,7 @@ func (r *Repository) UpdateAturan(ctx context.Context, id string, upd domain.Atu
 		if err != nil {
 			return fmt.Errorf("riwayat aturan ews: %w", err)
 		}
-		updated, err = getAturan(aturanQuery(tx), id)
+		updated, err = getAturan(aturanQuery(tx), idx.RujukanID{ID: id})
 		return err
 	})
 	if err != nil {
@@ -188,12 +194,12 @@ func (r *Repository) UpdateAturan(ctx context.Context, id string, upd domain.Atu
 	return updated, nil
 }
 
-func (r *Repository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction, userID string) ([]string, error) {
+func (r *Repository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction, userID string) ([]idx.ID, error) {
 	query, ok := bulkSQL[action]
 	if !ok {
 		return nil, fmt.Errorf("aksi massal tidak dikenal: %s", action)
 	}
-	var changed []string
+	var changed []idx.ID
 	err := r.db.WithContext(ctx).Raw(query, map[string]any{"ids": ids, "user": userID}).Scan(&changed).Error
 	if err != nil {
 		return nil, fmt.Errorf("aksi massal %s: %w", action, err)

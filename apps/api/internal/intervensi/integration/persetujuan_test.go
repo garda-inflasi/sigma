@@ -2,7 +2,6 @@ package integration
 
 import (
 	"net/http"
-	"strconv"
 	"sync"
 	"testing"
 
@@ -22,7 +21,7 @@ type langkahRow struct {
 }
 
 type persetujuanRow struct {
-	ID              int64        `json:"id"`
+	ID              string       `json:"id"`
 	IntervensiID    string       `json:"intervensi_id"`
 	KartuJudul      string       `json:"kartu_judul"`
 	Jenis           string       `json:"jenis"`
@@ -36,16 +35,16 @@ type persetujuanRow struct {
 
 func (s *suite) ajukan(t *testing.T, email, kartu, tahap string) (int, persetujuanRow, string) {
 	t.Helper()
-	w := s.call(t, http.MethodPost, "/v1/intervensi/"+kartu+"/persetujuan", email, map[string]any{"tahap_tujuan": tahap, "catatan": "Siap diajukan"})
+	w := s.call(t, http.MethodPost, "/v1/intervensi/"+rujukan(kartu)+"/persetujuan", email, map[string]any{"tahap_tujuan": tahap, "catatan": "Siap diajukan"})
 	if w.Code != http.StatusCreated {
 		return w.Code, persetujuanRow{}, w.Body.String()
 	}
 	return w.Code, data[persetujuanRow](t, w), w.Body.String()
 }
 
-func (s *suite) putus(t *testing.T, email string, id int64, keputusan, catatan string) (int, persetujuanRow, string) {
+func (s *suite) putus(t *testing.T, email, id, keputusan, catatan string) (int, persetujuanRow, string) {
 	t.Helper()
-	w := s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/"+strconv.FormatInt(id, 10)+"/keputusan", email, map[string]any{"keputusan": keputusan, "catatan": catatan})
+	w := s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/"+id+"/keputusan", email, map[string]any{"keputusan": keputusan, "catatan": catatan})
 	if w.Code != http.StatusOK {
 		return w.Code, persetujuanRow{}, w.Body.String()
 	}
@@ -102,7 +101,7 @@ func TestPersetujuan_SingleStepApprovalMovesTheCard(t *testing.T) {
 	require.Len(t, p.Langkah, 1)
 	assert.Equal(t, "intervensi.setujui", p.IzinLangkahKini)
 	require.NotNil(t, p.DiajukanOlehID)
-	assert.Equal(t, "manajer_program", *p.DiajukanOlehID)
+	assert.Equal(t, uid("manajer_program"), *p.DiajukanOlehID)
 	assert.Equal(t, "t-ews", card(t, s, "INT-301").Tahap, "kartu belum berpindah sebelum disetujui")
 
 	t.Run("pemegang kelola tidak dapat memutuskan", func(t *testing.T) {
@@ -117,7 +116,7 @@ func TestPersetujuan_SingleStepApprovalMovesTheCard(t *testing.T) {
 		assert.Equal(t, "DISETUJUI", done.Status)
 		require.NotNil(t, done.Langkah[0].Keputusan)
 		assert.Equal(t, "SETUJU", *done.Langkah[0].Keputusan)
-		assert.Equal(t, "strategis_bi", *done.Langkah[0].OlehID)
+		assert.Equal(t, uid("strategis_bi"), *done.Langkah[0].OlehID)
 
 		k := card(t, s, "INT-301")
 		assert.Equal(t, "t-petakan", k.Tahap)
@@ -152,7 +151,8 @@ func TestPersetujuan_MultiStepChainAndSeparationOfDuties(t *testing.T) {
 	menunggu := s.daftarPersetujuan(t, "?status=MENUNGGU")
 	require.Len(t, menunggu, 1)
 	p := menunggu[0]
-	assert.Equal(t, "INT-304", p.IntervensiID)
+	assert.Equal(t, kid("INT-304"), p.IntervensiID, "permintaan menunjuk kartu lewat UUID")
+	assert.Regexp(t, `^[1-9][0-9]*$`, p.ID, "ID permintaan adalah string desimal")
 	require.Len(t, p.Langkah, 2)
 	assert.Equal(t, 1, p.LangkahKini)
 
@@ -160,7 +160,7 @@ func TestPersetujuan_MultiStepChainAndSeparationOfDuties(t *testing.T) {
 		code, _, body := s.putus(t, emailFiskal, p.ID, "SETUJU", "")
 		require.Equal(t, http.StatusOK, code, body) // DJPb memegang setujui, jadi sah memutus langkah 1 sekarang
 		// Tes pemisahan tugas ada di bawah; di sini kembalikan keputusan langkah 1 ke penyetuju lain.
-		require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan_langkah SET oleh = 'strategis_bi' WHERE persetujuan_id = ? AND urutan = 1`, p.ID).Error)
+		require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan_langkah SET oleh = garda_uuid_stabil('pengguna', 'strategis_bi') WHERE persetujuan_id = ? AND urutan = 1`, p.ID).Error)
 	})
 
 	t.Run("langkah 2 butuh izin fiskal: penyetuju biasa ditolak dengan izin yang jelas", func(t *testing.T) {
@@ -252,6 +252,8 @@ func TestPersetujuan_AjukanValidation(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, code)
 		code, _, _ = s.ajukan(t, emailKelola, "INT-9999", "t-petakan")
 		assert.Equal(t, http.StatusNotFound, code)
+		w404 := s.call(t, http.MethodPost, "/v1/intervensi/bukan-uuid/persetujuan", emailKelola, map[string]any{"tahap_tujuan": "t-petakan"})
+		assert.Equal(t, http.StatusNotFound, w404.Code, "ID salah bentuk")
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/intervensi/INT-301/persetujuan", emailKelola, map[string]any{}).Code)
 	})
 
@@ -270,7 +272,7 @@ func TestPersetujuan_AjukanValidation(t *testing.T) {
 
 func TestPersetujuan_EskalasiOpensReviewAndRejectionClearsTheFlag(t *testing.T) {
 	s := newSuite(t, "intervensi_setuju_eskalasi")
-	w := s.call(t, http.MethodPost, "/v1/intervensi/bulk", emailKelola, map[string]any{"action": "eskalasi", "ids": []string{"INT-302", "INT-303"}})
+	w := s.call(t, http.MethodPost, "/v1/intervensi/bulk", emailKelola, map[string]any{"action": "eskalasi", "ids": []string{kid("INT-302"), kid("INT-303")}})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
 	var eskalasi []persetujuanRow
@@ -287,15 +289,17 @@ func TestPersetujuan_EskalasiOpensReviewAndRejectionClearsTheFlag(t *testing.T) 
 	for _, p := range eskalasi {
 		byKartu[p.IntervensiID] = p
 	}
+	require.Contains(t, byKartu, kid("INT-302"))
+	require.Contains(t, byKartu, kid("INT-303"))
 
-	code, accepted, body := s.putus(t, emailSetuju, byKartu["INT-302"].ID, "SETUJU", "Eskalasi diterima")
+	code, accepted, body := s.putus(t, emailSetuju, byKartu[kid("INT-302")].ID, "SETUJU", "Eskalasi diterima")
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Equal(t, "DISETUJUI", accepted.Status)
 	assert.NotNil(t, card(t, s, "INT-302").DieskalasiPada, "eskalasi yang diterima tetap tercatat pada kartu")
 	assert.Equal(t, "t-ews", card(t, s, "INT-302").Tahap, "persetujuan eskalasi tidak memindahkan kartu")
 
 	versi := card(t, s, "INT-303").Versi
-	code, _, body = s.putus(t, emailSetuju, byKartu["INT-303"].ID, "TOLAK", "Belum perlu eskalasi")
+	code, _, body = s.putus(t, emailSetuju, byKartu[kid("INT-303")].ID, "TOLAK", "Belum perlu eskalasi")
 	require.Equal(t, http.StatusOK, code, body)
 	k := card(t, s, "INT-303")
 	assert.Nil(t, k.DieskalasiPada, "eskalasi yang ditolak dicabut")
@@ -320,14 +324,14 @@ func TestPersetujuan_ConcurrentDecisionsOnlyOneWins(t *testing.T) {
 	assert.ElementsMatch(t, []int{http.StatusOK, http.StatusConflict}, codes)
 	assert.Equal(t, "t-petakan", card(t, s, "INT-301").Tahap)
 	var moves int
-	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM intervensi_riwayat WHERE intervensi_id = 'INT-301' AND aksi = 'PINDAH_TAHAP' AND ke = 't-petakan'`).Scan(&moves).Error)
+	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM intervensi_riwayat WHERE intervensi_id = ?::uuid AND aksi = 'PINDAH_TAHAP' AND ke = 't-petakan'`, kid("INT-301")).Scan(&moves).Error)
 	assert.Equal(t, 1, moves, "kartu dipindahkan sekali saja")
 }
 
 func TestPersetujuan_RequesterCannotApproveOwnRequest(t *testing.T) {
 	s := newSuite(t, "intervensi_setuju_sendiri")
 	_, p, _ := s.ajukan(t, emailKelola, "INT-301", "t-petakan")
-	require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan SET diajukan_oleh = 'strategis_bi' WHERE id = ?`, p.ID).Error)
+	require.NoError(t, s.db.Exec(`UPDATE intervensi_persetujuan SET diajukan_oleh = garda_uuid_stabil('pengguna', 'strategis_bi') WHERE id = ?`, p.ID).Error)
 
 	code, _, body := s.putus(t, emailSetuju, p.ID, "SETUJU", "")
 
@@ -346,6 +350,8 @@ func TestPersetujuan_ListAndDecisionAuthorization(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/1/keputusan", "", body).Code)
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/1/keputusan", emailKelola, body).Code, "kelola saja tidak cukup")
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/99999/keputusan", emailSetuju, body).Code)
-	assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/abc/keputusan", emailSetuju, body).Code)
+	for _, bukanID := range []string{"abc", "0", "-1", "01", "1.5"} {
+		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/"+bukanID+"/keputusan", emailSetuju, body).Code, "ID salah bentuk dijawab 404: "+bukanID)
+	}
 	assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/intervensi/persetujuan/1/keputusan", emailSetuju, map[string]any{"keputusan": "MUNGKIN"}).Code)
 }

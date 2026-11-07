@@ -10,8 +10,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -65,7 +65,9 @@ type EfekSimulasi struct {
 
 // HasilSimulasi adalah proyeksi dasar model ditambah efek skenario.
 type HasilSimulasi struct {
-	ID            string         `json:"id"`
+	// ID adalah ID BIGINT skenario yang tersimpan (JSON: string desimal). Kosong (dilewati dari JSON) pada
+	// salinan hasil yang disimpan di skenario_simulasi.hasil, karena ID baru ada sesudah baris disimpan.
+	ID            idx.ID         `json:"id,omitzero"`
 	KomoditasKode string         `json:"komoditas_kode"`
 	KomoditasNama string         `json:"komoditas_nama"`
 	KabupatenKode string         `json:"kabupaten_kode"`
@@ -110,7 +112,7 @@ func (uc *Simulasi) Hitung(ctx context.Context, aktorID string, p ParameterSimul
 
 	sekarang := uc.now()
 	hasil := hitungSkenario(*dasar, p)
-	hasil.ID, hasil.DibuatPada = uuid.NewString(), sekarang.UTC()
+	hasil.DibuatPada = sekarang.UTC()
 
 	parameter, err := json.Marshal(p)
 	if err != nil {
@@ -120,20 +122,21 @@ func (uc *Simulasi) Hitung(ctx context.Context, aktorID string, p ParameterSimul
 	if err != nil {
 		return nil, fmt.Errorf("encode hasil: %w", err)
 	}
-	err = uc.repo.SimpanSkenario(ctx, &domain.SkenarioSimulasi{
-		ID: hasil.ID, KomoditasKode: p.KomoditasKode, KabupatenKode: p.KabupatenKode, HorizonHari: p.HorizonHari,
+	skenario := &domain.SkenarioSimulasi{
+		KomoditasKode: p.KomoditasKode, KabupatenKode: p.KabupatenKode, HorizonHari: p.HorizonHari,
 		Parameter: string(parameter), Hasil: string(rincian), DibuatOleh: aktorID, DibuatPada: hasil.DibuatPada,
-	})
-	if err != nil {
+	}
+	if err := uc.repo.SimpanSkenario(ctx, skenario); err != nil {
 		return nil, err
 	}
+	hasil.ID = skenario.ID // ID BIGINT diberikan basis data
 
 	if err := uc.audit.Write(ctx, audit.Entry{
-		AktorID: aktorID, Aksi: "SIMULASI_SKENARIO", Entitas: "skenario_simulasi", EntitasID: hasil.ID, Hasil: audit.HasilBerhasil,
+		AktorID: aktorID, Aksi: "SIMULASI_SKENARIO", Entitas: "skenario_simulasi", EntitasID: hasil.ID.String(), Hasil: audit.HasilBerhasil,
 		Sesudah:  map[string]any{"hasil_pct": hasil.HasilPct, "dasar_pct": hasil.DasarPct},
 		Metadata: map[string]any{"komoditas": p.KomoditasKode, "kabupaten": p.KabupatenKode, "horizon_hari": p.HorizonHari},
 	}); err != nil {
-		uc.log.Warn("prediksi: gagal mencatat audit", map[string]interface{}{"aksi": "SIMULASI_SKENARIO", "id": hasil.ID, "error": err.Error()})
+		uc.log.Warn("prediksi: gagal mencatat audit", map[string]interface{}{"aksi": "SIMULASI_SKENARIO", "id": hasil.ID.String(), "error": err.Error()})
 	}
 	return hasil, nil
 }

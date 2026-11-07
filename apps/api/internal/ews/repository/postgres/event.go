@@ -24,10 +24,11 @@ func (r *Repository) EventsAfter(ctx context.Context, after int64, limit int) ([
 		domain.Alert
 	}
 	err := r.db.WithContext(ctx).Table("ews_event AS e").
-		Select("e.id AS event_id, a.*, k.nama AS komoditas_nama, w.nama AS kabupaten_nama").
+		Select("e.id AS event_id, "+kolomAlert).
 		Joins("JOIN ews_alert a ON a.id = e.alert_id").
 		Joins("LEFT JOIN komoditas k ON k.kode = a.komoditas_kode").
 		Joins("JOIN kabupaten w ON w.kode = a.kabupaten_kode").
+		Joins("LEFT JOIN aturan_ews t ON t.id = a.aturan_id").
 		Where("e.id > ?", after).
 		Order("e.id").Limit(limit).
 		Scan(&rows).Error

@@ -13,7 +13,8 @@ import { PulseRing } from "@/components/motion/pulse-ring";
 import { exportCsv } from "@/lib/csv";
 import type { EwsAlert, StatusEws } from "@/lib/data/types";
 import { severityMeta, toneClass, type Severity } from "@/lib/design/tokens";
-import { satuanAmbang } from "@/lib/api/ews";
+import { cocokRujukanAlert, satuanAmbang } from "@/lib/api/ews";
+import { labelKode } from "@/lib/kode";
 import { formatAngka, formatRelatif } from "@/lib/format";
 import { SpringButton } from "@/components/garda/spring-button";
 import { useCan } from "@/lib/auth/session-context";
@@ -104,7 +105,7 @@ export function EwsPage() {
       cell: ({ row: { original: a } }) => (
         <div className="flex max-w-md items-start gap-2.5">
           <JenisIcon jenis={a.jenis} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0"><p className={cn("font-medium", a.id === sorot && "text-data-700 dark:text-data-300")}>{a.judul}</p><p className="truncate text-xs text-muted-foreground">{a.pesan}</p></div>
+          <div className="min-w-0"><p className={cn("font-medium", cocokRujukanAlert(a, sorot) && "text-data-700 dark:text-data-300")}>{a.judul}</p><p className="truncate text-xs text-muted-foreground">{a.pesan}</p></div>
         </div>
       ),
     },
@@ -124,7 +125,7 @@ export function EwsPage() {
     { id: "akui", label: "Akui", icon: Check, perm: "ews.akui", tone: "data", enabled: (r) => r.every((x) => x.status === "BARU"), run: (r) => mut.mutateAsync({ aksi: "akui", ids: ids(r), label: "Alert diakui" }) },
     { id: "eskalasi", label: "Eskalasi", icon: ChevronsUp, perm: "ews.eskalasi", run: (r) => mut.mutateAsync({ aksi: "eskalasi", ids: ids(r), label: "Alert dieskalasi ke Dewan Pengarah" }) },
     { id: "selesai", label: "Tandai selesai", icon: CircleCheckBig, perm: "ews.akui", confirm: { title: "Tutup alert terpilih?", description: (n) => `${n} alert ditandai selesai dan keluar dari feed peringatan aktif.`, actionLabel: "Tandai selesai" }, run: (r) => mut.mutateAsync({ aksi: "selesai", ids: ids(r), label: "Alert diselesaikan" }) },
-    { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "ID", value: (x) => x.id }, { header: "Tingkat", value: (x) => x.severity }, { header: "Judul", value: (x) => x.judul }, { header: "Wilayah", value: (x) => x.wilayah }, { header: "Nilai", value: (x) => x.nilai }, { header: "Waktu", value: (x) => x.waktu }, { header: "Status", value: (x) => x.status }], "ews") },
+    { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "ID", value: (x) => labelKode(x) }, { header: "Tingkat", value: (x) => x.severity }, { header: "Judul", value: (x) => x.judul }, { header: "Wilayah", value: (x) => x.wilayah }, { header: "Nilai", value: (x) => x.nilai }, { header: "Waktu", value: (x) => x.waktu }, { header: "Status", value: (x) => x.status }], "ews") },
   ];
 
   return (
@@ -148,7 +149,7 @@ export function EwsPage() {
             initialFilters={sev ? [{ id: "severity", value: sev }] : []}
             initialSorting={[{ id: "skorDampak", desc: true }]}
             searchPlaceholder="Cari peringatan atau wilayah"
-            rowTone={(a) => (a.id === sorot ? "data" : undefined)}
+            rowTone={(a) => (cocokRujukanAlert(a, sorot) ? "data" : undefined)}
             onRowClick={(a) => setDetailId(a.id)}
           />
         </div>

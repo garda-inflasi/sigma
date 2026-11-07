@@ -28,6 +28,7 @@ Keputusan arsitektur yang masih terbuka:
 - [ ] Hasilkan tipe TypeScript klien dari OpenAPI (ganti tipe manual di `lib/data/types.ts` yang mudah menyimpang).
 - [ ] Tes kontrak di CI: respons backend cocok dengan skema.
 - [ ] Konvensi: format error, paginasi (page/limit vs cursor), envelope respons `{ code, message, data }`, dan `Idempotency-Key` untuk semua POST yang mengubah data.
+- [x] **Konvensi ID (7 Nov 2026, [SKEMA-DATABASE.md §4–5](../SKEMA-DATABASE.md)):** rute `/v1/<sumber>/:id` dengan `:id` UUID atau BIGINT (string desimal di JSON; skema OpenAPI `IdUuid`, `IdBigint`, `KodeTampilan`). Kode lama diterima sebagai alias. ID salah bentuk dijawab 404, hapus yang masih dirujuk dijawab 409. Handler memakai helper `apps/api/pkg/idx` (`ParamID`, `ParamUUID`, `ParamIDAtauKode`, `ParamUUIDAtauKode`); UI menampilkan `kode ?? id`.
 
 ## C. Data dan infrastruktur
 

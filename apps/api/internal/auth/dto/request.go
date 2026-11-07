@@ -27,8 +27,10 @@ type ResetPasswordRequest struct {
 
 // ── User Requests ─────────────────────────────────────────────────────
 
+// CreateUserRequest membuat akun dengan kata sandi awal. ID opsional: kosong berarti server membuat UUID acak; bila
+// diisi harus UUID yang sah (dipakai impor dari sistem lain yang sudah punya UUID).
 type CreateUserRequest struct {
-	ID       string `json:"id" binding:"required"`
+	ID       string `json:"id"`
 	Nama     string `json:"nama" binding:"required"`
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`

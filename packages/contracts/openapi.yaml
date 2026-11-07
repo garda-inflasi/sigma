@@ -933,7 +933,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
         "400":
-          description: Validasi gagal
+          description: Validasi gagal, termasuk `id` yang bukan UUID
           content:
             application/json:
               schema:
@@ -951,7 +951,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Email sudah terdaftar
+          description: Email atau `id` sudah terdaftar
           content:
             application/json:
               schema:
@@ -971,7 +971,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Detail pengguna
@@ -992,7 +993,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1022,7 +1023,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1055,7 +1057,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1086,7 +1088,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Pengguna dihapus
@@ -1113,13 +1116,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Pengguna masih dirujuk data lain, atau menghapus pemegang terakhir `pengguna.kelola` (`LAST_PERMISSION_HOLDER`)
+          description: |
+            Pengguna masih tercatat sebagai pelaku data yang tidak boleh kehilangan asalnya (penginput, validator,
+            atau penerbit entri harga; petugas atau pembuat tugas; pembuat kartu intervensi; penyusun brief;
+            pemromosi model; pembuat skenario; pengaju perubahan master). Nonaktifkan akun sebagai gantinya
+            (`PATCH /v1/users/{id}` dengan `status: NONAKTIF`). Juga dijawab 409 bila menghapus pemegang terakhir
+            `pengguna.kelola` (`LAST_PERMISSION_HOLDER`). Sesi, token, kode MFA, izin langsung, undangan, dan
+            preferensi notifikasi ikut terhapus; jejak audit dan log eksekusi dilepas dari akun (aktor menjadi kosong).
           content:
             application/json:
               schema:
@@ -1143,7 +1152,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1176,7 +1186,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1207,7 +1217,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1240,7 +1251,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1271,7 +1282,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Kunci dibuka (atau akun memang tidak terkunci)
@@ -1292,7 +1304,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1326,7 +1338,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: MFA direset (atau pengguna memang tanpa MFA)
@@ -1353,7 +1366,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1382,7 +1395,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
         - name: limit
           in: query
           schema:
@@ -1417,7 +1431,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1440,7 +1454,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Jumlah sesi yang dicabut
@@ -1461,7 +1476,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -1617,7 +1632,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Ringkasan izin pengguna
@@ -1663,7 +1679,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       requestBody:
         required: true
         content:
@@ -1725,7 +1742,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
         - name: izin
           in: path
           required: true
@@ -1752,7 +1770,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: "Tidak ada izin langsung itu (`DIRECT_PERMISSION_NOT_FOUND`)"
+          description: "Tidak ada izin langsung itu (`DIRECT_PERMISSION_NOT_FOUND`), atau `id` pengguna bukan UUID"
           content:
             application/json:
               schema:
@@ -1814,7 +1832,7 @@ paths:
       description: |
         Memerlukan izin `pengguna.kelola`. Membuat akun berstatus `MENUNGGU` tanpa kata sandi beserta satu undangan
         (token acak 256-bit, hanya hash-nya disimpan, berlaku 72 jam) dalam satu transaksi, lalu mengirim email
-        berisi tautan `/aktivasi?token=...`. `id` dibuat server (`USR-` + 16 heksadesimal). Email dirapikan ke huruf
+        berisi tautan `/aktivasi?token=...`. `id` dibuat server (UUID acak). Email dirapikan ke huruf
         kecil dan unik tanpa peduli huruf besar-kecil. Akun yang menunggu berperilaku seperti email tak terdaftar di
         login dan lupa kata sandi (tidak ada celah enumerasi). Kegagalan mengirim email (SMTP tidak dikonfigurasi,
         menolak, atau tidak menjawab dalam 10 detik) tidak membatalkan akun: `email_terkirim` bernilai `false` dan
@@ -1881,7 +1899,8 @@ paths:
           required: true
           schema:
             type: string
-          description: ID pengguna
+            format: uuid
+          description: ID pengguna (UUID kanonik). ID yang bukan UUID dijawab 404 tanpa menyentuh basis data
       responses:
         "200":
           description: Undangan baru dibuat (periksa `email_terkirim`)
@@ -1902,7 +1921,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Pengguna tidak ditemukan
+          description: Pengguna tidak ditemukan, atau `id` bukan UUID
           content:
             application/json:
               schema:
@@ -2012,8 +2031,8 @@ paths:
           in: query
           schema:
             type: string
-          description: Id pengguna dipisah koma (maksimal 500)
-          example: USR-0001,USR-0002
+          description: ID pengguna (UUID) dipisah koma (maksimal 500). Entri yang bukan UUID diabaikan; bila tidak ada yang tersisa, 400.
+          example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11,0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34
       responses:
         "200":
           description: Berkas CSV
@@ -2322,6 +2341,11 @@ paths:
         Alasan wajib untuk tolak (3 sampai 1000 karakter) dan tampil bagi petugas pencatat. Setiap
         perpindahan tercatat di riwayat status dan audit trail.
 
+        `ids` adalah daftar ID BIGINT entri sebagai string angka (spasi dirapikan, ganda dibuang). Satu ID yang
+        bentuknya salah, termasuk kode lama seperti `HRG-D00-00-01-K` (kode lama hanya berlaku sebagai alias
+        di path `GET /v1/harga/{id}`), menolak seluruh permintaan dengan 400 dan tidak mengubah apa pun. ID
+        bentuk sah yang tidak ada dilaporkan `tidak_ditemukan` di `rincian`.
+
         | Aksi | Dari status | Ke status |
         | --- | --- | --- |
         | ajukan | DRAF | DIAJUKAN |
@@ -2348,7 +2372,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkHargaResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Validasi gagal, aksi tidak valid, atau ada `ids` yang bukan ID BIGINT
           content:
             application/json:
               schema:
@@ -2381,8 +2405,16 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            ID BIGINT entri (string angka, mis. `1024`) atau kode lama sebagai alias tautan lama (mis.
+            `HRG-D00-00-01-K`). Teks kosong, lebih dari 64 karakter, atau yang bukan ID sah dan bukan kode
+            yang ada dijawab 404 tanpa menyentuh data lain.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
+                description: Kode lama (`kode`)
       responses:
         "200":
           description: Riwayat status
@@ -2421,9 +2453,16 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            ID BIGINT entri (string angka, mis. `1024`) atau kode lama sebagai alias tautan lama (mis.
+            `HRG-D00-00-01-K`, atau UUID untuk entri buatan aplikasi lama). Teks kosong, lebih dari 64
+            karakter, atau yang bukan ID sah dan bukan kode yang ada dijawab 404.
           schema:
-            type: string
-          description: ID entri harga
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
+                description: Kode lama (`kode`)
       responses:
         "200":
           description: Detail entri harga
@@ -2438,7 +2477,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Entri harga tidak ditemukan
+          description: Entri harga tidak ditemukan, atau `id` bukan ID BIGINT maupun kode yang ada
           content:
             application/json:
               schema:
@@ -2447,7 +2486,9 @@ paths:
   /v1/ews:
     get:
       summary: Mendaftar alert EWS (terbaru dahulu)
-      description: Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server.
+      description: |
+        Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server. Setiap alert membawa `id`
+        (BIGINT, string desimal) dan `kode` tampilan (`EWS-…`, mis. `EWS-0901`); UI menampilkan `kode`.
       operationId: listEwsAlerts
       tags:
         - Early Warning System
@@ -2540,9 +2581,11 @@ paths:
         Memerlukan izin `ews.lihat`. Autentikasi lewat header `Authorization: Bearer` atau cookie
         `garda_access` (EventSource browser). Koneksi tetap terbuka (`Content-Type: text/event-stream`);
         server mengirim `retry: 5000`, komentar `: ping` tiap 25 detik, dan event `alert` setiap
-        alert dibuat atau naik tingkat oleh rule engine. `id` event berurut; klien yang menyambung
-        ulang mengirim `Last-Event-ID` (otomatis oleh EventSource) dan hanya menerima peristiwa
-        setelahnya, tanpa duplikat. Tanpa `Last-Event-ID` aliran dimulai dari sekarang.
+        alert dibuat atau naik tingkat oleh rule engine. `id` frame adalah nomor event berurut
+        (`ews_event.id`, bukan ID alert); klien yang menyambung ulang mengirim `Last-Event-ID`
+        (otomatis oleh EventSource) dan hanya menerima peristiwa setelahnya, tanpa duplikat. Tanpa
+        `Last-Event-ID` aliran dimulai dari sekarang. `data` memuat alert bentuk `EwsAlert`: `id` adalah
+        ID alert (string desimal) dan `kode` kode tampilannya.
         Antar-instance disinkronkan lewat Redis pub/sub bila `REDIS_URL` tersedia, dengan polling
         basis data sebagai cadangan. Proxy tidak boleh mem-buffer respons ini.
       operationId: streamEwsAlerts
@@ -2561,7 +2604,7 @@ paths:
         "200":
           description: |
             Aliran SSE. Contoh frame:
-            `id: 42` / `event: alert` / `data: {"id":"EWS-2000","severity":"KRITIS", ...}` (bentuk `EwsAlert`).
+            `id: 42` / `event: alert` / `data: {"id":"2047","kode":"EWS-2000","severity":"KRITIS", ...}` (bentuk `EwsAlert`).
           content:
             text/event-stream:
               schema:
@@ -2722,8 +2765,10 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          description: ID aturan, mis. ATR-LH-CBM-KRT
+            $ref: "#/components/schemas/IdBigint"
+          description: |
+            ID aturan: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama `ATR-…` (mis. ATR-LH-CBM-KRT,
+            maks 64 karakter) sebagai alias. ID yang salah bentuk atau tidak ada dijawab 404.
       requestBody:
         required: true
         content:
@@ -2750,7 +2795,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Aturan tidak ditemukan
+          description: Aturan tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -2802,7 +2847,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            $ref: "#/components/schemas/IdBigint"
+          description: |
+            ID alert: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama/tampilan `EWS-…` (maks 64 karakter)
+            sebagai alias, sehingga tautan lama di notifikasi dan email tetap berlaku. ID yang salah bentuk atau
+            tidak ada dijawab 404.
       responses:
         "200":
           description: Riwayat alert
@@ -2817,7 +2866,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Alert tidak ditemukan
+          description: Alert tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -2837,8 +2886,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          description: ID alert, mis. EWS-1000
+            $ref: "#/components/schemas/IdBigint"
+          description: |
+            ID alert: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama/tampilan `EWS-…` (maks 64 karakter)
+            sebagai alias, sehingga tautan lama di notifikasi dan email tetap berlaku. ID yang salah bentuk atau
+            tidak ada dijawab 404.
       responses:
         "200":
           description: Detail alert
@@ -2847,7 +2899,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/EwsAlertResponse"
         "404":
-          description: Alert tidak ditemukan
+          description: Alert tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -2860,7 +2912,9 @@ paths:
         `akui` dan `selesai` memerlukan izin `ews.akui`; `eskalasi` memerlukan `ews.eskalasi`.
         Hanya transisi sah yang berlaku (BARU -> DIAKUI, BARU/DIAKUI -> DIESKALASI,
         selain SELESAI -> SELESAI); id yang tidak ada atau tak boleh bertransisi dihitung `gagal`.
-        Aksi yang mengubah data dicatat di audit trail.
+        `ids` berisi ID alert (`IdBigint`: string desimal atau angka JSON); entri yang bukan bilangan bulat
+        positif (termasuk kode `EWS-…`) menggagalkan seluruh permintaan dengan 400. Aksi yang mengubah data
+        dicatat di audit trail.
       operationId: bulkEwsAlerts
       tags:
         - Early Warning System
@@ -2880,7 +2934,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/EwsBulkResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Validasi gagal, aksi tidak valid, atau ada ID yang bukan bilangan bulat positif
           content:
             application/json:
               schema:
@@ -2895,7 +2949,9 @@ paths:
   /v1/intervensi:
     get:
       summary: Mendaftar kartu intervensi (papan kanban)
-      description: Memerlukan izin `intervensi.lihat`. Terurut per siklus, tahap, lalu urutan.
+      description: |
+        Memerlukan izin `intervensi.lihat`. Terurut per siklus, tahap, lalu urutan. Setiap kartu membawa `id` (UUID)
+        dan `kode` tampilan (`INT-…`); UI menampilkan `kode`.
       operationId: listIntervensi
       tags:
         - Intervensi
@@ -2941,7 +2997,9 @@ paths:
       summary: Membuat kartu intervensi
       description: |
         Memerlukan izin `intervensi.kelola`. Kartu masuk ke tahap pertama siklusnya di urutan
-        paling bawah. Aksi dicatat di audit trail.
+        paling bawah. ID kartu (UUID) dibuat basis data; `kode` tampilan `INT-n` dari sequence `intervensi_kode_seq`.
+        `ews_alert_id` (opsional) adalah ID alert pemicu (`IdBigint`); bentuk salah dijawab 400. Aksi dicatat di
+        audit trail.
       operationId: createIntervensi
       tags:
         - Intervensi
@@ -2961,7 +3019,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateIntervensiResponse"
         "400":
-          description: Validasi gagal, atau komoditas/kabupaten/alert/penanggung jawab tidak ditemukan
+          description: |
+            Validasi gagal (termasuk `ews_alert_id` yang bukan ID BIGINT dan penanggung jawab yang bukan UUID), atau
+            komoditas/kabupaten/alert/penanggung jawab dengan format sah tetapi tidak ditemukan
           content:
             application/json:
               schema:
@@ -3017,8 +3077,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          example: INT-301
+            $ref: "#/components/schemas/IdUuid"
+          description: |
+            ID kartu: UUID kanonik (`IdUuid`) atau kode lama/tampilan `INT-…` (maks 64 karakter) sebagai alias, sehingga URL
+            lama seperti `/v1/intervensi/INT-301/riwayat` tetap berlaku. ID yang salah bentuk atau tidak ada dijawab 404.
+          example: 7c45ad90-863d-3572-a70e-aeee5dcb9131
       requestBody:
         required: true
         content:
@@ -3045,7 +3108,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Kartu tidak ditemukan
+          description: Kartu tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3139,7 +3202,8 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/IdBigint"
+          description: ID permintaan persetujuan (`IntervensiPersetujuan.id`). Yang salah bentuk dijawab 404, sama dengan yang tidak ada.
       requestBody:
         required: true
         content:
@@ -3166,7 +3230,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Permintaan tidak ditemukan
+          description: Permintaan tidak ditemukan (juga untuk `pid` yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3196,8 +3260,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          example: INT-301
+            $ref: "#/components/schemas/IdUuid"
+          description: |
+            ID kartu: UUID kanonik (`IdUuid`) atau kode lama/tampilan `INT-…` (maks 64 karakter) sebagai alias, sehingga URL
+            lama seperti `/v1/intervensi/INT-301/riwayat` tetap berlaku. ID yang salah bentuk atau tidak ada dijawab 404.
+          example: 7c45ad90-863d-3572-a70e-aeee5dcb9131
       requestBody:
         required: true
         content:
@@ -3224,7 +3291,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Kartu tidak ditemukan
+          description: Kartu tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3243,6 +3310,8 @@ paths:
         Memerlukan izin `intervensi.kelola`. `tugaskan` menambahkan pemanggil sebagai penanggung jawab;
         `eskalasi` menandai kartu dieskalasi ke Dewan Pengarah, menaikkan prioritasnya ke TINGGI, dan membuka
         permintaan telaah di antrean persetujuan (alur `eskalasi`).
+        `ids` berisi ID kartu (UUID kanonik, `IdUuid`); entri yang bukan UUID sah (termasuk kode `INT-…`)
+        menggagalkan seluruh permintaan dengan 400.
         Hasil dikembalikan per kartu (urut sesuai `ids`, id ganda dibuang); kartu yang tidak ada, sudah
         selesai, sudah ditugaskan, atau sudah dieskalasi dilewati tanpa menggagalkan kartu lain. Kartu yang
         berubah naik versi, tercatat di riwayat kartu, dan aksinya di audit trail.
@@ -3265,7 +3334,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkIntervensiResponse"
         "400":
-          description: Aksi atau daftar id tidak valid
+          description: Aksi tidak valid, atau ada ID yang bukan UUID sah
           content:
             application/json:
               schema:
@@ -3291,8 +3360,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          example: INT-301
+            $ref: "#/components/schemas/IdUuid"
+          description: |
+            ID kartu: UUID kanonik (`IdUuid`) atau kode lama/tampilan `INT-…` (maks 64 karakter) sebagai alias, sehingga URL
+            lama seperti `/v1/intervensi/INT-301/riwayat` tetap berlaku. ID yang salah bentuk atau tidak ada dijawab 404.
+          example: 7c45ad90-863d-3572-a70e-aeee5dcb9131
       responses:
         "200":
           description: Riwayat kartu
@@ -3307,7 +3379,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Kartu tidak ditemukan
+          description: Kartu tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3330,7 +3402,7 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: Daftar sumber, terurut menurut id
+          description: Daftar sumber, terurut menurut kode
           content:
             application/json:
               schema:
@@ -3354,8 +3426,15 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            UUID sumber, atau kodenya (mis. `SRC-BPS`, ID lama sebelum standardisasi kunci primer) sebagai alias,
+            sehingga tautan lama tetap berlaku. Teks yang bukan UUID dibaca sebagai kode; kode yang tidak ada atau
+            lebih panjang dari 64 karakter dijawab 404.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - type: string
+                maxLength: 64
           example: SRC-BPS
       responses:
         "200":
@@ -3425,8 +3504,15 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            UUID sumber, atau kodenya (mis. `SRC-BI`, ID lama sebelum standardisasi kunci primer) sebagai alias,
+            sehingga tautan lama tetap berlaku. Teks yang bukan UUID dibaca sebagai kode; kode yang tidak ada atau
+            lebih panjang dari 64 karakter dijawab 404.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - type: string
+                maxLength: 64
           example: SRC-BI
         - name: limit
           in: query
@@ -3469,8 +3555,15 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            UUID sumber, atau kodenya (mis. `SRC-BI`, ID lama sebelum standardisasi kunci primer) sebagai alias,
+            sehingga tautan lama tetap berlaku. Teks yang bukan UUID dibaca sebagai kode; kode yang tidak ada atau
+            lebih panjang dari 64 karakter dijawab 404.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - type: string
+                maxLength: 64
           example: SRC-BI
         - name: limit
           in: query
@@ -3517,8 +3610,15 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            UUID sumber, atau kodenya (mis. `SRC-BI`, ID lama sebelum standardisasi kunci primer) sebagai alias,
+            sehingga tautan lama tetap berlaku. Teks yang bukan UUID dibaca sebagai kode; kode yang tidak ada atau
+            lebih panjang dari 64 karakter dijawab 404.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - type: string
+                maxLength: 64
           example: SRC-BI
       responses:
         "202":
@@ -3561,7 +3661,7 @@ paths:
         manual. `jeda` hanya berlaku untuk sumber yang belum dijeda;
         `lanjutkan` hanya untuk yang sedang dijeda dan mengembalikannya ke
         `TERTUNDA` (pernah berjalan) atau `BELUM_AKTIF` (belum pernah).
-        Respons memuat `berhasil` dan `gagal` (id yang tidak berubah).
+        Respons memuat `berhasil` dan `gagal` (sumber yang diminta tetapi tidak berubah, termasuk yang tidak ada).
       operationId: bulkSumberData
       tags:
         - Sumber Data
@@ -3930,6 +4030,10 @@ paths:
         dari target) dan belum selesai; petugas hanya dapat menutup tugasnya sendiri, pemegang
         `tugas.kelola` dapat menutup tugas petugas lain. Tercatat di audit trail bila ada yang berubah.
         `unduh_data_acuan` tidak mengubah data: `berhasil` menghitung tugas yang boleh diunduh pemanggil.
+
+        `ids` berisi ID BIGINT tugas (string angka) atau kode lama `TGS-...`, supaya klien yang masih
+        memegang ID lama (daftar tugas yang di-cache sebelum migrasi) tetap dilayani. `berhasil` dan `gagal`
+        dihitung per rujukan. Rujukan lebih dari 64 karakter, atau daftar tanpa rujukan, dijawab 400.
       operationId: bulkTugasLapangan
       tags:
         - Lapangan
@@ -3949,7 +4053,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkTugasResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Validasi gagal, aksi tidak valid, atau rujukan di `ids` lebih dari 64 karakter
           content:
             application/json:
               schema:
@@ -3977,8 +4081,16 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            ID BIGINT tugas (string angka, mis. `42`) atau kode lama sebagai alias tautan dan antrean lama (mis.
+            `TGS-mahasiswa_1-1`). Teks kosong, lebih dari 64 karakter, atau yang bukan ID sah dan bukan kode yang
+            ada dijawab 404.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
+                description: Kode lama (`kode`)
       responses:
         "200":
           description: Detail tugas
@@ -3993,7 +4105,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Tugas tidak ditemukan
+          description: Tugas tidak ditemukan, bukan milik pemanggil, atau `id` bukan ID BIGINT maupun kode yang ada
           content:
             application/json:
               schema:
@@ -4176,7 +4288,8 @@ paths:
       summary: Daftar jejak audit (terbaru lebih dulu)
       description: |
         Filter dijalankan di server dan hasilnya dipaginasi dengan cursor. Butuh izin `audit.lihat`.
-        Tabel `audit_log` bersifat append-only.
+        Tabel `audit_log` bersifat append-only. Urutan: waktu menurun, lalu ID (BIGINT, numerik) menurun. Cursor memuat
+        waktu dan ID baris terakhir; cursor yang bukan hasil halaman sebelumnya (termasuk cursor lama berisi UUID) dijawab 400.
       operationId: auditList
       tags:
         - Audit
@@ -4375,8 +4488,15 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            ID BIGINT entri (string desimal), atau kode (ID lama baris yang dibuat sebelum migrasi 000115, UUID teks atau
+            `demo-audit-NNNN`) sebagai alias. Angka murni selalu dibaca sebagai ID. ID yang salah bentuk (nol, negatif, berawalan
+            nol) atau kode lebih panjang dari 64 karakter dijawab 404, sama dengan ID yang tidak ada.
           schema:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
       responses:
         "200":
           description: Entri audit
@@ -4594,7 +4714,7 @@ paths:
         `stok` mengikuti filter, urutan, dan halaman. `meta.volume_hasil_ton`
         menjumlahkan seluruh hasil filter. `ringkasan` mencakup seluruh stok dan
         **tidak** terpengaruh filter. Urutan bawaan adalah sisa masa simpan
-        tersingkat lebih dulu; id lot menjadi pemutus seri agar urutan antar-halaman stabil.
+        tersingkat lebih dulu; id lot (BIGINT, diurutkan secara numerik) menjadi pemutus seri agar urutan antar-halaman stabil.
 
         Memerlukan izin `coldstorage.lihat`.
       operationId: getColdStorage
@@ -4607,8 +4727,10 @@ paths:
           in: query
           schema:
             type: string
-            maxLength: 255
-          description: Hanya stok pada fasilitas ini
+            maxLength: 64
+          description: >-
+            Hanya stok pada fasilitas ini: UUID fasilitas atau kodenya (alias, mis. `CS-03`). Fasilitas yang
+            tidak ada menghasilkan daftar kosong (bukan galat).
           example: CS-03
         - name: q
           in: query
@@ -4688,6 +4810,9 @@ paths:
         (transaksi KELUAR per lot). Semua tercatat di audit trail (`BULK_<aksi>`). Lot yang tidak
         ditemukan atau sudah habis dihitung pada `gagal`; `rincian` memuat hasil per lot.
 
+        `ids` adalah ID BIGINT lot (string desimal atau angka JSON); ID yang bukan bilangan bulat positif
+        (mis. kode lama `STK-…` atau UUID) ditolak dengan 400.
+
         Izin yang diperlukan bergantung pada aksi:
 
         | Aksi | Izin |
@@ -4746,8 +4871,12 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            UUID fasilitas, atau kodenya sebagai alias (mis. `CS-01`, tautan lama tetap berlaku). Teks yang
+            bukan UUID dan lebih panjang dari 64 karakter, serta fasilitas yang tidak ada, dijawab 404.
           schema:
             type: string
+            maxLength: 64
           example: CS-01
         - name: jam
           in: query
@@ -4803,8 +4932,11 @@ paths:
         - name: id
           in: path
           required: true
+          description: UUID fasilitas, atau kodenya sebagai alias (mis. `CS-01`). Selain itu 404.
           schema:
             type: string
+            maxLength: 64
+          example: CS-01
       requestBody:
         required: true
         content:
@@ -4917,6 +5049,11 @@ paths:
         seluruh atau sebagian lot ke fasilitas tujuan OPERASIONAL yang muat (sebagian membentuk lot baru).
         Izin: `coldstorage.kelola`; `PINDAH` juga boleh oleh `logistik.kelola`. Tercatat di audit trail
         (`TRANSAKSI_STOK_<JENIS>`, dengan keadaan lot sebelum/sesudah).
+
+        ID transaksi dan lot dibuat basis data (BIGINT identity), bukan aplikasi. `lot_id` (wajib untuk
+        `KELUAR` dan `PINDAH`) adalah ID BIGINT lot sebagai string desimal atau angka JSON; ID yang salah
+        bentuk (kode lama `STK-…`, UUID, nol, negatif, pecahan) ditolak dengan 400, dan lot yang tidak ada 404.
+        `fasilitas_id` dan `fasilitas_tujuan_id` menerima UUID fasilitas maupun kodenya (alias).
       operationId: createColdStorageTransaksi
       tags:
         - Cold Storage
@@ -5108,7 +5245,11 @@ paths:
         Simulasi memerlukan `spasial.lihat`. `simpan = true` memerlukan `logistik.kelola`: rencana
         ditulis ke `optimasi_rute`, rute menjadi usulan di `/v1/spasial/rute` (sumber `OPTIMASI`),
         rencana lama untuk komoditas dan periode yang sama ditandai `DIGANTIKAN`, dan aksi tercatat
-        di audit trail (`OPTIMASI_RUTE`).
+        di audit trail (`OPTIMASI_RUTE`, `entitas_id` = ID BIGINT rencana).
+
+        ID rencana dan rute dibuat basis data (BIGINT identity), bukan aplikasi: `optimasi_id` adalah ID
+        itu sebagai string desimal dan `optimasi_kode` kode tampilannya (mis. `OPT-000042`). Menghapus
+        rencana menghapus rutenya (CASCADE).
       operationId: optimasiRute
       tags:
         - Spasial
@@ -5257,7 +5398,9 @@ paths:
   /v1/policy-brief:
     get:
       summary: Mendaftar policy brief
-      description: Seluruh brief, periode terbaru lebih dulu.
+      description: |
+        Seluruh brief, periode terbaru lebih dulu (urut menurut `kode` PB-YYYY-MM, bukan UUID). Setiap brief
+        punya `id` UUID dan `kode` PB-YYYY-MM yang unik: satu periode hanya punya satu brief.
       operationId: listPolicyBrief
       tags:
         - Policy Brief
@@ -5283,8 +5426,13 @@ paths:
       description: |
         Isi brief per bagian (ringkasan, temuan, risiko, rekomendasi untuk Pemda dan TPID) beserta
         lampiran sitasi sumber tiap angka, label draf yang wajib ditampilkan, dan jejak penyusunan
-        (model, versi prompt, dan hash prompt bila LLM dipakai). Dipakai klien untuk memantau brief
+        (model, versi prompt, dan hash prompt bila LLM dipakai), serta `riwayat_versi` (versi isi terbaru
+        dulu, dengan `id` versi BIGINT yang dirujuk telaah dan revisi). Dipakai klien untuk memantau brief
         berstatus `DIPROSES` sampai `DRAF` atau `GAGAL`.
+
+        `{id}` adalah UUID brief atau kodenya (`PB-YYYY-MM`, alias tautan lama seperti
+        `/v1/policy-brief/PB-2026-10`). UUID huruf besar dinormalkan. Rujukan yang tidak ada, bukan UUID
+        sah dan bukan kode, kosong, atau lebih dari 64 karakter dijawab 404 tanpa menyentuh basis data.
       operationId: getPolicyBrief
       tags:
         - Policy Brief
@@ -5294,9 +5442,12 @@ paths:
         - name: id
           in: path
           required: true
+          description: UUID brief atau kode `PB-YYYY-MM` (alias).
           schema:
-            type: string
-            example: PB-2026-11
+            oneOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - $ref: "#/components/schemas/PolicyBriefKode"
+          example: dfb2ba45-a711-317e-a45e-313f19d1ab43
       responses:
         "200":
           description: Brief lengkap
@@ -5311,7 +5462,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Brief tidak ditemukan
+          description: Brief tidak ditemukan, atau `{id}` bukan UUID sah maupun kode yang dikenal
           content:
             application/json:
               schema:
@@ -5332,9 +5483,12 @@ paths:
         narasi yang menulis angka sendiri atau memakai placeholder tak dikenal ditolak dan digantikan
         templat (alasannya dicatat). Hasil LLM berlabel "Draf AI — wajib ditelaah manusia".
 
-        Brief `GAGAL`, atau `DIPROSES` yang tidak berubah lebih dari 5 menit (proses mati), dapat disusun
-        ulang dengan permintaan yang sama. Aksi dicatat di audit trail (`GENERATE_BRIEF`,
-        `BRIEF_DRAF_SELESAI`, `BRIEF_DRAF_GAGAL`).
+        Satu periode hanya punya satu brief: `kode` (`PB-YYYY-MM`) unik dan menjadi kunci idempotensi,
+        sedangkan `id` UUID diberikan basis data. Brief `GAGAL`, atau `DIPROSES` yang tidak berubah lebih dari
+        5 menit (proses mati), dapat disusun ulang dengan permintaan yang sama (brief yang sama, job baru);
+        periode yang sudah punya brief lain dijawab 409. Permintaan bersamaan untuk periode yang sama
+        menghasilkan satu brief dan sisanya 409. Aksi dicatat di audit trail (`GENERATE_BRIEF`,
+        `BRIEF_DRAF_SELESAI`, `BRIEF_DRAF_GAGAL`) dengan `entitas_id` = UUID brief.
       operationId: generatePolicyBrief
       tags:
         - Policy Brief
@@ -5366,7 +5520,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Periode itu sudah punya brief (bukan GAGAL dan tidak basi)
+          description: Periode itu sudah punya brief (bukan GAGAL dan tidak basi); satu periode, satu brief
           content:
             application/json:
               schema:
@@ -5377,8 +5531,9 @@ paths:
       summary: Aksi massal pada policy brief
       description: |
         `telaah` memajukan DRAF menjadi TELAAH (izin `brief.susun`); `setujui` memajukan TELAAH
-        menjadi DISETUJUI (izin `brief.setujui`). Brief yang tidak ada atau bukan di status asal
-        dihitung gagal. Setiap perubahan dicatat di audit trail.
+        menjadi DISETUJUI (izin `brief.setujui`). Setiap elemen `ids` adalah UUID brief atau kodenya
+        (`PB-YYYY-MM`). Brief yang tidak ada atau bukan di status asal dihitung gagal. Setiap perubahan
+        dicatat di audit trail dengan `entitas_id` = UUID brief (juga bila rujukannya kode).
       operationId: bulkPolicyBrief
       tags:
         - Policy Brief
@@ -5398,7 +5553,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkResultResponse"
         "400":
-          description: Aksi tidak dikenal atau id kosong
+          description: Aksi tidak dikenal, `ids` kosong, atau ada elemen kosong atau lebih dari 64 karakter
           content:
             application/json:
               schema:
@@ -5625,7 +5780,10 @@ paths:
   /v1/prediksi/registri:
     get:
       summary: Registri model prediksi
-      description: Seluruh versi model (produksi, kandidat, arsip) beserta MAPE dan drift.
+      description: |
+        Seluruh versi model (produksi, kandidat, arsip) beserta MAPE dan drift. Setiap model punya `id` BIGINT
+        (string desimal) dan `kode` tampilan `MDL-<komoditas>-<versi>`; keduanya diterima sebagai rujukan model
+        di `POST /v1/prediksi/registri/bulk`.
       operationId: listModelPrediksi
       tags:
         - Prediksi
@@ -5653,8 +5811,10 @@ paths:
         model produksi komoditas yang sama dalam satu transaksi; `arsip` mengarsipkan KANDIDAT (model
         produksi tidak dapat diarsipkan langsung). Model yang tidak ada, berstatus tidak sesuai, belum
         punya proyeksi, atau (untuk model hasil pelatihan) MAPE backtest-nya lebih buruk dari baseline
-        naif dilewati dan dilaporkan di `detail`. Izin `model.kelola`; riwayat di `model_promosi`;
-        audit `PROMOSI_MODEL`/`ARSIP_MODEL`.
+        naif dilewati dan dilaporkan di `detail`. Setiap elemen `ids` adalah ID BIGINT model atau kodenya
+        (mis. `MDL-CBM-KRT-v2.3.1`, alias ID lama); rujukan yang tidak ada dilaporkan "model tidak ditemukan"
+        per model, bukan 404. Izin `model.kelola`; riwayat di `model_promosi`; audit
+        `PROMOSI_MODEL`/`ARSIP_MODEL` dengan `entitas_id` = ID BIGINT model.
       operationId: bulkModelPrediksi
       tags:
         - Prediksi
@@ -5674,7 +5834,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PrediksiBulkModelResponse"
         "400":
-          description: Aksi tidak dikenal atau id kosong
+          description: Aksi tidak dikenal, `ids` kosong, atau ada elemen kosong atau lebih dari 64 karakter
           content:
             application/json:
               schema:
@@ -5693,8 +5853,9 @@ paths:
         Dihitung di server dari proyeksi model PRODUKSI (bawaan Kota Banda Aceh, 14 hari) ditambah
         efek tiap parameter (koefisien x parameter). Koefisien saat ini berupa asumsi generik
         (`sumber: ASUMSI`) karena riwayat pasokan, cuaca, dan subsidi belum tersedia untuk diestimasi;
-        hasilnya diberi `terbatas: true` dan `catatan`. Skenario disimpan di `skenario_simulasi` dan
-        dicatat di audit (`SIMULASI_SKENARIO`). Field yang tidak diisi berarti netral.
+        hasilnya diberi `terbatas: true` dan `catatan`. Skenario disimpan di `skenario_simulasi` (ID BIGINT
+        dari basis data, dikembalikan di `id`) dan dicatat di audit (`SIMULASI_SKENARIO`, `entitas_id` = id).
+        Field yang tidak diisi berarti netral.
       operationId: simulasiPrediksi
       tags:
         - Prediksi
@@ -5960,6 +6121,27 @@ components:
         type: string
 
   schemas:
+    # ── Kunci primer (docs/SKEMA-DATABASE.md) ──────────────────────────
+    IdBigint:
+      type: string
+      pattern: "^[1-9][0-9]{0,18}$"
+      description: >-
+        ID BIGINT (identity) yang ditulis sebagai string desimal, agar nilai di atas 2^53 tetap utuh di
+        JavaScript. Server juga menerima angka JSON di body. Path parameter yang bukan ID sah dijawab 404.
+      example: "1024"
+    IdUuid:
+      type: string
+      format: uuid
+      description: ID UUID kanonik (huruf kecil). Path parameter yang bukan UUID sah dijawab 404.
+      example: "f2356c7b-bb80-3d01-84c3-ba32f27a2910"
+    KodeTampilan:
+      type: string
+      nullable: true
+      maxLength: 64
+      description: >-
+        Kode tampilan atau ID lama sebelum standardisasi kunci primer (mis. INT-1000, EWS-0901). Unik; rute
+        entitas yang punya kode juga menerimanya sebagai alias ID.
+      example: "INT-1000"
     # ── Response Envelope ──────────────────────────────────────────────
     Envelope:
       type: object
@@ -6209,7 +6391,8 @@ components:
           properties:
             id:
               type: string
-              example: test-user-001
+              format: uuid
+              example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11
             terkunci_sebelumnya:
               type: boolean
               description: True bila akun memang sedang terkunci ketika dibuka
@@ -6245,6 +6428,7 @@ components:
           format: date-time
         diperbarui_oleh:
           type: string
+          format: uuid
           nullable: true
           description: ID admin yang terakhir mengubah matriks peran
 
@@ -6335,6 +6519,7 @@ components:
           type: string
         diberikan_oleh:
           type: string
+          format: uuid
           nullable: true
         diberikan_oleh_nama:
           type: string
@@ -6435,7 +6620,8 @@ components:
           properties:
             id:
               type: string
-              example: test-user-mfa
+              format: uuid
+              example: 0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34
             mfa_aktif_sebelumnya:
               type: boolean
               description: False berarti pengguna memang tanpa MFA; tidak ada yang berubah dan sesinya tidak dicabut
@@ -6925,7 +7111,8 @@ components:
       properties:
         id:
           type: string
-          example: test-user-001
+          format: uuid
+          example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11
         nama:
           type: string
           example: Test User
@@ -7014,10 +7201,10 @@ components:
     CreateUserRequest:
       type: object
       description: |
-        Membuat akun dengan kata sandi sementara (jalur kedua; cara utama adalah `POST /v1/users/undang`). `id` dan
-        `password` wajib; akun wajib mengganti kata sandi saat masuk pertama.
+        Membuat akun dengan kata sandi sementara (jalur kedua; cara utama adalah `POST /v1/users/undang`). `password`
+        wajib; akun wajib mengganti kata sandi saat masuk pertama. `id` opsional: kosong berarti server membuat UUID
+        acak; bila dikirim harus UUID yang sah (selain itu 400) dan belum dipakai (selain itu 409).
       required:
-        - id
         - nama
         - email
         - password
@@ -7027,7 +7214,9 @@ components:
       properties:
         id:
           type: string
-          example: USR-0001
+          format: uuid
+          description: Opsional. UUID akun; kosong = dibuat server (gen_random_uuid). Dinormalkan ke huruf kecil.
+          example: 6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11
         nama:
           type: string
           example: John Doe
@@ -7151,9 +7340,11 @@ components:
         ids:
           type: array
           minItems: 1
+          description: ID pengguna (UUID). Satu saja yang bukan UUID membuat seluruh permintaan ditolak (400).
           items:
             type: string
-          example: ["user-001", "user-002"]
+            format: uuid
+          example: ["6f1c1a52-0a57-4b9a-8f0e-0d1f6f3c9a11", "0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34"]
 
     BulkSumberDataRequest:
       type: object
@@ -7168,8 +7359,12 @@ components:
           type: array
           minItems: 1
           maxItems: 100
+          description: UUID sumber atau kodenya (alias ID lama); entri ganda atau dua entri untuk sumber yang sama dihitung satu
           items:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - type: string
+                maxLength: 64
           example: ["SRC-BPS", "SRC-BI"]
 
     KpiNilai:
@@ -7436,7 +7631,13 @@ components:
       type: object
       properties:
         id:
+          $ref: "#/components/schemas/IdUuid"
+        kode:
           type: string
+          maxLength: 64
+          description: >-
+            Kode tampilan sumber (ID lama, mis. SRC-BPS). Unik dan tidak null; juga alias ID di rute
+            `/v1/sumber-data/{id}` dan kunci konfigurasi konektor ingestion.
           example: SRC-BPS
         nama:
           type: string
@@ -7481,11 +7682,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          $ref: "#/components/schemas/IdBigint"
         sumber_id:
-          type: string
-          example: SRC-BI
+          $ref: "#/components/schemas/IdUuid"
         pemicu:
           type: string
           enum: [JADWAL, MANUAL, CLI, DEMO]
@@ -7618,11 +7817,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
-          format: int64
+          $ref: "#/components/schemas/IdBigint"
         eksekusi_id:
-          type: integer
-          format: int64
+          $ref: "#/components/schemas/IdBigint"
         kunci_permintaan:
           type: string
           example: wilayah=101
@@ -7736,8 +7933,11 @@ components:
           type: array
           minItems: 1
           maxItems: 200
+          description: UUID brief atau kode `PB-YYYY-MM` (alias); tiap elemen 1 sampai 64 karakter.
           items:
             type: string
+            minLength: 1
+            maxLength: 64
           example: [PB-2026-10]
 
     BulkResultResponse:
@@ -7842,7 +8042,7 @@ components:
           type: object
           properties:
             id:
-              type: string
+              $ref: "#/components/schemas/IdBigint"
             status:
               type: string
               enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
@@ -7863,7 +8063,7 @@ components:
               type: object
               properties:
                 id:
-                  type: string
+                  $ref: "#/components/schemas/IdBigint"
                 harga:
                   type: integer
                 dicatat_pada:
@@ -7953,8 +8153,11 @@ components:
           type: array
           minItems: 1
           maxItems: 1000
+          description: >-
+            ID BIGINT entri sebagai string angka. ID yang bentuknya salah (mis. kode lama `HRG-...`) menolak
+            seluruh permintaan dengan 400.
           items:
-            type: string
+            $ref: "#/components/schemas/IdBigint"
         alasan:
           type: string
           maxLength: 1000
@@ -7984,7 +8187,7 @@ components:
                 type: object
                 properties:
                   id:
-                    type: string
+                    $ref: "#/components/schemas/IdBigint"
                   sebab:
                     type: string
                     enum: [tidak_ditemukan, status_tidak_sesuai, pemisahan_tugas, bukan_pemilik]
@@ -7993,7 +8196,14 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          allOf:
+            - $ref: "#/components/schemas/KodeTampilan"
+          description: >-
+            ID lama entri (mis. `HRG-D00-00-01-K`, atau UUID untuk entri buatan aplikasi lama); null untuk entri
+            baru. Teks untuk manusia memakai `kode` bila ada, selain itu `id`.
+          example: "HRG-D00-00-01-K"
         komoditas_kode:
           type: string
         komoditas_nama:
@@ -8020,6 +8230,7 @@ components:
           enum: [PREMIUM, MEDIUM, ASALAN]
         petugas_id:
           type: string
+          format: uuid
           nullable: true
         petugas_nama:
           type: string
@@ -8108,6 +8319,7 @@ components:
                 enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
               oleh:
                 type: string
+                format: uuid
                 nullable: true
               oleh_nama:
                 type: string
@@ -8149,6 +8361,7 @@ components:
                   nullable: true
                 divalidasi_oleh:
                   type: string
+                  format: uuid
                   nullable: true
                 divalidasi_pada:
                   type: string
@@ -8156,6 +8369,7 @@ components:
                   nullable: true
                 dipublikasi_oleh:
                   type: string
+                  format: uuid
                   nullable: true
                 dipublikasi_pada:
                   type: string
@@ -8165,6 +8379,7 @@ components:
                   $ref: "#/components/schemas/FlagValidasi"
                 ditolak_oleh:
                   type: string
+                  format: uuid
                   nullable: true
                 ditolak_pada:
                   type: string
@@ -8230,8 +8445,14 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: TGS-mahasiswa_1-1
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          allOf:
+            - $ref: "#/components/schemas/KodeTampilan"
+          description: >-
+            ID lama tugas (mis. `TGS-mahasiswa_1-1`); null untuk tugas yang dibuat sesudah migrasi 000111. Teks
+            untuk manusia memakai `kode` bila ada, selain itu `id`.
+          example: "TGS-mahasiswa_1-1"
         judul:
           type: string
         pasar_id:
@@ -8329,8 +8550,13 @@ components:
           type: array
           minItems: 1
           maxItems: 500
+          description: ID BIGINT tugas (string angka) atau kode lama `TGS-...` (maksimal 64 karakter)
           items:
-            type: string
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
+                description: Kode lama (`kode`)
 
     BulkTugasResponse:
       type: object
@@ -8602,15 +8828,20 @@ components:
           type: string
           format: date-time
         ews_alert_id:
-          type: string
           nullable: true
-          example: EWS-1000
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: >-
+            ID alert EWS pemicu (BIGINT; string desimal atau angka JSON). Bentuk selain bilangan bulat positif
+            (termasuk kode `EWS-…`) dijawab 400; ID sah yang tidak ada dijawab 400 "rujukan tidak ditemukan".
         penanggung_jawab_ids:
           type: array
           maxItems: 20
           items:
             type: string
-          example: [manajer_data]
+            format: uuid
+          description: ID pengguna (UUID). Yang bukan UUID dijawab 400.
+          example: ["0b6c0d3e-77a3-4f0f-9d2c-1c0a8f6a2b34"]
 
     CreateIntervensiResponse:
       type: object
@@ -8624,8 +8855,9 @@ components:
           type: object
           properties:
             id:
-              type: string
-              example: INT-1000
+              $ref: "#/components/schemas/IdUuid"
+            kode:
+              $ref: "#/components/schemas/KodeTampilan"
             tahap:
               type: string
               example: t-ews
@@ -8693,9 +8925,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
+          $ref: "#/components/schemas/IdBigint"
         intervensi_id:
-          type: string
+          $ref: "#/components/schemas/IdUuid"
         kartu_judul:
           type: string
         kartu_tahap:
@@ -8716,6 +8948,7 @@ components:
           example: intervensi.setujui
         diajukan_oleh_id:
           type: string
+          format: uuid
           nullable: true
           description: Kosong bila diajukan sistem (eskalasi SLA)
         diajukan_oleh_nama:
@@ -8747,6 +8980,7 @@ components:
                 enum: [SETUJU, TOLAK]
               oleh_id:
                 type: string
+                format: uuid
                 nullable: true
               oleh_nama:
                 type: string
@@ -8834,8 +9068,9 @@ components:
           minItems: 1
           maxItems: 100
           items:
-            type: string
-          example: [INT-301, INT-302]
+            $ref: "#/components/schemas/IdUuid"
+          description: ID kartu (UUID kanonik). Entri yang bukan UUID sah dijawab 400.
+          example: ["7c45ad90-863d-3572-a70e-aeee5dcb9131", "a9004fed-0c60-376c-874c-08e53c3b39bf"]
 
     BulkIntervensiResponse:
       type: object
@@ -8858,7 +9093,7 @@ components:
                 type: object
                 properties:
                   id:
-                    type: string
+                    $ref: "#/components/schemas/IdUuid"
                   berhasil:
                     type: boolean
                   alasan:
@@ -8879,7 +9114,7 @@ components:
             type: object
             properties:
               id:
-                type: integer
+                $ref: "#/components/schemas/IdBigint"
               aksi:
                 type: string
                 enum: [BUAT, PINDAH_TAHAP, TUGASKAN, ESKALASI, AJUKAN, SETUJU, TOLAK]
@@ -8891,6 +9126,7 @@ components:
                 nullable: true
               oleh_id:
                 type: string
+                format: uuid
                 nullable: true
               oleh_nama:
                 type: string
@@ -8912,8 +9148,9 @@ components:
           format: date-time
           nullable: true
         id:
-          type: string
-          example: INT-301
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         siklus:
           type: string
           enum: [NORMAL, TEKANAN, SURPLUS]
@@ -8946,8 +9183,12 @@ components:
             total:
               type: integer
         ews_alert_id:
-          type: string
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: ID alert EWS pemicu kartu (BIGINT); kosong untuk kartu tanpa alert
+        ews_alert_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         penanggung_jawab:
           type: array
           items:
@@ -8955,6 +9196,8 @@ components:
             properties:
               id:
                 type: string
+                format: uuid
+                description: ID pengguna (UUID)
               nama:
                 type: string
         dibuat_pada:
@@ -9020,8 +9263,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: EWS-1000
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         severity:
           type: string
           enum: [INFO, WASPADA, SIAGA, KRITIS]
@@ -9062,14 +9306,19 @@ components:
           format: date-time
         diakui_oleh_id:
           type: string
+          format: uuid
           nullable: true
         diakui_pada:
           type: string
           format: date-time
           nullable: true
         aturan_id:
-          type: string
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: ID aturan ambang yang memicu alert (BIGINT); kosong untuk alert yang tidak berasal dari rule engine
+        aturan_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         dieskalasi_pada:
           type: string
           format: date-time
@@ -9109,8 +9358,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: ATR-LH-CBM-KRT
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         komoditas_kode:
           type: string
           nullable: true
@@ -9151,6 +9401,7 @@ components:
           description: Naik tiap perubahan; dikirim kembali saat menyimpan (optimistic locking)
         diubah_oleh_id:
           type: string
+          format: uuid
           nullable: true
         diubah_pada:
           type: string
@@ -9208,7 +9459,7 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
         dari:
           type: string
           nullable: true
@@ -9218,6 +9469,7 @@ components:
           enum: [BARU, DIAKUI, DIESKALASI, SELESAI]
         oleh_id:
           type: string
+          format: uuid
           nullable: true
         oleh_nama:
           type: string
@@ -9367,8 +9619,9 @@ components:
           minItems: 1
           maxItems: 500
           items:
-            type: string
-          example: [EWS-1000, EWS-1001]
+            $ref: "#/components/schemas/IdBigint"
+          description: ID alert (BIGINT; string desimal atau angka JSON). Entri lain, termasuk kode `EWS-…`, dijawab 400.
+          example: ["1024", "1025"]
 
     EwsBulkResponse:
       type: object
@@ -9471,8 +9724,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: RT-1106-1171
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         asal_kode:
           type: string
         asal:
@@ -9522,8 +9776,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: KC-1173
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         kabupaten_kode:
           type: string
         wilayah:
@@ -9565,12 +9820,19 @@ components:
       type: object
       properties:
         id:
+          $ref: "#/components/schemas/IdBigint"
+        kode:
           type: string
+          maxLength: 64
+          description: >-
+            ID lama (UUID teks atau `demo-audit-NNNN`); hanya ada pada baris yang dibuat sebelum migrasi 000115 dan baris demo,
+            dan tidak ada pada baris baru. Alias ID di `GET /v1/audit/{id}`.
         waktu:
           type: string
           format: date-time
         aktor_id:
           type: string
+          format: uuid
           description: Kosong bila tanpa pelaku terautentikasi atau akunnya sudah dihapus
         aktor_nama:
           type: string
@@ -9896,7 +10158,11 @@ components:
             optimasi_id:
               type: string
               nullable: true
-              description: Terisi bila rencana disimpan
+              pattern: "^[1-9][0-9]{0,18}$"
+              description: ID BIGINT rencana (string desimal, dari basis data); terisi bila rencana disimpan
+              example: "42"
+            optimasi_kode:
+              $ref: "#/components/schemas/KodeTampilan"
 
     SisaWilayah:
       type: object
@@ -9924,7 +10190,9 @@ components:
             type: object
             properties:
               id:
-                type: string
+                $ref: "#/components/schemas/IdBigint"
+              kode:
+                $ref: "#/components/schemas/KodeTampilan"
               komoditas_kode:
                 type: string
               komoditas_nama:
@@ -9944,6 +10212,7 @@ components:
               dibuat_oleh:
                 type: string
                 nullable: true
+                description: Nama pembuat rencana; null bila akunnya sudah dihapus
               dibuat_pada:
                 type: string
                 format: date-time
@@ -9974,8 +10243,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: CS-01
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         nama:
           type: string
           example: Cold Storage Lambaro
@@ -10048,11 +10318,11 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: STK-CS01-01
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         cold_storage_id:
-          type: string
-          example: CS-01
+          $ref: "#/components/schemas/IdUuid"
         cold_storage_nama:
           type: string
           example: Cold Storage Lambaro
@@ -10152,8 +10422,9 @@ components:
           minItems: 1
           maxItems: 500
           items:
-            type: string
-          example: ["STK-CS01-01", "STK-CS03-01"]
+            $ref: "#/components/schemas/IdBigint"
+          description: ID BIGINT lot (string desimal atau angka JSON); ID salah bentuk ditolak dengan 400
+          example: ["1", "9"]
 
     BulkColdStorageResponse:
       type: object
@@ -10187,7 +10458,7 @@ components:
                 type: object
                 properties:
                   id:
-                    type: string
+                    $ref: "#/components/schemas/IdBigint"
                   berhasil:
                     type: boolean
                   pesan:
@@ -10217,13 +10488,16 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         lot_id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
         lot_baru_id:
           type: string
           nullable: true
-          description: Lot yang dibentuk di tujuan pada pindah sebagian
+          pattern: "^[1-9][0-9]{0,18}$"
+          description: ID BIGINT lot yang dibentuk di tujuan pada pindah sebagian
         jenis:
           type: string
           enum: [MASUK, KELUAR, PINDAH]
@@ -10236,10 +10510,16 @@ components:
           type: string
         fasilitas_asal_id:
           type: string
+          format: uuid
           nullable: true
+        fasilitas_asal_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         fasilitas_tujuan_id:
           type: string
+          format: uuid
           nullable: true
+        fasilitas_tujuan_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         oleh_nama:
           type: string
           nullable: true
@@ -10304,6 +10584,8 @@ components:
             properties:
               fasilitas_id:
                 type: string
+                maxLength: 64
+                description: UUID fasilitas atau kodenya (alias, mis. `CS-01`). Respons dan audit memakai UUID.
                 example: CS-01
               waktu:
                 type: string
@@ -10349,7 +10631,7 @@ components:
                 type: object
                 properties:
                   fasilitas_id:
-                    type: string
+                    $ref: "#/components/schemas/IdUuid"
                   waktu:
                     type: string
                     format: date-time
@@ -10371,14 +10653,15 @@ components:
           type: string
           enum: [MASUK, KELUAR, PINDAH]
         lot_id:
-          type: string
-          description: Wajib untuk KELUAR dan PINDAH
+          $ref: "#/components/schemas/IdBigint"
         fasilitas_id:
           type: string
-          description: Wajib untuk MASUK
+          maxLength: 64
+          description: UUID fasilitas atau kodenya (alias, mis. `CS-01`). Wajib untuk MASUK
         fasilitas_tujuan_id:
           type: string
-          description: Wajib untuk PINDAH
+          maxLength: 64
+          description: UUID fasilitas atau kodenya (alias). Wajib untuk PINDAH
         komoditas_kode:
           type: string
           description: Wajib untuk MASUK
@@ -10414,15 +10697,17 @@ components:
           type: object
           properties:
             transaksi_id:
-              type: string
+              $ref: "#/components/schemas/IdBigint"
             jenis:
               type: string
               enum: [MASUK, KELUAR, PINDAH]
             lot_id:
-              type: string
+              $ref: "#/components/schemas/IdBigint"
             lot_baru_id:
               type: string
               nullable: true
+              pattern: "^[1-9][0-9]{0,18}$"
+              description: ID BIGINT lot yang dibentuk di tujuan pada pindah sebagian
             volume_ton:
               type: number
               format: double
@@ -10452,13 +10737,40 @@ components:
           type: string
           enum: [OPERASIONAL, PERAWATAN, RENCANA]
 
+    PolicyBriefKode:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^PB-[0-9]{4}-(0[1-9]|1[0-2])$'
+      description: >-
+        Kode tampilan brief `PB-YYYY-MM`: NOT NULL, unik (satu brief per periode), dan diterima sebagai alias
+        `id` di `/v1/policy-brief/{id}`. Dijaga CHECK dan UNIQUE di basis data.
+      example: PB-2026-10
+
+    PolicyBriefVersi:
+      type: object
+      description: Satu versi isi brief, satu baris per penyusunan (bahan telaah dan revisi).
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        versi:
+          type: integer
+          minimum: 1
+          description: Nomor urut versi pada brief itu; (brief, versi) unik.
+        oleh:
+          type: string
+          description: Nama penulis versi
+        waktu:
+          type: string
+          format: date-time
+
     PolicyBrief:
       type: object
       properties:
         id:
-          type: string
-          description: PB-YYYY-MM
-          example: PB-2026-10
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/PolicyBriefKode"
         periode:
           type: string
           example: Oktober 2026
@@ -10563,6 +10875,11 @@ components:
               type: string
               nullable: true
               description: Alasan kegagalan penyusunan, atau alasan LLM digantikan templat.
+            riwayat_versi:
+              type: array
+              description: Versi isi, terbaru dulu; kosong selama draf pertama belum selesai (dan untuk brief contoh).
+              items:
+                $ref: "#/components/schemas/PolicyBriefVersi"
 
     PolicyBriefDetailResponse:
       type: object
@@ -10680,7 +10997,10 @@ components:
     PrediksiModel:
       type: object
       properties:
-        id: {type: string, example: MDL-CBM-KRT-v2.3.1}
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         komoditas_kode: {type: string}
         komoditas_nama: {type: string}
         nama: {type: string}
@@ -10712,7 +11032,8 @@ components:
           type: array
           minItems: 1
           maxItems: 100
-          items: {type: string, example: MDL-CBM-KRT-v2.4.0-rc1}
+          description: ID BIGINT model (string desimal) atau kodenya (alias ID lama); tiap elemen 1 sampai 64 karakter.
+          items: {type: string, minLength: 1, maxLength: 64, example: MDL-CBM-KRT-v2.4.0-rc1}
 
     PrediksiBulkModelResponse:
       type: object
@@ -10729,7 +11050,7 @@ components:
               items:
                 type: object
                 properties:
-                  id: {type: string}
+                  id: {type: string, description: Rujukan persis seperti dikirim klien (ID BIGINT atau kode)}
                   alasan: {type: string}
 
     PrediksiSimulasiRequest:
@@ -10746,7 +11067,8 @@ components:
     PrediksiSimulasi:
       type: object
       properties:
-        id: {type: string}
+        id:
+          $ref: "#/components/schemas/IdBigint"
         komoditas_kode: {type: string}
         komoditas_nama: {type: string}
         kabupaten_kode: {type: string}

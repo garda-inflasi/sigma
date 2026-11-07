@@ -90,7 +90,6 @@ function MatriksAkses() {
 /** Skema dialog pengguna; kata sandi sementara hanya diisi saat membuat akun. */
 function skemaPengguna(baru: boolean) {
   return z.object({
-    id: z.string().trim(),
     nama: z.string().trim().min(1, "Nama wajib diisi."),
     email: z.string().trim().pipe(z.email("Email tidak valid.")),
     password: baru ? z.string().min(8, "Kata sandi minimal 8 karakter.") : z.string(),
@@ -107,7 +106,6 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
   const buat = useCreatePengguna();
   const ubah = useUpdatePengguna();
   const [form, setForm] = useState<IsianPengguna>(() => ({
-    id: user?.id ?? "",
     nama: user?.nama ?? "",
     email: user?.email ?? "",
     password: "",
@@ -121,7 +119,7 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
     kirim: (n) =>
       user
         ? ubah.mutateAsync({ id: user.id, input: { nama: n.nama, email: n.email, peran: n.peran, lembaga: n.lembaga, lapis: ROLES[n.peran].lapis } })
-        : buat.mutateAsync({ id: n.id, nama: n.nama, email: n.email, password: n.password, peran: n.peran, lapis: ROLES[n.peran].lapis, lembaga: n.lembaga }),
+        : buat.mutateAsync({ nama: n.nama, email: n.email, password: n.password, peran: n.peran, lapis: ROLES[n.peran].lapis, lembaga: n.lembaga }),
     sukses: () => onOpenChange(false),
   });
   const sibuk = kiriman.pending;
@@ -139,13 +137,6 @@ function FormPengguna({ user, gagalMuat, onOpenChange }: { user: PenggunaRow | P
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          {!user && (
-            <div className="grid gap-2">
-              <Label htmlFor="pg-id">ID pengguna</Label>
-              <Input id="pg-id" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="USR-0001" {...atributGalat("id")} />
-              <PesanField field="pg-id" pesan={g.id} />
-            </div>
-          )}
           <div className="grid gap-2">
             <Label htmlFor="pg-nama">Nama lengkap</Label>
             <Input id="pg-nama" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} {...atributGalat("nama")} />

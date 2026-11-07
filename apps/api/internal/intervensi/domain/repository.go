@@ -1,13 +1,19 @@
 package domain
 
-import "context"
+import (
+	"context"
 
-// Repository adalah akses data kartu intervensi dan definisi tahapnya.
+	"github.com/garda-inflasi/api/pkg/idx"
+)
+
+// Repository adalah akses data kartu intervensi dan definisi tahapnya. ID kartu adalah UUID kanonik huruf
+// kecil; rujukan dari rute boleh berupa UUID atau kode tampilan lama (INT-n) lewat idx.RujukanUUID.
 type Repository interface {
 	List(ctx context.Context, q ListQuery) ([]Kartu, error)
 	// ListTahap mengembalikan definisi tahap terurut menurut siklus lalu urutan.
 	ListTahap(ctx context.Context) ([]TahapDef, error)
-	GetByID(ctx context.Context, id string) (*Intervensi, error)
+	// GetByID mencari kartu menurut ID atau kode (gorm.ErrRecordNotFound bila tidak ada).
+	GetByID(ctx context.Context, ref idx.RujukanUUID) (*Intervensi, error)
 	// Create menyimpan kartu pada tahap `tahap` di urutan paling bawah dan
 	// mengembalikan kartu yang tersimpan (dengan id baru).
 	Create(ctx context.Context, in NewIntervensi, tahap string) (*Intervensi, error)

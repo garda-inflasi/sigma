@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Status siklus hidup entri harga (enum status_entri).
 const (
@@ -26,9 +30,11 @@ func StatusValid(status string) bool {
 	return false
 }
 
-// EntriHarga memetakan tabel entri_harga.
+// EntriHarga memetakan tabel entri_harga. ID adalah BIGINT identity yang diberi basis data; Kode berisi ID lama
+// (HRG-D00-00-01-K, atau UUID dari aplikasi lama) sebagai kode tampilan dan alias tautan lama, NULL untuk baris baru.
 type EntriHarga struct {
-	ID              string     `gorm:"column:id;primaryKey"`
+	ID              idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode            *string    `gorm:"column:kode"`
 	KomoditasKode   string     `gorm:"column:komoditas_kode"`
 	PasarID         string     `gorm:"column:pasar_id"`
 	Tipe            string     `gorm:"column:tipe"`
@@ -47,14 +53,14 @@ type EntriHarga struct {
 	Catatan         *string    `gorm:"column:catatan"`
 	IdempotencyKey  *string    `gorm:"column:idempotency_key"`
 	DicatatPada     time.Time  `gorm:"column:dicatat_pada"`
-	PetugasID       *string    `gorm:"column:petugas_id"`
-	DivalidasiOleh  *string    `gorm:"column:divalidasi_oleh"`
+	PetugasID       *string    `gorm:"column:petugas_id;type:uuid"`
+	DivalidasiOleh  *string    `gorm:"column:divalidasi_oleh;type:uuid"`
 	DivalidasiPada  *time.Time `gorm:"column:divalidasi_pada"`
-	DipublikasiOleh *string    `gorm:"column:dipublikasi_oleh"`
+	DipublikasiOleh *string    `gorm:"column:dipublikasi_oleh;type:uuid"`
 	DipublikasiPada *time.Time `gorm:"column:dipublikasi_pada"`
 	// AlasanPenolakan wajib terisi bila Status DITOLAK (dijaga CHECK di basis data).
 	AlasanPenolakan *string    `gorm:"column:alasan_penolakan"`
-	DitolakOleh     *string    `gorm:"column:ditolak_oleh"`
+	DitolakOleh     *string    `gorm:"column:ditolak_oleh;type:uuid"`
 	DitolakPada     *time.Time `gorm:"column:ditolak_pada"`
 	// FlagValidasi adalah hasil cek otomatis (lihat Validasi).
 	FlagValidasi FlagValidasi `gorm:"column:flag_validasi;type:jsonb"`
@@ -68,8 +74,8 @@ func (EntriHarga) TableName() string {
 
 // TugasEntri menautkan entri harga ke tugas lapangan yang dipenuhinya (tabel tugas_entri).
 type TugasEntri struct {
-	TugasID       string    `gorm:"column:tugas_id;primaryKey"`
-	EntriID       string    `gorm:"column:entri_id;primaryKey"`
+	TugasID       idx.ID    `gorm:"column:tugas_id;primaryKey"`
+	EntriID       idx.ID    `gorm:"column:entri_id;primaryKey"`
 	DitautkanPada time.Time `gorm:"column:ditautkan_pada;default:now()"`
 }
 
@@ -80,7 +86,8 @@ func (TugasEntri) TableName() string {
 // EntriView adalah baris entri_harga beserta nama komoditas, pasar, wilayah,
 // dan petugas, siap ditampilkan di daftar dan detail.
 type EntriView struct {
-	ID              string       `gorm:"column:id"`
+	ID              idx.ID       `gorm:"column:id"`
+	Kode            *string      `gorm:"column:kode"`
 	KomoditasKode   string       `gorm:"column:komoditas_kode"`
 	KomoditasNama   string       `gorm:"column:komoditas_nama"`
 	PasarID         string       `gorm:"column:pasar_id"`
@@ -102,14 +109,14 @@ type EntriView struct {
 	FotoURL         *string      `gorm:"column:foto_url"`
 	Catatan         *string      `gorm:"column:catatan"`
 	DicatatPada     time.Time    `gorm:"column:dicatat_pada"`
-	PetugasID       *string      `gorm:"column:petugas_id"`
+	PetugasID       *string      `gorm:"column:petugas_id;type:uuid"`
 	PetugasNama     *string      `gorm:"column:petugas_nama"`
-	DivalidasiOleh  *string      `gorm:"column:divalidasi_oleh"`
+	DivalidasiOleh  *string      `gorm:"column:divalidasi_oleh;type:uuid"`
 	DivalidasiPada  *time.Time   `gorm:"column:divalidasi_pada"`
-	DipublikasiOleh *string      `gorm:"column:dipublikasi_oleh"`
+	DipublikasiOleh *string      `gorm:"column:dipublikasi_oleh;type:uuid"`
 	DipublikasiPada *time.Time   `gorm:"column:dipublikasi_pada"`
 	AlasanPenolakan *string      `gorm:"column:alasan_penolakan"`
-	DitolakOleh     *string      `gorm:"column:ditolak_oleh"`
+	DitolakOleh     *string      `gorm:"column:ditolak_oleh;type:uuid"`
 	DitolakPada     *time.Time   `gorm:"column:ditolak_pada"`
 	FlagValidasi    FlagValidasi `gorm:"column:flag_validasi;type:jsonb"`
 	DibuatPada      time.Time    `gorm:"column:dibuat_pada"`

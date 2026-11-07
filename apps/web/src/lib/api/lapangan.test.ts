@@ -5,7 +5,8 @@ import { cariAcuan, hrefIsiTugas, toTugasDetail, toTugasLapangan, toVersiServer,
 describe("toTugasLapangan", () => {
   it("memetakan kolom API ke tugas UI", () => {
     const tugas = toTugasLapangan({
-      id: "TGS-mahasiswa_1-1",
+      id: "42",
+      kode: "TGS-mahasiswa_1-1",
       judul: "Survei harga konsumen pagi",
       pasar_id: "PSR-1171-01",
       pasar_nama: "Pasar Peunayong",
@@ -18,7 +19,8 @@ describe("toTugasLapangan", () => {
     });
 
     assert.deepEqual(tugas, {
-      id: "TGS-mahasiswa_1-1",
+      id: "42",
+      kode: "TGS-mahasiswa_1-1",
       judul: "Survei harga konsumen pagi",
       pasarId: "PSR-1171-01",
       pasarNama: "Pasar Peunayong",
@@ -29,6 +31,22 @@ describe("toTugasLapangan", () => {
       terisi: 4,
       tipe: "KONSUMEN",
     });
+  });
+});
+
+describe("toTugasLapangan: tugas baru tanpa kode", () => {
+  const dasar = {
+    id: "77", judul: "Tugas baru", pasar_id: "PSR-1171-01", pasar_nama: "Pasar Peunayong", komoditas: ["BWM"],
+    tenggat: "2026-10-16T09:30:00Z", status: "BELUM" as const, target: 1, terisi: 0, tipe: "KONSUMEN" as const,
+  };
+
+  it("kode null atau kosong tidak dibawa ke model UI", () => {
+    for (const kode of [null, undefined, ""]) {
+      const tugas = toTugasLapangan({ ...dasar, kode });
+      assert.equal(tugas.id, "77");
+      assert.equal("kode" in tugas, false);
+      assert.equal(tugas.kode ?? tugas.id, "77", "teks untuk manusia memakai kode ?? id");
+    }
   });
 });
 
@@ -101,5 +119,12 @@ describe("detail tugas", () => {
       hrefIsiTugas({ id: "TGS-1", pasarId: "PSR-1171-01", komoditas: ["CBM-KRT", "CBR-RWT"], tipe: "PRODUSEN" }),
       "/lapangan/input?pasar=PSR-1171-01&komoditas=CBM-KRT,CBR-RWT&tipe=PRODUSEN&tugas=TGS-1",
     );
+  });
+
+  it("hrefIsiTugas melabeli tugas dengan kode tampilan bila ada, selain itu id BIGINT", () => {
+    const dasar = { pasarId: "PSR-1171-01", komoditas: ["BWM"], tipe: "KONSUMEN" as const };
+    assert.match(hrefIsiTugas({ ...dasar, id: "42", kode: "TGS-mahasiswa_1-1" }), /&tugas=TGS-mahasiswa_1-1$/);
+    assert.match(hrefIsiTugas({ ...dasar, id: "42" }), /&tugas=42$/);
+    assert.match(hrefIsiTugas({ ...dasar, id: "42", kode: "TGS x&y" }), /&tugas=TGS%20x%26y$/, "label di-encode agar tidak memecah query");
   });
 });

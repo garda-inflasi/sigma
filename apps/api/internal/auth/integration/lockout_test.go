@@ -24,8 +24,11 @@ import (
 const (
 	sandiBenarUji = "Test1234!"
 	sandiSalahUji = "SalahTotal9!"
-	idBiasa       = "test-user-biasa"
-	idAdminUji    = "test-user-001"
+)
+
+var (
+	idBiasa    = uid("test-user-biasa")
+	idAdminUji = uid("test-user-001")
 )
 
 func newRepo(s *Suite) *authpg.Repository { return authpg.New(s.db) }
@@ -410,7 +413,7 @@ func TestIntegration_Lockout_BukaKunciOlehAdmin(t *testing.T) {
 		}
 		assert.True(t, terkunci[idBiasa], "pengguna yang terkunci ditandai")
 		assert.False(t, terkunci[idAdminUji], "yang lain tidak")
-		assert.Contains(t, terkunci, "test-user-mfa")
+		assert.Contains(t, terkunci, uid("test-user-mfa"))
 	})
 
 	t.Run("hanya pengguna.kelola", func(t *testing.T) {
@@ -420,7 +423,7 @@ func TestIntegration_Lockout_BukaKunciOlehAdmin(t *testing.T) {
 	})
 
 	t.Run("pengguna tidak ada dijawab 404 dan tidak diaudit", func(t *testing.T) {
-		w := s.bukaKunci(t, admin, "tidak-ada")
+		w := s.bukaKunci(t, admin, uid("tidak-ada"))
 		assert.Equal(t, http.StatusNotFound, w.Code)
 		assert.EqualValues(t, 0, s.hitung(t, "SELECT count(*) FROM audit_log WHERE aksi = 'UNLOCK_USER' AND entitas_id = 'tidak-ada'"))
 	})
@@ -463,7 +466,7 @@ func TestIntegration_Lockout_BukaKunciOlehAdmin(t *testing.T) {
 		}
 		require.Equal(t, http.StatusLocked, s.coba(t, emailMFA, sandiBenarUji).Code)
 
-		require.Equal(t, http.StatusOK, s.bukaKunci(t, admin, "test-user-mfa").Code)
+		require.Equal(t, http.StatusOK, s.bukaKunci(t, admin, uid("test-user-mfa")).Code)
 
 		w := s.serveRequest(t, http.MethodPost, "/v1/auth/mfa/validate",
 			map[string]any{"mfa_token": challenge, "code": kodeOTP(t, mfaSecretUji, time.Now())}, nil)
@@ -562,12 +565,12 @@ func TestIntegration_Lockout_KonfirmasiKataSandiMFA(t *testing.T) {
 			require.NotNil(t, g.Data)
 			assert.InDelta(t, 900, g.Data.SisaDetik, 5)
 			assert.Equal(t, strconv.Itoa(g.Data.SisaDetik), w.Header().Get("Retry-After"))
-			assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM pengguna WHERE id = 'test-user-mfa' AND mfa_aktif = true"), "MFA tidak dinonaktifkan")
-			assert.EqualValues(t, len(kodeCadanganUji), s.hitung(t, "SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = 'test-user-mfa'"), "kode cadangan tidak diganti")
+			assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'test-user-mfa') AND mfa_aktif = true"), "MFA tidak dinonaktifkan")
+			assert.EqualValues(t, len(kodeCadanganUji), s.hitung(t, "SELECT count(*) FROM mfa_kode_cadangan WHERE user_id = garda_uuid_stabil('pengguna', 'test-user-mfa')"), "kode cadangan tidak diganti")
 
 			// Kunci yang sama dengan login: akun ikut terkunci di jalur kata sandi.
 			assert.Equal(t, http.StatusLocked, s.coba(t, emailMFA, sandiBenarUji).Code)
-			assert.EqualValues(t, 5, s.hitung(t, "SELECT count(*) FROM login_attempts WHERE failure_reason = 'wrong_password_confirm' AND user_id = 'test-user-mfa'"))
+			assert.EqualValues(t, 5, s.hitung(t, "SELECT count(*) FROM login_attempts WHERE failure_reason = 'wrong_password_confirm' AND user_id = garda_uuid_stabil('pengguna', 'test-user-mfa')"))
 		})
 	}
 

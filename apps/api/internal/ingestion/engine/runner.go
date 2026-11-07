@@ -15,6 +15,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 	sumber "github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 )
 
@@ -49,14 +50,14 @@ type Runner struct {
 func New(repo domain.Repository, fetcher domain.Fetcher, log *logger.Logger, konektor ...domain.Konektor) *Runner {
 	r := &Runner{repo: repo, fetcher: fetcher, konektor: map[string]domain.Konektor{}, log: log, Sekarang: time.Now}
 	for _, k := range konektor {
-		r.konektor[k.SumberID()] = k
+		r.konektor[k.Kode()] = k
 	}
 	return r
 }
 
-// Punya benar bila sumber punya konektor terdaftar.
-func (r *Runner) Punya(sumberID string) bool {
-	_, ok := r.konektor[sumberID]
+// Punya benar bila sumber ber-kode itu (sumber_data.kode) punya konektor terdaftar.
+func (r *Runner) Punya(kode string) bool {
+	_, ok := r.konektor[kode]
 	return ok
 }
 
@@ -71,21 +72,19 @@ type Run struct {
 // Eksekusi adalah salinan baris eksekusi saat dimulai.
 func (run *Run) Eksekusi() domain.EksekusiSumber { return run.eksekusi }
 
-// Mulai mencatat eksekusi BERJALAN untuk sumber. Galat: ErrSumberTidakAda,
-// ErrTanpaKonektor, ErrDijeda, ErrSudahBerjalan. Panggil Run.Jalankan sesudahnya.
-func (r *Runner) Mulai(ctx context.Context, sumberID, pemicu string, aktorID *string) (*Run, error) {
-	k, ok := r.konektor[sumberID]
-	if !ok {
-		if _, err := r.repo.Sumber(ctx, sumberID); err != nil {
-			return nil, err
-		}
-		return nil, domain.ErrTanpaKonektor
-	}
-	s, err := r.repo.Sumber(ctx, sumberID)
+// Mulai mencatat eksekusi BERJALAN untuk sumber, yang dirujuk lewat UUID atau kodenya (CLI memakai kode).
+// Konektor dicari menurut kode sumber. Galat: ErrSumberTidakAda, ErrTanpaKonektor, ErrDijeda,
+// ErrSudahBerjalan. Panggil Run.Jalankan sesudahnya.
+func (r *Runner) Mulai(ctx context.Context, ref, pemicu string, aktorID *string) (*Run, error) {
+	s, err := r.repo.Sumber(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
-	e, err := r.repo.MulaiEksekusi(ctx, sumberID, pemicu, aktorID, r.Sekarang().Add(-macetSetelah))
+	k, ok := r.konektor[s.Kode]
+	if !ok {
+		return nil, domain.ErrTanpaKonektor
+	}
+	e, err := r.repo.MulaiEksekusi(ctx, s.ID, pemicu, aktorID, r.Sekarang().Add(-macetSetelah))
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +120,7 @@ func (run *Run) Jalankan(ctx context.Context) (*domain.EksekusiSumber, error) {
 	}
 
 	fields := map[string]interface{}{
-		"sumber": e.SumberID, "eksekusi": e.ID, "status": e.Status, "pemicu": e.Pemicu,
+		"sumber": run.sumber.Kode, "sumber_id": e.SumberID, "eksekusi": e.ID, "status": e.Status, "pemicu": e.Pemicu,
 		"diambil": e.BarisDiambil, "ditolak": e.BarisTakTerpetakan + e.BarisTidakValid,
 	}
 	if e.Galat != nil {
@@ -159,7 +158,7 @@ func (run *Run) proses(ctx context.Context, a *akumulasi) {
 		a.fatal = fmt.Errorf("muat pemetaan: %w", err)
 		return
 	}
-	in := domain.Masukan{Sekarang: r.Sekarang(), Konfigurasi: json.RawMessage(run.sumber.Konfigurasi), Pemetaan: pem}
+	in := domain.Masukan{SumberID: id, Sekarang: r.Sekarang(), Konfigurasi: json.RawMessage(run.sumber.Konfigurasi), Pemetaan: pem}
 	if run.sumber.URLDasar != nil {
 		in.URLDasar = *run.sumber.URLDasar
 	}
@@ -237,7 +236,7 @@ func (run *Run) proses(ctx context.Context, a *akumulasi) {
 }
 
 // lampirkanGaris mengisi lineage (payload mentah dan eksekusi) pada baris silver.
-func lampirkanGaris(h *domain.Hasil, dataMentahID, eksekusiID int64) {
+func lampirkanGaris(h *domain.Hasil, dataMentahID, eksekusiID idx.ID) {
 	for i := range h.Harga {
 		h.Harga[i].DataMentahID, h.Harga[i].EksekusiID = &dataMentahID, &eksekusiID
 	}

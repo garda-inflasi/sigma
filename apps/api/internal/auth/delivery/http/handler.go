@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/qr"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -216,8 +217,18 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	var id string
+	if req.ID != "" {
+		sah, ok := idx.NormalUUID(req.ID)
+		if !ok {
+			response.BadRequest(c, "ID harus berupa UUID yang sah; kosongkan agar dibuat otomatis")
+			return
+		}
+		id = sah
+	}
+
 	user := &domain.Pengguna{
-		ID:      req.ID,
+		ID:      id,
 		Nama:    req.Nama,
 		Email:   req.Email,
 		Peran:   req.Peran,
@@ -232,6 +243,8 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		switch {
 		case errors.Is(err, usecase.ErrEmailExists):
 			response.Conflict(c, "Email sudah terdaftar")
+		case errors.Is(err, usecase.ErrIDExists):
+			response.Conflict(c, "ID pengguna sudah dipakai")
 		case errors.Is(err, usecase.ErrWeakPassword):
 			// Masukan pengguna yang salah, bukan galat server (usecase membungkusnya dengan alasan).
 			response.BadRequest(c, err.Error())
@@ -291,7 +304,10 @@ func (h *Handler) ListUsers(c *gin.Context) {
 
 // GET /v1/users/:id
 func (h *Handler) GetUser(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 	user, err := h.uc.GetUser(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, usecase.ErrUserNotFound) {
@@ -313,7 +329,10 @@ func (h *Handler) GetUser(c *gin.Context) {
 
 // PATCH /v1/users/:id
 func (h *Handler) UpdateUser(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -356,7 +375,10 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 
 // DELETE /v1/users/:id
 func (h *Handler) DeleteUser(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 	actorID := c.GetString("user_id")
 
 	if err := h.uc.DeleteUser(audit.RequestContext(c), id, actorID); err != nil {
@@ -366,7 +388,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		case usecase.ErrCannotDeleteSelf:
 			response.BadRequest(c, "Tidak dapat menghapus akun sendiri")
 		case usecase.ErrUserHasReferences:
-			response.Conflict(c, "Pengguna masih memiliki data terkait (tugas, entri harga, atau audit). Nonaktifkan akun sebagai gantinya.")
+			response.Conflict(c, "Pengguna masih tercatat sebagai pelaku data (entri harga, tugas, intervensi, brief, atau model). Nonaktifkan akun sebagai gantinya.")
 		case usecase.ErrPemegangTerakhir:
 			jawabPemegangTerakhir(c)
 		default:
@@ -380,7 +402,10 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 
 // POST /v1/users/:id/reset-password
 func (h *Handler) ResetPasswordAdmin(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 
 	var req dto.ResetPasswordAdminRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -415,7 +440,10 @@ func (h *Handler) ResetPasswordAdmin(c *gin.Context) {
 
 // PUT /v1/users/:id/roles
 func (h *Handler) AssignRole(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 
 	var req dto.AssignRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -479,7 +507,22 @@ func (h *Handler) BulkUser(c *gin.Context) {
 		return
 	}
 
-	count, err := h.uc.BulkUserAction(audit.RequestContext(c), req.IDs, req.Action, c.GetString("user_id"))
+	// Id pengguna adalah UUID: teks lain tidak mungkin ada, dan kolom uuid menolaknya (22P02 => 500).
+	ids := make([]string, 0, len(req.IDs))
+	terlihat := make(map[string]bool, len(req.IDs))
+	for _, mentah := range req.IDs {
+		id, ok := idx.NormalUUID(mentah)
+		if !ok {
+			response.BadRequest(c, "ID pengguna harus berupa UUID yang sah: "+mentah)
+			return
+		}
+		if !terlihat[id] {
+			terlihat[id] = true
+			ids = append(ids, id)
+		}
+	}
+
+	count, err := h.uc.BulkUserAction(audit.RequestContext(c), ids, req.Action, c.GetString("user_id"))
 	if err != nil {
 		// Hanya aksi tak dikenal yang salah masukan; galat basis data tidak boleh bocor ke klien sebagai 400.
 		if errors.Is(err, usecase.ErrInvalidAction) {

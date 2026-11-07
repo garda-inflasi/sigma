@@ -4,6 +4,8 @@ package domain
 import (
 	"errors"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Siklus ekonomi (enum siklus). Kartu intervensi selalu milik satu siklus.
@@ -36,9 +38,11 @@ var (
 	ErrInvalidReference = errors.New("rujukan tidak ditemukan")
 )
 
-// Intervensi memetakan tabel intervensi (satu kartu kanban).
+// Intervensi memetakan tabel intervensi (satu kartu kanban). ID adalah UUID (dibuat basis data untuk kartu
+// baru); Kode adalah kode tampilan INT-n (ID lama), unik, dan alias rute /v1/intervensi/:id.
 type Intervensi struct {
-	ID               string    `gorm:"column:id;primaryKey"`
+	ID               string    `gorm:"column:id;type:uuid;primaryKey;default:gen_random_uuid()"`
+	Kode             *string   `gorm:"column:kode"`
 	Siklus           string    `gorm:"column:siklus"`
 	Tahap            string    `gorm:"column:tahap"`
 	Urutan           int       `gorm:"column:urutan"`
@@ -51,15 +55,15 @@ type Intervensi struct {
 	RekomendasiAI    bool      `gorm:"column:rekomendasi_ai"`
 	ChecklistSelesai int       `gorm:"column:checklist_selesai"`
 	ChecklistTotal   int       `gorm:"column:checklist_total"`
-	EwsAlertID       *string   `gorm:"column:ews_alert_id"`
+	EwsAlertID       *idx.ID   `gorm:"column:ews_alert_id"`
 	// DibuatOlehID kosong untuk kartu yang dibuat sistem (workflow dari alert EWS).
-	DibuatOlehID *string    `gorm:"column:dibuat_oleh_id"`
+	DibuatOlehID *string    `gorm:"column:dibuat_oleh_id;type:uuid"`
 	DibuatPada   time.Time  `gorm:"column:dibuat_pada;default:now()"`
 	SelesaiPada  *time.Time `gorm:"column:selesai_pada"`
 	// Versi naik tiap perubahan kartu; dipakai untuk optimistic locking.
 	Versi            int        `gorm:"column:versi;default:1"`
 	DieskalasiPada   *time.Time `gorm:"column:dieskalasi_pada"`
-	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id"`
+	DieskalasiOlehID *string    `gorm:"column:dieskalasi_oleh_id;type:uuid"`
 	// TahapSejak adalah waktu kartu masuk ke tahapnya sekarang; dasar penghitungan SLA tahap.
 	TahapSejak time.Time `gorm:"column:tahap_sejak;default:now()"`
 }
@@ -69,12 +73,12 @@ func (Intervensi) TableName() string { return "intervensi" }
 // IntervensiRiwayat memetakan tabel intervensi_riwayat: satu peristiwa pada kartu.
 // Oleh kosong berarti sistem.
 type IntervensiRiwayat struct {
-	ID           int64     `gorm:"column:id;primaryKey;->"`
-	IntervensiID string    `gorm:"column:intervensi_id"`
+	ID           idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	IntervensiID string    `gorm:"column:intervensi_id;type:uuid"`
 	Aksi         string    `gorm:"column:aksi"`
 	Dari         *string   `gorm:"column:dari"`
 	Ke           *string   `gorm:"column:ke"`
-	Oleh         *string   `gorm:"column:oleh"`
+	Oleh         *string   `gorm:"column:oleh;type:uuid"`
 	Waktu        time.Time `gorm:"column:waktu;default:now()"`
 	Alasan       string    `gorm:"column:alasan"`
 }
@@ -97,6 +101,7 @@ const (
 
 // HasilKartu adalah hasil satu aksi massal pada satu kartu.
 type HasilKartu struct {
+	// ID adalah UUID kartu.
 	ID       string
 	Berhasil bool
 	// Alasan menjelaskan kegagalan; kosong bila berhasil.
@@ -105,8 +110,8 @@ type HasilKartu struct {
 
 // IntervensiPJ memetakan tabel intervensi_pj (penanggung jawab, relasi M:N).
 type IntervensiPJ struct {
-	IntervensiID string `gorm:"column:intervensi_id;primaryKey"`
-	PenggunaID   string `gorm:"column:pengguna_id;primaryKey"`
+	IntervensiID string `gorm:"column:intervensi_id;type:uuid;primaryKey"`
+	PenggunaID   string `gorm:"column:pengguna_id;type:uuid;primaryKey"`
 }
 
 func (IntervensiPJ) TableName() string { return "intervensi_pj" }
@@ -130,10 +135,11 @@ type PenanggungJawab struct {
 	Nama string
 }
 
-// Kartu adalah kartu beserta penanggung jawabnya.
+// Kartu adalah kartu beserta penanggung jawabnya dan kode tampilan alert EWS pemicunya (EWS-n, bila ada).
 type Kartu struct {
 	Intervensi
 	PenanggungJawab []PenanggungJawab
+	EwsAlertKode    *string
 }
 
 // ListQuery menyaring daftar kartu; filter kosong berarti semua.
@@ -145,7 +151,7 @@ type ListQuery struct {
 type NewIntervensi struct {
 	Siklus, Judul, Deskripsi, KomoditasKode, KabupatenKode, Prioritas string
 	Tenggat                                                           time.Time
-	EwsAlertID                                                        *string
+	EwsAlertID                                                        *idx.ID
 	PenanggungJawabIDs                                                []string
 	DibuatOlehID                                                      string
 }

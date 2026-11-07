@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Nilai kolom sumber: keluaran pipeline ML atau data contoh seeder.
 const (
@@ -16,9 +20,12 @@ const (
 )
 
 // PrediksiHarga memetakan tabel prediksi_harga: satu proyeksi harga konsumen
-// untuk komoditas, kabupaten, tanggal target, dan horizon tertentu.
+// untuk komoditas, kabupaten, tanggal target, dan horizon tertentu. ID BIGINT identity diberikan basis data.
 type PrediksiHarga struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID idx.ID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	// Kode adalah ID lama proyeksi (kunci idempoten seeder demo); NULL untuk proyeksi hasil pipeline ML, yang
+	// di-upsert menurut kunci alaminya (komoditas, kabupaten, tanggal target, horizon, versi).
+	Kode          *string   `gorm:"column:kode" json:"kode"`
 	KomoditasKode string    `gorm:"column:komoditas_kode"`
 	KabupatenKode string    `gorm:"column:kabupaten_kode"`
 	TanggalTarget time.Time `gorm:"column:tanggal_target;type:date"`
@@ -27,7 +34,10 @@ type PrediksiHarga struct {
 	Bawah         int       `gorm:"column:bawah"`
 	Atas          int       `gorm:"column:atas"`
 	HargaDasar    int       `gorm:"column:harga_dasar"`
-	ModelVersi    string    `gorm:"column:model_versi"`
+	// ModelID adalah model yang menghasilkan proyeksi (FK ke model_registry). ModelVersi adalah versi model itu,
+	// disimpan sebagai informasi dan bagian kunci unik; keduanya wajib ditulis konsisten.
+	ModelID    idx.ID `gorm:"column:model_id"`
+	ModelVersi string `gorm:"column:model_versi"`
 	// Faktor adalah dokumen JSON berisi larik []Faktor (kontribusi ala SHAP).
 	Faktor     string    `gorm:"column:faktor;type:jsonb"`
 	Sumber     string    `gorm:"column:sumber;default:MODEL"`
@@ -40,7 +50,9 @@ func (PrediksiHarga) TableName() string {
 
 // ModelRegistry memetakan tabel model_registry: satu versi model per komoditas.
 type ModelRegistry struct {
-	ID                string     `gorm:"column:id;primaryKey"`
+	ID idx.ID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	// Kode adalah kode tampilan model (MDL-<komoditas>-<versi>) dan alias rujukan; ID lama sebelum migrasi 000114.
+	Kode              *string    `gorm:"column:kode" json:"kode"`
 	KomoditasKode     string     `gorm:"column:komoditas_kode"`
 	Nama              string     `gorm:"column:nama"`
 	Versi             string     `gorm:"column:versi"`
@@ -57,7 +69,7 @@ type ModelRegistry struct {
 	ArtefakURI *string `gorm:"column:artefak_uri"`
 	Catatan    string  `gorm:"column:catatan"`
 	// DipromosikanOleh dan DipromosikanPada mencatat promosi terakhir ke PRODUKSI.
-	DipromosikanOleh *string    `gorm:"column:dipromosikan_oleh"`
+	DipromosikanOleh *string    `gorm:"column:dipromosikan_oleh;type:uuid"`
 	DipromosikanPada *time.Time `gorm:"column:dipromosikan_pada"`
 }
 
@@ -76,7 +88,9 @@ type Faktor struct {
 // ProyeksiView adalah satu proyeksi beserta turunan yang dihitung saat dibaca:
 // nama komoditas dan kabupaten, serta model yang menghasilkannya.
 type ProyeksiView struct {
-	ID            string    `gorm:"column:id"`
+	ID idx.ID `gorm:"column:id"`
+	// ModelID adalah model yang menghasilkan proyeksi ini (FK model_id).
+	ModelID       idx.ID    `gorm:"column:model_id"`
 	KomoditasKode string    `gorm:"column:komoditas_kode"`
 	KomoditasNama string    `gorm:"column:komoditas_nama"`
 	KabupatenKode string    `gorm:"column:kabupaten_kode"`
@@ -118,7 +132,8 @@ type TitikHarga struct {
 // PrediksiEvaluasi memetakan tabel prediksi_evaluasi: galat nyata satu proyeksi
 // setelah tanggal targetnya lewat.
 type PrediksiEvaluasi struct {
-	PrediksiID     string    `gorm:"column:prediksi_id;primaryKey"`
+	ID             idx.ID    `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	PrediksiID     idx.ID    `gorm:"column:prediksi_id"`
 	Realisasi      int       `gorm:"column:realisasi"`
 	GalatPct       float64   `gorm:"column:galat_pct"`
 	DievaluasiPada time.Time `gorm:"column:dievaluasi_pada;default:now()"`
@@ -136,14 +151,16 @@ const (
 
 // ModelPromosi memetakan tabel model_promosi: satu keputusan promosi atau pengarsipan model.
 type ModelPromosi struct {
-	ID                string    `gorm:"column:id;primaryKey"`
-	ModelID           string    `gorm:"column:model_id"`
+	ID idx.ID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	// Kode adalah ID lama riwayat (sebelum migrasi 000114); NULL untuk riwayat baru.
+	Kode              *string   `gorm:"column:kode" json:"kode"`
+	ModelID           idx.ID    `gorm:"column:model_id"`
 	KomoditasKode     string    `gorm:"column:komoditas_kode"`
 	Aksi              string    `gorm:"column:aksi"`
 	StatusLama        string    `gorm:"column:status_lama"`
 	StatusBaru        string    `gorm:"column:status_baru"`
-	ModelDigantikanID *string   `gorm:"column:model_digantikan_id"`
-	Oleh              string    `gorm:"column:oleh"`
+	ModelDigantikanID *idx.ID   `gorm:"column:model_digantikan_id"`
+	Oleh              string    `gorm:"column:oleh;type:uuid"`
 	Waktu             time.Time `gorm:"column:waktu;default:now()"`
 }
 
@@ -154,13 +171,15 @@ func (ModelPromosi) TableName() string {
 // SkenarioSimulasi memetakan tabel skenario_simulasi: satu simulasi what-if yang
 // dihitung server. Parameter dan Hasil adalah dokumen JSON.
 type SkenarioSimulasi struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID idx.ID `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
+	// Kode adalah ID lama skenario (UUID, sebelum migrasi 000114) dan alias rujukan; NULL untuk skenario baru.
+	Kode          *string   `gorm:"column:kode" json:"kode"`
 	KomoditasKode string    `gorm:"column:komoditas_kode"`
 	KabupatenKode string    `gorm:"column:kabupaten_kode"`
 	HorizonHari   int       `gorm:"column:horizon_hari"`
 	Parameter     string    `gorm:"column:parameter;type:jsonb"`
 	Hasil         string    `gorm:"column:hasil;type:jsonb"`
-	DibuatOleh    string    `gorm:"column:dibuat_oleh"`
+	DibuatOleh    string    `gorm:"column:dibuat_oleh;type:uuid"`
 	DibuatPada    time.Time `gorm:"column:dibuat_pada;default:now()"`
 }
 
@@ -170,7 +189,9 @@ func (SkenarioSimulasi) TableName() string {
 
 // ModelView adalah satu baris registri model beserta nama komoditasnya.
 type ModelView struct {
-	ID            string    `gorm:"column:id"`
+	ID idx.ID `gorm:"column:id"`
+	// Kode adalah kode tampilan model (MDL-<komoditas>-<versi>); nil untuk model tanpa kode.
+	Kode          *string   `gorm:"column:kode"`
 	KomoditasKode string    `gorm:"column:komoditas_kode"`
 	KomoditasNama string    `gorm:"column:komoditas_nama"`
 	Nama          string    `gorm:"column:nama"`

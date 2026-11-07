@@ -7,6 +7,7 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -27,7 +28,10 @@ func jawabGalatFilterPengguna(c *gin.Context, err error) bool {
 // kode cadangan dihapus, semua sesinya berakhir. Tercatat di audit (RESET_MFA). Idempoten: pengguna tanpa MFA
 // dijawab 200 dengan mfa_aktif_sebelumnya false. Akun sendiri ditolak 400 (gunakan /v1/auth/mfa/disable).
 func (h *Handler) ResetMFAPengguna(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 
 	res, err := h.uc.ResetMFAPengguna(audit.RequestContext(c), id, c.GetString("user_id"))
 	switch {
@@ -51,7 +55,11 @@ func (h *Handler) RiwayatPeranPengguna(c *gin.Context) {
 		return
 	}
 
-	res, err := h.uc.RiwayatPeran(c.Request.Context(), c.Param("id"), req.Limit)
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
+	res, err := h.uc.RiwayatPeran(c.Request.Context(), id, req.Limit)
 	switch {
 	case err == nil:
 		response.Success(c, dto.ToRiwayatPeranResponse(res.Items, res.Terpotong))

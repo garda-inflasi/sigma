@@ -7,6 +7,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -87,7 +88,10 @@ func (h *Handler) RevokeOtherSessions(c *gin.Context) {
 // POST /v1/users/:id/revoke-sessions
 // Admin (pengguna.kelola) memaksa semua sesi seorang pengguna berakhir.
 func (h *Handler) ForceLogoutUser(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
 	n, err := h.uc.ForceLogoutUser(requestContext(c), id, c.GetString("user_id"))
 	switch {
 	case err == nil:

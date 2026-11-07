@@ -5,7 +5,11 @@
 // SumberDemo menandai data contoh yang wajib diberi label "demo" di respons dan UI.
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Sumber angka.
 const (
@@ -19,10 +23,12 @@ const (
 // WilayahProvinsi adalah kode BPS Provinsi Aceh, wilayah yang ditampilkan dashboard eksekutif.
 const WilayahProvinsi = "11"
 
-// InflasiBulanan memetakan tabel inflasi_bulanan. Periode selalu tanggal 1.
+// InflasiBulanan memetakan tabel inflasi_bulanan. Periode selalu tanggal 1. PK-nya ID BIGINT identity;
+// kunci alami (wilayah_kode, periode) adalah UNIQUE dan target upsert impor.
 type InflasiBulanan struct {
-	WilayahKode string    `gorm:"column:wilayah_kode;primaryKey"`
-	Periode     time.Time `gorm:"column:periode;primaryKey;type:date"`
+	ID          idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	WilayahKode string    `gorm:"column:wilayah_kode"`
+	Periode     time.Time `gorm:"column:periode;type:date"`
 	IHK         float64   `gorm:"column:ihk;type:numeric(8,3)"`
 	InflasiMtm  float64   `gorm:"column:inflasi_mtm;type:numeric(6,2)"`
 	InflasiYoy  float64   `gorm:"column:inflasi_yoy;type:numeric(6,2)"`
@@ -33,11 +39,13 @@ type InflasiBulanan struct {
 
 func (InflasiBulanan) TableName() string { return "inflasi_bulanan" }
 
-// AndilInflasi memetakan tabel andil_inflasi: sumbangan satu komoditas (poin persen).
+// AndilInflasi memetakan tabel andil_inflasi: sumbangan satu komoditas (poin persen). PK-nya ID BIGINT
+// identity; kunci alami (periode, wilayah_kode, komoditas_kode) adalah UNIQUE dan target upsert impor.
 type AndilInflasi struct {
-	Periode       time.Time `gorm:"column:periode;primaryKey;type:date"`
-	WilayahKode   string    `gorm:"column:wilayah_kode;primaryKey"`
-	KomoditasKode string    `gorm:"column:komoditas_kode;primaryKey"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Periode       time.Time `gorm:"column:periode;type:date"`
+	WilayahKode   string    `gorm:"column:wilayah_kode"`
+	KomoditasKode string    `gorm:"column:komoditas_kode"`
 	Andil         float64   `gorm:"column:andil;type:numeric(6,3)"`
 	InflasiPct    float64   `gorm:"column:inflasi_pct;type:numeric(6,2)"`
 	Sumber        string    `gorm:"column:sumber"`
@@ -47,11 +55,13 @@ type AndilInflasi struct {
 func (AndilInflasi) TableName() string { return "andil_inflasi" }
 
 // NeracaPangan memetakan tabel neraca_pangan (ton per bulan). SurplusTon adalah
-// kolom turunan di basis data (produksi − konsumsi), hanya dibaca.
+// kolom turunan di basis data (produksi − konsumsi), hanya dibaca. PK-nya ID BIGINT identity; kunci alami
+// (komoditas_kode, wilayah_kode, periode) adalah UNIQUE dan target upsert impor.
 type NeracaPangan struct {
-	KomoditasKode string    `gorm:"column:komoditas_kode;primaryKey"`
-	WilayahKode   string    `gorm:"column:wilayah_kode;primaryKey"`
-	Periode       time.Time `gorm:"column:periode;primaryKey;type:date"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	KomoditasKode string    `gorm:"column:komoditas_kode"`
+	WilayahKode   string    `gorm:"column:wilayah_kode"`
+	Periode       time.Time `gorm:"column:periode;type:date"`
 	ProduksiTon   float64   `gorm:"column:produksi_ton;type:numeric(12,1)"`
 	KonsumsiTon   float64   `gorm:"column:konsumsi_ton;type:numeric(12,1)"`
 	StokTon       *float64  `gorm:"column:stok_ton;type:numeric(12,1)"`
@@ -71,9 +81,11 @@ type TargetInflasi struct {
 
 func (TargetInflasi) TableName() string { return "target_inflasi" }
 
-// RuangFiskal memetakan tabel ruang_fiskal: pagu dan realisasi satu instrumen (rupiah).
+// RuangFiskal memetakan tabel ruang_fiskal: pagu dan realisasi satu instrumen (rupiah). PK-nya ID BIGINT
+// identity; kunci alami (tahun, instrumen, per_tanggal) adalah UNIQUE. Kode memuat ID lama (mis. DEMO-RF-202609-1).
 type RuangFiskal struct {
-	ID          string    `gorm:"column:id;primaryKey"`
+	ID          idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode        *string   `gorm:"column:kode"`
 	Tahun       int       `gorm:"column:tahun"`
 	Instrumen   string    `gorm:"column:instrumen"`
 	Pagu        int64     `gorm:"column:pagu"`

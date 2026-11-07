@@ -3,17 +3,22 @@ package http
 
 import (
 	"errors"
-	"strconv"
 	"strings"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	"github.com/garda-inflasi/api/internal/intervensi/dto"
 	"github.com/garda-inflasi/api/internal/intervensi/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// maksKode adalah panjang maksimum kode tampilan (kolom kode varchar(64)) yang diterima sebagai alias rute.
+const maksKode = 64
+
+const pesanKartuTidakAda = "Kartu intervensi tidak ditemukan"
 
 type Handler struct {
 	uc *usecase.UseCase
@@ -62,10 +67,21 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
+	// Penanggung jawab adalah id pengguna (UUID): teks lain tidak mungkin ada, dan kolom uuid menolaknya (22P02).
+	pj := make([]string, len(req.PenanggungJawabIDs))
+	for i, mentah := range req.PenanggungJawabIDs {
+		id, ok := idx.NormalUUID(mentah)
+		if !ok {
+			response.BadRequest(c, "Validasi gagal: penanggung jawab harus berupa ID pengguna (UUID) yang sah")
+			return
+		}
+		pj[i] = id
+	}
+
 	created, err := h.uc.Create(audit.RequestContext(c), domain.NewIntervensi{
 		Siklus: req.Siklus, Judul: req.Judul, Deskripsi: req.Deskripsi, KomoditasKode: req.KomoditasKode,
 		KabupatenKode: req.KabupatenKode, Prioritas: req.Prioritas, Tenggat: req.Tenggat, EwsAlertID: req.EwsAlertID,
-		PenanggungJawabIDs: req.PenanggungJawabIDs, DibuatOlehID: c.GetString("user_id"),
+		PenanggungJawabIDs: pj, DibuatOlehID: c.GetString("user_id"),
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidReference) {
@@ -75,11 +91,16 @@ func (h *Handler) Create(c *gin.Context) {
 		response.InternalError(c, "Gagal membuat intervensi")
 		return
 	}
-	response.Created(c, dto.CreateIntervensiResponse{ID: created.ID, Tahap: created.Tahap})
+	response.Created(c, dto.CreateIntervensiResponse{ID: created.ID, Kode: created.Kode, Tahap: created.Tahap})
 }
 
-// UpdateTahap handles PATCH /v1/intervensi/:id/tahap
+// UpdateTahap handles PATCH /v1/intervensi/:id/tahap. :id adalah UUID kartu atau kode tampilan lama (INT-n);
+// selain itu 404.
 func (h *Handler) UpdateTahap(c *gin.Context) {
+	ref, ok := idx.ParamUUIDAtauKode(c, "id", maksKode, pesanKartuTidakAda)
+	if !ok {
+		return
+	}
 	var req dto.UpdateTahapRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
@@ -87,14 +108,14 @@ func (h *Handler) UpdateTahap(c *gin.Context) {
 	}
 
 	hasPermission := func(permission string) bool { return middleware.HasPermission(c, permission) }
-	versi, err := h.uc.Move(audit.RequestContext(c), c.Param("id"), req.Tahap, req.Urutan, req.Versi, c.GetString("user_id"), hasPermission)
+	versi, err := h.uc.Move(audit.RequestContext(c), ref, req.Tahap, req.Urutan, req.Versi, c.GetString("user_id"), hasPermission)
 
 	var forbidden *usecase.ForbiddenError
 	switch {
 	case err == nil:
 		response.Success(c, dto.MoveResponse{Versi: versi})
 	case errors.Is(err, usecase.ErrNotFound):
-		response.NotFound(c, "Kartu intervensi tidak ditemukan")
+		response.NotFound(c, pesanKartuTidakAda)
 	case errors.Is(err, usecase.ErrInvalidTahap):
 		response.BadRequest(c, "Tahap tidak valid untuk siklus kartu ini")
 	case errors.Is(err, usecase.ErrVersiUsang):
@@ -114,7 +135,17 @@ func (h *Handler) Bulk(c *gin.Context) {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
-	res, err := h.uc.BulkAksi(audit.RequestContext(c), req.Action, req.IDs, c.GetString("user_id"))
+	// ID kartu adalah UUID: teks lain tidak mungkin ada, dan kolom uuid menolaknya (22P02).
+	ids := make([]string, len(req.IDs))
+	for i, mentah := range req.IDs {
+		id, ok := idx.NormalUUID(mentah)
+		if !ok {
+			response.BadRequest(c, "Validasi gagal: ID kartu harus berupa UUID yang sah")
+			return
+		}
+		ids[i] = id
+	}
+	res, err := h.uc.BulkAksi(audit.RequestContext(c), req.Action, ids, c.GetString("user_id"))
 	switch {
 	case err == nil:
 		response.Success(c, dto.ToBulkResponse(res))
@@ -125,14 +156,18 @@ func (h *Handler) Bulk(c *gin.Context) {
 	}
 }
 
-// ListRiwayat handles GET /v1/intervensi/:id/riwayat
+// ListRiwayat handles GET /v1/intervensi/:id/riwayat. :id adalah UUID kartu atau kode tampilan lama (INT-n).
 func (h *Handler) ListRiwayat(c *gin.Context) {
-	items, err := h.uc.ListRiwayat(c.Request.Context(), c.Param("id"))
+	ref, ok := idx.ParamUUIDAtauKode(c, "id", maksKode, pesanKartuTidakAda)
+	if !ok {
+		return
+	}
+	items, err := h.uc.ListRiwayat(c.Request.Context(), ref)
 	switch {
 	case err == nil:
 		response.Success(c, dto.ToRiwayatResponses(items))
 	case errors.Is(err, usecase.ErrNotFound):
-		response.NotFound(c, "Kartu intervensi tidak ditemukan")
+		response.NotFound(c, pesanKartuTidakAda)
 	default:
 		response.InternalError(c, "Gagal mengambil riwayat kartu")
 	}
@@ -163,19 +198,23 @@ func (h *Handler) ListPersetujuan(c *gin.Context) {
 	response.Success(c, dto.ToPersetujuanResponses(items))
 }
 
-// Ajukan handles POST /v1/intervensi/:id/persetujuan
+// Ajukan handles POST /v1/intervensi/:id/persetujuan. :id adalah UUID kartu atau kode tampilan lama (INT-n).
 func (h *Handler) Ajukan(c *gin.Context) {
+	ref, ok := idx.ParamUUIDAtauKode(c, "id", maksKode, pesanKartuTidakAda)
+	if !ok {
+		return
+	}
 	var req dto.AjukanPersetujuanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
-	p, err := h.uc.Ajukan(audit.RequestContext(c), c.Param("id"), req.TahapTujuan, req.Catatan, c.GetString("user_id"))
+	p, err := h.uc.Ajukan(audit.RequestContext(c), ref, req.TahapTujuan, req.Catatan, c.GetString("user_id"))
 	switch {
 	case err == nil:
 		response.Created(c, dto.ToPersetujuanResponse(*p))
 	case errors.Is(err, usecase.ErrNotFound):
-		response.NotFound(c, "Kartu intervensi tidak ditemukan")
+		response.NotFound(c, pesanKartuTidakAda)
 	case errors.Is(err, usecase.ErrInvalidTahap):
 		response.BadRequest(c, "Tahap tidak valid untuk siklus kartu ini")
 	case errors.Is(err, usecase.ErrTanpaPersetujuan):
@@ -190,11 +229,11 @@ func (h *Handler) Ajukan(c *gin.Context) {
 }
 
 // Putus handles POST /v1/intervensi/persetujuan/:pid/keputusan. Route meminta salah satu izin
-// persetujuan; izin yang tepat menurut langkah yang menunggu diperiksa di usecase.
+// persetujuan; izin yang tepat menurut langkah yang menunggu diperiksa di usecase. :pid adalah ID BIGINT
+// permintaan; yang salah bentuk dijawab 404 seperti ID yang tidak ada.
 func (h *Handler) Putus(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("pid"), 10, 64)
-	if err != nil || id < 1 {
-		response.BadRequest(c, "Id permintaan tidak valid")
+	id, ok := idx.ParamID(c, "pid", "Permintaan persetujuan tidak ditemukan")
+	if !ok {
 		return
 	}
 	var req dto.PutusPersetujuanRequest

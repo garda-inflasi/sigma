@@ -3,6 +3,8 @@ package domain
 import (
 	"context"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Hasil sebuah aksi yang dicatat.
@@ -14,10 +16,14 @@ const (
 
 // AuditLog memetakan tabel audit_log. Tabel bersifat append-only (trigger di
 // basis data), jadi entity ini hanya dibuat dan dibaca, tidak pernah diubah.
+// ID adalah BIGINT identity yang dibuat basis data (urutan penyisipan, bukan acak);
+// Kode memuat ID lama (UUID teks atau demo-audit-NNNN) hanya untuk baris yang ada
+// sebelum migrasi 000115 dan baris demo, dan menjadi alias rute /v1/audit/:id.
 type AuditLog struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string   `gorm:"column:kode"`
 	Waktu         time.Time `gorm:"column:waktu;default:now()"`
-	AktorID       *string   `gorm:"column:aktor_id"`
+	AktorID       *string   `gorm:"column:aktor_id;type:uuid"`
 	AktorNama     *string   `gorm:"column:aktor_nama"`
 	AktorEmail    *string   `gorm:"column:aktor_email"`
 	AktorPeran    *string   `gorm:"column:aktor_peran"`
@@ -94,7 +100,7 @@ type Filter struct {
 // Cursor menandai posisi halaman berikutnya pada urutan (waktu, id) menurun.
 type Cursor struct {
 	Waktu time.Time
-	ID    string
+	ID    idx.ID
 }
 
 // Page adalah satu halaman daftar audit; NextCursor kosong berarti halaman terakhir.

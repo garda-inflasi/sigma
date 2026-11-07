@@ -12,7 +12,10 @@ import type {
 import { formatWilayah } from "./cold-storage";
 
 export interface EntriHargaResponse {
+  /** ID BIGINT sebagai string desimal ("1024"). */
   id: string;
+  /** ID lama (mis. HRG-D00-00-01-K) bila entri dari sebelum migrasi 000111; null untuk entri baru. */
+  kode?: string | null;
   komoditas_kode: string;
   komoditas_nama: string;
   pasar_id: string;
@@ -66,6 +69,7 @@ export const HARGA_PAGE_LIMIT = 500;
 export function toEntriHarga(r: EntriHargaResponse): EntriHarga {
   return {
     id: r.id,
+    ...(r.kode ? { kode: r.kode } : {}),
     komoditasKode: r.komoditas_kode,
     komoditasNama: r.komoditas_nama,
     pasarId: r.pasar_id,

@@ -3,7 +3,11 @@
 // (harga_eksternal, cuaca_harian). Gold adalah materialized view gold_harga_harian.
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Status sebuah eksekusi.
 const (
@@ -35,10 +39,10 @@ const TipeHargaKonsumen = "KONSUMEN"
 // EksekusiSumber memetakan tabel eksekusi_sumber. BarisDitolak adalah kolom
 // turunan (tak terpetakan + tidak valid), hanya dibaca.
 type EksekusiSumber struct {
-	ID                 int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	SumberID           string     `gorm:"column:sumber_id"`
+	ID                 idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	SumberID           string     `gorm:"column:sumber_id;type:uuid"`
 	Pemicu             string     `gorm:"column:pemicu"`
-	AktorID            *string    `gorm:"column:aktor_id"`
+	AktorID            *string    `gorm:"column:aktor_id;type:uuid"`
 	Status             string     `gorm:"column:status"`
 	Mulai              time.Time  `gorm:"column:mulai"`
 	Selesai            *time.Time `gorm:"column:selesai"`
@@ -58,9 +62,9 @@ func (EksekusiSumber) TableName() string { return "eksekusi_sumber" }
 
 // DataMentah memetakan tabel data_mentah (bronze).
 type DataMentah struct {
-	ID              int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	SumberID        string    `gorm:"column:sumber_id"`
-	EksekusiID      int64     `gorm:"column:eksekusi_id"`
+	ID              idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	SumberID        string    `gorm:"column:sumber_id;type:uuid"`
+	EksekusiID      idx.ID    `gorm:"column:eksekusi_id"`
 	KunciPermintaan string    `gorm:"column:kunci_permintaan"`
 	TipeKonten      string    `gorm:"column:tipe_konten"`
 	DiambilPada     time.Time `gorm:"column:diambil_pada"`
@@ -70,9 +74,9 @@ type DataMentah struct {
 
 func (DataMentah) TableName() string { return "data_mentah" }
 
-// PemetaanSumber memetakan tabel pemetaan_sumber. KodeMaster nil bila Diabaikan.
+// PemetaanSumber memetakan tabel pemetaan_sumber (PK komposit sumber_id, jenis, alias). KodeMaster nil bila Diabaikan.
 type PemetaanSumber struct {
-	SumberID   string  `gorm:"column:sumber_id;primaryKey"`
+	SumberID   string  `gorm:"column:sumber_id;type:uuid;primaryKey"`
 	Jenis      string  `gorm:"column:jenis;primaryKey"`
 	Alias      string  `gorm:"column:alias;primaryKey"`
 	KodeMaster *string `gorm:"column:kode_master"`
@@ -82,26 +86,30 @@ type PemetaanSumber struct {
 
 func (PemetaanSumber) TableName() string { return "pemetaan_sumber" }
 
-// HargaEksternal memetakan tabel harga_eksternal (silver).
+// HargaEksternal memetakan tabel harga_eksternal (silver). PK-nya ID BIGINT identity; kunci alami
+// (sumber_id, komoditas_kode, kabupaten_kode, tanggal, tipe) adalah UNIQUE dan target upsert ingestion.
 type HargaEksternal struct {
-	SumberID       string    `gorm:"column:sumber_id;primaryKey"`
-	KomoditasKode  string    `gorm:"column:komoditas_kode;primaryKey"`
-	KabupatenKode  string    `gorm:"column:kabupaten_kode;primaryKey"`
-	Tanggal        time.Time `gorm:"column:tanggal;primaryKey;type:date"`
-	Tipe           string    `gorm:"column:tipe;primaryKey"`
+	ID             idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	SumberID       string    `gorm:"column:sumber_id;type:uuid"`
+	KomoditasKode  string    `gorm:"column:komoditas_kode"`
+	KabupatenKode  string    `gorm:"column:kabupaten_kode"`
+	Tanggal        time.Time `gorm:"column:tanggal;type:date"`
+	Tipe           string    `gorm:"column:tipe"`
 	Harga          float64   `gorm:"column:harga;type:numeric(14,2)"`
 	Satuan         string    `gorm:"column:satuan"`
-	DataMentahID   *int64    `gorm:"column:data_mentah_id"`
-	EksekusiID     *int64    `gorm:"column:eksekusi_id"`
+	DataMentahID   *idx.ID   `gorm:"column:data_mentah_id"`
+	EksekusiID     *idx.ID   `gorm:"column:eksekusi_id"`
 	DiperbaruiPada time.Time `gorm:"column:diperbarui_pada;default:now()"`
 }
 
 func (HargaEksternal) TableName() string { return "harga_eksternal" }
 
-// CuacaHarian memetakan tabel cuaca_harian (silver cuaca). ID deterministik dari
-// kunci alaminya (lihat IDCuaca).
+// CuacaHarian memetakan tabel cuaca_harian (silver cuaca). PK-nya ID BIGINT identity; kunci alami
+// (kabupaten_kode, tanggal, sumber) adalah UNIQUE dan target upsert ingestion. Kode memuat ID lama
+// (CUA-...) hanya pada baris yang ada sebelum migrasi 000115.
 type CuacaHarian struct {
-	ID            string    `gorm:"column:id;primaryKey"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          *string   `gorm:"column:kode"`
 	KabupatenKode string    `gorm:"column:kabupaten_kode"`
 	Tanggal       time.Time `gorm:"column:tanggal;type:date"`
 	CurahHujanMm  float64   `gorm:"column:curah_hujan_mm"`
@@ -109,13 +117,8 @@ type CuacaHarian struct {
 	Kelembapan    int       `gorm:"column:kelembapan"`
 	Anomali       bool      `gorm:"column:anomali"`
 	Sumber        string    `gorm:"column:sumber"`
-	EksekusiID    *int64    `gorm:"column:eksekusi_id"`
-	DataMentahID  *int64    `gorm:"column:data_mentah_id"`
+	EksekusiID    *idx.ID   `gorm:"column:eksekusi_id"`
+	DataMentahID  *idx.ID   `gorm:"column:data_mentah_id"`
 }
 
 func (CuacaHarian) TableName() string { return "cuaca_harian" }
-
-// IDCuaca membentuk id baris cuaca dari kunci alaminya (kabupaten, tanggal, sumber).
-func IDCuaca(kabupaten string, tanggal time.Time, sumber string) string {
-	return "CUA-" + kabupaten + "-" + tanggal.Format("20060102") + "-" + sumber
-}

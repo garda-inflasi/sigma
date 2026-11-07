@@ -7,6 +7,7 @@ import (
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
 	"github.com/garda-inflasi/api/internal/cold-storage/dto"
 	"github.com/garda-inflasi/api/internal/cold-storage/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -48,14 +49,26 @@ func writeOperasiError(c *gin.Context, err error, fallback string) {
 	}
 }
 
-// Detail handles GET /v1/cold-storage/fasilitas/:id
+// maksKodeFasilitas adalah panjang terbesar kode fasilitas (kolom kode varchar(64)).
+const maksKodeFasilitas = 64
+
+// rujukanFasilitas membaca :id sebagai UUID atau kode fasilitas (alias CS-01); selain itu 404.
+func rujukanFasilitas(c *gin.Context) (idx.RujukanUUID, bool) {
+	return idx.ParamUUIDAtauKode(c, "id", maksKodeFasilitas, "Fasilitas tidak ditemukan")
+}
+
+// Detail handles GET /v1/cold-storage/fasilitas/:id (UUID atau kode fasilitas)
 func (h *Handler) Detail(c *gin.Context) {
+	ref, ok := rujukanFasilitas(c)
+	if !ok {
+		return
+	}
 	var req dto.DetailFasilitasRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
-	d, err := h.ops.Detail(c.Request.Context(), c.Param("id"), req.Jam)
+	d, err := h.ops.Detail(c.Request.Context(), ref, req.Jam)
 	if err != nil {
 		writeOperasiError(c, err, "Gagal mengambil detail fasilitas")
 		return
@@ -79,14 +92,18 @@ func (h *Handler) Detail(c *gin.Context) {
 	response.Success(c, out)
 }
 
-// UbahFasilitas handles PATCH /v1/cold-storage/fasilitas/:id
+// UbahFasilitas handles PATCH /v1/cold-storage/fasilitas/:id (UUID atau kode fasilitas)
 func (h *Handler) UbahFasilitas(c *gin.Context) {
+	ref, ok := rujukanFasilitas(c)
+	if !ok {
+		return
+	}
 	var req dto.UbahFasilitasRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
-	f, err := h.ops.UbahFasilitas(audit.RequestContext(c), c.Param("id"), domain.FasilitasPatch{
+	f, err := h.ops.UbahFasilitas(audit.RequestContext(c), ref, domain.FasilitasPatch{
 		KapasitasTon: req.KapasitasTon, SuhuMinC: req.SuhuMinC, SuhuMaksC: req.SuhuMaksC, Status: req.Status,
 	}, c.GetString("user_id"))
 	if err != nil {

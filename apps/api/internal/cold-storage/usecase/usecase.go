@@ -10,6 +10,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 )
 
@@ -122,7 +123,7 @@ func isiTurunan(f *domain.FasilitasView) {
 // BulkInput adalah permintaan aksi massal beserta identitas pelakunya.
 type BulkInput struct {
 	Action  string
-	IDs     []string
+	IDs     []idx.ID
 	ActorID string
 }
 
@@ -170,7 +171,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, in BulkInput) (BulkOutcome, e
 }
 
 // barisDitemukan mengubah id lot yang diproses menjadi baris berhasil.
-func barisDitemukan(found []string) []domain.BarisBulk {
+func barisDitemukan(found []idx.ID) []domain.BarisBulk {
 	out := make([]domain.BarisBulk, len(found))
 	for i, id := range found {
 		out[i] = domain.BarisBulk{ID: id, Berhasil: true}
@@ -180,7 +181,7 @@ func barisDitemukan(found []string) []domain.BarisBulk {
 
 // recordAudit mencatat aksi massal. Kegagalan mencatat tidak membatalkan aksi:
 // aksi ini bersifat advisori dan sudah diproses.
-func (uc *UseCase) recordAudit(ctx context.Context, in BulkInput, ids []string, out BulkOutcome) {
+func (uc *UseCase) recordAudit(ctx context.Context, in BulkInput, ids []idx.ID, out BulkOutcome) {
 	hasil := audit.HasilBerhasil
 	if out.Berhasil == 0 {
 		hasil = audit.HasilGagal
@@ -202,7 +203,6 @@ func (uc *UseCase) recordAudit(ctx context.Context, in BulkInput, ids []string, 
 // normalizeQuery menerapkan nilai bawaan dan batas pada kriteria daftar stok.
 func normalizeQuery(q domain.StokQuery) domain.StokQuery {
 	q.Search = strings.TrimSpace(q.Search)
-	q.ColdStorageID = strings.TrimSpace(q.ColdStorageID)
 	if q.Sort == "" {
 		q.Sort = domain.SortSisaMasaSimpan
 	}
@@ -241,12 +241,12 @@ func round1(v float64) float64 {
 	return math.Round(v*10) / 10
 }
 
-func uniqueNonEmpty(in []string) []string {
-	seen := make(map[string]struct{}, len(in))
-	out := make([]string, 0, len(in))
+// uniqueNonEmpty membuang ID kosong (nol) dan ganda, mempertahankan urutan pertama.
+func uniqueNonEmpty(in []idx.ID) []idx.ID {
+	seen := make(map[idx.ID]struct{}, len(in))
+	out := make([]idx.ID, 0, len(in))
 	for _, id := range in {
-		id = strings.TrimSpace(id)
-		if id == "" {
+		if id == 0 {
 			continue
 		}
 		if _, dup := seen[id]; dup {

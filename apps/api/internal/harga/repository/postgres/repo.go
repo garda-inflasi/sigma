@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/harga/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,7 +24,7 @@ func New(db *gorm.DB) *Repository {
 }
 
 const viewColumns = `
-	e.id, e.komoditas_kode, k.nama AS komoditas_nama, e.pasar_id, p.nama AS pasar_nama,
+	e.id, e.kode, e.komoditas_kode, k.nama AS komoditas_nama, e.pasar_id, p.nama AS pasar_nama,
 	p.kabupaten_kode, kb.nama AS kabupaten_nama, e.tipe, e.harga, e.satuan, e.kualitas, e.sumber,
 	e.status, e.deviasi_pct, e.skor_anomali, e.lat, e.lng, e.dalam_geofence,
 	(e.foto_url IS NOT NULL) AS ada_foto, e.foto_url, e.catatan, e.dicatat_pada,
@@ -92,10 +93,12 @@ func urutan(urut string) string {
 	return "e.dicatat_pada DESC, e.id"
 }
 
-// GetByID mengembalikan satu entri beserta nama terkait.
-func (r *Repository) GetByID(ctx context.Context, id string) (*domain.EntriView, error) {
+// GetByID mengembalikan satu entri beserta nama terkait. ref berisi ID BIGINT, atau kode lama (HRG-..., UUID dari
+// aplikasi lama) sebagai alias tautan lama.
+func (r *Repository) GetByID(ctx context.Context, ref idx.RujukanID) (*domain.EntriView, error) {
+	kondisi, nilai := ref.Kondisi("e.id", "e.kode")
 	var items []domain.EntriView
-	if err := r.entriView(ctx).Select(viewColumns).Where("e.id = ?", id).Limit(1).Scan(&items).Error; err != nil {
+	if err := r.entriView(ctx).Select(viewColumns).Where(kondisi, nilai).Limit(1).Scan(&items).Error; err != nil {
 		return nil, fmt.Errorf("get entri harga: %w", err)
 	}
 	if len(items) == 0 {
@@ -300,7 +303,7 @@ func tautkanTugas(tx *gorm.DB, entri *domain.EntriHarga) error {
 	if entri.PetugasID == nil {
 		return nil
 	}
-	var tugas []string
+	var tugas []idx.ID
 	err := tx.Raw(`
 		SELECT id FROM tugas_lapangan
 		 WHERE petugas_id = ? AND pasar_id = ? AND tipe = ? AND status <> 'SELESAI'
@@ -343,7 +346,7 @@ var perubahanTransisi = map[domain.BulkAction]string{
 
 // Transisi mengunci entri yang diminta, menilai tiap id dengan domain.Evaluasi, menerapkan
 // aksi pada yang lolos, dan mencatat riwayat statusnya; semuanya dalam satu transaksi.
-func (r *Repository) Transisi(ctx context.Context, ids []string, aksi domain.BulkAction, aktorID, alasan string, waktu time.Time) ([]domain.HasilTransisi, error) {
+func (r *Repository) Transisi(ctx context.Context, ids []idx.ID, aksi domain.BulkAction, aktorID, alasan string, waktu time.Time) ([]domain.HasilTransisi, error) {
 	set, ok := perubahanTransisi[aksi]
 	if !ok {
 		return nil, errors.New("aksi massal tidak dikenal: " + string(aksi))
@@ -352,19 +355,19 @@ func (r *Repository) Transisi(ctx context.Context, ids []string, aksi domain.Bul
 	hasil := make([]domain.HasilTransisi, len(ids))
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var rows []struct {
-			ID        string  `gorm:"column:id"`
+			ID        idx.ID  `gorm:"column:id"`
 			Status    string  `gorm:"column:status"`
-			PetugasID *string `gorm:"column:petugas_id"`
+			PetugasID *string `gorm:"column:petugas_id;type:uuid"`
 		}
 		if err := tx.Raw("SELECT id, status::text AS status, petugas_id FROM entri_harga WHERE id IN ? ORDER BY id FOR UPDATE", ids).Scan(&rows).Error; err != nil {
 			return fmt.Errorf("kunci entri: %w", err)
 		}
-		ada := make(map[string]int, len(rows))
+		ada := make(map[idx.ID]int, len(rows))
 		for i, row := range rows {
 			ada[row.ID] = i
 		}
 
-		var lolos []string
+		var lolos []idx.ID
 		var riwayat []domain.RiwayatStatusEntri
 		for i, id := range ids {
 			hasil[i] = domain.HasilTransisi{ID: id, Sebab: domain.SebabTidakDitemukan}
@@ -406,7 +409,7 @@ func (r *Repository) Transisi(ctx context.Context, ids []string, aksi domain.Bul
 }
 
 // Riwayat mengembalikan perpindahan status entri, yang terlama lebih dulu.
-func (r *Repository) Riwayat(ctx context.Context, entriID string) ([]domain.RiwayatView, error) {
+func (r *Repository) Riwayat(ctx context.Context, entriID idx.ID) ([]domain.RiwayatView, error) {
 	var items []domain.RiwayatView
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT h.dari::text AS dari, h.ke::text AS ke, h.oleh, u.nama AS oleh_nama, h.waktu, h.alasan

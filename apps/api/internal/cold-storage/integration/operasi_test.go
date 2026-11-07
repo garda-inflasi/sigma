@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,21 +35,26 @@ func dataMap(t *testing.T, body map[string]any) map[string]any {
 	return d
 }
 
-func volumeLot(t *testing.T, s *suite, id string) (volume float64, fasilitas, status string) {
+// volumeLot membaca lot menurut ID angka (string desimal) atau kode seed (STK-CS01-05) dan mengembalikan volume,
+// kode fasilitasnya (CS-03), dan status.
+func volumeLot(t *testing.T, s *suite, ref string) (volume float64, fasilitas, status string) {
 	t.Helper()
 	var row struct {
-		VolumeTon     float64
-		ColdStorageID string
-		Status        string
+		VolumeTon float64
+		Kode      string
+		Status    string
 	}
-	require.NoError(t, s.db.Raw(`SELECT volume_ton, cold_storage_id, status FROM stok_cold_storage WHERE id = ?`, id).Scan(&row).Error)
-	return row.VolumeTon, row.ColdStorageID, row.Status
+	require.NoError(t, s.db.Raw(`SELECT s.volume_ton, c.kode, s.status FROM stok_cold_storage s JOIN cold_storage c ON c.id = s.cold_storage_id
+		WHERE s.id::text = ? OR s.kode = ?`, ref, ref).Scan(&row).Error)
+	return row.VolumeTon, row.Kode, row.Status
 }
 
+// terisi menjumlahkan lot yang belum habis di fasilitas berkode fasilitas (CS-02).
 func terisi(t *testing.T, s *suite, fasilitas string) float64 {
 	t.Helper()
 	var v float64
-	require.NoError(t, s.db.Raw(`SELECT COALESCE(SUM(volume_ton), 0) FROM stok_cold_storage WHERE cold_storage_id = ? AND status <> 'HABIS'`, fasilitas).Scan(&v).Error)
+	require.NoError(t, s.db.Raw(`SELECT COALESCE(SUM(volume_ton), 0) FROM stok_cold_storage
+		WHERE cold_storage_id = (SELECT id FROM cold_storage WHERE kode = ?) AND status <> 'HABIS'`, fasilitas).Scan(&v).Error)
 	return v
 }
 
@@ -119,7 +126,7 @@ func TestOperasi_AuthorizationMatrix(t *testing.T) {
 	s := newSuite(t, pg.NewDatabase(t, "cs_ops_authz"))
 	ingest := map[string]any{"pembacaan": []map[string]any{{"fasilitas_id": "CS-01", "waktu": time.Now().Add(-time.Hour), "suhu_c": 3.8}}}
 	masuk := map[string]any{"jenis": "MASUK", "fasilitas_id": "CS-01", "komoditas_kode": "CBM-KRT", "pemilik": "Uji", "volume_ton": 1}
-	pindah := map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-05", "fasilitas_tujuan_id": "CS-03", "volume_ton": 1}
+	pindah := map[string]any{"jenis": "PINDAH", "lot_id": s.lot(t, "STK-CS01-05"), "fasilitas_tujuan_id": "CS-03", "volume_ton": 1}
 	patch := map[string]any{"suhu_min_c": 1.0}
 
 	cases := []struct {
@@ -181,7 +188,7 @@ func TestIngestTelemetri(t *testing.T) {
 			SuhuAktualC         float64
 			KelembapanAktualPct float64
 		}
-		require.NoError(t, s.db.Raw(`SELECT suhu_aktual_c, kelembapan_aktual_pct FROM cold_storage WHERE id = 'CS-01'`).Scan(&f).Error)
+		require.NoError(t, s.db.Raw(`SELECT suhu_aktual_c, kelembapan_aktual_pct FROM cold_storage WHERE kode = 'CS-01'`).Scan(&f).Error)
 		assert.Equal(t, 4.4, f.SuhuAktualC)
 		assert.Equal(t, 80.5, f.KelembapanAktualPct)
 	})
@@ -195,7 +202,7 @@ func TestIngestTelemetri(t *testing.T) {
 		assert.EqualValues(t, 1, dataMap(t, body)["diterima"])
 		assert.EqualValues(t, 1, dataMap(t, body)["duplikat"])
 		var n int64
-		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM telemetri_suhu WHERE fasilitas_id = 'CS-01' AND sumber = 'SENSOR'`).Scan(&n).Error)
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM telemetri_suhu WHERE fasilitas_id = ? AND sumber = 'SENSOR'`, fasID("CS-01")).Scan(&n).Error)
 		assert.EqualValues(t, 4, n)
 	})
 
@@ -213,8 +220,34 @@ func TestIngestTelemetri(t *testing.T) {
 	t.Run("aksi tercatat di audit trail", func(t *testing.T) {
 		rows := auditRows(t, s, "INGEST_TELEMETRI")
 		require.NotEmpty(t, rows)
-		assert.Equal(t, "manajer_mutu", rows[0].AktorID)
-		assert.Equal(t, "CS-01", rows[0].EntitasID)
+		assert.Equal(t, uid("manajer_mutu"), rows[0].AktorID)
+		assert.Equal(t, fasID("CS-01"), rows[0].EntitasID, "satu fasilitas: entitas_id adalah UUID-nya")
+	})
+
+	t.Run("fasilitas boleh ditulis dengan UUID atau kode dan hasilnya sama", func(t *testing.T) {
+		waktuKode, waktuUUID := base.Add(-3*time.Hour), base.Add(-4*time.Hour)
+		for ref, waktu := range map[string]time.Time{"CS-02": waktuKode, fasID("CS-02"): waktuUUID} {
+			code, body := post(t, s, "/v1/cold-storage/telemetri", userKelola, map[string]any{"pembacaan": []map[string]any{
+				{"fasilitas_id": ref, "waktu": waktu, "suhu_c": -20.2},
+			}})
+			require.Equal(t, http.StatusOK, code, body)
+		}
+		var n int64
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM telemetri_suhu WHERE fasilitas_id = ? AND waktu IN (?, ?)`, fasID("CS-02"), waktuKode, waktuUUID).Scan(&n).Error)
+		assert.EqualValues(t, 2, n, "kedua cara menulis menunjuk fasilitas yang sama")
+	})
+
+	t.Run("kiriman banyak fasilitas dicatat sebagai ringkasan dengan daftar UUID di metadata", func(t *testing.T) {
+		code, body := post(t, s, "/v1/cold-storage/telemetri", userKelola, map[string]any{"pembacaan": []map[string]any{
+			reading("CS-01", 20*time.Minute, 4.0), reading("CS-02", 20*time.Minute, -20.0),
+		}})
+		require.Equal(t, http.StatusOK, code, body)
+		var row struct{ EntitasID, Metadata string }
+		require.NoError(t, s.db.Raw(`SELECT entitas_id, metadata::text AS metadata FROM audit_log
+			WHERE aksi = 'INGEST_TELEMETRI' ORDER BY waktu DESC, id DESC LIMIT 1`).Scan(&row).Error)
+		assert.Equal(t, "2 fasilitas", row.EntitasID)
+		assert.Contains(t, row.Metadata, fasID("CS-01"))
+		assert.Contains(t, row.Metadata, fasID("CS-02"))
 	})
 
 	t.Run("penolakan", func(t *testing.T) {
@@ -223,6 +256,8 @@ func TestIngestTelemetri(t *testing.T) {
 			want int
 		}{
 			"fasilitas tak ada":       {map[string]any{"pembacaan": []map[string]any{reading("CS-99", time.Minute, 4)}}, http.StatusNotFound},
+			"uuid tak ada":            {map[string]any{"pembacaan": []map[string]any{reading(fasID("CS-99"), time.Minute, 4)}}, http.StatusNotFound},
+			"fasilitas > 64 karakter": {map[string]any{"pembacaan": []map[string]any{reading(strings.Repeat("a", 65), time.Minute, 4)}}, http.StatusBadRequest},
 			"fasilitas rencana":       {map[string]any{"pembacaan": []map[string]any{reading("CS-05", time.Minute, 4)}}, http.StatusConflict},
 			"waktu di masa depan":     {map[string]any{"pembacaan": []map[string]any{reading("CS-01", -time.Hour, 4)}}, http.StatusBadRequest},
 			"suhu mustahil":           {map[string]any{"pembacaan": []map[string]any{reading("CS-01", time.Minute, 120)}}, http.StatusBadRequest},
@@ -265,6 +300,8 @@ func TestDetailFasilitas_UsesDemoTelemetryAndLedger(t *testing.T) {
 		data := dataMap(t, bodyOf(t, w))
 
 		fas := data["fasilitas"].(map[string]any)
+		assert.Equal(t, fasID("CS-04"), fas["id"])
+		assert.Equal(t, "CS-04", fas["kode"])
 		assert.Equal(t, false, fas["alarm_suhu"])
 		assert.Equal(t, 4.8, fas["suhu_aktual_c"])
 		assert.Equal(t, 2.0, fas["batas_min_c"])
@@ -306,7 +343,42 @@ func TestDetailFasilitas_UsesDemoTelemetryAndLedger(t *testing.T) {
 		require.Len(t, trx, 7)
 		for _, x := range trx {
 			assert.Equal(t, "MASUK", x["jenis"])
-			assert.Equal(t, "CS-03", x["fasilitas_tujuan_id"])
+			assert.Equal(t, fasID("CS-03"), x["fasilitas_tujuan_id"])
+			assert.Equal(t, "CS-03", x["fasilitas_tujuan_kode"])
+			assert.Nil(t, x["fasilitas_asal_id"])
+			assert.Nil(t, x["fasilitas_asal_kode"])
+			assert.Regexp(t, `^[1-9][0-9]*$`, x["id"], "id transaksi BIGINT sebagai string desimal")
+			assert.Regexp(t, `^TRX-DEMO-STK-CS03-0[1-7]$`, x["kode"])
+		}
+		for _, st := range list(t, data["stok"]) {
+			assert.Regexp(t, `^[1-9][0-9]*$`, st["id"])
+			assert.Regexp(t, `^STK-CS03-0[1-7]$`, st["kode"])
+			assert.Equal(t, fasID("CS-03"), st["cold_storage_id"])
+		}
+	})
+
+	t.Run("rute memakai UUID atau kode, huruf besar dinormalkan", func(t *testing.T) {
+		kode := dataMap(t, bodyOf(t, s.call(t, http.MethodGet, "/v1/cold-storage/fasilitas/CS-03", userLihatSaja, nil)))["fasilitas"]
+		for _, ref := range []string{fasID("CS-03"), strings.ToUpper(fasID("CS-03"))} {
+			w := s.call(t, http.MethodGet, "/v1/cold-storage/fasilitas/"+ref, userLihatSaja, nil)
+			require.Equal(t, http.StatusOK, w.Code, ref)
+			assert.Equal(t, kode, dataMap(t, bodyOf(t, w))["fasilitas"], ref)
+		}
+	})
+
+	t.Run("id salah bentuk atau tidak ada dijawab 404 tanpa menyentuh kolom uuid", func(t *testing.T) {
+		for name, ref := range map[string]string{
+			"kode tak ada":         "CS-99",
+			"uuid tak ada":         fasID("CS-99"),
+			"lebih dari 64":        strings.Repeat("a", 65),
+			"angka (bukan kode)":   "12345",
+			"uuid tanpa tanda -":   strings.ReplaceAll(fasID("CS-03"), "-", ""),
+			"bentuk uuid berisi x": "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
+		} {
+			w := s.call(t, http.MethodGet, "/v1/cold-storage/fasilitas/"+ref, userLihatSaja, nil)
+			assert.Equal(t, http.StatusNotFound, w.Code, "%s: %s", name, w.Body.String())
+			w = s.call(t, http.MethodPatch, "/v1/cold-storage/fasilitas/"+ref, userKelola, map[string]any{"suhu_min_c": 1})
+			assert.Equal(t, http.StatusNotFound, w.Code, "PATCH %s: %s", name, w.Body.String())
 		}
 	})
 
@@ -333,6 +405,7 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 	}
 
 	var lotMasuk string
+	lot := func(kode string) string { return s.lot(t, kode) }
 	t.Run("MASUK membuat lot dan menaikkan utilisasi", func(t *testing.T) {
 		before := terisi(t, s, "CS-02")
 
@@ -341,6 +414,8 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 		require.Equal(t, http.StatusCreated, code, body)
 		data := dataMap(t, body)
 		lotMasuk = data["lot_id"].(string)
+		assert.Regexp(t, `^[1-9][0-9]*$`, lotMasuk, "ID lot dari identity basis data")
+		assert.Regexp(t, `^[1-9][0-9]*$`, data["transaksi_id"], "ID transaksi dari identity basis data")
 		assert.Equal(t, "AKTIF", data["status_lot"])
 		assert.Equal(t, 25.5, data["volume_sisa_ton"])
 		assert.InDelta(t, before+25.5, terisi(t, s, "CS-02"), 1e-9)
@@ -353,7 +428,27 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 		require.Len(t, rows, 1)
 		assert.Equal(t, lotMasuk, rows[0].EntitasID)
 		assert.Empty(t, rows[0].Sebelum)
-		assert.JSONEq(t, `{"fasilitas_id":"CS-02","volume_ton":25.5,"status":"AKTIF"}`, rows[0].Sesudah)
+		assert.JSONEq(t, fmt.Sprintf(`{"fasilitas_id":%q,"volume_ton":25.5,"status":"AKTIF"}`, fasID("CS-02")), rows[0].Sesudah)
+
+		// Lot baru diberi kode tampilan dari ID-nya; transaksi baru tidak diberi kode.
+		var kode, kodeTrx *string
+		require.NoError(t, s.db.Raw(`SELECT kode FROM stok_cold_storage WHERE id = ?`, lotMasuk).Scan(&kode).Error)
+		require.NotNil(t, kode)
+		assert.Equal(t, "STK-"+strings.Repeat("0", 6-len(lotMasuk))+lotMasuk, *kode)
+		require.NoError(t, s.db.Raw(`SELECT kode FROM transaksi_stok WHERE id = ?`, data["transaksi_id"]).Scan(&kodeTrx).Error)
+		assert.Nil(t, kodeTrx)
+	})
+
+	t.Run("MASUK dengan fasilitas ditulis UUID atau kode menghasilkan lot di fasilitas yang sama", func(t *testing.T) {
+		for _, ref := range []string{"CS-01", fasID("CS-01"), strings.ToUpper(fasID("CS-01"))} {
+			code, body := trx(map[string]any{"jenis": "MASUK", "fasilitas_id": ref, "komoditas_kode": "CBM-KRT", "pemilik": "Uji " + ref, "volume_ton": 0.5})
+			require.Equal(t, http.StatusCreated, code, "%s: %v", ref, body)
+			_, fas, _ := volumeLot(t, s, dataMap(t, body)["lot_id"].(string))
+			assert.Equal(t, "CS-01", fas, ref)
+		}
+		// Ketiganya dibatalkan agar angka kapasitas dan jumlah transaksi uji berikutnya tetap seperti semula.
+		require.NoError(t, s.db.Exec(`DELETE FROM transaksi_stok WHERE lot_id IN (SELECT id FROM stok_cold_storage WHERE pemilik LIKE 'Uji %')`).Error)
+		require.NoError(t, s.db.Exec(`DELETE FROM stok_cold_storage WHERE pemilik LIKE 'Uji %'`).Error)
 	})
 
 	t.Run("MASUK ditolak bila melebihi kapasitas, fasilitas tak beroperasi, atau komoditas tak ada", func(t *testing.T) {
@@ -399,30 +494,65 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 
 		rows := auditRows(t, s, "TRANSAKSI_STOK_KELUAR")
 		require.Len(t, rows, 2)
-		assert.JSONEq(t, `{"fasilitas_id":"CS-02","volume_ton":25.5,"status":"AKTIF"}`, rows[0].Sebelum)
-		assert.JSONEq(t, `{"fasilitas_id":"CS-02","volume_ton":15,"status":"AKTIF"}`, rows[0].Sesudah)
-		assert.JSONEq(t, `{"fasilitas_id":"CS-02","volume_ton":0,"status":"HABIS"}`, rows[1].Sesudah)
+		cs02 := fasID("CS-02")
+		assert.JSONEq(t, fmt.Sprintf(`{"fasilitas_id":%q,"volume_ton":25.5,"status":"AKTIF"}`, cs02), rows[0].Sebelum)
+		assert.JSONEq(t, fmt.Sprintf(`{"fasilitas_id":%q,"volume_ton":15,"status":"AKTIF"}`, cs02), rows[0].Sesudah)
+		assert.JSONEq(t, fmt.Sprintf(`{"fasilitas_id":%q,"volume_ton":0,"status":"HABIS"}`, cs02), rows[1].Sesudah)
 	})
 
 	t.Run("KELUAR ditolak: melebihi stok, tanpa alasan, volume tidak positif", func(t *testing.T) {
-		code, _ := trx(map[string]any{"jenis": "KELUAR", "lot_id": "STK-CS01-05", "volume_ton": 18.7, "alasan": "x"})
+		code, _ := trx(map[string]any{"jenis": "KELUAR", "lot_id": lot("STK-CS01-05"), "volume_ton": 18.7, "alasan": "x"})
 		assert.Equal(t, http.StatusConflict, code, "stok lot 18,6 ton")
-		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": "STK-CS01-05", "volume_ton": 1})
+		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": lot("STK-CS01-05"), "volume_ton": 1})
 		assert.Equal(t, http.StatusBadRequest, code, "alasan wajib")
-		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": "STK-CS01-05", "volume_ton": 0, "alasan": "x"})
+		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": lot("STK-CS01-05"), "volume_ton": 0, "alasan": "x"})
 		assert.Equal(t, http.StatusBadRequest, code)
-		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": "STK-CS01-05", "volume_ton": -3, "alasan": "x"})
+		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": lot("STK-CS01-05"), "volume_ton": -3, "alasan": "x"})
 		assert.Equal(t, http.StatusBadRequest, code)
-		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": "STK-TIDAK-ADA", "volume_ton": 1, "alasan": "x"})
+		code, _ = trx(map[string]any{"jenis": "KELUAR", "lot_id": lotTakAda, "volume_ton": 1, "alasan": "x"})
 		assert.Equal(t, http.StatusNotFound, code)
 		vol, _, _ := volumeLot(t, s, "STK-CS01-05")
 		assert.Equal(t, 18.6, vol, "stok tidak berubah oleh penolakan")
 	})
 
+	t.Run("lot_id salah bentuk dijawab 400, bukan 404 dan bukan 500", func(t *testing.T) {
+		for name, id := range map[string]any{
+			"kode lama":         "STK-CS01-05",
+			"uuid":              fasID("CS-01"),
+			"nol":               "0",
+			"negatif":           "-4",
+			"pecahan":           1.5,
+			"melebihi int64":    "9223372036854775808",
+			"dengan spasi":      " 7 ",
+			"awalan nol":        "007",
+			"string kosong":     "",
+			"bukan angka (obj)": map[string]any{"a": 1},
+		} {
+			code, _ := trx(map[string]any{"jenis": "KELUAR", "lot_id": id, "volume_ton": 1, "alasan": "x"})
+			assert.Equal(t, http.StatusBadRequest, code, name)
+		}
+		var n int64
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM transaksi_stok WHERE alasan = 'x'`).Scan(&n).Error)
+		assert.Zero(t, n, "permintaan salah bentuk tidak menyentuh buku besar")
+	})
+
+	t.Run("lot_id boleh angka JSON maupun string desimal", func(t *testing.T) {
+		id, _ := strconv.ParseInt(lot("STK-CS01-05"), 10, 64)
+		for _, v := range []any{id, lot("STK-CS01-05")} {
+			code, body := trx(map[string]any{"jenis": "KELUAR", "lot_id": v, "volume_ton": 0.1, "alasan": "bentuk id"})
+			require.Equal(t, http.StatusCreated, code, "%T: %v", v, body)
+		}
+		vol, _, _ := volumeLot(t, s, "STK-CS01-05")
+		assert.InDelta(t, 18.4, vol, 1e-9)
+		// Kembalikan agar uji PINDAH di bawah memakai volume 18,6 ton seperti seed.
+		require.NoError(t, s.db.Exec(`UPDATE stok_cold_storage SET volume_ton = 18.6 WHERE kode = 'STK-CS01-05'`).Error)
+		require.NoError(t, s.db.Exec(`DELETE FROM transaksi_stok WHERE alasan = 'bentuk id'`).Error)
+	})
+
 	t.Run("PINDAH seluruh lot mengubah lokasinya", func(t *testing.T) {
 		a, b := terisi(t, s, "CS-01"), terisi(t, s, "CS-03")
 
-		code, body := trx(map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-05", "fasilitas_tujuan_id": "CS-03", "semua": true})
+		code, body := trx(map[string]any{"jenis": "PINDAH", "lot_id": lot("STK-CS01-05"), "fasilitas_tujuan_id": "CS-03", "semua": true})
 
 		require.Equal(t, http.StatusCreated, code, body)
 		assert.Nil(t, dataMap(t, body)["lot_baru_id"])
@@ -433,12 +563,13 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 	})
 
 	t.Run("PINDAH sebagian membentuk lot baru dengan atribut sama", func(t *testing.T) {
-		code, body := trx(map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-04", "fasilitas_tujuan_id": "CS-03", "volume_ton": 8.2})
+		code, body := trx(map[string]any{"jenis": "PINDAH", "lot_id": lot("STK-CS01-04"), "fasilitas_tujuan_id": "CS-03", "volume_ton": 8.2})
 
 		require.Equal(t, http.StatusCreated, code, body)
 		data := dataMap(t, body)
 		baru := data["lot_baru_id"].(string)
-		require.NotEmpty(t, baru)
+		require.Regexp(t, `^[1-9][0-9]*$`, baru, "ID lot baru dari RETURNING, bukan buatan aplikasi")
+		assert.NotEqual(t, lot("STK-CS01-04"), baru)
 		assert.InDelta(t, 30.0, data["volume_sisa_ton"], 1e-9)
 
 		sumber, _, _ := volumeLot(t, s, "STK-CS01-04")
@@ -451,19 +582,33 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 		var sama int64
 		require.NoError(t, s.db.Raw(`
 			SELECT COUNT(*) FROM stok_cold_storage a JOIN stok_cold_storage b ON b.id = ?
-			 WHERE a.id = 'STK-CS01-04' AND a.komoditas_kode = b.komoditas_kode AND a.pemilik = b.pemilik
+			 WHERE a.kode = 'STK-CS01-04' AND a.komoditas_kode = b.komoditas_kode AND a.pemilik = b.pemilik
 			   AND a.masuk_pada = b.masuk_pada AND a.kedaluwarsa_pada = b.kedaluwarsa_pada AND a.risiko_food_loss = b.risiko_food_loss`, baru).Scan(&sama).Error)
 		assert.EqualValues(t, 1, sama)
+
+		// Kode lot baru turunan ID-nya (bukan salinan kode lot sumber), dan transaksi menunjuk kedua lot.
+		var kodeBaru string
+		require.NoError(t, s.db.Raw(`SELECT kode FROM stok_cold_storage WHERE id = ?`, baru).Scan(&kodeBaru).Error)
+		assert.NotEqual(t, "STK-CS01-04", kodeBaru)
+		assert.Equal(t, "STK-"+strings.Repeat("0", 6-len(baru))+baru, kodeBaru)
+		var trxLot struct{ LotID, LotBaruID string }
+		require.NoError(t, s.db.Raw(`SELECT lot_id::text AS lot_id, lot_baru_id::text AS lot_baru_id FROM transaksi_stok WHERE id = ?`, data["transaksi_id"]).Scan(&trxLot).Error)
+		assert.Equal(t, lot("STK-CS01-04"), trxLot.LotID)
+		assert.Equal(t, baru, trxLot.LotBaruID)
+
+		aud := auditRows(t, s, "TRANSAKSI_STOK_PINDAH")
+		require.NotEmpty(t, aud)
+		assert.Equal(t, lot("STK-CS01-04"), aud[len(aud)-1].EntitasID, "audit mencatat ID lot sumber")
 	})
 
 	t.Run("PINDAH ditolak: kapasitas tujuan, fasilitas sama, tujuan tak beroperasi", func(t *testing.T) {
-		code, _ := trx(map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-07", "fasilitas_tujuan_id": "CS-02", "volume_ton": 40})
+		code, _ := trx(map[string]any{"jenis": "PINDAH", "lot_id": lot("STK-CS01-07"), "fasilitas_tujuan_id": "CS-02", "volume_ton": 40})
 		assert.Equal(t, http.StatusConflict, code, "CS-02 hanya muat 25,5 ton lagi")
-		code, _ = trx(map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-07", "fasilitas_tujuan_id": "CS-01", "volume_ton": 1})
+		code, _ = trx(map[string]any{"jenis": "PINDAH", "lot_id": lot("STK-CS01-07"), "fasilitas_tujuan_id": "CS-01", "volume_ton": 1})
 		assert.Equal(t, http.StatusBadRequest, code)
-		code, _ = trx(map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-07", "fasilitas_tujuan_id": "CS-04", "volume_ton": 1})
+		code, _ = trx(map[string]any{"jenis": "PINDAH", "lot_id": lot("STK-CS01-07"), "fasilitas_tujuan_id": "CS-04", "volume_ton": 1})
 		assert.Equal(t, http.StatusConflict, code, "CS-04 dalam perawatan")
-		code, _ = trx(map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-07", "fasilitas_tujuan_id": "CS-99", "volume_ton": 1})
+		code, _ = trx(map[string]any{"jenis": "PINDAH", "lot_id": lot("STK-CS01-07"), "fasilitas_tujuan_id": "CS-99", "volume_ton": 1})
 		assert.Equal(t, http.StatusNotFound, code)
 		vol, fas, _ := volumeLot(t, s, "STK-CS01-07")
 		assert.Equal(t, 52.7, vol)
@@ -477,9 +622,9 @@ func TestTransaksi_LedgerStaysConsistentWithStock(t *testing.T) {
 			"masuk tanpa komoditas":        {"jenis": "MASUK", "fasilitas_id": "CS-01", "pemilik": "x", "volume_ton": 1},
 			"masuk tanpa volume":           {"jenis": "MASUK", "fasilitas_id": "CS-01", "komoditas_kode": "TLR", "pemilik": "x"},
 			"masuk kedaluwarsa lampau":     {"jenis": "MASUK", "fasilitas_id": "CS-01", "komoditas_kode": "TLR", "pemilik": "x", "volume_ton": 1, "kedaluwarsa_pada": time.Now().Add(-time.Hour)},
-			"pindah tanpa tujuan":          {"jenis": "PINDAH", "lot_id": "STK-CS01-07", "volume_ton": 1},
+			"pindah tanpa tujuan":          {"jenis": "PINDAH", "lot_id": lot("STK-CS01-07"), "volume_ton": 1},
 			"keluar tanpa lot":             {"jenis": "KELUAR", "volume_ton": 1, "alasan": "x"},
-			"keluar volume tak masuk akal": {"jenis": "KELUAR", "lot_id": "STK-CS01-07", "volume_ton": 1e12, "alasan": "x"},
+			"keluar volume tak masuk akal": {"jenis": "KELUAR", "lot_id": lot("STK-CS01-07"), "volume_ton": 1e12, "alasan": "x"},
 		} {
 			code, _ := trx(body)
 			assert.Equal(t, http.StatusBadRequest, code, name)
@@ -513,11 +658,14 @@ func TestUbahFasilitas(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, code, body)
 	fas := dataMap(t, body)
+	assert.Equal(t, fasID("CS-01"), fas["id"])
+	assert.Equal(t, "CS-01", fas["kode"])
 	assert.Equal(t, 2.5, fas["batas_min_c"])
 	assert.Equal(t, 5.5, fas["batas_maks_c"])
 	assert.EqualValues(t, 500, fas["kapasitas_ton"])
 	rows := auditRows(t, s, "UBAH_FASILITAS_COLD_STORAGE")
 	require.Len(t, rows, 1)
+	assert.Equal(t, fasID("CS-01"), rows[0].EntitasID, "audit memakai UUID walau URL memakai kode")
 	assert.JSONEq(t, `{"kapasitas_ton":400,"suhu_min_c":null,"suhu_maks_c":null,"status":"OPERASIONAL"}`, rows[0].Sebelum)
 	assert.JSONEq(t, `{"kapasitas_ton":500,"suhu_min_c":2.5,"suhu_maks_c":5.5,"status":"OPERASIONAL"}`, rows[0].Sesudah)
 
@@ -539,6 +687,15 @@ func TestUbahFasilitas(t *testing.T) {
 		})
 	}
 	assert.Len(t, auditRows(t, s, "UBAH_FASILITAS_COLD_STORAGE"), 1, "penolakan tidak tercatat sebagai perubahan")
+
+	t.Run("UUID dan kode menunjuk fasilitas yang sama", func(t *testing.T) {
+		code, body := patch(fasID("CS-02"), map[string]any{"suhu_min_c": -22.0})
+		require.Equal(t, http.StatusOK, code, body)
+		assert.Equal(t, "CS-02", dataMap(t, body)["kode"])
+		code, body = patch("CS-02", map[string]any{"suhu_min_c": -21.0})
+		require.Equal(t, http.StatusOK, code, body)
+		assert.Equal(t, -21.0, dataMap(t, body)["batas_min_c"])
+	})
 
 	t.Run("status PERAWATAN menutup penerimaan stok", func(t *testing.T) {
 		code, _ := patch("CS-03", map[string]any{"status": "PERAWATAN"})
@@ -569,7 +726,7 @@ func TestBulk_PrioritasJualDanBuang(t *testing.T) {
 			assert.EqualValues(t, 1, data["gagal"])
 			rincian := list(t, data["rincian"])
 			require.Len(t, rincian, 3)
-			assert.Equal(t, []any{"STK-CS01-01", true, ""}, []any{rincian[0]["id"], rincian[0]["berhasil"], rincian[0]["pesan"]})
+			assert.Equal(t, []any{s.lot(t, "STK-CS01-01"), true, ""}, []any{rincian[0]["id"], rincian[0]["berhasil"], rincian[0]["pesan"]})
 			assert.Equal(t, false, rincian[1]["berhasil"])
 			assert.NotEmpty(t, rincian[1]["pesan"])
 			assert.Equal(t, true, rincian[2]["berhasil"])
@@ -602,12 +759,12 @@ func TestBulk_PrioritasJualDanBuang(t *testing.T) {
 		assert.Equal(t, "HABIS", status)
 
 		var n int64
-		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM transaksi_stok WHERE jenis = 'KELUAR' AND alasan = 'Dibuang (aksi massal)' AND oleh_id = 'manajer_mutu'`).Scan(&n).Error)
+		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM transaksi_stok WHERE jenis = 'KELUAR' AND alasan = 'Dibuang (aksi massal)' AND oleh_id = garda_uuid_stabil('pengguna', 'manajer_mutu')`).Scan(&n).Error)
 		assert.EqualValues(t, 2, n)
 
 		rows := auditRows(t, s, "BULK_buang")
 		require.Len(t, rows, 1)
-		assert.Equal(t, "manajer_mutu", rows[0].AktorID)
+		assert.Equal(t, uid("manajer_mutu"), rows[0].AktorID)
 		assert.Equal(t, "2 lot", rows[0].EntitasID)
 
 		again := bulk(t, s, userKelola, "buang", "STK-CS03-01")
@@ -659,16 +816,18 @@ func count(codes []int, want int) int {
 func TestTransaksi_ConcurrentRequestsNeverOverdrawOrOverfill(t *testing.T) {
 	s := newSuite(t, pg.NewDatabase(t, "cs_ops_konkurensi"))
 	const path = "/v1/cold-storage/transaksi"
+	lotCS02, lotCS01_04 := s.lot(t, "STK-CS02-01"), s.lot(t, "STK-CS01-04")
+	lotCS03_05, lotCS01_08 := s.lot(t, "STK-CS03-05"), s.lot(t, "STK-CS01-08")
 
 	t.Run("dua pengguna mengeluarkan lot yang sama: tidak ada stok negatif", func(t *testing.T) {
 		// STK-CS02-01 = 64,5 ton. Delapan permintaan 20 ton: tepat tiga yang muat.
 		codes := concurrently(8, func(int) int {
-			return s.rawPost(path, userKelola, map[string]any{"jenis": "KELUAR", "lot_id": "STK-CS02-01", "volume_ton": 20, "alasan": "uji"})
+			return s.rawPost(path, userKelola, map[string]any{"jenis": "KELUAR", "lot_id": lotCS02, "volume_ton": 20, "alasan": "uji"})
 		})
 
 		assert.Equal(t, 3, count(codes, http.StatusCreated), "%v", codes)
 		assert.Equal(t, 5, count(codes, http.StatusConflict), "%v", codes)
-		vol, _, status := volumeLot(t, s, "STK-CS02-01")
+		vol, _, status := volumeLot(t, s, lotCS02)
 		assert.InDelta(t, 4.5, vol, 1e-9)
 		assert.Equal(t, "AKTIF", status)
 	})
@@ -678,7 +837,7 @@ func TestTransaksi_ConcurrentRequestsNeverOverdrawOrOverfill(t *testing.T) {
 
 		// STK-CS01-04 = 38,2 ton: dua pindah 20 ton serentak, hanya satu yang muat.
 		codes := concurrently(4, func(int) int {
-			return s.rawPost(path, userLogistik, map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-04", "fasilitas_tujuan_id": "CS-03", "volume_ton": 20})
+			return s.rawPost(path, userLogistik, map[string]any{"jenis": "PINDAH", "lot_id": lotCS01_04, "fasilitas_tujuan_id": "CS-03", "volume_ton": 20})
 		})
 
 		assert.Equal(t, 1, count(codes, http.StatusCreated), "%v", codes)
@@ -700,9 +859,9 @@ func TestTransaksi_ConcurrentRequestsNeverOverdrawOrOverfill(t *testing.T) {
 
 	t.Run("pindah silang antar dua fasilitas tidak saling mengunci", func(t *testing.T) {
 		codes := concurrently(6, func(i int) int {
-			lot, tujuan := "STK-CS03-05", "CS-01"
+			lot, tujuan := lotCS03_05, "CS-01"
 			if i%2 == 1 {
-				lot, tujuan = "STK-CS01-08", "CS-03"
+				lot, tujuan = lotCS01_08, "CS-03"
 			}
 			return s.rawPost(path, userKelola, map[string]any{"jenis": "PINDAH", "lot_id": lot, "fasilitas_tujuan_id": tujuan, "volume_ton": 1})
 		})
@@ -745,7 +904,7 @@ func TestContract_OperasiResponsesMatchOpenAPI(t *testing.T) {
 	t.Run("transaksi", func(t *testing.T) {
 		masuk := s.call(t, http.MethodPost, "/v1/cold-storage/transaksi", userKelola, map[string]any{"jenis": "MASUK", "fasilitas_id": "CS-01", "komoditas_kode": "CBM-KRT", "pemilik": "Uji", "volume_ton": 2})
 		check(t, "/v1/cold-storage/transaksi", "post", "201", masuk)
-		pindah := s.call(t, http.MethodPost, "/v1/cold-storage/transaksi", userKelola, map[string]any{"jenis": "PINDAH", "lot_id": "STK-CS01-01", "fasilitas_tujuan_id": "CS-03", "volume_ton": 1})
+		pindah := s.call(t, http.MethodPost, "/v1/cold-storage/transaksi", userKelola, map[string]any{"jenis": "PINDAH", "lot_id": s.lot(t, "STK-CS01-01"), "fasilitas_tujuan_id": "CS-03", "volume_ton": 1})
 		check(t, "/v1/cold-storage/transaksi", "post", "201", pindah)
 	})
 	t.Run("ubah fasilitas", func(t *testing.T) {

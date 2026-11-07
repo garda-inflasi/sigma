@@ -34,10 +34,10 @@ func newIzinSuite(t *testing.T, ttl time.Duration) *izinSuite {
 	t.Helper()
 	jam := &jamTes{t: time.Date(2026, 6, 1, 8, 0, 0, 0, time.UTC)}
 	fake := newIzinFake(jam.Now)
-	fake.tambahAkun("admin-1", "ADMIN_SISTEM", "AKTIF")
+	fake.tambahAkun(uid("admin-1"), "ADMIN_SISTEM", "AKTIF")
 	fake.tambahAkun("mhs-1", "OPS_MAHASISWA", "AKTIF")
 	fake.tambahAkun("nonaktif-1", "OPS_MAHASISWA", "NONAKTIF")
-	fake.namaPemberi["admin-1"] = "Admin Satu"
+	fake.namaPemberi[uid("admin-1")] = "Admin Satu"
 
 	repo := &repoDenganIzin{mockRepository: new(mockRepository), izinFake: fake}
 	cfg := DefaultConfig()
@@ -98,7 +98,7 @@ func TestIzinCache_PerubahanDariLuarProsesBerlakuPalingLambatSetelahTTL(t *testi
 func TestIzinCache_EntriTidakHidupMelewatiIzinLangsungYangKedaluwarsa(t *testing.T) {
 	s := newIzinSuite(t, 15*time.Second)
 	sampai := s.jam.Now().Add(5 * time.Second)
-	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "uji"}, "admin-1")
+	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "uji"}, uid("admin-1"))
 	require.NoError(t, err)
 
 	assert.Contains(t, s.efektif(t, "mhs-1"), "kpi.lihat")
@@ -112,17 +112,17 @@ func TestIzinCache_EntriTidakHidupMelewatiIzinLangsungYangKedaluwarsa(t *testing
 func TestIzinCache_PembuanganEksplisit(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 	s.efektif(t, "mhs-1")
-	s.efektif(t, "admin-1")
+	s.efektif(t, uid("admin-1"))
 	require.Equal(t, 2, s.panggilan())
 
 	s.uc.bersihkanCacheIzin("mhs-1")
 	s.efektif(t, "mhs-1")
-	s.efektif(t, "admin-1")
+	s.efektif(t, uid("admin-1"))
 	assert.Equal(t, 3, s.panggilan(), "hanya pengguna yang dibuang yang dimuat ulang")
 
 	s.uc.bersihkanSemuaCacheIzin()
 	s.efektif(t, "mhs-1")
-	s.efektif(t, "admin-1")
+	s.efektif(t, uid("admin-1"))
 	assert.Equal(t, 5, s.panggilan(), "pembuangan semua memuat ulang semuanya")
 }
 
@@ -156,14 +156,14 @@ func TestIzinCache_AkunTidakAdaAtauNonaktifAdalahErrPrincipalNotFoundDanTidakDis
 
 func TestIzinCache_GalatBasisDataGagalTutupTanpaMenyajikanEntriBasi(t *testing.T) {
 	s := newIzinSuite(t, 15*time.Second)
-	s.efektif(t, "admin-1")
+	s.efektif(t, uid("admin-1"))
 
 	s.izin.mu.Lock()
 	s.izin.errEfektif = errors.New("connection refused")
 	s.izin.mu.Unlock()
 	s.jam.Maju(16 * time.Second)
 
-	_, err := s.uc.izinCache.Permissions(context.Background(), "admin-1")
+	_, err := s.uc.izinCache.Permissions(context.Background(), uid("admin-1"))
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, token.ErrPrincipalNotFound, "galat infrastruktur bukan 'akun tidak ada'")
 }
@@ -215,7 +215,7 @@ func TestPermissionResolver_NilTanpaPenyimpananBasisData(t *testing.T) {
 func TestMintAccess_TokenMembawaGabunganIzinPerandanIzinLangsungAktif(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 	sampai := s.jam.Now().Add(time.Hour)
-	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "uji"}, "admin-1")
+	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "uji"}, uid("admin-1"))
 	require.NoError(t, err)
 
 	tk, err := s.uc.mintAccess(context.Background(), &domain.Pengguna{ID: "mhs-1", Peran: "OPS_MAHASISWA"}, "sid-1")
@@ -240,7 +240,7 @@ func TestMintAccess_GalatIzinMenggagalkanPenerbitan(t *testing.T) {
 
 func TestListRoles_DariBasisDataMembawaVersiDanBawaan(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
-	_, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"harga.input", "kpi.lihat"}, "admin-1")
+	_, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"harga.input", "kpi.lihat"}, uid("admin-1"))
 	require.NoError(t, err)
 
 	roles, err := s.uc.ListRoles(context.Background())
@@ -278,7 +278,7 @@ func TestUpdateRolePermissions_BerhasilMenulisAuditSebelumSesudahDanMembuangCach
 	s := newIzinSuite(t, time.Hour)
 	assert.NotContains(t, s.efektif(t, "mhs-1"), "kpi.lihat")
 
-	info, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"kpi.lihat", "harga.input", "harga.input"}, "admin-1")
+	info, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"kpi.lihat", "harga.input", "harga.input"}, uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"harga.input", "kpi.lihat"}, info.Permissions)
@@ -289,7 +289,7 @@ func TestUpdateRolePermissions_BerhasilMenulisAuditSebelumSesudahDanMembuangCach
 	entry, ok := s.audit.Last()
 	require.True(t, ok)
 	assert.Equal(t, "UPDATE_ROLE_PERMISSIONS", entry.Aksi)
-	assert.Equal(t, "admin-1", entry.AktorID)
+	assert.Equal(t, uid("admin-1"), entry.AktorID)
 	assert.Equal(t, "OPS_MAHASISWA", entry.EntitasID)
 	assert.Equal(t, audit.HasilBerhasil, entry.Hasil)
 	assert.Equal(t, []string{"harga.input", "tugas.lihat_sendiri"}, entry.Sebelum.(map[string]any)["izin"])
@@ -301,7 +301,7 @@ func TestUpdateRolePermissions_BerhasilMenulisAuditSebelumSesudahDanMembuangCach
 func TestUpdateRolePermissions_TanpaPerubahanTidakMenulisAuditAtauMenaikkanVersi(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 
-	info, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, IzinBawaan("OPS_MAHASISWA"), "admin-1")
+	info, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, IzinBawaan("OPS_MAHASISWA"), uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, info.Versi)
@@ -310,11 +310,11 @@ func TestUpdateRolePermissions_TanpaPerubahanTidakMenulisAuditAtauMenaikkanVersi
 
 func TestUpdateRolePermissions_VersiBasiDitolakDenganKeadaanSaatIni(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
-	_, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"harga.input"}, "admin-1")
+	_, err := s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"harga.input"}, uid("admin-1"))
 	require.NoError(t, err)
 
 	// Admin kedua masih memegang versi 1.
-	_, err = s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"kpi.lihat"}, "admin-2")
+	_, err = s.uc.UpdateRolePermissions(context.Background(), "OPS_MAHASISWA", 1, []string{"kpi.lihat"}, uid("admin-2"))
 
 	require.ErrorIs(t, err, ErrVersiPeranBerubah)
 	var konflik *KonflikVersiPeran
@@ -328,16 +328,16 @@ func TestUpdateRolePermissions_Penolakan(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 	ctx := context.Background()
 
-	_, err := s.uc.UpdateRolePermissions(ctx, "SUPERADMIN", 1, nil, "admin-1")
+	_, err := s.uc.UpdateRolePermissions(ctx, "SUPERADMIN", 1, nil, uid("admin-1"))
 	assert.ErrorIs(t, err, ErrRoleNotFound)
 
-	_, err = s.uc.UpdateRolePermissions(ctx, "OPS_MAHASISWA", 1, []string{"harga.input", "izin.palsu", "izin.palsu"}, "admin-1")
+	_, err = s.uc.UpdateRolePermissions(ctx, "OPS_MAHASISWA", 1, []string{"harga.input", "izin.palsu", "izin.palsu"}, uid("admin-1"))
 	require.ErrorIs(t, err, ErrIzinTidakDikenal)
 	assert.Contains(t, err.Error(), "izin.palsu", "nama izin asing disebut sekali")
 	assert.Equal(t, 1, strings.Count(err.Error(), "izin.palsu"))
 
 	// Menghapus pengguna.kelola dari satu-satunya peran yang memegangnya.
-	_, err = s.uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"audit.lihat"}, "admin-1")
+	_, err = s.uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"audit.lihat"}, uid("admin-1"))
 	assert.ErrorIs(t, err, ErrPemegangTerakhir)
 
 	assert.Empty(t, s.audit.Entries())
@@ -349,7 +349,7 @@ func TestUpdateRolePermissions_Penolakan(t *testing.T) {
 
 func TestUpdateRolePermissions_PeranBukanPemegangBolehKehilanganIzinLain(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
-	_, err := s.uc.UpdateRolePermissions(context.Background(), "ADMIN_SISTEM", 1, []string{"pengguna.kelola"}, "admin-1")
+	_, err := s.uc.UpdateRolePermissions(context.Background(), "ADMIN_SISTEM", 1, []string{"pengguna.kelola"}, uid("admin-1"))
 	require.NoError(t, err, "selama pengguna.kelola tetap dipegang, izin lain boleh dicabut")
 }
 
@@ -367,7 +367,7 @@ func TestGrantUserPermission_BerhasilBerlakuLalu_KedaluwarsaMenurutJam(t *testin
 	assert.NotContains(t, s.efektif(t, "mhs-1"), "kpi.lihat")
 	sampai := s.jam.Now().Add(10 * time.Minute)
 
-	info, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "  Proyek KPI triwulan  "}, "admin-1")
+	info, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "  Proyek KPI triwulan  "}, uid("admin-1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, "kpi.lihat", info.Izin)
@@ -390,19 +390,19 @@ func TestGrantUserPermission_BerhasilBerlakuLalu_KedaluwarsaMenurutJam(t *testin
 func TestGrantUserPermission_AuditSesudahDanMetadata(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 
-	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "Tugas khusus"}, "admin-1")
+	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "Tugas khusus"}, uid("admin-1"))
 
 	require.NoError(t, err)
 	entry, ok := s.audit.Last()
 	require.True(t, ok)
 	assert.Equal(t, "GRANT_USER_PERMISSION", entry.Aksi)
-	assert.Equal(t, "admin-1", entry.AktorID)
+	assert.Equal(t, uid("admin-1"), entry.AktorID)
 	assert.Equal(t, "mhs-1", entry.EntitasID)
 	assert.Equal(t, "kpi.lihat", entry.Metadata["izin"])
 	assert.Nil(t, entry.Sebelum)
 	sesudah := entry.Sesudah.(map[string]any)
 	assert.Equal(t, "Tugas khusus", sesudah["alasan"])
-	assert.Equal(t, "admin-1", sesudah["diberikan_oleh"])
+	assert.Equal(t, uid("admin-1"), sesudah["diberikan_oleh"])
 	assert.NotContains(t, sesudah, "berlaku_sampai", "tanpa batas")
 }
 
@@ -428,7 +428,7 @@ func TestGrantUserPermission_Validasi(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.nama, func(t *testing.T) {
-			_, err := s.uc.GrantUserPermission(ctx, tc.in, "admin-1")
+			_, err := s.uc.GrantUserPermission(ctx, tc.in, uid("admin-1"))
 			assert.ErrorIs(t, err, tc.want)
 		})
 	}
@@ -440,7 +440,7 @@ func TestGrantUserPermission_AlasanPanjangPasTerbatasDalamKarakterBukanByte(t *t
 	s := newIzinSuite(t, time.Hour)
 	alasan := strings.Repeat("é", 500) // 500 karakter, 1000 byte
 
-	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: alasan}, "admin-1")
+	_, err := s.uc.GrantUserPermission(context.Background(), GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: alasan}, uid("admin-1"))
 
 	assert.NoError(t, err)
 }
@@ -449,14 +449,14 @@ func TestGrantUserPermission_IzinLangsungAktifDitolakLaluKedaluwarsaDiganti(t *t
 	s := newIzinSuite(t, time.Hour)
 	ctx := context.Background()
 	sampai := s.jam.Now().Add(time.Minute)
-	_, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "pertama"}, "admin-1")
+	_, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", BerlakuSampai: &sampai, Alasan: "pertama"}, uid("admin-1"))
 	require.NoError(t, err)
 
-	_, err = s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "kedua"}, "admin-1")
+	_, err = s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "kedua"}, uid("admin-1"))
 	assert.ErrorIs(t, err, ErrIzinLangsungAda, "izin langsung yang masih berlaku tidak ditimpa diam-diam")
 
 	s.jam.Maju(2 * time.Minute)
-	_, err = s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "kedua"}, "admin-1")
+	_, err = s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "kedua"}, uid("admin-1"))
 	require.NoError(t, err, "baris yang sudah kedaluwarsa boleh diganti")
 
 	entry, _ := s.audit.Last()
@@ -468,11 +468,11 @@ func TestGrantUserPermission_IzinLangsungAktifDitolakLaluKedaluwarsaDiganti(t *t
 func TestRevokeUserPermission_BerhasilMembuangCacheDanMenulisAudit(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 	ctx := context.Background()
-	_, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "uji"}, "admin-1")
+	_, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "uji"}, uid("admin-1"))
 	require.NoError(t, err)
 	require.Contains(t, s.efektif(t, "mhs-1"), "kpi.lihat")
 
-	require.NoError(t, s.uc.RevokeUserPermission(ctx, "mhs-1", "kpi.lihat", "admin-1"))
+	require.NoError(t, s.uc.RevokeUserPermission(ctx, "mhs-1", "kpi.lihat", uid("admin-1")))
 
 	assert.NotContains(t, s.efektif(t, "mhs-1"), "kpi.lihat", "pencabutan berlaku seketika di proses ini")
 	entry, _ := s.audit.Last()
@@ -481,13 +481,13 @@ func TestRevokeUserPermission_BerhasilMembuangCacheDanMenulisAudit(t *testing.T)
 	assert.Equal(t, "kpi.lihat", entry.Sebelum.(map[string]any)["izin"])
 	assert.Nil(t, entry.Sesudah)
 
-	assert.ErrorIs(t, s.uc.RevokeUserPermission(ctx, "mhs-1", "kpi.lihat", "admin-1"), ErrIzinLangsungTidakAda)
+	assert.ErrorIs(t, s.uc.RevokeUserPermission(ctx, "mhs-1", "kpi.lihat", uid("admin-1")), ErrIzinLangsungTidakAda)
 }
 
 func TestListUserPermissions(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
 	ctx := context.Background()
-	_, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "uji"}, "admin-1")
+	_, err := s.uc.GrantUserPermission(ctx, GrantInput{UserID: "mhs-1", Izin: "kpi.lihat", Alasan: "uji"}, uid("admin-1"))
 	require.NoError(t, err)
 
 	info, err := s.uc.ListUserPermissions(ctx, "mhs-1")
@@ -518,41 +518,41 @@ func TestIzinLangsung_TanpaPenyimpananBasisData(t *testing.T) {
 
 func TestPerubahanAkun_PemegangTerakhirDitolakDanCacheTidakDibuangSiaSia(t *testing.T) {
 	ctx := context.Background()
-	admin := &domain.Pengguna{ID: "admin-1", Peran: "ADMIN_SISTEM", Status: "AKTIF", Email: "a@x.id"}
+	admin := &domain.Pengguna{ID: uid("admin-1"), Peran: "ADMIN_SISTEM", Status: "AKTIF", Email: "a@x.id"}
 
 	t.Run("AssignRole", func(t *testing.T) {
 		s := newIzinSuite(t, time.Hour)
-		s.repo.On("PatchUser", mock.Anything, "admin-1", mock.Anything).Return(domain.ErrPemegangTerakhir)
-		_, err := s.uc.AssignRole(ctx, "admin-1", "OPS_MAHASISWA", "admin-1")
+		s.repo.On("PatchUser", mock.Anything, uid("admin-1"), mock.Anything).Return(domain.ErrPemegangTerakhir)
+		_, err := s.uc.AssignRole(ctx, uid("admin-1"), "OPS_MAHASISWA", uid("admin-1"))
 		assert.ErrorIs(t, err, ErrPemegangTerakhir)
 		assert.Empty(t, s.audit.Entries())
 	})
 	t.Run("UpdateUser peran", func(t *testing.T) {
 		s := newIzinSuite(t, time.Hour)
-		s.repo.On("GetUserByID", mock.Anything, "admin-1").Return(admin, nil)
-		s.repo.On("PatchUser", mock.Anything, "admin-1", mock.Anything).Return(domain.ErrPemegangTerakhir)
+		s.repo.On("GetUserByID", mock.Anything, uid("admin-1")).Return(admin, nil)
+		s.repo.On("PatchUser", mock.Anything, uid("admin-1"), mock.Anything).Return(domain.ErrPemegangTerakhir)
 		peran := "OPS_MAHASISWA"
-		_, err := s.uc.UpdateUser(ctx, "admin-1", UserPatch{Peran: &peran}, "admin-1")
+		_, err := s.uc.UpdateUser(ctx, uid("admin-1"), UserPatch{Peran: &peran}, uid("admin-1"))
 		assert.ErrorIs(t, err, ErrPemegangTerakhir)
 	})
 	t.Run("UpdateUser status", func(t *testing.T) {
 		s := newIzinSuite(t, time.Hour)
-		s.repo.On("GetUserByID", mock.Anything, "admin-1").Return(admin, nil)
-		s.repo.On("PatchUser", mock.Anything, "admin-1", mock.Anything).Return(domain.ErrPemegangTerakhir)
+		s.repo.On("GetUserByID", mock.Anything, uid("admin-1")).Return(admin, nil)
+		s.repo.On("PatchUser", mock.Anything, uid("admin-1"), mock.Anything).Return(domain.ErrPemegangTerakhir)
 		status := "NONAKTIF"
-		_, err := s.uc.UpdateUser(ctx, "admin-1", UserPatch{Status: &status}, "admin-2")
+		_, err := s.uc.UpdateUser(ctx, uid("admin-1"), UserPatch{Status: &status}, uid("admin-2"))
 		assert.ErrorIs(t, err, ErrPemegangTerakhir)
 	})
 	t.Run("DeleteUser", func(t *testing.T) {
 		s := newIzinSuite(t, time.Hour)
-		s.repo.On("GetUserByID", mock.Anything, "admin-1").Return(admin, nil)
-		s.repo.On("DeleteUser", mock.Anything, "admin-1").Return(domain.ErrPemegangTerakhir)
-		assert.ErrorIs(t, s.uc.DeleteUser(ctx, "admin-1", "admin-2"), ErrPemegangTerakhir)
+		s.repo.On("GetUserByID", mock.Anything, uid("admin-1")).Return(admin, nil)
+		s.repo.On("DeleteUser", mock.Anything, uid("admin-1")).Return(domain.ErrPemegangTerakhir)
+		assert.ErrorIs(t, s.uc.DeleteUser(ctx, uid("admin-1"), uid("admin-2")), ErrPemegangTerakhir)
 	})
 	t.Run("Bulk nonaktifkan", func(t *testing.T) {
 		s := newIzinSuite(t, time.Hour)
-		s.repo.On("BulkUpdateUsers", mock.Anything, []string{"admin-1"}, domain.BulkNonaktifkan).Return(int64(0), domain.ErrPemegangTerakhir)
-		_, err := s.uc.BulkUserAction(ctx, []string{"admin-1"}, "nonaktifkan", "admin-2")
+		s.repo.On("BulkUpdateUsers", mock.Anything, []string{uid("admin-1")}, domain.BulkNonaktifkan).Return(int64(0), domain.ErrPemegangTerakhir)
+		_, err := s.uc.BulkUserAction(ctx, []string{uid("admin-1")}, "nonaktifkan", uid("admin-2"))
 		assert.ErrorIs(t, err, ErrPemegangTerakhir)
 		assert.Empty(t, s.audit.Entries())
 	})
@@ -570,23 +570,23 @@ func TestPerubahanAkun_Berhasil_MembuangCacheIzinPengguna(t *testing.T) {
 	s.repo.On("DeleteUser", mock.Anything, "mhs-1").Return(nil)
 	s.repo.On("BulkUpdateUsers", mock.Anything, []string{"mhs-1"}, domain.BulkAktifkan).Return(int64(1), nil)
 
-	_, err := s.uc.AssignRole(ctx, "mhs-1", "MANAJER_DATA", "admin-1")
+	_, err := s.uc.AssignRole(ctx, "mhs-1", "MANAJER_DATA", uid("admin-1"))
 	require.NoError(t, err)
 	s.efektif(t, "mhs-1")
 	assert.Equal(t, before+1, s.panggilan(), "AssignRole membuang cache pengguna")
 
 	nama := "Baru"
-	_, err = s.uc.UpdateUser(ctx, "mhs-1", UserPatch{Nama: &nama}, "admin-1")
+	_, err = s.uc.UpdateUser(ctx, "mhs-1", UserPatch{Nama: &nama}, uid("admin-1"))
 	require.NoError(t, err)
 	s.efektif(t, "mhs-1")
 	assert.Equal(t, before+2, s.panggilan(), "UpdateUser membuang cache pengguna")
 
-	_, err = s.uc.BulkUserAction(ctx, []string{"mhs-1"}, "aktifkan", "admin-1")
+	_, err = s.uc.BulkUserAction(ctx, []string{"mhs-1"}, "aktifkan", uid("admin-1"))
 	require.NoError(t, err)
 	s.efektif(t, "mhs-1")
 	assert.Equal(t, before+3, s.panggilan(), "aksi massal membuang cache pengguna")
 
-	require.NoError(t, s.uc.DeleteUser(ctx, "mhs-1", "admin-1"))
+	require.NoError(t, s.uc.DeleteUser(ctx, "mhs-1", uid("admin-1")))
 	s.efektif(t, "mhs-1")
 	assert.Equal(t, before+4, s.panggilan(), "DeleteUser membuang cache pengguna")
 }

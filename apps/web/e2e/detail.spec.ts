@@ -3,12 +3,13 @@
  * langganan push (DELETE), sumber data (GET /sumber-data/:id), tugas lapangan (GET /lapangan/tugas/:id),
  * dan pengguna (GET /users/:id).
  *
- * Data uji: satu alert `EWS-E2E-1` dibuat lewat SQL (tidak ada endpoint buat) dan dihapus di akhir
- * (riwayatnya ikut terhapus); status alert seed tidak pernah diubah. Langganan push uji memakai
+ * Data uji: satu alert berkode `EWS-E2E-1` dibuat lewat SQL (tidak ada endpoint buat; `id` BIGINT dibuat
+ * basis data, jadi dibaca kembali lewat `kode`) dan dihapus di akhir (riwayatnya ikut terhapus); status
+ * alert seed tidak pernah diubah. Rute alert menerima ID desimal dan kode lama (`EWS-…`) sebagai alias. Langganan push uji memakai
  * endpoint palsu berpenanda "e2e" dan dihapus lewat API. Tidak ada tes yang menyimpan perubahan
  * pengguna atau menjalankan ingestion.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import {
   apiSebagai,
   buka,
@@ -18,10 +19,16 @@ import {
   test,
   tungguTenang,
 } from "./fixtures";
+import { idPenggunaSeed } from "./auth-helpers";
 import { cariPengguna } from "./pengguna-helpers";
 
-const ALERT_ID = "EWS-E2E-1";
+const ALERT_KODE = "EWS-E2E-1";
+/** ID desimal alert uji; diisi di beforeAll karena identity dibuat basis data. */
+let alertId = "";
 const ALERT_JUDUL = "E2E uji detail peringatan";
+
+// UUID baris sumber SRC-BPS: garda_uuid_stabil('sumber_data', 'SRC-BPS'), sama untuk basis data yang dimigrasi dan yang di-seed.
+const UUID_SUMBER_BPS = "e1f49004-97cf-3b83-9c13-15c6eb3112d6";
 
 const unikPath =
   (path: string) => (r: { url(): string; request(): { method(): string } }) =>
@@ -32,26 +39,29 @@ test.describe("detail alert EWS", () => {
 
   test.beforeAll(() => {
     jalankanSql(`
-      DELETE FROM ews_alert WHERE id = '${ALERT_ID}';
-      INSERT INTO ews_alert (id, severity, jenis, judul, pesan, kabupaten_kode, nilai, satuan_nilai, skor_dampak, status, sumber, dibuat_pada)
-      VALUES ('${ALERT_ID}', 'INFO', 'ANOMALI_DATA', '${ALERT_JUDUL}', 'Data uji e2e, dihapus otomatis setelah spec.', '1171', 12.5, '%', 10, 'BARU', 'E2E', now());
-      INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, catatan) VALUES ('${ALERT_ID}', NULL, 'BARU', NULL, 'Dibuat oleh E2E');
+      DELETE FROM ews_alert WHERE kode = '${ALERT_KODE}';
+      INSERT INTO ews_alert (kode, severity, jenis, judul, pesan, kabupaten_kode, nilai, satuan_nilai, skor_dampak, status, sumber, dibuat_pada)
+      VALUES ('${ALERT_KODE}', 'INFO', 'ANOMALI_DATA', '${ALERT_JUDUL}', 'Data uji e2e, dihapus otomatis setelah spec.', '1171', 12.5, '%', 10, 'BARU', 'E2E', now());
+      INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, catatan)
+      SELECT id, NULL, 'BARU', NULL, 'Dibuat oleh E2E' FROM ews_alert WHERE kode = '${ALERT_KODE}';
     `);
+    alertId = jalankanSql(`SELECT id FROM ews_alert WHERE kode = '${ALERT_KODE}';`);
+    expect(alertId).toMatch(/^[1-9][0-9]*$/);
   });
 
   test.afterAll(() => {
-    jalankanSql(`DELETE FROM ews_alert WHERE id = '${ALERT_ID}';`);
+    jalankanSql(`DELETE FROM ews_alert WHERE kode = '${ALERT_KODE}';`);
   });
 
-  test("tautan ?id= membuka detail dengan data segar dan riwayat awal", async ({
+  test("tautan ?id= (ID desimal) membuka detail dengan data segar dan riwayat awal", async ({
     page,
   }) => {
     await masukSebagai(page, "manajerData");
-    const detail = page.waitForResponse(unikPath(`/v1/ews/${ALERT_ID}`));
+    const detail = page.waitForResponse(unikPath(`/v1/ews/${alertId}`));
     const riwayat = page.waitForResponse(
-      unikPath(`/v1/ews/${ALERT_ID}/riwayat`),
+      unikPath(`/v1/ews/${alertId}/riwayat`),
     );
-    await buka(page, `/ews?id=${ALERT_ID}`);
+    await buka(page, `/ews?id=${alertId}`);
     expect((await detail).status()).toBe(200);
     expect((await riwayat).status()).toBe(200);
 
@@ -70,6 +80,23 @@ test.describe("detail alert EWS", () => {
     await expect(timeline).toContainText("Baru");
     await expect(timeline).toContainText("Sistem");
     await expect(timeline).toContainText("Dibuat oleh E2E");
+  });
+
+  test("tautan lama ?id=EWS-… (kode, dari email atau push) tetap membuka detail alert yang sama", async ({
+    page,
+  }) => {
+    await masukSebagai(page, "manajerData");
+    const detail = page.waitForResponse(unikPath(`/v1/ews/${ALERT_KODE}`));
+    await buka(page, `/ews?id=${ALERT_KODE}`);
+    expect((await detail).status()).toBe(200);
+
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("heading", { name: ALERT_JUDUL }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("list", { name: "Riwayat status" }).getByRole("listitem"),
+    ).toHaveCount(1);
   });
 
   test("akui lewat aksi massal menambah riwayat pada detail", async ({
@@ -116,7 +143,7 @@ test.describe("detail alert EWS", () => {
 
     // Pelaku pada timeline sama dengan yang dicatat server.
     const api = await apiSebagai("manajerData");
-    const server = (await (await api.get(`ews/${ALERT_ID}/riwayat`)).json())
+    const server = (await (await api.get(`ews/${alertId}/riwayat`)).json())
       .data as {
       ke: string;
       oleh_nama: string | null;
@@ -134,13 +161,46 @@ test.describe("detail alert EWS", () => {
     const manajer = await apiSebagai("manajerData");
     expect((await manajer.get("ews/TIDAK-ADA")).status()).toBe(404);
     expect((await manajer.get("ews/TIDAK-ADA/riwayat")).status()).toBe(404);
-    expect((await manajer.get(`ews/${ALERT_ID}`)).status()).toBe(200);
+    expect((await manajer.get("ews/999999999999")).status()).toBe(404);
+    expect((await manajer.get("ews/0")).status()).toBe(404);
+    expect((await manajer.get(`ews/${alertId}`)).status()).toBe(200);
     await manajer.dispose();
 
     const mahasiswa = await apiSebagai("mahasiswa");
-    expect((await mahasiswa.get(`ews/${ALERT_ID}`)).status()).toBe(403);
-    expect((await mahasiswa.get(`ews/${ALERT_ID}/riwayat`)).status()).toBe(403);
+    expect((await mahasiswa.get(`ews/${alertId}`)).status()).toBe(403);
+    expect((await mahasiswa.get(`ews/${alertId}/riwayat`)).status()).toBe(403);
     await mahasiswa.dispose();
+  });
+
+  test("API: ID desimal dan kode lama menunjuk alert yang sama; id berupa string desimal dan kode ikut dikirim", async () => {
+    const api = await apiSebagai("manajerData");
+    const lewatId = (await (await api.get(`ews/${alertId}`)).json()).data as {
+      id: string;
+      kode: string | null;
+      judul: string;
+    };
+    const lewatKode = (await (await api.get(`ews/${ALERT_KODE}`)).json())
+      .data as { id: string; kode: string | null };
+    expect(lewatId.id).toBe(alertId);
+    expect(lewatId.kode).toBe(ALERT_KODE);
+    expect(lewatKode.id).toBe(alertId);
+    expect(lewatId.judul).toBe(ALERT_JUDUL);
+
+    const riwayatId = (
+      await (await api.get(`ews/${alertId}/riwayat`)).json()
+    ).data as { id: string }[];
+    const riwayatKode = (
+      await (await api.get(`ews/${ALERT_KODE}/riwayat`)).json()
+    ).data as { id: string }[];
+    expect(riwayatKode.map((r) => r.id)).toEqual(riwayatId.map((r) => r.id));
+    for (const r of riwayatId) expect(r.id).toMatch(/^[1-9][0-9]*$/);
+
+    // Aksi massal menolak ID bentuk lain (kode lama) dengan 400, bukan mengabaikannya diam-diam.
+    const bulk = await api.post("ews/bulk", {
+      data: { action: "akui", ids: [ALERT_KODE] },
+    });
+    expect(bulk.status()).toBe(400);
+    await api.dispose();
   });
 });
 
@@ -272,7 +332,8 @@ test.describe("detail sumber data", () => {
     await tungguTenang(page);
     await page.getByPlaceholder("Cari sumber atau penyedia").fill("BPS WebAPI");
 
-    const detail = page.waitForResponse(unikPath("/v1/sumber-data/SRC-BPS"));
+    // Baris daftar membawa UUID sumber; UI memanggil detail lewat UUID itu, bukan kodenya.
+    const detail = page.waitForResponse(unikPath(`/v1/sumber-data/${UUID_SUMBER_BPS}`));
     await page.getByRole("row", { name: /BPS WebAPI/ }).click();
     expect((await detail).status()).toBe(200);
 
@@ -284,6 +345,8 @@ test.describe("detail sumber data", () => {
       dialog.getByRole("heading", { name: "Informasi sumber" }),
     ).toBeVisible();
     await expect(dialog.getByText("Jadwal cron (WIB)")).toBeVisible();
+    // Teks untuk manusia memakai kode (SRC-BPS), bukan UUID.
+    await expect(dialog.getByText("SRC-BPS", { exact: true })).toBeVisible();
     await expect(dialog).toContainText("0 6 * * *");
     await expect(dialog).toContainText("https://webapi.bps.go.id/v1/api");
     await expect(dialog).toContainText("Sumber: Badan Pusat Statistik (BPS)");
@@ -315,20 +378,28 @@ test.describe("detail sumber data", () => {
   test("API: id tidak dikenal 404 dan tanpa sumber.lihat 403", async () => {
     const manajer = await apiSebagai("manajerData");
     expect((await manajer.get("sumber-data/TIDAK-ADA")).status()).toBe(404);
-    const ok = await manajer.get("sumber-data/SRC-BPS");
+    // UUID yang sah tetapi tidak ada, dan kode lebih panjang dari 64 karakter, juga 404 (bukan 500).
+    expect((await manajer.get("sumber-data/00000000-0000-3000-8000-000000000000")).status()).toBe(404);
+    expect((await manajer.get(`sumber-data/${"a".repeat(65)}`)).status()).toBe(404);
+    const ok = await manajer.get(`sumber-data/${UUID_SUMBER_BPS}`);
     expect(ok.status()).toBe(200);
     const row = (await ok.json()).data as Record<string, unknown>;
     expect(row).toMatchObject({
-      id: "SRC-BPS",
+      id: UUID_SUMBER_BPS,
+      kode: "SRC-BPS",
       jadwal_cron: "0 6 * * *",
       robots_txt_patuh: true,
     });
+    // Kode (ID lama) tetap berlaku sebagai alias: tautan lama tidak putus.
+    const alias = await manajer.get("sumber-data/SRC-BPS");
+    expect(alias.status()).toBe(200);
+    expect(((await alias.json()).data as { id: string }).id).toBe(UUID_SUMBER_BPS);
     // Konfigurasi sumber (bisa berisi kunci API) tidak boleh ikut keluar.
     expect(row).not.toHaveProperty("konfigurasi");
     await manajer.dispose();
 
     const mahasiswa = await apiSebagai("mahasiswa");
-    expect((await mahasiswa.get("sumber-data/SRC-BPS")).status()).toBe(403);
+    expect((await mahasiswa.get(`sumber-data/${UUID_SUMBER_BPS}`)).status()).toBe(403);
     await mahasiswa.dispose();
   });
 });
@@ -336,6 +407,7 @@ test.describe("detail sumber data", () => {
 test.describe("detail tugas lapangan", () => {
   type Tugas = {
     id: string;
+    kode?: string | null;
     judul: string;
     pasar_id: string;
     komoditas: string[];
@@ -394,10 +466,32 @@ test.describe("detail tugas lapangan", () => {
     const tautan = dialog.getByRole("link", { name: "Mulai isi" });
     await expect(tautan).toHaveAttribute(
       "href",
-      `/lapangan/input?pasar=${tugas!.pasar_id}&komoditas=${tugas!.komoditas.join(",")}&tipe=${tugas!.tipe}&tugas=${tugas!.id}`,
+      `/lapangan/input?pasar=${tugas!.pasar_id}&komoditas=${tugas!.komoditas.join(",")}&tipe=${tugas!.tipe}&tugas=${tugas!.kode ?? tugas!.id}`,
     );
     await tautan.click();
     await expect(page).toHaveURL(/\/lapangan\/input\?pasar=/);
+  });
+
+  test("API: ID BIGINT berupa string angka, kode lama tetap menjadi alias tautan", async () => {
+    const api = await apiSebagai("mahasiswa");
+    const saya = (await (await api.get("lapangan/tugas/saya")).json())
+      .data as Tugas[];
+    const tugas = saya.find((t) => t.judul === JUDUL);
+    expect(tugas, `tugas "${JUDUL}" ada di seed demo`).toBeTruthy();
+    expect(tugas!.id).toMatch(/^[1-9][0-9]*$/);
+    expect(tugas!.kode, "tugas seed menyimpan ID lama sebagai kode").toMatch(
+      /^TGS-/,
+    );
+
+    const lewatKode = await api.get(`lapangan/tugas/${tugas!.kode}`);
+    expect(lewatKode.status()).toBe(200);
+    expect(((await lewatKode.json()).data as Tugas).id).toBe(tugas!.id);
+    for (const salah of ["0", "-1", "007", "9223372036854775808"]) {
+      expect((await api.get(`lapangan/tugas/${salah}`)).status(), salah).toBe(
+        404,
+      );
+    }
+    await api.dispose();
   });
 
   test("API: tugas petugas lain 404 untuk mahasiswa, terbuka untuk tugas.kelola", async () => {
@@ -434,7 +528,7 @@ test.describe("detail tugas lapangan", () => {
 });
 
 test.describe("detail pengguna", () => {
-  const ID = "mahasiswa_1";
+  const ID = idPenggunaSeed("mahasiswa_1"); // pengguna.id adalah UUID stabil dari slug seed
 
   test("dialog ubah memuat data segar dari GET /users/:id", async ({
     page,
@@ -479,7 +573,9 @@ test.describe("detail pengguna", () => {
 
   test("API: id tidak dikenal 404 dan tanpa pengguna.kelola 403", async () => {
     const admin = await apiSebagai("superadmin");
+    // ID yang bukan UUID dijawab 404 tanpa menyentuh basis data, sama dengan UUID yang sah tetapi tidak ada.
     expect((await admin.get("users/TIDAK-ADA")).status()).toBe(404);
+    expect((await admin.get(`users/${randomUUID()}`)).status()).toBe(404);
     const ok = await admin.get(`users/${ID}`);
     expect(ok.status()).toBe(200);
     expect(JSON.stringify(await ok.json())).not.toContain("password_hash");

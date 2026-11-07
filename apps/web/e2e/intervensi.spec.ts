@@ -151,17 +151,59 @@ test.describe("API intervensi", () => {
     await kebijakan.dispose();
   });
 
-  test("GET /intervensi/:id/riwayat: 200 untuk kartu seed, 404 untuk id tak dikenal", async () => {
+  test("GET /intervensi/:id/riwayat: 200 untuk kartu seed (alias kode INT-301 dan UUID), 404 untuk id tak dikenal", async () => {
     const api = await apiSebagai(AKUN.strategisDjpb);
+    // Alias kode lama tetap berlaku di URL.
     const ada = await api.get("intervensi/INT-301/riwayat");
     expect(ada.status()).toBe(200);
     const riwayat = (
-      (await ada.json()) as { data: { aksi: string; ke: string | null }[] }
+      (await ada.json()) as {
+        data: { id: string; aksi: string; ke: string | null }[];
+      }
     ).data;
     expect(riwayat[0].aksi).toBe("BUAT");
     expect(riwayat[0].ke).toBe("t-ews");
+    expect(riwayat[0].id).toMatch(/^[1-9][0-9]*$/);
+
+    // id kartu adalah UUID dan kode tampilan dikirim di field `kode`; keduanya menunjuk kartu yang sama.
+    const daftar = (
+      (await (await api.get("intervensi")).json()) as {
+        data: { id: string; kode: string | null }[];
+      }
+    ).data;
+    const kartu = daftar.find((k) => k.kode === "INT-301");
+    expect(kartu, "kartu seed INT-301").toBeDefined();
+    expect(kartu!.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    const lewatUuid = await api.get(`intervensi/${kartu!.id}/riwayat`);
+    expect(lewatUuid.status()).toBe(200);
+    expect(
+      ((await lewatUuid.json()) as { data: { id: string }[] }).data.map(
+        (r) => r.id,
+      ),
+    ).toEqual(riwayat.map((r) => r.id));
 
     expect((await api.get("intervensi/INT-0/riwayat")).status()).toBe(404);
+    expect((await api.get("intervensi/bukan-uuid/riwayat")).status()).toBe(404);
+    expect(
+      (
+        await api.get("intervensi/00000000-0000-0000-0000-000000000000/riwayat")
+      ).status(),
+    ).toBe(404);
+    await api.dispose();
+  });
+
+  test("POST /intervensi/persetujuan/:pid/keputusan: pid bukan ID desimal dijawab 404", async () => {
+    // strategis.djpb memegang intervensi.setujui_fiskal, jadi lolos pemeriksaan izin rute.
+    const api = await apiSebagai(AKUN.strategisDjpb);
+    expect(
+      (
+        await api.post("intervensi/persetujuan/bukan-angka/keputusan", {
+          data: { keputusan: "SETUJU" },
+        })
+      ).status(),
+    ).toBe(404);
     await api.dispose();
   });
 });

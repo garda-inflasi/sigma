@@ -42,6 +42,7 @@ var (
 	ErrRoleNotFound       = errors.New("peran tidak dikenal")
 	ErrCannotDeleteSelf   = errors.New("tidak dapat menghapus akun sendiri")
 	ErrUserHasReferences  = errors.New("pengguna masih memiliki data terkait")
+	ErrIDExists           = errors.New("id pengguna sudah dipakai")
 	// ErrPenggunaBerubah: keadaan akun yang dipakai sebagai dasar aksi berubah sebelum aksi sempat ditulis
 	// (mis. kata sandi diganti pihak lain di tengah ganti kata sandi). Tidak ada yang ditimpa; ulangi aksinya.
 	ErrPenggunaBerubah = errors.New("data akun berubah saat diproses, coba lagi")
@@ -499,8 +500,18 @@ func (uc *UseCase) CreateUser(ctx context.Context, user *domain.Pengguna, passwo
 	}
 	user.PasswordHash = &hash
 	user.WajibGantiPassword = true
+	if user.ID == "" {
+		user.ID = uuid.NewString()
+	}
 
 	if err := uc.repo.CreateUser(ctx, user); err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			// Email sudah diperiksa di atas; yang tersisa ID yang dikirim klien (atau balapan email).
+			if ada, _ := uc.repo.GetUserByID(ctx, user.ID); ada != nil {
+				return ErrIDExists
+			}
+			return ErrEmailExists
+		}
 		return fmt.Errorf("create user: %w", err)
 	}
 
@@ -617,8 +628,10 @@ func (uc *UseCase) DeleteUser(ctx context.Context, id, actorID string) error {
 	}
 
 	if err := uc.repo.DeleteUser(ctx, id); err != nil {
-		// Baris terkait (tugas lapangan, entri harga, audit log, dsb.) memakai
-		// ON DELETE NO ACTION, sehingga penghapusan gagal di level basis data.
+		// Akun yang masih tercatat sebagai bukti asal data (penginput/validator/penerbit entri harga, petugas dan
+		// pembuat tugas, pembuat kartu intervensi, penyusun brief, dst.) dirujuk FK ON DELETE RESTRICT (000110), jadi
+		// penghapusan gagal di basis data (23503) dan akun sebaiknya dinonaktifkan. Jejak opsional (audit, log
+		// eksekusi) SET NULL dan milik akun (sesi, token, kode MFA, izin langsung) CASCADE, tidak menghalangi.
 		// Sesi tidak dicabut lebih dulu: penghapusan yang ditolak tidak boleh mengeluarkan pengguna yang tetap ada.
 		if errors.Is(err, gorm.ErrForeignKeyViolated) {
 			return ErrUserHasReferences

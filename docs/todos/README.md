@@ -67,6 +67,21 @@ matriks peran × izin di basis data yang dapat diedit admin, izin langsung per p
 akun lewat email dengan halaman aktivasi, impor/ekspor CSV, daftar pengguna dengan filter/urutan/paginasi sisi
 server, reset MFA oleh admin, dan riwayat peran. Coverage handler pengguna ≥ 86%, usecase auth 96,9%, 71 tes
 komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemisahan tugas) yang tersisa di 02.
+
+**Standardisasi kunci primer (7 Nov 2026):** migrasi `000109`–`000115` menyelaraskan PK, FK, dan indeks seluruh
+75 tabel dengan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md):
+
+- **Kunci primer.** UUID untuk `pengguna`, `intervensi`, `policy_brief`, `sumber_data`, dan `cold_storage`. BIGINT
+  identity untuk tabel transaksional, time-series, log, dan operasional. Kode unik untuk data referensi.
+- **ID lama** disimpan di kolom `kode` dan dipakai sebagai alias URL lama dan kunci seeder.
+- **Kunci asing.** Setiap FK bertipe sama dengan induknya, punya `ON DELETE` eksplisit, dan punya indeks.
+  `TestInvarianKunci` menggagalkan tes bila ada tabel yang melanggar.
+- **Verifikasi:**
+  - migrasi naik-turun pada salinan data demo (data dan struktur pulih persis);
+  - seed `reference` + `demo` dua kali tanpa duplikat;
+  - `go test ./...` (99 paket) dan tes web (1.074 unit, 82 komponen) hijau;
+  - e2e Playwright 319 tes lolos dua putaran berturut-turut pada stack yang dibangun ulang (DB demo dimigrasi ke 000115).
+
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 
 1. **Belum diuji terhadap layanan nyata** (tidak ada akses/kunci saat dikerjakan): konektor PIHPS, BMKG, dan BPS

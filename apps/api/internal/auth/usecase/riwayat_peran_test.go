@@ -56,10 +56,10 @@ func TestRiwayatPeran_MembatasiDanMenandaiTerpotong(t *testing.T) {
 		t.Run(tc.nama, func(t *testing.T) {
 			repo := new(mockRepository)
 			uc := newTestUseCase(repo)
-			repo.On("GetUserByID", mock.Anything, "u-1").Return(activeUser(), nil)
-			repo.On("RiwayatPeran", mock.Anything, "u-1", tc.wantRepoLimit).Return(entriPeran(tc.dikembalikan), nil)
+			repo.On("GetUserByID", mock.Anything, uid("u-1")).Return(activeUser(), nil)
+			repo.On("RiwayatPeran", mock.Anything, uid("u-1"), tc.wantRepoLimit).Return(entriPeran(tc.dikembalikan), nil)
 
-			hasil, err := uc.RiwayatPeran(context.Background(), "u-1", tc.limit)
+			hasil, err := uc.RiwayatPeran(context.Background(), uid("u-1"), tc.limit)
 
 			require.NoError(t, err)
 			assert.Len(t, hasil.Items, tc.wantItems)
@@ -73,10 +73,10 @@ func TestRiwayatPeran_MembatasiDanMenandaiTerpotong(t *testing.T) {
 func TestRiwayatPeran_GalatRepositoriDibungkus(t *testing.T) {
 	repo := new(mockRepository)
 	uc := newTestUseCase(repo)
-	repo.On("GetUserByID", mock.Anything, "u-1").Return(activeUser(), nil)
-	repo.On("RiwayatPeran", mock.Anything, "u-1", mock.Anything).Return(nil, errors.New("db putus"))
+	repo.On("GetUserByID", mock.Anything, uid("u-1")).Return(activeUser(), nil)
+	repo.On("RiwayatPeran", mock.Anything, uid("u-1"), mock.Anything).Return(nil, errors.New("db putus"))
 
-	_, err := uc.RiwayatPeran(context.Background(), "u-1", 10)
+	_, err := uc.RiwayatPeran(context.Background(), uid("u-1"), 10)
 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrUserNotFound)

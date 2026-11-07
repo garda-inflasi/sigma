@@ -26,10 +26,11 @@ import (
 // 02-C: RBAC berbasis basis data. Rute kpi (kpi.lihat) dipakai sebagai contoh rute yang dikunci izin:
 // OPS_MAHASISWA (pengguna biasa di suite ini) tidak memilikinya secara bawaan.
 
-const (
-	userAdminID = "test-user-001"
-	adminKedua  = "admin-kedua"
-	emailKedua  = "admin.kedua@gardainflasi.id"
+const emailKedua = "admin.kedua@gardainflasi.id"
+
+var (
+	userAdminID = uid("test-user-001")
+	adminKedua  = uid("admin-kedua")
 )
 
 // suiteDenganIzinTTL seperti setupSuite dengan umur cache izin tertentu (perubahan di luar proses ini
@@ -440,7 +441,7 @@ func TestIzin_IzinLangsungMasukanTidakValid(t *testing.T) {
 		{"alasan tidak ada", userBiasa, map[string]any{"izin": "kpi.lihat"}, http.StatusBadRequest, ""},
 		{"berlaku sampai di masa lalu", userBiasa, map[string]any{"izin": "kpi.lihat", "alasan": "x", "berlaku_sampai": lampau}, http.StatusBadRequest, ""},
 		{"berlaku sampai bukan tanggal", userBiasa, map[string]any{"izin": "kpi.lihat", "alasan": "x", "berlaku_sampai": "besok"}, http.StatusBadRequest, ""},
-		{"pengguna tidak ada", "hantu", map[string]any{"izin": "kpi.lihat", "alasan": "x"}, http.StatusNotFound, ""},
+		{"pengguna tidak ada", uid("hantu"), map[string]any{"izin": "kpi.lihat", "alasan": "x"}, http.StatusNotFound, ""},
 		{"sudah dimiliki lewat peran", userBiasa, map[string]any{"izin": "harga.input", "alasan": "x"}, http.StatusConflict, "PERMISSION_ALREADY_VIA_ROLE"},
 	}
 	for _, tc := range cases {
@@ -468,13 +469,13 @@ func TestIzin_IzinLangsungMasukanTidakValid(t *testing.T) {
 func TestIzin_IzinLangsungDihapusBersamaPenggunanya(t *testing.T) {
 	s := setupSuite(t)
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
-	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga) VALUES ('sementara', 'S', 's@x.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'L')`).Error)
-	require.Equal(t, http.StatusCreated, s.beriIzin(t, admin.access, "sementara", map[string]any{"izin": "kpi.lihat", "alasan": "uji"}).Code)
+	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga) VALUES (garda_uuid_stabil('pengguna', 'sementara'), 'S', 's@x.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'L')`).Error)
+	require.Equal(t, http.StatusCreated, s.beriIzin(t, admin.access, uid("sementara"), map[string]any{"izin": "kpi.lihat", "alasan": "uji"}).Code)
 
-	w := s.panggil(t, http.MethodDelete, "/v1/users/sementara", nil, admin.access)
+	w := s.panggil(t, http.MethodDelete, "/v1/users/"+uid("sementara"), nil, admin.access)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
-	assert.EqualValues(t, 0, s.count(t, "SELECT count(*) FROM user_permissions WHERE pengguna_id = 'sementara'"))
+	assert.EqualValues(t, 0, s.count(t, "SELECT count(*) FROM user_permissions WHERE pengguna_id = garda_uuid_stabil('pengguna', 'sementara')"))
 }
 
 // ── Audit ─────────────────────────────────────────────────────────────
@@ -673,12 +674,12 @@ func TestIzin_RepositoriMenjagaPenghapusanDanPenonaktifan(t *testing.T) {
 	s := setupSuite(t)
 	repo := postgres.New(s.db)
 	ctx := context.Background()
-	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga) VALUES ('bukan-admin', 'B', 'b@x.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'L')`).Error)
+	require.NoError(t, s.db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga) VALUES (garda_uuid_stabil('pengguna', 'bukan-admin'), 'B', 'b@x.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'L')`).Error)
 
 	assert.ErrorIs(t, repo.DeleteUser(ctx, userAdminID), domain.ErrPemegangTerakhir)
 	_, err := repo.BulkUpdateUsers(ctx, []string{userAdminID}, domain.BulkNonaktifkan)
 	assert.ErrorIs(t, err, domain.ErrPemegangTerakhir)
-	require.NoError(t, repo.DeleteUser(ctx, "bukan-admin"), "pengguna biasa tetap bisa dihapus")
+	require.NoError(t, repo.DeleteUser(ctx, uid("bukan-admin")), "pengguna biasa tetap bisa dihapus")
 	n, err := repo.BulkUpdateUsers(ctx, []string{userBiasa}, domain.BulkNonaktifkan)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n)
@@ -725,8 +726,8 @@ func TestIzin_IzinEfektifGabunganPeranDanLangsungTanpaDuplikat(t *testing.T) {
 	assert.True(t, slices.IsSorted(hasil.Izin))
 	assert.InDelta(t, (2 * time.Hour).Seconds(), hasil.KedaluwarsaDalam.Seconds(), 5, "sisa waktu dari jam basis data")
 
-	_, err = repo.IzinEfektifPengguna(ctx, "hantu")
+	_, err = repo.IzinEfektifPengguna(ctx, uid("hantu"))
 	assert.Error(t, err)
-	_, err = repo.IzinEfektifPengguna(ctx, "test-user-002") // NONAKTIF
+	_, err = repo.IzinEfektifPengguna(ctx, uid("test-user-002")) // NONAKTIF
 	assert.Error(t, err, "akun nonaktif tidak punya izin efektif")
 }

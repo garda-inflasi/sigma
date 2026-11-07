@@ -6,7 +6,10 @@ export type Kualitas = "PREMIUM" | "MEDIUM" | "ASALAN";
 export type StatusEntri = "DRAF" | "DIAJUKAN" | "DIVALIDASI" | "DIPUBLIKASI" | "DITOLAK";
 
 export interface EntriHarga {
+  /** ID BIGINT dari API, string angka tak bermakna ("1024"); dipakai untuk tautan dan aksi massal. */
   id: string;
+  /** Kode tampilan (ID lama, mis. HRG-D00-00-01-K); kosong untuk entri baru. Teks untuk manusia: `kode ?? id`. */
+  kode?: string;
   komoditasKode: string;
   komoditasNama: string;
   pasarId: string;
@@ -34,6 +37,8 @@ export type StatusEws = "BARU" | "DIAKUI" | "DIESKALASI" | "SELESAI";
 
 export interface EwsAlert {
   id: string;
+  /** Kode tampilan (mis. EWS-0901); alias tautan lama. Teks untuk manusia memakai `kode ?? id`. */
+  kode?: string;
   severity: Severity;
   jenis: JenisEws;
   judul: string;
@@ -75,6 +80,8 @@ export type Prioritas = "TINGGI" | "SEDANG" | "RENDAH";
 
 export interface KartuIntervensi {
   id: string;
+  /** Kode tampilan (mis. INT-301); alias URL lama. Teks untuk manusia memakai `kode ?? id`. */
+  kode?: string;
   siklus: Siklus;
   tahap: string;
   judul: string;
@@ -92,12 +99,17 @@ export interface KartuIntervensi {
   /** Rincian untuk lembar detail; tidak ada pada data mock. */
   deskripsi?: string;
   ewsAlertId?: string;
+  /** Kode tampilan alert pemicu (mis. EWS-1000). */
+  ewsAlertKode?: string;
   dibuatPada?: string;
   selesaiPada?: string;
 }
 
 export interface StokColdStorage {
+  /** ID BIGINT lot (string desimal). Teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  /** Kode tampilan lot (STK-000042, atau ID lama pada data migrasi); kosong bila tidak ada. */
+  kode?: string | null;
   fasilitasId: string;
   fasilitasNama: string;
   komoditasKode: string;
@@ -115,7 +127,10 @@ export interface StokColdStorage {
 }
 
 export interface FasilitasColdStorage {
+  /** UUID fasilitas. Teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  /** Kode tampilan fasilitas (CS-01), juga alias di URL API; kosong bila tidak ada. */
+  kode?: string | null;
   nama: string;
   wilayah: string;
   kabupatenKode: string;
@@ -147,14 +162,20 @@ export interface TitikSuhu {
 
 /** Satu baris buku besar stok. */
 export interface TransaksiStok {
+  /** ID BIGINT transaksi (string desimal). */
   id: string;
+  /** Hanya terisi pada data migrasi dan demo (TRX-...). */
+  kode?: string | null;
   lotId: string;
   lotBaruId: string | null;
   jenis: "MASUK" | "KELUAR" | "PINDAH";
   volumeTon: number;
   komoditasNama: string;
   fasilitasAsalId: string | null;
+  /** Kode tampilan fasilitas asal/tujuan (CS-01); tampilkan `kode ?? id`. */
+  fasilitasAsalKode?: string | null;
   fasilitasTujuanId: string | null;
+  fasilitasTujuanKode?: string | null;
   olehNama: string | null;
   waktu: string;
   alasan: string;
@@ -198,7 +219,10 @@ export interface ColdStorageView {
 }
 
 export interface SumberData {
+  /** UUID sumber (identitas di URL API dan kunci rujukan). */
   id: string;
+  /** Kode tampilan (ID lama, mis. SRC-BI): teks untuk manusia; juga alias `id` di rute API. */
+  kode: string;
   nama: string;
   penyedia: string;
   jenis: "API" | "SCRAPER";
@@ -233,7 +257,8 @@ export type StatusEksekusi = "BERJALAN" | "SUKSES" | "SEBAGIAN" | "GAGAL";
 
 /** Satu run ingestion sebuah sumber (riwayat eksekusi). */
 export interface EksekusiSumber {
-  id: number;
+  /** ID BIGINT eksekusi, string desimal. */
+  id: string;
   pemicu: "JADWAL" | "MANUAL" | "CLI" | "DEMO";
   status: StatusEksekusi;
   mulai: string;
@@ -252,7 +277,8 @@ export interface EksekusiSumber {
 
 /** Cuplikan payload mentah (bronze) yang terakhir diambil. */
 export interface SampelSumber {
-  id: number;
+  /** ID BIGINT data mentah, string desimal. */
+  id: string;
   kunci: string;
   diambilPada: string;
   ukuran: number;
@@ -305,7 +331,10 @@ export interface AuditDetail extends AuditRow {
 }
 
 export interface PolicyBrief {
+  /** UUID brief. Tautan memakai id; teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  /** Kode tampilan PB-YYYY-MM (satu brief per periode); juga diterima API sebagai alias id. */
+  kode?: string;
   periode: string;
   judul: string;
   /** DIPROSES = draf sedang disusun di server; GAGAL = penyusunan gagal dan dapat diulang. */
@@ -322,7 +351,10 @@ export interface PolicyBrief {
 }
 
 export interface TugasLapangan {
+  /** ID BIGINT dari API, string angka tak bermakna ("42"); dipakai untuk tautan dan aksi massal. */
   id: string;
+  /** Kode tampilan (ID lama, mis. TGS-mahasiswa_1-1); kosong untuk tugas baru. Teks untuk manusia: `kode ?? id`. */
+  kode?: string;
   judul: string;
   pasarId: string;
   pasarNama: string;

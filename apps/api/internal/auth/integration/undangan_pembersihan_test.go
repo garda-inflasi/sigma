@@ -25,7 +25,7 @@ func undanganBaris(t *testing.T, db *gorm.DB, nama, userID string, expiresAt tim
 func TestPembersihan_UndanganPengguna(t *testing.T) {
 	db := pbrDB(t)
 	require.NoError(t, db.Exec(`INSERT INTO pengguna (id, nama, email, peran, lapis, lembaga, status)
-		VALUES ('pembersihan-user-c', 'C', 'pembersihan-user-c@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'MENUNGGU')`).Error)
+		VALUES (garda_uuid_stabil('pengguna', 'pembersihan-user-c'), 'C', 'pembersihan-user-c@gardainflasi.id', 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', 'MENUNGGU')`).Error)
 	const retensi = 7 * 24 * time.Hour
 	lama := pbrAcuan.Add(-retensi - time.Hour) // sudah lewat masa simpan
 	baru := pbrAcuan.Add(-retensi + time.Hour) // masih dalam masa simpan
@@ -34,7 +34,7 @@ func TestPembersihan_UndanganPengguna(t *testing.T) {
 	// Satu undangan hidup per akun (indeks parsial uq_undangan_pengguna_aktif).
 	undanganBaris(t, db, "hidup", pbrUserA, depan, nil, nil)
 	undanganBaris(t, db, "kedaluwarsa-lama", pbrUserB, lama, nil, nil)
-	undanganBaris(t, db, "kedaluwarsa-baru", "pembersihan-user-c", baru, nil, nil)
+	undanganBaris(t, db, "kedaluwarsa-baru", uid("pembersihan-user-c"), baru, nil, nil)
 	for _, k := range []struct {
 		nama  string
 		used  *time.Time

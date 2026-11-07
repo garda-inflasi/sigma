@@ -86,15 +86,16 @@ export function mockRute(): Rute[] {
     const s = sentra[i % sentra.length];
     const km = (jarakMeter(kabupatenByKode[s.kode], d) / 1000) * 1.35;
     const vol = Math.round(8 + d.delta * 1.6);
-    return { id: `RT-${s.kode}-${d.kode}`, asal: namaWilayah(s.kode), tujuan: d.nama, komoditas: s.kom, volumeTon: vol, jarakKm: Math.round(km), jamTempuh: +(km / 45).toFixed(1), biaya: Math.round(km * vol * tarifTonKm) };
+    // ID BIGINT sebagai string desimal, seperti respons API.
+    return { id: String(i + 1), asal: namaWilayah(s.kode), tujuan: d.nama, komoditas: s.kom, volumeTon: vol, jarakKm: Math.round(km), jamTempuh: +(km / 45).toFixed(1), biaya: Math.round(km * vol * tarifTonKm) };
   });
 }
 
 export function mockKandidatColdStorage(): KandidatColdStorage[] {
   return [
-    { id: "KC-1173", lokasi: "Kota Langsa", skor: 82, alasan: "Simpul timur menuju Sumatera Utara.", rencana: true },
-    { id: "KC-1110", lokasi: "Kab. Bireuen", skor: 77, alasan: "Persimpangan jalur Takengon-pesisir.", rencana: false },
-    { id: "KC-1109", lokasi: "Kab. Pidie", skor: 71, alasan: "Sentra bawang merah.", rencana: false },
+    { id: "1", lokasi: "Kota Langsa", skor: 82, alasan: "Simpul timur menuju Sumatera Utara.", rencana: true },
+    { id: "2", lokasi: "Kab. Bireuen", skor: 77, alasan: "Persimpangan jalur Takengon-pesisir.", rencana: false },
+    { id: "3", lokasi: "Kab. Pidie", skor: 71, alasan: "Sentra bawang merah.", rencana: false },
   ];
 }
 
@@ -114,7 +115,9 @@ export function mockEntri(jumlah = 168): EntriHarga[] {
     const dev = outlier ? (rng() > 0.5 ? 1 : -1) * (28 + rng() * 30) : gauss(rng) * 4;
     const harga = Math.round((acuan * (1 + dev / 100)) / 100) * 100;
     return {
-      id: `HRG-${String(26100300 + i)}`,
+      // Bentuk sama dengan API: ID BIGINT (string angka) dan kode tampilan dari ID lama.
+      id: String(1000 + i),
+      kode: `HRG-${String(26100300 + i)}`,
       komoditasKode: kom.kode,
       komoditasNama: kom.nama,
       pasarId: pasar.id,
@@ -138,6 +141,19 @@ export function mockEntri(jumlah = 168): EntriHarga[] {
 }
 
 /* ── EWS ──────────────────────────────────────────────────── */
+/**
+ * UUID deterministik berbentuk versi 3 untuk data mock. Hanya meniru bentuk ID server (kartu intervensi
+ * berkunci UUID); nilainya tidak harus sama dengan idx.UUIDStabil di Go.
+ */
+export function uuidMock(ruang: string, kunci: string): string {
+  const rng = mulberry32(hashSeed(`${ruang}:${kunci}`));
+  const hex = (n: number) => Array.from({ length: n }, () => Math.floor(rng() * 16).toString(16)).join("");
+  return `${hex(8)}-${hex(4)}-3${hex(3)}-${"89ab"[Math.floor(rng() * 4)]}${hex(3)}-${hex(12)}`;
+}
+
+/** Alert mock mengikuti bentuk API: `id` string desimal (BIGINT), `kode` tampilan EWS-… (ID lama). */
+const alertMock = (nomor: number, kodeTampil = `EWS-${nomor}`): Pick<EwsAlert, "id" | "kode"> => ({ id: String(nomor), kode: kodeTampil });
+
 function sevDariDelta(d: number): Severity {
   if (d >= 18) return "KRITIS";
   if (d >= 12) return "SIAGA";
@@ -153,7 +169,7 @@ export function mockEws(): EwsAlert[] {
     const kom = komoditasByKode[s.komoditasKode];
     if (s.delta >= 8) {
       alerts.push({
-        id: `EWS-${1000 + i}`, severity: sevDariDelta(s.delta), jenis: "LONJAKAN_HARGA",
+        ...alertMock(1000 + i), severity: sevDariDelta(s.delta), jenis: "LONJAKAN_HARGA",
         judul: `Lonjakan harga ${kom.nama.toLowerCase()}`, komoditasKode: kom.kode, komoditasNama: kom.nama,
         kabupatenKode: s.kabupatenKode, wilayah: namaWilayah(s.kabupatenKode), nilai: Math.round(s.delta * 10) / 10, satuanNilai: "%",
         pesan: `Harga konsumen naik di atas rata-rata 7 hari. Harga terakhir Rp${s.harga.toLocaleString("id-ID")}/${kom.satuan}.`,
@@ -163,7 +179,7 @@ export function mockEws(): EwsAlert[] {
       i++;
     } else if (s.delta <= -7) {
       alerts.push({
-        id: `EWS-${1000 + i}`, severity: "INFO", jenis: "OVER_SUPPLY",
+        ...alertMock(1000 + i), severity: "INFO", jenis: "OVER_SUPPLY",
         judul: `Indikasi surplus ${kom.nama.toLowerCase()}`, komoditasKode: kom.kode, komoditasNama: kom.nama,
         kabupatenKode: s.kabupatenKode, wilayah: namaWilayah(s.kabupatenKode), nilai: Math.round(s.delta * 10) / 10, satuanNilai: "%",
         pesan: "Harga turun di bawah koridor. Pertimbangkan penyerapan ke cold storage.",
@@ -176,19 +192,19 @@ export function mockEws(): EwsAlert[] {
   const last = cuaca[cuaca.length - 1];
   alerts.push(
     {
-      id: "EWS-0901", severity: "SIAGA", jenis: "ANOMALI_CUACA", judul: "Curah hujan ekstrem di sentra Gayo",
+      ...alertMock(901, "EWS-0901"), severity: "SIAGA", jenis: "ANOMALI_CUACA", judul: "Curah hujan ekstrem di sentra Gayo",
       kabupatenKode: "1106", wilayah: namaWilayah("1106"), nilai: last.curahHujanMm, satuanNilai: "mm",
       pesan: "Curah hujan 2,1× normal selama 10 hari. Risiko gagal panen cabai & tomat meningkat.",
       waktu: menitLalu(95), status: "DIAKUI", skorDampak: 81, sumber: "BMKG + OpenWeather",
     },
     {
-      id: "EWS-0902", severity: "WASPADA", jenis: "KELANGKAAN_STOK", judul: "Stok cabai di Cold Storage Lambaro menipis",
+      ...alertMock(902, "EWS-0902"), severity: "WASPADA", jenis: "KELANGKAAN_STOK", judul: "Stok cabai di Cold Storage Lambaro menipis",
       komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", kabupatenKode: "1108", wilayah: namaWilayah("1108"),
       nilai: -32, satuanNilai: "%", pesan: "Stok turun 32% dalam 5 hari; cukup untuk ±4 hari permintaan Banda Aceh.",
       waktu: menitLalu(140), status: "BARU", skorDampak: 74, sumber: "Telemetri cold storage",
     },
     {
-      id: "EWS-0903", severity: "INFO", jenis: "ANOMALI_DATA", judul: "Entri harga di luar geofence",
+      ...alertMock(903, "EWS-0903"), severity: "INFO", jenis: "ANOMALI_DATA", judul: "Entri harga di luar geofence",
       kabupatenKode: "1104", wilayah: namaWilayah("1104"), nilai: 3, satuanNilai: "%",
       pesan: "3 entri tercatat lebih dari 1 km dari Pasar Kutacane. Perlu verifikasi koordinator.",
       waktu: menitLalu(210), status: "SELESAI", skorDampak: 22, sumber: "Validasi otomatis",
@@ -208,7 +224,7 @@ export function randomEws(): EwsAlert {
   const severity = naik ? sevDariDelta(nilai) : "INFO";
   seqLive++;
   return {
-    id: `EWS-L${Date.now()}-${seqLive}`, severity, jenis: naik ? "LONJAKAN_HARGA" : "OVER_SUPPLY",
+    id: String(Date.now()), kode: `EWS-L${Date.now()}-${seqLive}`, severity, jenis: naik ? "LONJAKAN_HARGA" : "OVER_SUPPLY",
     judul: naik ? `Lonjakan harga ${kom.nama.toLowerCase()}` : `Indikasi surplus ${kom.nama.toLowerCase()}`,
     komoditasKode: kom.kode, komoditasNama: kom.nama, kabupatenKode: kab.kode, wilayah: namaWilayah(kab.kode),
     nilai, satuanNilai: "%", pesan: naik ? "Kenaikan melampaui ambang dinamis wilayah." : "Harga produsen turun di bawah koridor.",
@@ -216,14 +232,17 @@ export function randomEws(): EwsAlert {
   };
 }
 
-/** Aturan ambang EWS mode mock: tiga komoditas pilot x lonjakan harga (sama dengan seed ews.reference). */
+/**
+ * Aturan ambang EWS mode mock: tiga komoditas pilot x lonjakan harga (sama dengan seed ews.reference).
+ * `id` string desimal (BIGINT), `kode` = ID lama (alias rute).
+ */
 export function mockEwsAturan(): EwsAturan[] {
   const kanal = ["DASHBOARD", "PUSH"];
   const ket = "Ambang awal, harus dikalibrasi bersama BI/BPS.";
   return [
-    { id: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
-    { id: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
-    { id: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "1", kode: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "2", kode: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "3", kode: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
   ];
 }
 
@@ -258,7 +277,7 @@ export function mockKanban(): KartuIntervensi[] {
     const total = 3 + Math.floor(rng() * 5);
     const pj = [pick(rng, tim), ...(rng() > 0.5 ? [pick(rng, tim)] : [])];
     return {
-      id: `INT-${String(301 + i)}`, siklus: d.siklus, tahap: t.id, judul: d.judul, komoditasKode: d.kom, kabupatenKode: d.kab,
+      id: uuidMock("intervensi", `INT-${301 + i}`), kode: `INT-${301 + i}`, siklus: d.siklus, tahap: t.id, judul: d.judul, komoditasKode: d.kom, kabupatenKode: d.kab,
       prioritas: d.p, rekomendasiAi: Boolean(d.ai),
       penanggungJawab: [...new Map(pj.map((u) => [u.id, { nama: u.nama, inisial: inisialNama(u.nama) }])).values()],
       tenggat: new Date(ANCHOR_DATE.getTime() + (Math.floor(rng() * 9) - 2) * 86_400_000).toISOString(),
@@ -274,13 +293,15 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
   const fasilitas = COLD_STORAGE.map((c) => {
     const util = c.status === "RENCANA" ? 0 : c.status === "PERAWATAN" ? 0.22 : 0.58 + rng() * 0.3;
     return {
-      id: c.id, nama: c.nama, wilayah: namaWilayah(c.kabupatenKode), kabupatenKode: c.kabupatenKode,
+      // Mock memakai kode sebagai id; di backend id adalah UUID dan kode berupa alias tampilan.
+      id: c.id, kode: c.id, nama: c.nama, wilayah: namaWilayah(c.kabupatenKode), kabupatenKode: c.kabupatenKode,
       kapasitasTon: c.kapasitasTon, terisiTon: Math.round(c.kapasitasTon * util), suhuTargetC: c.suhuTargetC,
       suhuAktualC: Math.round((c.suhuTargetC + gauss(rng) * 0.8) * 10) / 10, status: c.status, lat: c.lat, lng: c.lng,
     };
   });
   const agregator = ["Koperasi Tani Gayo Makmur", "CV Lambaro Segar", "KUD Pidie Jaya", "Kelompok Tani Bener Meriah"];
   const stok: StokColdStorage[] = [];
+  let nomorLot = 0;
   COLD_STORAGE.filter((c) => c.status !== "RENCANA").forEach((c) => {
     c.fokus.forEach((kode, j) => {
       for (let b = 0; b < 2 + Math.floor(rng() * 2); b++) {
@@ -288,7 +309,8 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
         const umur = Math.floor(rng() * kom.shelfLifeHari * 0.9);
         const sisa = kom.shelfLifeHari - umur;
         stok.push({
-          id: `STK-${c.id}-${j}${b}`, fasilitasId: c.id, fasilitasNama: c.nama, komoditasKode: kode, komoditasNama: kom.nama,
+          // ID BIGINT sebagai string desimal; kode tampilan lot memakai bentuk lama.
+          id: String(++nomorLot), kode: `STK-${c.id}-${j}${b}`, fasilitasId: c.id, fasilitasNama: c.nama, komoditasKode: kode, komoditasNama: kom.nama,
           volumeTon: Math.round((4 + rng() * 38) * 10) / 10,
           masuk: new Date(ANCHOR_DATE.getTime() - umur * 86_400_000).toISOString(),
           sisaShelfLifeHari: sisa, risikoFoodLoss: Math.max(0.02, Math.min(0.95, 1 - sisa / kom.shelfLifeHari + gauss(rng) * 0.05)),
@@ -303,14 +325,14 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
 /* ── Sumber data, pengguna, audit, brief, tugas, master ─── */
 export function mockSumber(): SumberData[] {
   return [
-    { id: "SRC-BPS", nama: "BPS WebAPI — IHK & inflasi", penyedia: "BPS", jenis: "API", cakupan: "Provinsi & 3 kota IHK", jadwal: "Harian 06.00", terakhir: menitLalu(142), status: "SEHAT", keberhasilan7h: 100, latensiMs: 640, bisaDijalankan: false },
-    { id: "SRC-BI", nama: "PIHPS Nasional — harga pangan", penyedia: "Bank Indonesia", jenis: "API", cakupan: "Pasar tradisional & modern", jadwal: "Harian 10.00", terakhir: menitLalu(38), status: "SEHAT", keberhasilan7h: 98.6, latensiMs: 910, bisaDijalankan: true },
-    { id: "SRC-DJPB", nama: "Kanwil DJPb — realisasi belanja", penyedia: "Kanwil DJPb Aceh", jenis: "API", cakupan: "APBD & BTT 23 kab/kota", jadwal: "Mingguan Senin", terakhir: menitLalu(2880), status: "SEHAT", keberhasilan7h: 100, latensiMs: 1220, bisaDijalankan: false },
-    { id: "SRC-BMKG", nama: "BMKG — prakiraan & curah hujan", penyedia: "BMKG", jenis: "API", cakupan: "23 kab/kota", jadwal: "Tiap 3 jam", terakhir: menitLalu(51), status: "SEHAT", keberhasilan7h: 99.1, latensiMs: 480, bisaDijalankan: false },
-    { id: "SRC-OWM", nama: "OpenWeather — cuaca aktual", penyedia: "OpenWeather", jenis: "API", cakupan: "Titik sentra produksi", jadwal: "Tiap jam", terakhir: menitLalu(12), status: "SEHAT", keberhasilan7h: 99.8, latensiMs: 210, bisaDijalankan: false },
-    { id: "SRC-BAPANAS", nama: "Panel Harga Bapanas", penyedia: "Badan Pangan Nasional", jenis: "SCRAPER", cakupan: "Harga produsen & konsumen", jadwal: "Harian 11.00", terakhir: menitLalu(325), status: "TERTUNDA", keberhasilan7h: 86.4, latensiMs: 3400, bisaDijalankan: false },
-    { id: "SRC-PORTAL", nama: "Portal harga Disperindag Aceh", penyedia: "Pemerintah Aceh", jenis: "SCRAPER", cakupan: "Pasar induk provinsi", jadwal: "Harian 12.00", terakhir: menitLalu(1460), status: "GAGAL", keberhasilan7h: 57.1, latensiMs: 0, bisaDijalankan: false },
-    { id: "SRC-CS", nama: "Telemetri cold storage", penyedia: "Sensor IoT fasilitas", jenis: "API", cakupan: "3 fasilitas operasional", jadwal: "Tiap 5 menit", terakhir: menitLalu(3), status: "SEHAT", keberhasilan7h: 99.97, latensiMs: 95, bisaDijalankan: false },
+    { id: "e1f49004-97cf-3b83-9c13-15c6eb3112d6", kode: "SRC-BPS", nama: "BPS WebAPI — IHK & inflasi", penyedia: "BPS", jenis: "API", cakupan: "Provinsi & 3 kota IHK", jadwal: "Harian 06.00", terakhir: menitLalu(142), status: "SEHAT", keberhasilan7h: 100, latensiMs: 640, bisaDijalankan: false },
+    { id: "40745615-f152-32aa-b1e3-f54add179514", kode: "SRC-BI", nama: "PIHPS Nasional — harga pangan", penyedia: "Bank Indonesia", jenis: "API", cakupan: "Pasar tradisional & modern", jadwal: "Harian 10.00", terakhir: menitLalu(38), status: "SEHAT", keberhasilan7h: 98.6, latensiMs: 910, bisaDijalankan: true },
+    { id: "28a1cdfe-2973-34f2-a274-8de8ccf4735b", kode: "SRC-DJPB", nama: "Kanwil DJPb — realisasi belanja", penyedia: "Kanwil DJPb Aceh", jenis: "API", cakupan: "APBD & BTT 23 kab/kota", jadwal: "Mingguan Senin", terakhir: menitLalu(2880), status: "SEHAT", keberhasilan7h: 100, latensiMs: 1220, bisaDijalankan: false },
+    { id: "45586311-7d7f-3312-ac86-f004956548be", kode: "SRC-BMKG", nama: "BMKG — prakiraan & curah hujan", penyedia: "BMKG", jenis: "API", cakupan: "23 kab/kota", jadwal: "Tiap 3 jam", terakhir: menitLalu(51), status: "SEHAT", keberhasilan7h: 99.1, latensiMs: 480, bisaDijalankan: false },
+    { id: "5a2dfe7a-a025-389a-81f9-04db72abc477", kode: "SRC-OWM", nama: "OpenWeather — cuaca aktual", penyedia: "OpenWeather", jenis: "API", cakupan: "Titik sentra produksi", jadwal: "Tiap jam", terakhir: menitLalu(12), status: "SEHAT", keberhasilan7h: 99.8, latensiMs: 210, bisaDijalankan: false },
+    { id: "b15a05c6-4945-3be3-a1c9-1f10e1225e45", kode: "SRC-BAPANAS", nama: "Panel Harga Bapanas", penyedia: "Badan Pangan Nasional", jenis: "SCRAPER", cakupan: "Harga produsen & konsumen", jadwal: "Harian 11.00", terakhir: menitLalu(325), status: "TERTUNDA", keberhasilan7h: 86.4, latensiMs: 3400, bisaDijalankan: false },
+    { id: "371f5560-5b0f-3e09-9937-ba0d9af88fb2", kode: "SRC-PORTAL", nama: "Portal harga Disperindag Aceh", penyedia: "Pemerintah Aceh", jenis: "SCRAPER", cakupan: "Pasar induk provinsi", jadwal: "Harian 12.00", terakhir: menitLalu(1460), status: "GAGAL", keberhasilan7h: 57.1, latensiMs: 0, bisaDijalankan: false },
+    { id: "aa32af81-bc1d-30e3-82af-e242d5ec8a2a", kode: "SRC-CS", nama: "Telemetri cold storage", penyedia: "Sensor IoT fasilitas", jenis: "API", cakupan: "3 fasilitas operasional", jadwal: "Tiap 5 menit", terakhir: menitLalu(3), status: "SEHAT", keberhasilan7h: 99.97, latensiMs: 95, bisaDijalankan: false },
   ];
 }
 
@@ -352,11 +374,11 @@ export function mockAudit(): AuditRow[] {
 
 export function mockBriefs(): PolicyBrief[] {
   return [
-    { id: "PB-2026-10", periode: "Oktober 2026", judul: "Meredam tekanan harga cabai pascacurah hujan ekstrem di dataran tinggi Gayo", status: "DRAF", disusunOleh: "Siti Humaira", diperbarui: menitLalu(45), jumlahRekomendasi: 5, halaman: 8 },
-    { id: "PB-2026-09", periode: "September 2026", judul: "Optimalisasi cold storage untuk serapan surplus kentang dan tomat", status: "DISETUJUI", disusunOleh: "Siti Humaira", diperbarui: menitLalu(9800), jumlahRekomendasi: 4, halaman: 7 },
-    { id: "PB-2026-08", periode: "Agustus 2026", judul: "Stabilisasi harga beras menjelang panen gadu", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(52000), jumlahRekomendasi: 3, halaman: 6 },
-    { id: "PB-2026-07", periode: "Juli 2026", judul: "Pola distribusi ikan tongkol di wilayah pesisir timur", status: "DIDISTRIBUSIKAN", disusunOleh: "Fajar Ramadhan", diperbarui: menitLalu(95000), jumlahRekomendasi: 4, halaman: 9 },
-    { id: "PB-2026-06", periode: "Juni 2026", judul: "Kesiapan pasokan pangan Iduladha di 23 kabupaten/kota", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(138000), jumlahRekomendasi: 6, halaman: 10 },
+    { id: "dfb2ba45-a711-317e-a45e-313f19d1ab43", kode: "PB-2026-10", periode: "Oktober 2026", judul: "Meredam tekanan harga cabai pascacurah hujan ekstrem di dataran tinggi Gayo", status: "DRAF", disusunOleh: "Siti Humaira", diperbarui: menitLalu(45), jumlahRekomendasi: 5, halaman: 8 },
+    { id: "16b1de54-bd34-3609-b70e-37c2056b89ed", kode: "PB-2026-09", periode: "September 2026", judul: "Optimalisasi cold storage untuk serapan surplus kentang dan tomat", status: "DISETUJUI", disusunOleh: "Siti Humaira", diperbarui: menitLalu(9800), jumlahRekomendasi: 4, halaman: 7 },
+    { id: "41ed31b7-b973-30d9-ac38-f89a7253f41a", kode: "PB-2026-08", periode: "Agustus 2026", judul: "Stabilisasi harga beras menjelang panen gadu", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(52000), jumlahRekomendasi: 3, halaman: 6 },
+    { id: "2a9920a5-e625-3fe1-be1f-10e136e3abe1", kode: "PB-2026-07", periode: "Juli 2026", judul: "Pola distribusi ikan tongkol di wilayah pesisir timur", status: "DIDISTRIBUSIKAN", disusunOleh: "Fajar Ramadhan", diperbarui: menitLalu(95000), jumlahRekomendasi: 4, halaman: 9 },
+    { id: "3b124e4a-5309-3f91-b9c2-c6910fe080e5", kode: "PB-2026-06", periode: "Juni 2026", judul: "Kesiapan pasokan pangan Iduladha di 23 kabupaten/kota", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(138000), jumlahRekomendasi: 6, halaman: 10 },
   ];
 }
 
@@ -364,11 +386,11 @@ export function mockTugas(): TugasLapangan[] {
   const now = Date.now();
   const jam = (h: number) => new Date(now + h * 3_600_000).toISOString();
   return [
-    { id: "TGS-881", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "CBR-RWT", "BWM", "BRS-MED", "TLR", "DAG-AYM"], tenggat: jam(2), status: "BERJALAN", target: 6, terisi: 4, tipe: "KONSUMEN" },
-    { id: "TGS-882", judul: "Verifikasi ulang harga cabai", pasarId: "PSR-1171-02", pasarNama: "Pasar Al-Mahirah Lamdingin", komoditas: ["CBM-KRT", "CBR-RWT"], tenggat: jam(5), status: "BELUM", target: 2, terisi: 0, tipe: "KONSUMEN" },
-    { id: "TGS-883", judul: "Harga produsen kelompok tani", pasarId: "PSR-1108-01", pasarNama: "Pasar Induk Lambaro", komoditas: ["CBM-KRT", "BWM", "TMT", "KTG"], tenggat: jam(26), status: "BELUM", target: 4, terisi: 0, tipe: "PRODUSEN" },
-    { id: "TGS-879", judul: "Survei harga konsumen sore", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["IKN-TGK", "TLR", "MYK", "GLA"], tenggat: jam(-3), status: "TERLAMBAT", target: 4, terisi: 1, tipe: "KONSUMEN" },
-    { id: "TGS-875", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "BWM", "BRS-MED", "TLR"], tenggat: jam(-22), status: "SELESAI", target: 4, terisi: 4, tipe: "KONSUMEN" },
+    { id: "881", kode: "TGS-881", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "CBR-RWT", "BWM", "BRS-MED", "TLR", "DAG-AYM"], tenggat: jam(2), status: "BERJALAN", target: 6, terisi: 4, tipe: "KONSUMEN" },
+    { id: "882", kode: "TGS-882", judul: "Verifikasi ulang harga cabai", pasarId: "PSR-1171-02", pasarNama: "Pasar Al-Mahirah Lamdingin", komoditas: ["CBM-KRT", "CBR-RWT"], tenggat: jam(5), status: "BELUM", target: 2, terisi: 0, tipe: "KONSUMEN" },
+    { id: "883", kode: "TGS-883", judul: "Harga produsen kelompok tani", pasarId: "PSR-1108-01", pasarNama: "Pasar Induk Lambaro", komoditas: ["CBM-KRT", "BWM", "TMT", "KTG"], tenggat: jam(26), status: "BELUM", target: 4, terisi: 0, tipe: "PRODUSEN" },
+    { id: "879", kode: "TGS-879", judul: "Survei harga konsumen sore", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["IKN-TGK", "TLR", "MYK", "GLA"], tenggat: jam(-3), status: "TERLAMBAT", target: 4, terisi: 1, tipe: "KONSUMEN" },
+    { id: "875", kode: "TGS-875", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "BWM", "BRS-MED", "TLR"], tenggat: jam(-22), status: "SELESAI", target: 4, terisi: 4, tipe: "KONSUMEN" },
   ];
 }
 

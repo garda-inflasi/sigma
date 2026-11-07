@@ -138,7 +138,7 @@ func TestFilterPenggunaRequest_DapatDisematkanDiRequestLain(t *testing.T) {
 
 func TestToRiwayatPeranResponse(t *testing.T) {
 	waktu := time.Date(2026, 11, 6, 10, 0, 0, 0, time.FixedZone("WIB", 7*3600))
-	dari, id, nama := "OPS_MAHASISWA", "admin-1", "Admin Satu"
+	dari, id, nama := "OPS_MAHASISWA", uid("admin-1"), "Admin Satu"
 	res := ToRiwayatPeranResponse([]domain.PerubahanPeran{
 		{AuditID: "a-2", Waktu: waktu, Aksi: "ASSIGN_ROLE", Dari: &dari, Ke: "MANAJER_DATA", AktorID: &id, AktorNama: &nama},
 		{AuditID: "a-1", Waktu: waktu, Aksi: "CREATE_USER", Ke: "OPS_MAHASISWA"},

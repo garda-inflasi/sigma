@@ -32,7 +32,7 @@ func (s *suite) hargaNaik(t *testing.T, id, komoditas, pasar string, dasar, kini
 		harga int
 		kapan time.Time
 	}{{dasar, now.Add(-72 * time.Hour)}, {kini, now.Add(-2 * time.Hour)}} {
-		require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+		require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 			VALUES (?, ?, ?, 'KONSUMEN', ?, 'kg', 'DIVALIDASI', ?)`, id+string(rune('a'+i)), komoditas, pasar, row.harga, row.kapan).Error)
 	}
 }
@@ -51,7 +51,7 @@ func TestWorkflow_AlertBecomesAutomaticCardOnce(t *testing.T) {
 	require.Len(t, cards, 20, "19 kartu demo + 1 kartu otomatis")
 	var auto kartuRow
 	for _, k := range cards {
-		if k.ID == "INT-1000" {
+		if k.Kode != nil && *k.Kode == "INT-1000" {
 			auto = k
 		}
 	}
@@ -63,24 +63,31 @@ func TestWorkflow_AlertBecomesAutomaticCardOnce(t *testing.T) {
 	assert.Equal(t, "1171", auto.KabupatenKode)
 	assert.False(t, auto.RekomendasiAI, "dibuat aturan, bukan model AI")
 	require.NotNil(t, auto.EwsAlertID)
-	assert.Contains(t, *auto.EwsAlertID, "EWS-2")
+	require.NotNil(t, auto.EwsAlertKode)
+	assert.Regexp(t, `^EWS-2[0-9]{3}$`, *auto.EwsAlertKode, "alert buatan mesin")
+	var idAlert string
+	require.NoError(t, s.db.Raw(`SELECT id::text FROM ews_alert WHERE kode = ?`, *auto.EwsAlertKode).Scan(&idAlert).Error)
+	assert.Equal(t, idAlert, *auto.EwsAlertID)
 	require.Len(t, auto.PenanggungJawab, 1, "ditugasi otomatis ke unit manajemen program")
-	assert.Equal(t, "manajer_program", auto.PenanggungJawab[0].ID)
+	assert.Equal(t, uid("manajer_program"), auto.PenanggungJawab[0].ID)
 
 	var row struct {
 		DibuatOlehID *string
 		Judul        string
 		Tenggat      time.Time
 	}
-	require.NoError(t, s.db.Raw(`SELECT dibuat_oleh_id, judul, tenggat FROM intervensi WHERE id = 'INT-1000'`).Scan(&row).Error)
+	require.NoError(t, s.db.Raw(`SELECT dibuat_oleh_id, judul, tenggat FROM intervensi WHERE kode = 'INT-1000'`).Scan(&row).Error)
 	assert.Nil(t, row.DibuatOlehID, "kartu buatan sistem")
 	assert.Equal(t, "Lonjakan harga cabai merah keriting — Kota Banda Aceh", row.Judul)
 	assert.WithinDuration(t, time.Now().Add(24*time.Hour), row.Tenggat, time.Minute, "tenggat = SLA tahap pertama (1 hari)")
 
-	rows := riwayat(t, s, "INT-1000")
+	rows := riwayat(t, s, auto.ID)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "BUAT", rows[0].Aksi)
 	assert.Nil(t, rows[0].OlehID, "pelaku sistem")
+	var alasanBuat string
+	require.NoError(t, s.db.Raw(`SELECT alasan FROM intervensi_riwayat WHERE intervensi_id = ?::uuid`, auto.ID).Scan(&alasanBuat).Error)
+	assert.Equal(t, "Dibuat otomatis dari alert "+*auto.EwsAlertKode, alasanBuat, "teks riwayat memakai kode tampilan alert")
 
 	var audited int
 	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'BUAT_OTOMATIS' AND entitas = 'intervensi'`).Scan(&audited).Error)
@@ -93,7 +100,7 @@ func TestWorkflow_AlertBecomesAutomaticCardOnce(t *testing.T) {
 	})
 
 	t.Run("alert yang naik ke tingkat minimum memicu kartu", func(t *testing.T) {
-		require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'HBb'`).Error) // +13% = SIAGA
+		require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'HBb'`).Error) // +13% = SIAGA
 		ringkasan, err := ews.Engine.Evaluasi(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, 1, ringkasan.Dinaikkan)
@@ -102,7 +109,7 @@ func TestWorkflow_AlertBecomesAutomaticCardOnce(t *testing.T) {
 		require.Len(t, cards, 21)
 		var bawang kartuRow
 		for _, k := range cards {
-			if k.KomoditasKode == "BWM" && k.KabupatenKode == "1107" && k.ID >= "INT-1000" {
+			if k.KomoditasKode == "BWM" && k.KabupatenKode == "1107" && k.Kode != nil && *k.Kode >= "INT-1000" {
 				bawang = k
 			}
 		}
@@ -117,7 +124,7 @@ func TestWorkflow_AlertAlreadyHavingAManualCardGetsNoSecondOne(t *testing.T) {
 	_, err := ews.Engine.Evaluasi(t.Context())
 	require.NoError(t, err)
 	var alertID string
-	require.NoError(t, s.db.Raw(`SELECT id FROM ews_alert WHERE dedup_key = 'LONJAKAN_HARGA|BWM|1107'`).Scan(&alertID).Error)
+	require.NoError(t, s.db.Raw(`SELECT id::text FROM ews_alert WHERE dedup_key = 'LONJAKAN_HARGA|BWM|1107'`).Scan(&alertID).Error)
 
 	// Pengguna membuat kartu sendiri untuk alert itu.
 	w := s.call(t, http.MethodPost, "/v1/intervensi", emailKelola, map[string]any{
@@ -128,7 +135,7 @@ func TestWorkflow_AlertAlreadyHavingAManualCardGetsNoSecondOne(t *testing.T) {
 
 	// Workflow baru dipasang; alert naik ke SIAGA, tetapi kartunya sudah ada.
 	s.newWorkflow(t, workflow.Config{KartuOtomatisMin: ewsdomain.SeveritySiaga})
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'HBb'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'HBb'`).Error)
 	ringkasan, err := ews.Engine.Evaluasi(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, ringkasan.Dinaikkan)
@@ -154,9 +161,9 @@ func TestWorkflow_SLAEscalatesOverdueCardsOnce(t *testing.T) {
 	// Kartu yang baru berpindah tahap tidak melewati SLA; pemindahan menyetel ulang jam tahap.
 	require.Equal(t, http.StatusOK, s.pindah(t, emailKelola, "INT-302", "t-verifikasi", 0, 1).Code)
 	var sejak time.Time
-	require.NoError(t, s.db.Raw(`SELECT tahap_sejak FROM intervensi WHERE id = 'INT-302'`).Scan(&sejak).Error)
+	require.NoError(t, s.db.Raw(`SELECT tahap_sejak FROM intervensi WHERE kode = 'INT-302'`).Scan(&sejak).Error)
 	assert.WithinDuration(t, time.Now(), sejak, time.Minute)
-	require.NoError(t, s.db.Exec(`UPDATE intervensi SET tahap_sejak = NOW() WHERE id = 'INT-303'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE intervensi SET tahap_sejak = NOW() WHERE kode = 'INT-303'`).Error)
 
 	n, err := wf.CekSLA(t.Context())
 	require.NoError(t, err)
@@ -168,7 +175,7 @@ func TestWorkflow_SLAEscalatesOverdueCardsOnce(t *testing.T) {
 		DieskalasiOleh *string
 		Prioritas      string
 	}
-	require.NoError(t, s.db.Raw(`SELECT dieskalasi_pada, dieskalasi_oleh_id AS dieskalasi_oleh, prioritas FROM intervensi WHERE id = 'INT-301'`).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT dieskalasi_pada, dieskalasi_oleh_id AS dieskalasi_oleh, prioritas FROM intervensi WHERE kode = 'INT-301'`).Scan(&status).Error)
 	assert.NotNil(t, status.DieskalasiPada)
 	assert.Nil(t, status.DieskalasiOleh, "dieskalasi oleh sistem")
 	assert.Equal(t, "TINGGI", status.Prioritas)
@@ -182,7 +189,7 @@ func TestWorkflow_SLAEscalatesOverdueCardsOnce(t *testing.T) {
 	assert.Equal(t, "ESKALASI", rows[len(rows)-2].Aksi)
 
 	var alasan string
-	require.NoError(t, s.db.Raw(`SELECT alasan FROM intervensi_riwayat WHERE intervensi_id = 'INT-301' AND aksi = 'ESKALASI'`).Scan(&alasan).Error)
+	require.NoError(t, s.db.Raw(`SELECT alasan FROM intervensi_riwayat WHERE intervensi_id = ?::uuid AND aksi = 'ESKALASI'`, kid("INT-301")).Scan(&alasan).Error)
 	assert.Equal(t, `Melewati SLA tahap "EWS terpicu" (1 hari)`, alasan)
 
 	// Telaah eskalasi muncul di antrean persetujuan; INT-304 sudah punya permintaan terbuka, jadi tidak ditambah.

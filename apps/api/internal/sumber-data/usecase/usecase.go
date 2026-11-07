@@ -13,6 +13,7 @@ import (
 	ingest "github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 )
 
@@ -32,10 +33,12 @@ type Berjalan interface {
 	Jalankan(ctx context.Context) (*ingest.EksekusiSumber, error)
 }
 
-// Ingestion adalah bagian engine ingestion yang dipakai katalog sumber.
+// Ingestion adalah bagian engine ingestion yang dipakai katalog sumber. Konektor dikenali lewat kode sumber
+// (sumber_data.kode); riwayat, sampel, dan eksekusi memakai ID (UUID) sumber.
 type Ingestion interface {
-	// Punya benar bila sumber punya konektor.
-	Punya(sumberID string) bool
+	// Punya benar bila sumber ber-kode itu punya konektor.
+	Punya(kode string) bool
+	// Mulai memulai eksekusi sumber ber-ID (UUID) itu.
 	Mulai(ctx context.Context, sumberID, pemicu string, aktorID *string) (Berjalan, error)
 	Eksekusi(ctx context.Context, sumberID string, limit int) ([]ingest.EksekusiSumber, error)
 	SampelMentah(ctx context.Context, sumberID string, limit int) ([]ingest.SampelMentah, error)
@@ -68,12 +71,12 @@ func (uc *UseCase) Pipeline(ctx context.Context, sekarang time.Time) (Pipeline, 
 
 	dinilai, tepat := 0, 0
 	for _, s := range sumber {
-		if !uc.ingest.Punya(s.ID) || s.Status == domain.StatusDijeda {
+		if !uc.ingest.Punya(s.Kode) || s.Status == domain.StatusDijeda {
 			continue
 		}
 		jadwal, err := cron.Parse(s.JadwalCron)
 		if err != nil {
-			uc.log.Warn("sumber-data: jadwal tidak valid, dilewati dari ketepatan waktu", map[string]interface{}{"sumber": s.ID, "error": err.Error()})
+			uc.log.Warn("sumber-data: jadwal tidak valid, dilewati dari ketepatan waktu", map[string]interface{}{"sumber": s.Kode, "error": err.Error()})
 			continue
 		}
 		dinilai++
@@ -104,39 +107,43 @@ func New(repo domain.Repository, ingestion Ingestion, auditWriter audit.Writer, 
 	return &UseCase{repo: repo, ingest: ingestion, audit: auditWriter, log: log}
 }
 
-// BisaDijalankan benar bila sumber punya konektor ingestion.
-func (uc *UseCase) BisaDijalankan(sumberID string) bool { return uc.ingest.Punya(sumberID) }
+// BisaDijalankan benar bila sumber ber-kode itu punya konektor ingestion.
+func (uc *UseCase) BisaDijalankan(kode string) bool { return uc.ingest.Punya(kode) }
 
-// Eksekusi mengembalikan riwayat eksekusi sumber, terbaru lebih dulu.
-func (uc *UseCase) Eksekusi(ctx context.Context, sumberID string, limit int) ([]ingest.EksekusiSumber, error) {
-	if _, err := uc.repo.GetByID(ctx, sumberID); err != nil {
+// Eksekusi mengembalikan riwayat eksekusi sumber (UUID atau kode), terbaru lebih dulu.
+func (uc *UseCase) Eksekusi(ctx context.Context, ref idx.RujukanUUID, limit int) ([]ingest.EksekusiSumber, error) {
+	s, err := uc.repo.Get(ctx, ref)
+	if err != nil {
 		return nil, err
 	}
-	return uc.ingest.Eksekusi(ctx, sumberID, limit)
+	return uc.ingest.Eksekusi(ctx, s.ID, limit)
 }
 
-// Sampel mengembalikan cuplikan payload mentah (bronze) terbaru sumber.
-func (uc *UseCase) Sampel(ctx context.Context, sumberID string, limit int) ([]ingest.SampelMentah, error) {
-	if _, err := uc.repo.GetByID(ctx, sumberID); err != nil {
+// Sampel mengembalikan cuplikan payload mentah (bronze) terbaru sumber (UUID atau kode).
+func (uc *UseCase) Sampel(ctx context.Context, ref idx.RujukanUUID, limit int) ([]ingest.SampelMentah, error) {
+	s, err := uc.repo.Get(ctx, ref)
+	if err != nil {
 		return nil, err
 	}
-	return uc.ingest.SampelMentah(ctx, sumberID, limit)
+	return uc.ingest.SampelMentah(ctx, s.ID, limit)
 }
 
-// Jalankan memulai ingestion sumber sekarang dan segera mengembalikan eksekusi
+// Jalankan memulai ingestion sumber (UUID atau kode) sekarang dan segera mengembalikan eksekusi
 // yang tercatat BERJALAN; pengambilan data berlanjut di latar belakang dan
 // hasilnya dibaca lewat Eksekusi. Aksi dicatat di audit trail.
-func (uc *UseCase) Jalankan(ctx context.Context, sumberID, actorID string) (ingest.EksekusiSumber, error) {
-	if _, err := uc.repo.GetByID(ctx, sumberID); err != nil {
+func (uc *UseCase) Jalankan(ctx context.Context, ref idx.RujukanUUID, actorID string) (ingest.EksekusiSumber, error) {
+	s, err := uc.repo.Get(ctx, ref)
+	if err != nil {
 		return ingest.EksekusiSumber{}, err
 	}
-	run, err := uc.ingest.Mulai(ctx, sumberID, ingest.PemicuManual, &actorID)
+	sumberID := s.ID
+	run, err := uc.ingest.Mulai(ctx, sumberID, ingest.PemicuManual, idx.PtrAtauNil(actorID))
 	if err != nil {
-		uc.catatJalankan(ctx, sumberID, actorID, audit.HasilDitolak, map[string]any{"alasan": err.Error()})
+		uc.catatJalankan(ctx, sumberID, actorID, audit.HasilDitolak, map[string]any{"alasan": err.Error(), "kode": s.Kode})
 		return ingest.EksekusiSumber{}, err
 	}
 	e := run.Eksekusi()
-	uc.catatJalankan(ctx, sumberID, actorID, audit.HasilBerhasil, map[string]any{"eksekusi_id": e.ID})
+	uc.catatJalankan(ctx, sumberID, actorID, audit.HasilBerhasil, map[string]any{"eksekusi_id": e.ID, "kode": s.Kode})
 
 	// Lepas dari konteks permintaan: klien tidak menunggu run selesai.
 	bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), engine.BatasWaktu)
@@ -163,30 +170,69 @@ func (uc *UseCase) List(ctx context.Context) ([]domain.SumberData, error) {
 	return uc.repo.List(ctx)
 }
 
-func (uc *UseCase) GetByID(ctx context.Context, id string) (*domain.SumberData, error) {
-	return uc.repo.GetByID(ctx, id)
+// Get mengembalikan satu sumber menurut UUID atau kode.
+func (uc *UseCase) Get(ctx context.Context, ref idx.RujukanUUID) (*domain.SumberData, error) {
+	return uc.repo.Get(ctx, ref)
 }
 
-// BulkAction menjeda atau melanjutkan sumber dan mencatatnya di audit trail.
-// Id ganda dihitung sekali.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []string, action, actorID string) (BulkResult, error) {
+// BulkAction menjeda atau melanjutkan sumber dan mencatatnya di audit trail. Setiap entri refs adalah UUID atau
+// kode sumber; entri ganda dihitung sekali, dan dua entri yang menunjuk sumber yang sama (UUID dan kodenya)
+// dihitung satu sumber. Gagal adalah sumber yang diminta tetapi tidak berubah (tidak ada, atau tidak memenuhi
+// syarat aksi).
+func (uc *UseCase) BulkAction(ctx context.Context, refs []string, action, actorID string) (BulkResult, error) {
 	domainAction := domain.BulkAction(action)
 	if domainAction != domain.BulkJeda && domainAction != domain.BulkLanjutkan {
 		return BulkResult{}, ErrInvalidAction
 	}
 
-	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
-	changed, err := uc.repo.BulkAction(ctx, ids, domainAction)
+	// UUID dikanonkan (huruf kecil) lebih dulu supaya ejaan berbeda dari UUID yang sama dihitung satu.
+	kanon := make([]string, len(refs))
+	for i, ref := range refs {
+		kanon[i] = ref
+		if id, ok := idx.NormalUUID(ref); ok {
+			kanon[i] = id
+		}
+	}
+	refs = slices.Compact(slices.Sorted(slices.Values(kanon)))
+	var uuids, kodes []string
+	for _, ref := range refs {
+		if idx.ValidUUID(ref) {
+			uuids = append(uuids, ref)
+		} else {
+			kodes = append(kodes, ref)
+		}
+	}
+	ditemukan, err := uc.repo.Cari(ctx, uuids, kodes)
 	if err != nil {
 		return BulkResult{}, fmt.Errorf("bulk sumber data: %w", err)
+	}
+	ids := make([]string, len(ditemukan))
+	cocok := make(map[string]bool, 2*len(ditemukan))
+	for i, s := range ditemukan {
+		ids[i] = s.ID
+		cocok[s.ID], cocok[s.Kode] = true, true
+	}
+	tidakAda := 0
+	for _, ref := range refs {
+		if !cocok[ref] {
+			tidakAda++
+		}
+	}
+	diminta := len(ids) + tidakAda
+
+	var changed []string
+	if len(ids) > 0 {
+		if changed, err = uc.repo.BulkAction(ctx, ids, domainAction); err != nil {
+			return BulkResult{}, fmt.Errorf("bulk sumber data: %w", err)
+		}
 	}
 
 	err = uc.audit.Write(ctx, audit.Entry{
 		AktorID: actorID, Aksi: "BULK_" + action, Entitas: "sumber_data", EntitasID: fmt.Sprintf("%d sumber", len(changed)),
-		Hasil: audit.HasilBerhasil, Metadata: map[string]any{"diminta": ids, "berubah": changed},
+		Hasil: audit.HasilBerhasil, Metadata: map[string]any{"diminta": refs, "berubah": changed},
 	})
 	if err != nil {
 		uc.log.Warn("sumber-data: gagal mencatat audit", map[string]interface{}{"aksi": action, "error": err.Error()})
 	}
-	return BulkResult{Berhasil: len(changed), Gagal: len(ids) - len(changed)}, nil
+	return BulkResult{Berhasil: len(changed), Gagal: diminta - len(changed)}, nil
 }

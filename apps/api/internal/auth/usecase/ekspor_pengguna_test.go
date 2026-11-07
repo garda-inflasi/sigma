@@ -38,8 +38,8 @@ func penggunaEkspor(id, nama, mail string) domain.Pengguna {
 }
 
 func TestBuatCSVPengguna_FormatDanKolom(t *testing.T) {
-	u := penggunaEkspor("u-1", "Budi Santoso", "budi@garda.test")
-	tanpaKab := penggunaEkspor("u-2", "Siti", "siti@garda.test")
+	u := penggunaEkspor(uid("u-1"), "Budi Santoso", "budi@garda.test")
+	tanpaKab := penggunaEkspor(uid("u-2"), "Siti", "siti@garda.test")
 	tanpaKab.KabupatenKode, tanpaKab.TerakhirMasuk, tanpaKab.MfaAktif, tanpaKab.Status = nil, nil, false, "MENUNGGU"
 
 	berkas, err := BuatCSVPengguna([]domain.Pengguna{u, tanpaKab})
@@ -49,13 +49,13 @@ func TestBuatCSVPengguna_FormatDanKolom(t *testing.T) {
 	rekaman := bacaCSVEkspor(t, berkas)
 	require.Len(t, rekaman, 3)
 	assert.Equal(t, KolomEkspor, rekaman[0])
-	assert.Equal(t, []string{"u-1", "Budi Santoso", "budi@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "FMIPA USK", "1171", "AKTIF", "true", "2026-11-05T01:30:00Z", "2026-01-02T03:04:05Z"}, rekaman[1],
+	assert.Equal(t, []string{uid("u-1"), "Budi Santoso", "budi@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "FMIPA USK", "1171", "AKTIF", "true", "2026-11-05T01:30:00Z", "2026-01-02T03:04:05Z"}, rekaman[1],
 		"waktu dalam UTC RFC 3339")
-	assert.Equal(t, []string{"u-2", "Siti", "siti@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "FMIPA USK", "", "MENUNGGU", "false", "", "2026-01-02T03:04:05Z"}, rekaman[2])
+	assert.Equal(t, []string{uid("u-2"), "Siti", "siti@garda.test", "OPS_MAHASISWA", "OPERASIONAL", "FMIPA USK", "", "MENUNGGU", "false", "", "2026-01-02T03:04:05Z"}, rekaman[2])
 }
 
 func TestBuatCSVPengguna_TanpaRahasia(t *testing.T) {
-	u := penggunaEkspor("u-1", "Budi", "budi@garda.test")
+	u := penggunaEkspor(uid("u-1"), "Budi", "budi@garda.test")
 	hash, rahasia := "$2a$12$hashrahasiabcrypt", "v1:RAHASIA-MFA-TERSEGEL"
 	u.PasswordHash, u.MfaSecret = &hash, &rahasia
 	sso, subjek := "google", "sub-12345"
@@ -82,7 +82,7 @@ func TestBuatCSVPengguna_InjeksiRumusDinetralkan(t *testing.T) {
 		"":                                  "",
 	}
 	for masukan, harapan := range kasus {
-		u := penggunaEkspor("u-1", masukan, "budi@garda.test")
+		u := penggunaEkspor(uid("u-1"), masukan, "budi@garda.test")
 		u.Lembaga = masukan
 
 		berkas, err := BuatCSVPengguna([]domain.Pengguna{u})
@@ -102,7 +102,7 @@ func TestBuatCSVPengguna_InjeksiRumusDinetralkan(t *testing.T) {
 }
 
 func TestBuatCSVPengguna_SelDenganPemisahKutipDanBarisBaruDikutip(t *testing.T) {
-	u := penggunaEkspor("u-1", "Santoso; \"Budi\"\nKedua", "budi@garda.test")
+	u := penggunaEkspor(uid("u-1"), "Santoso; \"Budi\"\nKedua", "budi@garda.test")
 
 	berkas, err := BuatCSVPengguna([]domain.Pengguna{u})
 
@@ -148,8 +148,8 @@ func TestEksporPengguna_MenyerahkanBerkasDanMencatatAudit(t *testing.T) {
 }
 
 func TestEksporPengguna_FilterCariDanIdTerpilih(t *testing.T) {
-	a := &domain.Pengguna{ID: "u-a", Nama: "Ani Rahma", Email: "ani@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA", Status: "AKTIF"}
-	b := &domain.Pengguna{ID: "u-b", Nama: "Budi", Email: "budi@garda.test", Peran: "OPS_AGREGATOR", Lapis: "OPERASIONAL", Lembaga: "BPS", Status: "AKTIF"}
+	a := &domain.Pengguna{ID: uid("u-a"), Nama: "Ani Rahma", Email: "ani@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA", Status: "AKTIF"}
+	b := &domain.Pengguna{ID: uid("u-b"), Nama: "Budi", Email: "budi@garda.test", Peran: "OPS_AGREGATOR", Lapis: "OPERASIONAL", Lembaga: "BPS", Status: "AKTIF"}
 	f := newUndanganFixture(t, a, b)
 	idKolom := func(h *HasilEkspor) []string {
 		var id []string
@@ -162,17 +162,17 @@ func TestEksporPengguna_FilterCariDanIdTerpilih(t *testing.T) {
 	t.Run("pencarian", func(t *testing.T) {
 		h, err := f.uc.EksporPengguna(context.Background(), domain.FilterPengguna{Cari: "ani"}, adminUndangID)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"u-a"}, idKolom(h))
+		assert.Equal(t, []string{uid("u-a")}, idKolom(h))
 	})
 	t.Run("id terpilih", func(t *testing.T) {
-		h, err := f.uc.EksporPengguna(context.Background(), domain.FilterPengguna{IDs: []string{"u-b", "tidak-ada"}}, adminUndangID)
+		h, err := f.uc.EksporPengguna(context.Background(), domain.FilterPengguna{IDs: []string{uid("u-b"), "tidak-ada"}}, adminUndangID)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"u-b"}, idKolom(h), "id yang tidak ada diabaikan, bukan galat")
+		assert.Equal(t, []string{uid("u-b")}, idKolom(h), "id yang tidak ada diabaikan, bukan galat")
 		entri := entriAudit(f, "EKSPOR_DATA")
 		assert.Equal(t, 2, entri[len(entri)-1].Metadata["jumlah_id"])
 	})
 	t.Run("pencarian dan id digabung (irisan)", func(t *testing.T) {
-		h, err := f.uc.EksporPengguna(context.Background(), domain.FilterPengguna{Cari: "ani", IDs: []string{"u-b"}}, adminUndangID)
+		h, err := f.uc.EksporPengguna(context.Background(), domain.FilterPengguna{Cari: "ani", IDs: []string{uid("u-b")}}, adminUndangID)
 		require.NoError(t, err)
 		assert.Empty(t, idKolom(h))
 		assert.Equal(t, 0, h.Baris)

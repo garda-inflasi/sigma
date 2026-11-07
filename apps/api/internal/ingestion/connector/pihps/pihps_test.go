@@ -10,9 +10,13 @@ import (
 
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/seeder"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// idSumber adalah UUID baris sumber_data konektor ini (garda_uuid_stabil dari kode), sama dengan seed.
+var idSumber = idx.UUIDStabil("sumber_data", Kode)
 
 var sekarang = time.Date(2025, 10, 15, 10, 0, 0, 0, time.UTC)
 
@@ -27,19 +31,19 @@ func fixture(t *testing.T, nama string) []byte {
 func masukan(t *testing.T, konf string) domain.Masukan {
 	t.Helper()
 	rows := seeder.Pemetaan()
-	rows = append(rows, domain.PemetaanSumber{SumberID: SumberID, Jenis: domain.JenisWilayah, Alias: "101", KodeMaster: new("1171")})
+	rows = append(rows, domain.PemetaanSumber{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "101", KodeMaster: new("1171")})
 	satuan := map[string]string{
 		"BRS-MED": "kg", "BRS-PRM": "kg", "CBM-KRT": "kg", "CBR-RWT": "kg", "BWM": "kg", "BWP": "kg",
 		"TLR": "kg", "DAG-AYM": "kg", "DAG-SPI": "kg", "MYK": "liter", "GLA": "kg",
 	}
 	var sumberBI []domain.PemetaanSumber
 	for _, r := range rows {
-		if r.SumberID == SumberID {
+		if r.SumberID == idSumber {
 			sumberBI = append(sumberBI, r)
 		}
 	}
 	return domain.Masukan{
-		Sekarang: sekarang, URLDasar: "https://www.bi.go.id/hargapangan/",
+		SumberID: idSumber, Sekarang: sekarang, URLDasar: "https://www.bi.go.id/hargapangan/",
 		Konfigurasi: json.RawMessage(konf), Pemetaan: domain.NewPemetaan(sumberBI, satuan),
 	}
 }
@@ -100,7 +104,7 @@ func TestNormalisasi_FixtureGridKota(t *testing.T) {
 
 	harga := map[string]float64{}
 	for _, h := range hasil.Harga {
-		assert.Equal(t, SumberID, h.SumberID)
+		assert.Equal(t, idSumber, h.SumberID)
 		assert.Equal(t, "1171", h.KabupatenKode)
 		assert.Equal(t, domain.TipeHargaKonsumen, h.Tipe)
 		assert.NotEmpty(t, h.Satuan)

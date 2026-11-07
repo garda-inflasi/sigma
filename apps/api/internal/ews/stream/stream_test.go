@@ -11,6 +11,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,10 +24,11 @@ type fakeStore struct {
 	err    error
 }
 
-func (f *fakeStore) add(id int64, alertID, severity string) {
+// add menambah peristiwa id untuk alert ber-ID 100+id dan kode tampilan alertKode.
+func (f *fakeStore) add(id int64, alertKode, severity string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.events = append(f.events, domain.Peristiwa{ID: id, Alert: domain.Alert{EwsAlert: domain.EwsAlert{ID: alertID, Severity: severity, Status: "BARU"}, KabupatenNama: "KOTA BANDA ACEH"}})
+	f.events = append(f.events, domain.Peristiwa{ID: id, Alert: domain.Alert{EwsAlert: domain.EwsAlert{ID: idx.ID(100 + id), Kode: &alertKode, Severity: severity, Status: "BARU"}, KabupatenNama: "KOTA BANDA ACEH"}})
 }
 
 func (f *fakeStore) LatestEventID(context.Context) (int64, error) {
@@ -122,7 +124,8 @@ func TestServe_SendsRetryThenOnlyEventsAfterCursor(t *testing.T) {
 
 	assert.Equal(t, "2", f2["id"])
 	assert.Equal(t, "alert", f2["event"])
-	assert.Contains(t, f2["data"], `"id":"EWS-B"`)
+	assert.Contains(t, f2["data"], `"id":"102"`, "ID alert di payload adalah string desimal")
+	assert.Contains(t, f2["data"], `"kode":"EWS-B"`)
 	assert.Contains(t, f2["data"], `"wilayah":"KOTA BANDA ACEH"`)
 	assert.Equal(t, "3", f3["id"])
 	require.NoError(t, stop())

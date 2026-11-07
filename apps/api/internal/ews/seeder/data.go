@@ -46,14 +46,14 @@ var aturanSeeds = []aturanSeed{
 // ambangBawaan dipakai komoditas tanpa aturan sendiri (lonjakan harga, hortikultura).
 var ambangBawaan = ambang{8, 12, 18}
 
-// aturanID: kode jenis pendek + kode komoditas.
-func aturanID(jenis, komoditas string) string {
+// aturanKode: kode tampilan aturan (kolom kode, ID lama) = kode jenis pendek + kode komoditas.
+func aturanKode(jenis, komoditas string) string {
 	short := map[string]string{jenisLonjakan: "LH", jenisStok: "KS", jenisCuaca: "CU"}[jenis]
 	return "ATR-" + short + "-" + komoditas
 }
 
 type alertSeed struct {
-	id        string
+	kode      string
 	jenis     string
 	komoditas string // kosong = tanpa komoditas
 	kabupaten string
@@ -71,18 +71,18 @@ const (
 	pesanSurplus = "Harga turun di bawah koridor. Pertimbangkan penyerapan ke cold storage."
 )
 
-func lonjakan(id, komoditas, nama, kabupaten string, nilai float64, harga string, menit int, status string) alertSeed {
+func lonjakan(kode, komoditas, nama, kabupaten string, nilai float64, harga string, menit int, status string) alertSeed {
 	return alertSeed{
-		id: id, jenis: jenisLonjakan, komoditas: komoditas, kabupaten: kabupaten, nilai: nilai,
+		kode: kode, jenis: jenisLonjakan, komoditas: komoditas, kabupaten: kabupaten, nilai: nilai,
 		judul:     "Lonjakan harga " + nama,
 		pesan:     "Harga konsumen naik di atas rata-rata 7 hari. Harga terakhir Rp" + harga + "/kg.",
 		menitLalu: menit, status: status, skor: min(98, int(40+nilai*2.4+0.5)), sumber: sumberModel,
 	}
 }
 
-func surplus(id, komoditas, nama, kabupaten string, nilai float64, menit int) alertSeed {
+func surplus(kode, komoditas, nama, kabupaten string, nilai float64, menit int) alertSeed {
 	return alertSeed{
-		id: id, jenis: jenisSurplus, komoditas: komoditas, kabupaten: kabupaten, nilai: nilai,
+		kode: kode, jenis: jenisSurplus, komoditas: komoditas, kabupaten: kabupaten, nilai: nilai,
 		judul: "Indikasi surplus " + nama, pesan: pesanSurplus,
 		menitLalu: menit, status: domain.StatusBaru, skor: int(30 + math.Abs(nilai)*2 + 0.5), sumber: "Model EWS v2.3",
 	}
@@ -106,19 +106,19 @@ var alertSeeds = []alertSeed{
 	surplus("EWS-1012", "KTG", "kentang", "1106", -18.0, 280),
 	surplus("EWS-1013", "TMT", "tomat", "1117", -14.6, 311),
 	{
-		id: "EWS-0901", jenis: jenisCuaca, komoditas: "CBM-KRT", kabupaten: "1106", nilai: 148,
+		kode: "EWS-0901", jenis: jenisCuaca, komoditas: "CBM-KRT", kabupaten: "1106", nilai: 148,
 		judul:     "Curah hujan ekstrem di sentra Gayo",
 		pesan:     "Curah hujan 2,1× normal selama 10 hari. Risiko gagal panen cabai & tomat meningkat.",
 		menitLalu: 95, status: domain.StatusDiakui, skor: 81, sumber: "BMKG + OpenWeather",
 	},
 	{
-		id: "EWS-0902", jenis: jenisStok, komoditas: "CBM-KRT", kabupaten: "1108", nilai: -32,
+		kode: "EWS-0902", jenis: jenisStok, komoditas: "CBM-KRT", kabupaten: "1108", nilai: -32,
 		judul:     "Stok cabai di Cold Storage Lambaro menipis",
 		pesan:     "Stok turun 32% dalam 5 hari; cukup untuk ±4 hari permintaan Banda Aceh.",
 		menitLalu: 140, status: domain.StatusBaru, skor: 74, sumber: "Telemetri cold storage",
 	},
 	{
-		id: "EWS-0903", jenis: jenisData, kabupaten: "1104", nilai: 3,
+		kode: "EWS-0903", jenis: jenisData, kabupaten: "1104", nilai: 3,
 		judul:     "Entri harga di luar geofence",
 		pesan:     "3 entri tercatat lebih dari 1 km dari Pasar Kutacane. Perlu verifikasi koordinator.",
 		menitLalu: 210, status: domain.StatusSelesai, skor: 22, sumber: "Validasi otomatis",

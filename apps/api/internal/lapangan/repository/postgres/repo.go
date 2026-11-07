@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/lapangan/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +18,7 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-const viewColumns = `t.id, t.judul, t.pasar_id, p.nama AS pasar_nama, t.petugas_id, t.komoditas,
+const viewColumns = `t.id, t.kode, t.judul, t.pasar_id, p.nama AS pasar_nama, t.petugas_id, t.komoditas,
 	t.tipe, t.tenggat, t.status, t.target, t.jumlah_selesai`
 
 func (r *Repository) tugasView(ctx context.Context) *gorm.DB {
@@ -39,9 +40,11 @@ func (r *Repository) ListSaya(ctx context.Context, petugasID string) ([]domain.T
 	return items, nil
 }
 
-// GetByID mengembalikan satu tugas milik petugas, atau milik siapa saja bila semua true.
-func (r *Repository) GetByID(ctx context.Context, id, petugasID string, semua bool) (*domain.TugasView, error) {
-	q := r.tugasView(ctx).Where("t.id = ?", id)
+// GetByID mengembalikan satu tugas milik petugas, atau milik siapa saja bila semua true. ref berisi ID BIGINT atau
+// kode lama (TGS-...).
+func (r *Repository) GetByID(ctx context.Context, ref idx.RujukanID, petugasID string, semua bool) (*domain.TugasView, error) {
+	kondisi, nilai := ref.Kondisi("t.id", "t.kode")
+	q := r.tugasView(ctx).Where(kondisi, nilai)
 	if !semua {
 		q = q.Where("t.petugas_id = ?", petugasID)
 	}
@@ -56,7 +59,7 @@ func (r *Repository) GetByID(ctx context.Context, id, petugasID string, semua bo
 }
 
 // Rincian membaca nama komoditas dan apakah sudah ada entri harga yang tertaut ke tugas untuk tiap kode.
-func (r *Repository) Rincian(ctx context.Context, tugasID string, kode []string) ([]domain.RincianKomoditas, error) {
+func (r *Repository) Rincian(ctx context.Context, tugasID idx.ID, kode []string) ([]domain.RincianKomoditas, error) {
 	if len(kode) == 0 {
 		return nil, nil
 	}
@@ -75,13 +78,26 @@ func (r *Repository) Rincian(ctx context.Context, tugasID string, kode []string)
 	return items, nil
 }
 
-// Aksesibel menyaring ids ke tugas yang ada dan boleh disentuh pemanggil.
-func (r *Repository) Aksesibel(ctx context.Context, ids []string, petugasID string, semua bool) ([]string, error) {
-	q := r.db.WithContext(ctx).Table("tugas_lapangan").Select("id").Where("id IN ?", ids)
+// pisahRujukan memisahkan rujukan menjadi ID BIGINT dan kode lama untuk klausa WHERE id IN … OR kode IN ….
+func pisahRujukan(refs []idx.RujukanID) (ids []idx.ID, kode []string) {
+	for _, ref := range refs {
+		if ref.ID != 0 {
+			ids = append(ids, ref.ID)
+		} else if ref.Kode != "" {
+			kode = append(kode, ref.Kode)
+		}
+	}
+	return ids, kode
+}
+
+// Aksesibel menyaring refs ke baris tugas yang ada dan boleh disentuh pemanggil.
+func (r *Repository) Aksesibel(ctx context.Context, refs []idx.RujukanID, petugasID string, semua bool) ([]domain.TugasRef, error) {
+	ids, kode := pisahRujukan(refs)
+	q := r.db.WithContext(ctx).Table("tugas_lapangan").Select("id, kode").Where("(id IN ? OR kode IN ?)", ids, kode)
 	if !semua {
 		q = q.Where("petugas_id = ?", petugasID)
 	}
-	var found []string
+	var found []domain.TugasRef
 	if err := q.Scan(&found).Error; err != nil {
 		return nil, fmt.Errorf("cek akses tugas lapangan: %w", err)
 	}
@@ -89,17 +105,18 @@ func (r *Repository) Aksesibel(ctx context.Context, ids []string, petugasID stri
 }
 
 // TandaiSelesai menutup tugas yang belum selesai dan targetnya sudah terpenuhi.
-func (r *Repository) TandaiSelesai(ctx context.Context, ids []string, petugasID string, semua bool, waktu time.Time) ([]string, error) {
-	var changed []string
+func (r *Repository) TandaiSelesai(ctx context.Context, refs []idx.RujukanID, petugasID string, semua bool, waktu time.Time) ([]domain.TugasRef, error) {
+	ids, kode := pisahRujukan(refs)
+	var changed []domain.TugasRef
 	err := r.db.WithContext(ctx).Raw(`
 		UPDATE tugas_lapangan
 		   SET status = 'SELESAI', selesai_pada = @waktu
-		 WHERE id IN @ids
+		 WHERE (id IN @ids OR kode IN @kode)
 		   AND status <> 'SELESAI'
 		   AND jumlah_selesai >= target
 		   AND (@semua OR petugas_id = @petugas)
-		RETURNING id`,
-		map[string]any{"ids": ids, "waktu": waktu, "semua": semua, "petugas": petugasID},
+		RETURNING id, kode`,
+		map[string]any{"ids": ids, "kode": kode, "waktu": waktu, "semua": semua, "petugas": petugasID},
 	).Scan(&changed).Error
 	if err != nil {
 		return nil, fmt.Errorf("tandai tugas selesai: %w", err)

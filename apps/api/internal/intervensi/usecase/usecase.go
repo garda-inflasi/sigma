@@ -10,6 +10,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -99,19 +100,26 @@ func (uc *UseCase) Create(ctx context.Context, in domain.NewIntervensi) (*domain
 	return created, nil
 }
 
-// Move memindahkan kartu ke tahap dan posisi baru dan mengembalikan versi baru kartu.
+// kartu mengambil kartu menurut ID (UUID) atau kode tampilan lama (INT-n); ErrNotFound bila tidak ada.
+func (uc *UseCase) kartu(ctx context.Context, ref idx.RujukanUUID) (*domain.Intervensi, error) {
+	card, err := uc.repo.GetByID(ctx, ref)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return card, err
+}
+
+// Move memindahkan kartu (menurut ID atau kode) ke tahap dan posisi baru dan mengembalikan versi baru kartu.
 // versi harus sama dengan versi yang dibaca klien (ErrVersiUsang bila tidak). Tahap harus
 // terdefinisi untuk siklus kartu, hasPermission harus memenuhi izin tahap tujuan, dan
 // pemindahan maju tidak boleh melompati tahap persetujuan yang izinnya tidak dimiliki
-// (persetujuan berjenjang).
-func (uc *UseCase) Move(ctx context.Context, id, tahap string, index, versi int, actorID string, hasPermission func(string) bool) (int, error) {
-	card, err := uc.repo.GetByID(ctx, id)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return 0, ErrNotFound
-	}
+// (persetujuan berjenjang). Audit memakai ID kartu.
+func (uc *UseCase) Move(ctx context.Context, ref idx.RujukanUUID, tahap string, index, versi int, actorID string, hasPermission func(string) bool) (int, error) {
+	card, err := uc.kartu(ctx, ref)
 	if err != nil {
 		return 0, err
 	}
+	id := card.ID
 	defs, err := uc.repo.ListTahap(ctx)
 	if err != nil {
 		return 0, err
@@ -167,7 +175,7 @@ func izinPemindahan(defs []domain.TahapDef, card *domain.Intervensi, target doma
 }
 
 // BulkAksi menerapkan aksi massal ("tugaskan" ke pemanggil, atau "eskalasi" ke Dewan
-// Pengarah) dan mengembalikan hasil per kartu. Aksi yang mengubah kartu dicatat di audit.
+// Pengarah) pada kartu ber-ID UUID dan mengembalikan hasil per kartu. Aksi yang mengubah kartu dicatat di audit.
 func (uc *UseCase) BulkAksi(ctx context.Context, aksi string, ids []string, actorID string) (BulkResult, error) {
 	domainAksi := domain.BulkAksi(aksi)
 	if domainAksi != domain.BulkTugaskan && domainAksi != domain.BulkEskalasi {
@@ -199,17 +207,15 @@ func (uc *UseCase) BulkAksi(ctx context.Context, aksi string, ids []string, acto
 	return res, nil
 }
 
-// ListRiwayat mengembalikan peristiwa satu kartu, terlama dahulu.
-func (uc *UseCase) ListRiwayat(ctx context.Context, id string) ([]domain.Riwayat, error) {
-	if _, err := uc.repo.GetByID(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
+// ListRiwayat mengembalikan peristiwa satu kartu (menurut ID atau kode), terlama dahulu.
+func (uc *UseCase) ListRiwayat(ctx context.Context, ref idx.RujukanUUID) ([]domain.Riwayat, error) {
+	card, err := uc.kartu(ctx, ref)
+	if err != nil {
 		return nil, err
 	}
-	items, err := uc.repo.ListRiwayat(ctx, id)
+	items, err := uc.repo.ListRiwayat(ctx, card.ID)
 	if err != nil {
-		uc.log.Error("intervensi: riwayat gagal", map[string]interface{}{"id": id, "error": err.Error()})
+		uc.log.Error("intervensi: riwayat gagal", map[string]interface{}{"id": card.ID, "error": err.Error()})
 		return nil, err
 	}
 	return items, nil

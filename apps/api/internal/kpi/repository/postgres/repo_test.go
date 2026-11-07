@@ -178,7 +178,7 @@ func TestHitung_KelengkapanHarianNilWithoutValidatedEntries(t *testing.T) {
 func tambahFasilitas(t *testing.T, tx *gorm.DB) {
 	t.Helper()
 	require.NoError(t, tx.Exec(`
-		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status) VALUES
+		INSERT INTO cold_storage (kode, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status) VALUES
 		('CS-A', 'A', '1171', 5.5, 95.3, 100, 4, 'OPERASIONAL'),
 		('CS-B', 'B', '1171', 5.5, 95.3, 100, 4, 'OPERASIONAL'),
 		('CS-C', 'C', '1171', 5.5, 95.3, 100, 4, 'PERAWATAN')`).Error)
@@ -187,8 +187,8 @@ func tambahFasilitas(t *testing.T, tx *gorm.DB) {
 func tambahLot(t *testing.T, tx *gorm.DB, id, fasilitas string, volume, risiko float64, masuk, kedaluwarsa string) {
 	t.Helper()
 	require.NoError(t, tx.Exec(`
-		INSERT INTO stok_cold_storage (id, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, pemilik, risiko_food_loss, kedaluwarsa_pada)
-		VALUES (?, ?, 'CBM-KRT', ?, ?, 'Uji', ?, ?)`, id, fasilitas, volume, masuk, risiko, kedaluwarsa).Error)
+		INSERT INTO stok_cold_storage (kode, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, pemilik, risiko_food_loss, kedaluwarsa_pada)
+		VALUES (?, (SELECT id FROM cold_storage WHERE kode = ?), 'CBM-KRT', ?, ?, 'Uji', ?, ?)`, id, fasilitas, volume, masuk, risiko, kedaluwarsa).Error)
 }
 
 func TestHitung_UtilisasiDanRisikoColdStorage(t *testing.T) {
@@ -353,7 +353,7 @@ func harga(t *testing.T, tx *gorm.DB, tipe, status, pasar, komoditas string, nil
 
 func TestHitung_MapeHarga(t *testing.T) {
 	denganTabelSumber(t, "kpi_repo_mape", func(repo *postgres.Repository, tx *gorm.DB) {
-		require.NoError(t, tx.Exec(`INSERT INTO model_registry (id, komoditas_kode, nama, versi, mape, dilatih_pada) VALUES
+		require.NoError(t, tx.Exec(`INSERT INTO model_registry (kode, komoditas_kode, nama, versi, mape, dilatih_pada) VALUES
 			('M1', 'CBM-KRT', 'uji', 'v1', 5, now()), ('M2', 'BWM', 'uji', 'v1', 5, now())`).Error)
 		// Pasar 1171 (PSR-1171-01 dan -02). Rata-rata aktual CBM-KRT 10 Okt = (50000 + 52000) / 2 = 51000.
 		harga(t, tx, "KONSUMEN", "DIVALIDASI", "PSR-1171-01", "CBM-KRT", 50000, "2026-10-10 03:00+00")
@@ -362,8 +362,9 @@ func TestHitung_MapeHarga(t *testing.T) {
 		harga(t, tx, "KONSUMEN", "DIAJUKAN", "PSR-1171-01", "CBM-KRT", 99999, "2026-10-15 03:00+00")   // belum tervalidasi
 		harga(t, tx, "PRODUSEN", "DIVALIDASI", "PSR-1171-01", "CBM-KRT", 99999, "2026-10-20 03:00+00") // bukan harga konsumen
 		prediksi := func(id, komoditas, tanggal string, nilai int) {
-			require.NoError(t, tx.Exec(`INSERT INTO prediksi_harga (id, komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, nilai, bawah, atas, model_versi, faktor, harga_dasar)
-				VALUES (?, ?, '1171', ?, 7, ?, 1, 999999, 'v1', '{}', 50000)`, id, komoditas, tanggal, nilai).Error)
+			require.NoError(t, tx.Exec(`INSERT INTO prediksi_harga (kode, komoditas_kode, kabupaten_kode, tanggal_target, horizon_hari, nilai, bawah, atas, model_id, model_versi, faktor, harga_dasar)
+				VALUES (?, ?, '1171', ?, 7, ?, 1, 999999, (SELECT id FROM model_registry WHERE komoditas_kode = ? AND versi = 'v1'), 'v1', '{}', 50000)`,
+				id, komoditas, tanggal, nilai, komoditas).Error)
 		}
 		prediksi("P1", "CBM-KRT", "2026-10-10", 54060) // |54060 - 51000| / 51000 = 6,0%
 		prediksi("P2", "BWM", "2026-10-12", 38000)     // |38000 - 40000| / 40000 = 5,0%
@@ -428,8 +429,10 @@ func TestHitung_MarginProdusenKonsumen(t *testing.T) {
 func transaksi(t *testing.T, tx *gorm.DB, id, lot, lotBaru, jenis string, volume float64, asal, tujuan, waktu string) {
 	t.Helper()
 	require.NoError(t, tx.Exec(`
-		INSERT INTO transaksi_stok (id, lot_id, lot_baru_id, jenis, volume_ton, fasilitas_asal_id, fasilitas_tujuan_id, waktu)
-		VALUES (?, ?, NULLIF(?, ''), ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?)`, id, lot, lotBaru, jenis, volume, asal, tujuan, waktu).Error)
+		INSERT INTO transaksi_stok (kode, lot_id, lot_baru_id, jenis, volume_ton, fasilitas_asal_id, fasilitas_tujuan_id, waktu)
+		VALUES (?, (SELECT id FROM stok_cold_storage WHERE kode = ?), (SELECT id FROM stok_cold_storage WHERE kode = NULLIF(?, '')), ?, ?,
+		        (SELECT id FROM cold_storage WHERE kode = NULLIF(?, '')), (SELECT id FROM cold_storage WHERE kode = NULLIF(?, '')), ?)`,
+		id, lot, lotBaru, jenis, volume, asal, tujuan, waktu).Error)
 }
 
 // bukuBesar menyiapkan: L1 (risiko 0,5) masuk 80 ke CS-A 1 Okt, keluar 30 pada 20 Okt, pindah sebagian
@@ -502,7 +505,7 @@ func TestHitung_EfisiensiBiayaLogistik(t *testing.T) {
 
 		rencana := func(id, komoditas, periode, dibuat string, total int64, pembanding any) {
 			require.NoError(t, tx.Exec(`
-				INSERT INTO optimasi_rute (id, komoditas_kode, periode, parameter, total_volume_ton, total_biaya, belum_terpenuhi_ton, biaya_pembanding, dibuat_pada)
+				INSERT INTO optimasi_rute (kode, komoditas_kode, periode, parameter, total_volume_ton, total_biaya, belum_terpenuhi_ton, biaya_pembanding, dibuat_pada)
 				VALUES (?, ?, ?, '{}', 10, ?, 0, ?, ?)`, id, komoditas, periode, total, pembanding, dibuat).Error)
 		}
 		rencana("O1", "CBM-KRT", "2026-10-01", "2026-10-05 03:00+00", 800, 1000)  // digantikan O2 (sama komoditas dan periode)

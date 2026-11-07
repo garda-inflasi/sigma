@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Status tugas (enum status_tugas).
@@ -69,12 +71,15 @@ func (k KodeKomoditas) Value() (driver.Value, error) {
 	return "{" + strings.Join(k, ",") + "}", nil
 }
 
-// TugasLapangan memetakan tabel tugas_lapangan.
+// TugasLapangan memetakan tabel tugas_lapangan. ID adalah BIGINT identity yang diberi basis data; Kode berisi ID
+// lama (TGS-<slug>-<n>) sebagai kode tampilan dan alias tautan lama, NULL untuk tugas yang dibuat sesudah migrasi
+// 000111 (belum ada fitur penugasan yang memberi kode tampilan).
 type TugasLapangan struct {
-	ID        string `gorm:"column:id;primaryKey"`
-	Judul     string `gorm:"column:judul"`
-	PasarID   string `gorm:"column:pasar_id"`
-	PetugasID string `gorm:"column:petugas_id"`
+	ID        idx.ID  `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode      *string `gorm:"column:kode"`
+	Judul     string  `gorm:"column:judul"`
+	PasarID   string  `gorm:"column:pasar_id"`
+	PetugasID string  `gorm:"column:petugas_id;type:uuid"`
 	// type:_text adalah nama tipe array teks di pg_type (udt_name), dipakai tes kontrak skema.
 	Komoditas     KodeKomoditas `gorm:"column:komoditas;type:_text"`
 	Tipe          string        `gorm:"column:tipe"`
@@ -82,7 +87,7 @@ type TugasLapangan struct {
 	Status        string        `gorm:"column:status;default:BELUM"`
 	Target        int           `gorm:"column:target"`
 	DibuatPada    time.Time     `gorm:"column:dibuat_pada;default:now()"`
-	DibuatOlehID  *string       `gorm:"column:dibuat_oleh_id"`
+	DibuatOlehID  *string       `gorm:"column:dibuat_oleh_id;type:uuid"`
 	SelesaiPada   *time.Time    `gorm:"column:selesai_pada"`
 	JumlahSelesai int           `gorm:"column:jumlah_selesai"`
 }
@@ -93,11 +98,12 @@ func (TugasLapangan) TableName() string {
 
 // TugasView adalah tugas beserta nama pasar, siap ditampilkan.
 type TugasView struct {
-	ID            string        `gorm:"column:id"`
+	ID            idx.ID        `gorm:"column:id"`
+	Kode          *string       `gorm:"column:kode"`
 	Judul         string        `gorm:"column:judul"`
 	PasarID       string        `gorm:"column:pasar_id"`
 	PasarNama     string        `gorm:"column:pasar_nama"`
-	PetugasID     string        `gorm:"column:petugas_id"`
+	PetugasID     string        `gorm:"column:petugas_id;type:uuid"`
 	Komoditas     KodeKomoditas `gorm:"column:komoditas"`
 	Tipe          string        `gorm:"column:tipe"`
 	Tenggat       time.Time     `gorm:"column:tenggat"`

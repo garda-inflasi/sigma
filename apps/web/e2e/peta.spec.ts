@@ -182,7 +182,8 @@ test.describe("riwayat optimasi", () => {
       await panel
         .getByRole("button", { name: "Simpan sebagai usulan" })
         .click();
-      await expect(panel.getByText(/Disimpan sebagai/)).toBeVisible();
+      // Kode tampilan (OPT-000042), bukan ID BIGINT mentah.
+      await expect(panel.getByText(/Disimpan sebagai OPT-\d+/)).toBeVisible();
 
       const riwayat = page.getByLabel("Riwayat optimasi");
       const entri = riwayat
@@ -198,9 +199,10 @@ test.describe("riwayat optimasi", () => {
       // Bersihkan hanya baris yang dibuat tes ini.
       const baru = (await idRiwayat()).filter((id) => !sebelum.has(id));
       for (const id of baru) {
-        if (!/^[\w-]+$/.test(id)) throw new Error(`id tak terduga: ${id}`);
+        // ID rencana adalah BIGINT (string desimal); rute ikut terhapus (CASCADE), dihapus eksplisit agar jelas.
+        if (!/^[1-9][0-9]*$/.test(id)) throw new Error(`id tak terduga: ${id}`);
         jalankanSql(
-          `DELETE FROM rute_distribusi WHERE optimasi_id = '${id}'; DELETE FROM optimasi_rute WHERE id = '${id}';`,
+          `DELETE FROM rute_distribusi WHERE optimasi_id = ${id}; DELETE FROM optimasi_rute WHERE id = ${id};`,
         );
       }
       await api.dispose();

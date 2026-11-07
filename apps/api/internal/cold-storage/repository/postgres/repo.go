@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -33,7 +34,7 @@ var sortExpr = map[domain.StokSort]string{
 // fasilitasSelect memilih fasilitas beserta volume terisi (lot yang belum habis)
 // dan nama wilayah; kondisi tambahan disisipkan sebelum GROUP BY.
 const fasilitasSelect = `
-	SELECT c.id, c.nama, c.kabupaten_kode, kb.nama AS kabupaten_nama, c.lat, c.lng,
+	SELECT c.id, c.kode, c.nama, c.kabupaten_kode, kb.nama AS kabupaten_nama, c.lat, c.lng,
 	       c.kapasitas_ton, COALESCE(SUM(s.volume_ton), 0) AS terisi_ton,
 	       c.suhu_target_c, c.suhu_aktual_c, c.status,
 	       c.suhu_min_c, c.suhu_maks_c, c.kelembapan_aktual_pct, c.telemetri_pada
@@ -42,7 +43,7 @@ const fasilitasSelect = `
 	  LEFT JOIN stok_cold_storage s ON s.cold_storage_id = c.id AND s.status <> 'HABIS'
 	 %s
 	 GROUP BY c.id, kb.nama
-	 ORDER BY CASE c.status WHEN 'OPERASIONAL' THEN 0 WHEN 'PERAWATAN' THEN 1 ELSE 2 END, c.id`
+	 ORDER BY CASE c.status WHEN 'OPERASIONAL' THEN 0 WHEN 'PERAWATAN' THEN 1 ELSE 2 END, c.kode NULLS LAST, c.nama, c.id`
 
 func (r *Repository) ListFasilitas(ctx context.Context) ([]domain.FasilitasView, error) {
 	var fasilitas []domain.FasilitasView
@@ -60,8 +61,10 @@ func (r *Repository) ListStok(ctx context.Context, q domain.StokQuery) (domain.S
 			Joins("JOIN cold_storage c ON c.id = s.cold_storage_id").
 			Joins("JOIN komoditas k ON k.kode = s.komoditas_kode").
 			Where("s.status <> ?", domain.StatusLotHabis)
-		if q.ColdStorageID != "" {
-			tx = tx.Where("s.cold_storage_id = ?", q.ColdStorageID)
+		if !domain.KosongRujukan(q.Fasilitas) {
+			// Fasilitas yang tidak ada menghasilkan daftar kosong, bukan galat.
+			kondisi, arg := q.Fasilitas.Kondisi("c.id", "c.kode")
+			tx = tx.Where(kondisi, arg)
 		}
 		if q.Search != "" {
 			like := "%" + escapeLike(q.Search) + "%"
@@ -83,7 +86,7 @@ func (r *Repository) ListStok(ctx context.Context, q domain.StokQuery) (domain.S
 	items := []domain.StokView{}
 	if agg.Total > 0 {
 		if err := filtered().
-			Select(`s.id, s.cold_storage_id, c.nama AS cold_storage_nama, s.komoditas_kode,
+			Select(`s.id, s.kode, s.cold_storage_id, c.nama AS cold_storage_nama, s.komoditas_kode,
 				k.nama AS komoditas_nama, s.volume_ton, s.masuk_pada, s.kedaluwarsa_pada,
 				s.risiko_food_loss, s.pemilik, s.status`).
 			Order(orderClause(q)).
@@ -110,14 +113,14 @@ func (r *Repository) RingkasanStok(ctx context.Context, ambang float64) (domain.
 	return out, err
 }
 
-func (r *Repository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction) (domain.BulkResult, error) {
+func (r *Repository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction) (domain.BulkResult, error) {
 	// Cold storage bulk actions are advisory workflow operations (distribution
 	// planning / processing recommendations). They do not mutate stored state;
 	// report how many of the requested lots exist and their combined volume.
 	switch action {
 	case domain.BulkRencanakanDistribusi, domain.BulkRekomendasiOlahan:
 		var found []struct {
-			ID        string
+			ID        idx.ID
 			VolumeTon float64
 		}
 		if err := r.db.WithContext(ctx).Model(&domain.StokColdStorage{}).

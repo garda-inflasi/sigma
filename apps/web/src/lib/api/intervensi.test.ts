@@ -26,8 +26,12 @@ import {
 } from "./intervensi";
 import { alurMock, riwayatMock, tahapMock } from "./intervensi-mock";
 
+const UUID_301 = "a7c1e4f0-3b2d-3c55-8e41-5d0f6b7a9c10";
+const UUID_304 = "5e9d2b3c-71aa-3f0e-9b64-0c2e8d41f7a3";
+
 const kartu: KartuResponse = {
-  id: "INT-301",
+  id: UUID_301,
+  kode: "INT-301",
   siklus: "TEKANAN",
   tahap: "t-ews",
   judul: "Lonjakan cabai merah Banda Aceh",
@@ -39,9 +43,10 @@ const kartu: KartuResponse = {
   rekomendasi_ai: true,
   progres: { selesai: 1, total: 5 },
   penanggung_jawab: [
-    { id: "manajer_program", nama: "Rina Safitri, S.T., M.T." },
+    { id: "e810ffa6-9117-330a-aee6-f281fa031dfe", nama: "Rina Safitri, S.T., M.T." },
   ],
-  ews_alert_id: "EWS-1000",
+  ews_alert_id: "12",
+  ews_alert_kode: "EWS-1000",
   dibuat_pada: "2026-10-10T08:00:00Z",
   selesai_pada: null,
   versi: 4,
@@ -51,7 +56,8 @@ const kartu: KartuResponse = {
 describe("toKartu", () => {
   it("memetakan kolom API ke model kanban", () => {
     assert.deepEqual(toKartu(kartu), {
-      id: "INT-301",
+      id: UUID_301,
+      kode: "INT-301",
       siklus: "tekanan",
       tahap: "t-ews",
       judul: "Lonjakan cabai merah Banda Aceh",
@@ -65,7 +71,8 @@ describe("toKartu", () => {
       versi: 4,
       dieskalasi: false,
       deskripsi: "Harga naik 12% sepekan",
-      ewsAlertId: "EWS-1000",
+      ewsAlertId: "12",
+      ewsAlertKode: "EWS-1000",
       dibuatPada: "2026-10-10T08:00:00Z",
       selesaiPada: undefined,
     });
@@ -80,6 +87,19 @@ describe("toKartu", () => {
 
   it("siklus tak dikenal jatuh ke normal", () => {
     assert.equal(toKartu({ ...kartu, siklus: "ACAK" }).siklus, "normal");
+  });
+
+  it("id tetap UUID untuk tautan dan kunci; kode tampilan opsional (null atau tidak ada)", () => {
+    assert.equal(toKartu(kartu).id, UUID_301);
+    assert.equal(toKartu({ ...kartu, kode: null }).kode, undefined);
+    const { kode: _kode, ...tanpaKode } = kartu;
+    assert.equal(toKartu(tanpaKode).kode, undefined);
+  });
+
+  it("kartu tanpa alert pemicu tidak membawa id maupun kode alert", () => {
+    const k = toKartu({ ...kartu, ews_alert_id: null, ews_alert_kode: null });
+    assert.equal(k.ewsAlertId, undefined);
+    assert.equal(k.ewsAlertKode, undefined);
   });
 });
 
@@ -302,7 +322,7 @@ const labelTahap = (kode?: string) =>
   "";
 const riwayat = (r: Partial<RiwayatResponse>) =>
   toRiwayat({
-    id: 1,
+    id: "1",
     aksi: "BUAT",
     dari: null,
     ke: null,
@@ -385,7 +405,7 @@ const masukan: BuatIntervensiInput = {
   komoditasKode: "BRS-MED",
   kabupatenKode: "1171",
   tenggat: "2026-12-01",
-  penanggungJawabIds: ["manajer_kebijakan"],
+  penanggungJawabIds: ["4a5595b3-31f9-3231-97cc-91bb5aa27394"],
 };
 
 describe("membuat intervensi (POST /v1/intervensi)", () => {
@@ -433,7 +453,7 @@ describe("membuat intervensi (POST /v1/intervensi)", () => {
       komoditas_kode: "BRS-MED",
       kabupaten_kode: "1171",
       tenggat: "2026-12-01T16:59:00.000Z",
-      penanggung_jawab_ids: ["manajer_kebijakan"],
+      penanggung_jawab_ids: ["4a5595b3-31f9-3231-97cc-91bb5aa27394"],
     });
   });
 });
@@ -470,8 +490,8 @@ describe("ringkasHasilKartu", () => {
 });
 
 const permintaan: PersetujuanResponse = {
-  id: 7,
-  intervensi_id: "INT-304",
+  id: "7",
+  intervensi_id: UUID_304,
   kartu_judul: "Kirim cabai Takengon → Banda Aceh",
   kartu_tahap: "t-logistik",
   jenis: "PINDAH_TAHAP",
@@ -479,7 +499,7 @@ const permintaan: PersetujuanResponse = {
   status: "MENUNGGU",
   langkah_kini: 2,
   izin_langkah_kini: "intervensi.setujui_fiskal",
-  diajukan_oleh_id: "manajer_program",
+  diajukan_oleh_id: "e810ffa6-9117-330a-aee6-f281fa031dfe",
   diajukan_oleh_nama: "Rina Safitri, S.T., M.T.",
   diajukan_pada: "2026-11-05T05:00:00Z",
   catatan: "",
@@ -489,7 +509,7 @@ const permintaan: PersetujuanResponse = {
       label: "Persetujuan Dewan Pengarah",
       izin_dibutuhkan: "intervensi.setujui",
       keputusan: "SETUJU",
-      oleh_id: "strategis_bi",
+      oleh_id: "96815d37-8076-3986-aae4-c350a1bb14cd",
       oleh_nama: "Dr. Muhammad Rizal",
       catatan: "",
     },
@@ -508,7 +528,8 @@ const permintaan: PersetujuanResponse = {
 describe("toPersetujuan", () => {
   it("memetakan rantai langkah dan mengosongkan nilai null", () => {
     const p = toPersetujuan(permintaan);
-    assert.equal(p.kartuId, "INT-304");
+    assert.equal(p.id, "7");
+    assert.equal(p.kartuId, UUID_304);
     assert.equal(p.tahapTujuan, "t-fiskal");
     assert.equal(p.langkah[0].keputusan, "SETUJU");
     assert.equal(p.langkah[0].olehNama, "Dr. Muhammad Rizal");
@@ -528,24 +549,24 @@ describe("toPersetujuan", () => {
 describe("bisaMemutus", () => {
   const p = toPersetujuan(permintaan);
   it("pemegang izin langkah yang belum terlibat boleh memutus", () => {
-    assert.equal(bisaMemutus(p, "strategis_djpb", true), true);
+    assert.equal(bisaMemutus(p, "9e93356e-ae55-3f97-8aab-8dd459c17f0d", true), true);
   });
   it("tanpa izin langkah tidak boleh", () => {
-    assert.equal(bisaMemutus(p, "strategis_bi", false), false);
+    assert.equal(bisaMemutus(p, "96815d37-8076-3986-aae4-c350a1bb14cd", false), false);
   });
   it("pengaju tidak menyetujui sendiri, dan pemutus langkah lain tidak memutus lagi", () => {
-    assert.equal(bisaMemutus(p, "manajer_program", true), false);
-    assert.equal(bisaMemutus(p, "strategis_bi", true), false);
+    assert.equal(bisaMemutus(p, "e810ffa6-9117-330a-aee6-f281fa031dfe", true), false);
+    assert.equal(bisaMemutus(p, "96815d37-8076-3986-aae4-c350a1bb14cd", true), false);
   });
   it("permintaan yang sudah diputuskan tidak dapat diputus", () => {
     assert.equal(
-      bisaMemutus({ ...p, status: "DISETUJUI" }, "strategis_djpb", true),
+      bisaMemutus({ ...p, status: "DISETUJUI" }, "9e93356e-ae55-3f97-8aab-8dd459c17f0d", true),
       false,
     );
   });
   it("permintaan buatan sistem dapat diputus siapa pun yang berizin", () => {
     assert.equal(
-      bisaMemutus({ ...p, diajukanOlehId: undefined }, "strategis_djpb", true),
+      bisaMemutus({ ...p, diajukanOlehId: undefined }, "9e93356e-ae55-3f97-8aab-8dd459c17f0d", true),
       true,
     );
   });

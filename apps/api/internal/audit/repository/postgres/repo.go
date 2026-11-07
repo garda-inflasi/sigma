@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/garda-inflasi/api/internal/audit/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +26,10 @@ func (r *Repository) Create(ctx context.Context, log *domain.AuditLog) error {
 }
 
 func (r *Repository) FindActor(ctx context.Context, id string) (*domain.Actor, error) {
+	// Aktor yang bukan UUID (mis. pengenal sistem) tidak mungkin ada di pengguna.id (uuid); dicatat tanpa aktor.
+	if !idx.ValidUUID(id) {
+		return nil, domain.ErrActorNotFound
+	}
 	var actor domain.Actor
 	res := r.db.WithContext(ctx).Raw("SELECT id, nama, email, peran::text AS peran FROM pengguna WHERE id = ?", id).Scan(&actor)
 	if res.Error != nil {
@@ -36,9 +41,9 @@ func (r *Repository) FindActor(ctx context.Context, id string) (*domain.Actor, e
 	return &actor, nil
 }
 
-func (r *Repository) Get(ctx context.Context, id string) (*domain.AuditLog, error) {
+func (r *Repository) Get(ctx context.Context, ref idx.RujukanID) (*domain.AuditLog, error) {
 	var row domain.AuditLog
-	res := r.db.WithContext(ctx).Where("id = ?", id).Limit(1).Find(&row)
+	res := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).Limit(1).Find(&row)
 	if res.Error != nil {
 		return nil, fmt.Errorf("ambil audit log: %w", res.Error)
 	}
@@ -71,7 +76,12 @@ func applyFilter(query *gorm.DB, filter domain.Filter) *gorm.DB {
 	}
 	if filter.Aktor != "" {
 		pattern := likePattern(filter.Aktor)
-		query = query.Where("aktor_id = ? OR LOWER(aktor_nama) LIKE ? OR LOWER(aktor_email) LIKE ?", filter.Aktor, pattern, pattern)
+		if id, ok := idx.NormalUUID(filter.Aktor); ok {
+			query = query.Where("aktor_id = ? OR LOWER(aktor_nama) LIKE ? OR LOWER(aktor_email) LIKE ?", id, pattern, pattern)
+		} else {
+			// aktor_id berkolom uuid: teks bebas (nama, email) tidak boleh dibandingkan dengannya (22P02).
+			query = query.Where("LOWER(aktor_nama) LIKE ? OR LOWER(aktor_email) LIKE ?", pattern, pattern)
+		}
 	}
 	if filter.Aksi != "" {
 		query = query.Where("aksi = ?", filter.Aksi)

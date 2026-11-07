@@ -102,7 +102,7 @@ export function riwayatMock(kartu: KartuIntervensi): RiwayatResponse[] {
   const pelaku = kartu.penanggungJawab[0]?.nama ?? null;
   const mulai = new Date(kartu.tenggat).getTime() - 14 * 86_400_000;
   return tahap.slice(0, sampai + 1).map((t, i) => ({
-    id: i + 1,
+    id: String(i + 1),
     aksi: i === 0 ? "BUAT" : "PINDAH_TAHAP",
     dari: i === 0 ? null : tahap[i - 1].id,
     ke: t.id,

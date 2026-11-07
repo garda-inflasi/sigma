@@ -228,6 +228,15 @@ rute SSO), dan e2e `apps/web/e2e/sso.spec.ts`.
 
 ---
 
+## Kunci primer UUID: dampak ke auth (000110)
+
+`pengguna.id` adalah UUID (lihat [02](02-pengguna-rbac.md#kunci-primer-uuid-000110-)). Dampak di sisi autentikasi:
+
+- Klaim `sub`/`user_id` access token dan token tantangan MFA berisi UUID kanonik. `JWTAuth` menormalkan huruf kecil dan menjawab **401** `PERMISSIONS_CHANGED` untuk token yang `sub`-nya bukan UUID (token yang terbit sebelum migrasi), sebelum menyentuh pemeriksa pencabutan dan resolver izin; refresh token (`refresh_tokens.user_id`) ikut dimigrasi sehingga refresh senyap menerbitkan token ber-UUID.
+- FK ke `pengguna` pada `refresh_tokens`, `password_reset_tokens`, `mfa_kode_cadangan`, `undangan_pengguna` bersifat `CASCADE`; `login_attempts.user_id` dan `audit_log.aktor_id` `SET NULL` (pelaku anonim/sistem ditulis `NULL`, tidak pernah string kosong).
+- `mfa_kode_cadangan.kode_hash` dihitung dari `"<id>:<kode>"`: kode lama dicocokkan dengan ID lama dari `pengguna_id_lama`, kode baru dengan UUID.
+- Seeder `auth.demo` upsert menurut `email` (kunci alami) dengan `id = seedkit.IDPengguna(slug)`; admin awal `seedkit.IDPengguna("admin-awal")`.
+
 ## Backlog lanjutan (belum dijadwalkan)
 
 - [x] **SSO Google:** OIDC (Authorization Code + PKCE S256) dipetakan ke akun yang sudah ada, migration `sso_provider`/`sso_subject` dengan UNIQUE gabungan, tombol "Masuk dengan Google" kembali di `/masuk` beserta e2e-nya. Rancangan dan keputusan keamanan: [01-G](#01-g--sso-google-oidc).

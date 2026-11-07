@@ -11,6 +11,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,10 +20,20 @@ import (
 
 var waktuUji = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
 
-// fakeRepo menyimpan brief, job, dan versi di memori; id yang sudah ada tidak ditimpa.
+// uuidBrief meniru ID yang diberikan basis data untuk brief berkode tertentu. Deterministik (idx.UUIDStabil) supaya
+// tes yang membandingkan dua jalan yang sama tetap bermakna; basis data sungguhan memakai gen_random_uuid().
+func uuidBrief(kode string) string { return idx.UUIDStabil("policy_brief", kode) }
+
+// brief membuat baris brief tes berstatus tertentu dengan ID dan kode yang konsisten.
+func brief(kode, status string) domain.PolicyBrief {
+	return domain.PolicyBrief{ID: uuidBrief(kode), Kode: kode, Status: status}
+}
+
+// fakeRepo menyimpan brief (berkunci kode), job, dan versi di memori; kode yang sudah ada tidak ditimpa,
+// seperti ON CONFLICT (kode) DO NOTHING. ID brief UUID dan ID job BIGINT "diberikan basis data".
 type fakeRepo struct {
 	rows       map[string]domain.PolicyBrief
-	jobs       map[string]domain.BriefJob
+	jobs       map[idx.ID]domain.BriefJob
 	versi      []domain.HasilDraf
 	createErr  error
 	kumpulErr  error
@@ -31,73 +42,113 @@ type fakeRepo struct {
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{rows: map[string]domain.PolicyBrief{}, jobs: map[string]domain.BriefJob{}, data: dataLengkap()}
+	return &fakeRepo{rows: map[string]domain.PolicyBrief{}, jobs: map[idx.ID]domain.BriefJob{}, data: dataLengkap()}
 }
+
+// cari mencari brief menurut ID (UUID) atau kode dan mengembalikan kodenya.
+func (r *fakeRepo) cari(ref idx.RujukanUUID) (string, bool) {
+	for kode, pb := range r.rows {
+		if (ref.ID != "" && pb.ID == ref.ID) || (ref.Kode != "" && kode == ref.Kode) {
+			return kode, true
+		}
+	}
+	return "", false
+}
+
+func (r *fakeRepo) kodeDariID(id string) (string, bool) { return r.cari(idx.RujukanUUID{ID: id}) }
 
 func (r *fakeRepo) List(context.Context) ([]domain.BriefView, error) { return nil, nil }
 
 func (r *fakeRepo) Get(_ context.Context, id string) (*domain.BriefView, error) {
-	pb, ada := r.rows[id]
+	kode, ada := r.kodeDariID(id)
 	if !ada {
 		return nil, gorm.ErrRecordNotFound
 	}
-	return &domain.BriefView{ID: pb.ID, Periode: pb.Periode, Judul: pb.Judul, Status: pb.Status, Ringkasan: pb.Ringkasan, DisusunOleh: "Penyusun", SumberNarasi: pb.SumberNarasi}, nil
+	pb := r.rows[kode]
+	return &domain.BriefView{ID: pb.ID, Kode: pb.Kode, Periode: pb.Periode, Judul: pb.Judul, Status: pb.Status, Ringkasan: pb.Ringkasan, DisusunOleh: "Penyusun", SumberNarasi: pb.SumberNarasi}, nil
 }
 
-func (r *fakeRepo) GetDetail(_ context.Context, id string) (*domain.DetailView, error) {
-	pb, ada := r.rows[id]
+func (r *fakeRepo) GetDetail(ctx context.Context, ref idx.RujukanUUID) (*domain.DetailView, error) {
+	kode, ada := r.cari(ref)
 	if !ada {
 		return nil, gorm.ErrRecordNotFound
 	}
-	v, _ := r.Get(context.Background(), id)
+	pb := r.rows[kode]
+	v, _ := r.Get(ctx, pb.ID)
 	return &domain.DetailView{BriefView: *v, Konten: pb.Konten, ModelLLM: pb.ModelLLM, PromptVersi: pb.PromptVersi, PromptHash: pb.PromptHash, Galat: pb.Galat}, nil
 }
 
-func (r *fakeRepo) Transisi(_ context.Context, id, dari, ke string) (bool, error) {
-	pb, ada := r.rows[id]
-	if !ada || pb.Status != dari {
-		return false, nil
+// ListVersi menyusun riwayat versi dari draf yang tersimpan: nomor urut per brief, ID BIGINT berurutan, terbaru dulu.
+func (r *fakeRepo) ListVersi(_ context.Context, briefID string) ([]domain.VersiView, error) {
+	var out []domain.VersiView
+	nomor := 0
+	for i, d := range r.versi {
+		if d.BriefID != briefID {
+			continue
+		}
+		nomor++
+		out = append([]domain.VersiView{{ID: idx.ID(i + 1), Versi: nomor, Oleh: "Penyusun", Waktu: d.Waktu}}, out...)
 	}
+	return out, nil
+}
+
+func (r *fakeRepo) Transisi(_ context.Context, ref idx.RujukanUUID, dari, ke string) (string, bool, error) {
+	kode, ada := r.cari(ref)
+	if !ada || r.rows[kode].Status != dari {
+		return "", false, nil
+	}
+	pb := r.rows[kode]
 	pb.Status = ke
-	r.rows[id] = pb
-	return true, nil
+	r.rows[kode] = pb
+	return pb.ID, true, nil
 }
 
 func (r *fakeRepo) Create(_ context.Context, pb *domain.PolicyBrief) (bool, error) {
 	if r.createErr != nil {
 		return false, r.createErr
 	}
-	if _, ada := r.rows[pb.ID]; ada {
+	if ada, ok := r.rows[pb.Kode]; ok {
+		pb.ID = ada.ID
 		return false, nil
 	}
-	r.rows[pb.ID] = *pb
+	pb.ID = uuidBrief(pb.Kode)
+	r.rows[pb.Kode] = *pb
 	return true, nil
 }
 
 func (r *fakeRepo) MulaiUlang(_ context.Context, id string, basiSebelum time.Time) (bool, error) {
-	pb, ada := r.rows[id]
-	if !ada || !(pb.Status == domain.StatusGagal || (pb.Status == domain.StatusDiproses && pb.Diperbarui.Before(basiSebelum))) {
+	kode, ada := r.kodeDariID(id)
+	if !ada {
+		return false, nil
+	}
+	pb := r.rows[kode]
+	if !(pb.Status == domain.StatusGagal || (pb.Status == domain.StatusDiproses && pb.Diperbarui.Before(basiSebelum))) {
 		return false, nil
 	}
 	pb.Status, pb.Galat = domain.StatusDiproses, nil
-	r.rows[id] = pb
+	r.rows[kode] = pb
 	return true, nil
 }
 
 func (r *fakeRepo) MulaiJob(_ context.Context, job *domain.BriefJob) error {
+	job.ID = idx.ID(len(r.jobs) + 1)
 	r.jobs[job.ID] = *job
 	return nil
 }
 
 func (r *fakeRepo) SelesaikanDraf(_ context.Context, d domain.HasilDraf) (bool, error) {
-	pb := r.rows[d.BriefID]
+	kode, ada := r.kodeDariID(d.BriefID)
+	if !ada {
+		return false, nil
+	}
+	pb := r.rows[kode]
 	if pb.Status != domain.StatusDiproses {
 		return false, nil
 	}
 	pb.Status, pb.Judul, pb.Ringkasan, pb.Rekomendasi, pb.Halaman = domain.StatusDraf, d.Judul, d.Ringkasan, d.Rekomendasi, d.Halaman
 	pb.Konten, pb.SnapshotData, pb.SumberNarasi = d.Konten, d.Snapshot, d.Penyusun
 	pb.ModelLLM, pb.PromptVersi, pb.PromptHash, pb.Galat = d.ModelLLM, d.PromptVersi, d.PromptHash, d.Catatan
-	r.rows[d.BriefID] = pb
+	r.rows[kode] = pb
 	r.versi = append(r.versi, d)
 	job := r.jobs[d.JobID]
 	job.Status = domain.JobSelesai
@@ -105,11 +156,13 @@ func (r *fakeRepo) SelesaikanDraf(_ context.Context, d domain.HasilDraf) (bool, 
 	return true, nil
 }
 
-func (r *fakeRepo) GagalkanDraf(_ context.Context, briefID, jobID, galat string, _ time.Time) error {
-	pb := r.rows[briefID]
-	if pb.Status == domain.StatusDiproses {
-		pb.Status, pb.Galat = domain.StatusGagal, &galat
-		r.rows[briefID] = pb
+func (r *fakeRepo) GagalkanDraf(_ context.Context, briefID string, jobID idx.ID, galat string, _ time.Time) error {
+	if kode, ada := r.kodeDariID(briefID); ada {
+		pb := r.rows[kode]
+		if pb.Status == domain.StatusDiproses {
+			pb.Status, pb.Galat = domain.StatusGagal, &galat
+			r.rows[kode] = pb
+		}
 	}
 	job := r.jobs[jobID]
 	job.Status, job.Galat = domain.JobGagal, &galat
@@ -163,17 +216,20 @@ func TestGenerate_TanpaLLMMenyusunDrafDariTemplatDanData(t *testing.T) {
 	repo := newFakeRepo()
 	uc, _ := newUseCase(repo, nil)
 
-	got, err := uc.Generate(t.Context(), "manajer_kebijakan", "2026-11")
+	got, err := uc.Generate(t.Context(), uid("manajer_kebijakan"), "2026-11")
 
 	require.NoError(t, err)
-	assert.Equal(t, "PB-2026-11", got.ID)
+	assert.Equal(t, "PB-2026-11", got.Kode, "kode = PB-YYYY-MM dari periode")
+	assert.Equal(t, uuidBrief("PB-2026-11"), got.ID, "ID brief UUID dari basis data, bukan lagi PB-YYYY-MM")
+	assert.True(t, idx.ValidUUID(got.ID))
 	assert.Equal(t, domain.StatusDiproses, got.Status, "jawaban Generate adalah keadaan saat dimulai, walau penyusunan sudah selesai")
 
 	stored := repo.rows["PB-2026-11"]
+	assert.Equal(t, "PB-2026-11", stored.Kode)
 	assert.Equal(t, domain.StatusDraf, stored.Status, "penyusunan sinkron di tes selesai sebelum Generate kembali")
 	assert.Equal(t, "November 2026", stored.Periode)
 	assert.Equal(t, "Policy brief November 2026", stored.Judul)
-	assert.Equal(t, "manajer_kebijakan", stored.DisusunOlehID)
+	assert.Equal(t, uid("manajer_kebijakan"), stored.DisusunOlehID)
 	assert.Equal(t, domain.PenyusunTemplat, stored.SumberNarasi)
 	assert.Nil(t, stored.ModelLLM)
 	assert.Contains(t, stored.Ringkasan, "Inflasi tahunan Oktober 2026 tercatat 2,84%")
@@ -191,13 +247,16 @@ func TestGenerate_TanpaLLMMenyusunDrafDariTemplatDanData(t *testing.T) {
 	assert.Equal(t, BangunKonteks(repo.data2(bulanUji(2026, time.November))), snapshot, "snapshot = fakta yang dipakai menyusun")
 
 	require.Len(t, repo.jobs, 1)
-	for _, job := range repo.jobs {
+	for id, job := range repo.jobs {
 		assert.Equal(t, domain.JobSelesai, job.Status)
-		assert.Equal(t, "PB-2026-11", job.BriefID)
+		assert.Equal(t, uuidBrief("PB-2026-11"), job.BriefID)
+		assert.Equal(t, id, job.ID, "ID job BIGINT dari basis data")
+		assert.Nil(t, job.Kode, "job baru tanpa kode lama")
 	}
 	require.Len(t, repo.versi, 1)
-	assert.Equal(t, "manajer_kebijakan", repo.versi[0].OlehID)
+	assert.Equal(t, uid("manajer_kebijakan"), repo.versi[0].OlehID)
 	assert.Equal(t, stored.Konten, repo.versi[0].Konten)
+	assert.Equal(t, uuidBrief("PB-2026-11"), repo.versi[0].BriefID)
 }
 
 func (r *fakeRepo) data2(periode time.Time) domain.DataPeriode {
@@ -212,7 +271,7 @@ func TestGenerate_AsinkronDrafBaruAdaSetelahProsesBerjalan(t *testing.T) {
 	var tertunda func()
 	uc.jalankan = func(f func()) { tertunda = f }
 
-	got, err := uc.Generate(t.Context(), "u1", "2026-11")
+	got, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.StatusDiproses, got.Status)
@@ -234,7 +293,7 @@ func TestGenerate_LLMDipakaiBilaValid(t *testing.T) {
 	gen := &fakeGen{narasi: narasiLLM()}
 	uc, rec := newUseCase(repo, gen)
 
-	_, err := uc.Generate(t.Context(), "u1", "2026-11")
+	_, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 
 	require.NoError(t, err)
 	stored := repo.rows["PB-2026-11"]
@@ -274,7 +333,7 @@ func TestGenerate_LLMGagalAtauMelanggarAturanDigantikanTemplat(t *testing.T) {
 			repo := newFakeRepo()
 			uc, _ := newUseCase(repo, gen)
 
-			_, err := uc.Generate(t.Context(), "u1", "2026-11")
+			_, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 
 			require.NoError(t, err)
 			stored := repo.rows["PB-2026-11"]
@@ -301,10 +360,10 @@ func TestGenerate_GagalMengumpulkanDataMenandaiBriefGagal(t *testing.T) {
 	repo.kumpulErr = errors.New("db down")
 	uc, rec := newUseCase(repo, nil)
 
-	got, err := uc.Generate(t.Context(), "u1", "2026-11")
+	got, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 
 	require.NoError(t, err, "Generate sendiri berhasil memulai; kegagalan tampil di status")
-	assert.Equal(t, "PB-2026-11", got.ID)
+	assert.Equal(t, uuidBrief("PB-2026-11"), got.ID)
 	stored := repo.rows["PB-2026-11"]
 	assert.Equal(t, domain.StatusGagal, stored.Status)
 	require.NotNil(t, stored.Galat)
@@ -322,12 +381,12 @@ func TestGenerate_BriefGagalDapatDiulang(t *testing.T) {
 	repo := newFakeRepo()
 	repo.kumpulErr = errors.New("db down")
 	uc, _ := newUseCase(repo, nil)
-	_, err := uc.Generate(t.Context(), "u1", "2026-11")
+	_, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 	require.NoError(t, err)
 	require.Equal(t, domain.StatusGagal, repo.rows["PB-2026-11"].Status)
 
 	repo.kumpulErr = nil
-	_, err = uc.Generate(t.Context(), "u1", "2026-11")
+	_, err = uc.Generate(t.Context(), uid("u1"), "2026-11")
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.StatusDraf, repo.rows["PB-2026-11"].Status)
@@ -339,12 +398,16 @@ func TestGenerate_DiprosesBasiDapatDiulangYangBaruTidak(t *testing.T) {
 	repo := newFakeRepo()
 	uc, _ := newUseCase(repo, nil)
 
-	repo.rows["PB-2026-11"] = domain.PolicyBrief{ID: "PB-2026-11", Status: domain.StatusDiproses, Diperbarui: waktuUji.Add(-time.Minute)}
-	_, err := uc.Generate(t.Context(), "u1", "2026-11")
+	baru := brief("PB-2026-11", domain.StatusDiproses)
+	baru.Diperbarui = waktuUji.Add(-time.Minute)
+	repo.rows["PB-2026-11"] = baru
+	_, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 	assert.ErrorIs(t, err, ErrPeriodeSudahAda, "masih berjalan: jangan disusun ganda")
 
-	repo.rows["PB-2026-11"] = domain.PolicyBrief{ID: "PB-2026-11", Status: domain.StatusDiproses, Diperbarui: waktuUji.Add(-basiProses - time.Minute)}
-	_, err = uc.Generate(t.Context(), "u1", "2026-11")
+	basi := brief("PB-2026-11", domain.StatusDiproses)
+	basi.Diperbarui = waktuUji.Add(-basiProses - time.Minute)
+	repo.rows["PB-2026-11"] = basi
+	_, err = uc.Generate(t.Context(), uid("u1"), "2026-11")
 	require.NoError(t, err, "prosesnya mati: boleh diulang")
 	assert.Equal(t, domain.StatusDraf, repo.rows["PB-2026-11"].Status)
 }
@@ -354,8 +417,8 @@ func TestGenerate_IsDeterministic(t *testing.T) {
 	ucA, _ := newUseCase(a, nil)
 	ucB, _ := newUseCase(b, nil)
 
-	_, errA := ucA.Generate(t.Context(), "u1", "2026-03")
-	_, errB := ucB.Generate(t.Context(), "u1", "2026-03")
+	_, errA := ucA.Generate(t.Context(), uid("u1"), "2026-03")
+	_, errB := ucB.Generate(t.Context(), uid("u1"), "2026-03")
 
 	require.NoError(t, errA)
 	require.NoError(t, errB)
@@ -364,13 +427,16 @@ func TestGenerate_IsDeterministic(t *testing.T) {
 
 func TestGenerate_RejectsDuplicatePeriodWithoutOverwriting(t *testing.T) {
 	repo := newFakeRepo()
-	repo.rows["PB-2026-10"] = domain.PolicyBrief{ID: "PB-2026-10", Judul: "Asli", Status: domain.StatusDisetujui}
+	asli := brief("PB-2026-10", domain.StatusDisetujui)
+	asli.Judul = "Asli"
+	repo.rows["PB-2026-10"] = asli
 	uc, rec := newUseCase(repo, nil)
 
-	_, err := uc.Generate(t.Context(), "u1", "2026-10")
+	_, err := uc.Generate(t.Context(), uid("u1"), "2026-10")
 
-	assert.ErrorIs(t, err, ErrPeriodeSudahAda)
+	assert.ErrorIs(t, err, ErrPeriodeSudahAda, "satu periode hanya punya satu brief (kode unik)")
 	assert.Equal(t, "Asli", repo.rows["PB-2026-10"].Judul)
+	assert.Len(t, repo.rows, 1, "tidak ada brief kedua untuk periode yang sama")
 	assert.Empty(t, rec.Entries(), "tidak ada perubahan data, tidak ada audit")
 	assert.Empty(t, repo.jobs)
 }
@@ -380,7 +446,7 @@ func TestGenerate_RejectsInvalidPeriod(t *testing.T) {
 		repo := newFakeRepo()
 		uc, _ := newUseCase(repo, nil)
 
-		_, err := uc.Generate(t.Context(), "u1", periode)
+		_, err := uc.Generate(t.Context(), uid("u1"), periode)
 
 		assert.ErrorIs(t, err, ErrPeriodeTidakValid, periode)
 		assert.Empty(t, repo.rows, periode)
@@ -390,15 +456,16 @@ func TestGenerate_RejectsInvalidPeriod(t *testing.T) {
 func TestGenerate_WritesAuditWithActorAndPenyusun(t *testing.T) {
 	uc, rec := newUseCase(newFakeRepo(), &fakeGen{narasi: narasiLLM()})
 
-	_, err := uc.Generate(t.Context(), "manajer_kebijakan", "2026-10")
+	_, err := uc.Generate(t.Context(), uid("manajer_kebijakan"), "2026-10")
 
 	require.NoError(t, err)
 	entries := rec.Entries()
 	require.Len(t, entries, 2)
-	assert.Equal(t, "manajer_kebijakan", entries[0].AktorID)
+	assert.Equal(t, uid("manajer_kebijakan"), entries[0].AktorID)
 	assert.Equal(t, "GENERATE_BRIEF", entries[0].Aksi)
 	assert.Equal(t, "policy_brief", entries[0].Entitas)
-	assert.Equal(t, "PB-2026-10", entries[0].EntitasID)
+	assert.Equal(t, uuidBrief("PB-2026-10"), entries[0].EntitasID, "audit memakai UUID brief")
+	assert.Equal(t, "PB-2026-10", entries[0].Metadata["kode"], "kode tampilan ikut di metadata")
 	assert.Equal(t, audit.HasilBerhasil, entries[0].Hasil)
 	assert.Equal(t, "fake-llm", entries[0].Metadata["penyusun"])
 }
@@ -407,10 +474,10 @@ func TestGenerate_AuditFailureDoesNotFailTheAction(t *testing.T) {
 	uc, rec := newUseCase(newFakeRepo(), nil)
 	rec.Err = errors.New("audit down")
 
-	got, err := uc.Generate(t.Context(), "u1", "2026-10")
+	got, err := uc.Generate(t.Context(), uid("u1"), "2026-10")
 
 	require.NoError(t, err)
-	assert.Equal(t, "PB-2026-10", got.ID)
+	assert.Equal(t, "PB-2026-10", got.Kode)
 }
 
 func TestGenerate_PropagatesRepositoryError(t *testing.T) {
@@ -418,7 +485,7 @@ func TestGenerate_PropagatesRepositoryError(t *testing.T) {
 	repo.createErr = errors.New("db down")
 	uc, rec := newUseCase(repo, nil)
 
-	_, err := uc.Generate(t.Context(), "u1", "2026-10")
+	_, err := uc.Generate(t.Context(), uid("u1"), "2026-10")
 
 	assert.Error(t, err)
 	assert.Empty(t, rec.Entries())
@@ -427,16 +494,50 @@ func TestGenerate_PropagatesRepositoryError(t *testing.T) {
 func TestDetail(t *testing.T) {
 	repo := newFakeRepo()
 	uc, _ := newUseCase(repo, nil)
-	_, err := uc.Generate(t.Context(), "u1", "2026-11")
+	_, err := uc.Generate(t.Context(), uid("u1"), "2026-11")
 	require.NoError(t, err)
 
-	got, err := uc.Detail(t.Context(), "PB-2026-11")
-	require.NoError(t, err)
-	assert.Equal(t, domain.StatusDraf, got.Status)
-	assert.NotEmpty(t, got.Konten)
+	for nama, ref := range map[string]idx.RujukanUUID{
+		"kode": {Kode: "PB-2026-11"},
+		"uuid": {ID: uuidBrief("PB-2026-11")},
+	} {
+		got, err := uc.Detail(t.Context(), ref)
+		require.NoError(t, err, nama)
+		assert.Equal(t, domain.StatusDraf, got.Status, nama)
+		assert.Equal(t, uuidBrief("PB-2026-11"), got.ID, nama)
+		assert.Equal(t, "PB-2026-11", got.Kode, nama)
+		assert.NotEmpty(t, got.Konten, nama)
+		require.Len(t, got.RiwayatVersi, 1, nama+": versi pertama dari penyusunan draf")
+		assert.Equal(t, 1, got.RiwayatVersi[0].Versi, nama)
+		assert.Positive(t, int64(got.RiwayatVersi[0].ID), nama+": versi_id BIGINT")
+	}
 
-	_, err = uc.Detail(t.Context(), "PB-1999-01")
+	_, err = uc.Detail(t.Context(), idx.RujukanUUID{Kode: "PB-1999-01"})
 	assert.ErrorIs(t, err, ErrBriefTidakAda)
+	_, err = uc.Detail(t.Context(), idx.RujukanUUID{ID: uuidBrief("PB-1999-01")})
+	assert.ErrorIs(t, err, ErrBriefTidakAda)
+}
+
+func TestRujukanBrief_UUIDAtauKode(t *testing.T) {
+	id := uuidBrief("PB-2026-10")
+	kasus := []struct {
+		teks string
+		want idx.RujukanUUID
+		sah  bool
+	}{
+		{id, idx.RujukanUUID{ID: id}, true},
+		{strings.ToUpper(id), idx.RujukanUUID{ID: id}, true}, // UUID huruf besar dinormalkan
+		{"PB-2026-10", idx.RujukanUUID{Kode: "PB-2026-10"}, true},
+		{"bukan-uuid-dan-bukan-kode", idx.RujukanUUID{Kode: "bukan-uuid-dan-bukan-kode"}, true}, // dicari sebagai kode, 404 bila tak ada
+		{strings.Repeat("P", 64), idx.RujukanUUID{Kode: strings.Repeat("P", 64)}, true},
+		{strings.Repeat("P", 65), idx.RujukanUUID{}, false},
+		{"", idx.RujukanUUID{}, false},
+	}
+	for _, k := range kasus {
+		got, sah := RujukanBrief(k.teks)
+		assert.Equal(t, k.sah, sah, k.teks)
+		assert.Equal(t, k.want, got, k.teks)
+	}
 }
 
 func TestHitungHalaman(t *testing.T) {
@@ -449,26 +550,45 @@ func TestHitungHalaman(t *testing.T) {
 
 func TestBulkAction_MemajukanStatusDanMencatatAudit(t *testing.T) {
 	repo := newFakeRepo()
-	repo.rows["PB-2026-09"] = domain.PolicyBrief{ID: "PB-2026-09", Status: domain.StatusDraf}
-	repo.rows["PB-2026-08"] = domain.PolicyBrief{ID: "PB-2026-08", Status: domain.StatusDisetujui}
+	repo.rows["PB-2026-09"] = brief("PB-2026-09", domain.StatusDraf)
+	repo.rows["PB-2026-08"] = brief("PB-2026-08", domain.StatusDisetujui)
 	uc, rec := newUseCase(repo, nil)
 
-	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09", "PB-2026-08", "tidak-ada"}, domain.AksiTelaah, "u1")
+	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09", "PB-2026-08", "tidak-ada"}, domain.AksiTelaah, uid("u1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkResult{Berhasil: 1, Gagal: 2}, hasil)
 	assert.Equal(t, domain.StatusTelaah, repo.rows["PB-2026-09"].Status)
 	assert.Equal(t, domain.StatusDisetujui, repo.rows["PB-2026-08"].Status)
-	assert.Len(t, rec.Entries(), 1)
+	entries := rec.Entries()
+	require.Len(t, entries, 1)
+	assert.Equal(t, uuidBrief("PB-2026-09"), entries[0].EntitasID, "audit memakai UUID brief walau rujukannya kode")
+}
+
+func TestBulkAction_MenerimaUUIDMaupunKodeDanMenolakRujukanTakSah(t *testing.T) {
+	repo := newFakeRepo()
+	repo.rows["PB-2026-09"] = brief("PB-2026-09", domain.StatusDraf)
+	repo.rows["PB-2026-08"] = brief("PB-2026-08", domain.StatusDraf)
+	uc, rec := newUseCase(repo, nil)
+
+	hasil, err := uc.BulkAction(context.Background(), []string{uuidBrief("PB-2026-09"), "PB-2026-08", uuidBrief("PB-1999-01"), strings.Repeat("x", 65)}, domain.AksiTelaah, uid("u1"))
+
+	require.NoError(t, err)
+	assert.Equal(t, BulkResult{Berhasil: 2, Gagal: 2}, hasil)
+	assert.Equal(t, domain.StatusTelaah, repo.rows["PB-2026-09"].Status)
+	assert.Equal(t, domain.StatusTelaah, repo.rows["PB-2026-08"].Status)
+	for _, e := range rec.Entries() {
+		assert.True(t, idx.ValidUUID(e.EntitasID), e.EntitasID)
+	}
 }
 
 func TestBulkAction_BriefDiprosesDanGagalTidakBisaDitelaah(t *testing.T) {
 	repo := newFakeRepo()
-	repo.rows["PB-2026-09"] = domain.PolicyBrief{ID: "PB-2026-09", Status: domain.StatusDiproses}
-	repo.rows["PB-2026-08"] = domain.PolicyBrief{ID: "PB-2026-08", Status: domain.StatusGagal}
+	repo.rows["PB-2026-09"] = brief("PB-2026-09", domain.StatusDiproses)
+	repo.rows["PB-2026-08"] = brief("PB-2026-08", domain.StatusGagal)
 	uc, _ := newUseCase(repo, nil)
 
-	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09", "PB-2026-08"}, domain.AksiTelaah, "u1")
+	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09", "PB-2026-08"}, domain.AksiTelaah, uid("u1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkResult{Gagal: 2}, hasil, "draf yang belum jadi tidak boleh diajukan telaah")
@@ -476,10 +596,10 @@ func TestBulkAction_BriefDiprosesDanGagalTidakBisaDitelaah(t *testing.T) {
 
 func TestBulkAction_SetujuiHanyaDariTelaah(t *testing.T) {
 	repo := newFakeRepo()
-	repo.rows["PB-2026-09"] = domain.PolicyBrief{ID: "PB-2026-09", Status: domain.StatusDraf}
+	repo.rows["PB-2026-09"] = brief("PB-2026-09", domain.StatusDraf)
 	uc, _ := newUseCase(repo, nil)
 
-	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09"}, domain.AksiSetujui, "u1")
+	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09"}, domain.AksiSetujui, uid("u1"))
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkResult{Gagal: 1}, hasil)
@@ -488,7 +608,7 @@ func TestBulkAction_SetujuiHanyaDariTelaah(t *testing.T) {
 func TestBulkAction_AksiTidakValid(t *testing.T) {
 	uc, _ := newUseCase(newFakeRepo(), nil)
 
-	_, err := uc.BulkAction(context.Background(), []string{"x"}, "hapus", "u1")
+	_, err := uc.BulkAction(context.Background(), []string{"x"}, "hapus", uid("u1"))
 
 	assert.ErrorIs(t, err, ErrAksiTidakValid)
 }

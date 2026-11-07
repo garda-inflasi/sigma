@@ -9,6 +9,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ type tandaan struct {
 // fakeRepo adalah NotifikasiRepository dalam memori.
 type fakeRepo struct {
 	mu         sync.Mutex
-	antre      []string
+	antre      []idx.ID
 	antreErr   error
 	klaim      []domain.Pesan
 	klaimErr   error
@@ -35,14 +36,14 @@ type fakeRepo struct {
 	tandaiErr  error
 	prefs      []domain.PreferensiNotifikasi
 	tersimpan  []domain.PreferensiNotifikasi
-	eskalasi   []string
+	eskalasi   []idx.ID
 	batasEsk   time.Duration
 	minimumEsk string
 	langganan  []domain.LanggananPush
 	dihapus    bool
 }
 
-func (f *fakeRepo) Antrekan(_ context.Context, alertID string, _ []string, _ time.Time) (int, error) {
+func (f *fakeRepo) Antrekan(_ context.Context, alertID idx.ID, _ []string, _ time.Time) (int, error) {
 	f.antre = append(f.antre, alertID)
 	return 1, f.antreErr
 }
@@ -79,7 +80,7 @@ func (f *fakeRepo) ListLangganan(context.Context, string) ([]domain.LanggananPus
 	return f.langganan, nil
 }
 func (f *fakeRepo) HapusLanggananKadaluwarsa(context.Context, string) error { return nil }
-func (f *fakeRepo) EskalasiOtomatis(_ context.Context, _ time.Time, batas time.Duration, minimum string) ([]string, error) {
+func (f *fakeRepo) EskalasiOtomatis(_ context.Context, _ time.Time, batas time.Duration, minimum string) ([]idx.ID, error) {
 	f.batasEsk, f.minimumEsk = batas, minimum
 	return f.eskalasi, nil
 }
@@ -105,7 +106,7 @@ func newService(repo *fakeRepo, cfg Config, senders ...domain.Pengirim) (*Servic
 }
 
 func pesan(id int64, kanal string, percobaan int) domain.Pesan {
-	return domain.Pesan{NotifikasiID: id, Kanal: kanal, Percobaan: percobaan, PenggunaID: "u", Tujuan: "u@x.id", AlertID: "EWS-2000", Severity: "KRITIS", Judul: "Judul", Isi: "Isi"}
+	return domain.Pesan{NotifikasiID: id, Kanal: kanal, Percobaan: percobaan, PenggunaID: "u", Tujuan: "u@x.id", AlertID: 12, Severity: "KRITIS", Judul: "Judul", Isi: "Isi"}
 }
 
 func TestKirim_DeliversThroughAdapterAndMarksSent(t *testing.T) {
@@ -118,7 +119,7 @@ func TestKirim_DeliversThroughAdapterAndMarksSent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, RingkasanKirim{Terkirim: 1}, r)
 	require.Len(t, email.got, 1)
-	assert.Equal(t, "/ews?id=EWS-2000", email.got[0].TautanPath)
+	assert.Equal(t, "/ews?id=12", email.got[0].TautanPath, "tautan memakai ID desimal; tautan lama berkode tetap dilayani alias API")
 	assert.Equal(t, []tandaan{{id: 1, status: domain.NotifTerkirim, jadwal: t0.Add(time.Minute), pada: t0}}, repo.ditandai)
 }
 
@@ -193,9 +194,9 @@ func TestAlertDitulis_EnqueuesAndWakesDispatcher(t *testing.T) {
 	repo := &fakeRepo{}
 	s, _ := newService(repo, Config{})
 
-	s.AlertDitulis(t.Context(), domain.Alert{EwsAlert: domain.EwsAlert{ID: "EWS-2000"}}, domain.HasilDibuat)
+	s.AlertDitulis(t.Context(), domain.Alert{EwsAlert: domain.EwsAlert{ID: 2000}}, domain.HasilDibuat)
 
-	assert.Equal(t, []string{"EWS-2000"}, repo.antre)
+	assert.Equal(t, []idx.ID{2000}, repo.antre)
 	select {
 	case <-s.wake:
 	default:
@@ -203,12 +204,12 @@ func TestAlertDitulis_EnqueuesAndWakesDispatcher(t *testing.T) {
 	}
 
 	repo.antreErr = assert.AnError
-	s.AlertDitulis(t.Context(), domain.Alert{EwsAlert: domain.EwsAlert{ID: "EWS-2001"}}, domain.HasilDibuat) // galat hanya dilog
+	s.AlertDitulis(t.Context(), domain.Alert{EwsAlert: domain.EwsAlert{ID: 2001}}, domain.HasilDibuat) // galat hanya dilog
 }
 
 func TestEskalasi(t *testing.T) {
 	t.Run("mati bila batas 0", func(t *testing.T) {
-		repo := &fakeRepo{eskalasi: []string{"EWS-1"}}
+		repo := &fakeRepo{eskalasi: []idx.ID{1}}
 		s, rec := newService(repo, Config{})
 
 		ids, err := s.Eskalasi(t.Context())
@@ -219,19 +220,19 @@ func TestEskalasi(t *testing.T) {
 		assert.Zero(t, repo.batasEsk, "repository tidak dipanggil")
 	})
 	t.Run("mengeskalasi dan mengaudit tiap alert", func(t *testing.T) {
-		repo := &fakeRepo{eskalasi: []string{"EWS-1", "EWS-2"}}
+		repo := &fakeRepo{eskalasi: []idx.ID{1, 2}}
 		s, rec := newService(repo, Config{EskalasiSetelah: 45 * time.Minute})
 
 		ids, err := s.Eskalasi(t.Context())
 
 		require.NoError(t, err)
-		assert.Equal(t, []string{"EWS-1", "EWS-2"}, ids)
+		assert.Equal(t, []idx.ID{1, 2}, ids)
 		assert.Equal(t, 45*time.Minute, repo.batasEsk)
 		assert.Equal(t, domain.SeveritySiaga, repo.minimumEsk)
 		entries := rec.Entries()
 		require.Len(t, entries, 2)
 		assert.Equal(t, "ESKALASI_OTOMATIS", entries[0].Aksi)
-		assert.Equal(t, "EWS-2", entries[1].EntitasID)
+		assert.Equal(t, "2", entries[1].EntitasID, "audit mencatat ID alert desimal")
 		assert.Equal(t, 45, entries[0].Metadata["setelah_menit"])
 	})
 }

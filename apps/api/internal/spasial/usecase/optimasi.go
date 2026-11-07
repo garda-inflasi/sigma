@@ -12,8 +12,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/spasial/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
-	"github.com/google/uuid"
 )
 
 // Parameter bawaan biaya dan jarak (sama dengan seeder rute demo).
@@ -110,8 +110,10 @@ type OptimasiOutput struct {
 	// volumenya berbeda); PenghematanPersen = 100 × (pembanding − biaya) ÷ pembanding.
 	BiayaPembanding   *int64
 	PenghematanPersen *float64
-	// OptimasiID terisi bila rencana disimpan.
-	OptimasiID string
+	// OptimasiID dan OptimasiKode terisi (bukan nol / tidak kosong) bila rencana disimpan: ID BIGINT dari
+	// basis data dan kode tampilannya (OPT-000042).
+	OptimasiID   idx.ID
+	OptimasiKode string
 }
 
 // parameterTersimpan adalah dokumen JSON pada kolom optimasi_rute.parameter.
@@ -190,11 +192,11 @@ func (o *Optimasi) Hitung(ctx context.Context, in OptimasiInput) (OptimasiOutput
 	}
 
 	if in.Simpan {
-		id, err := o.simpan(ctx, in, p, out, hasil, peta)
+		id, kode, err := o.simpan(ctx, in, p, out, hasil, peta)
 		if err != nil {
 			return OptimasiOutput{}, err
 		}
-		out.OptimasiID = id
+		out.OptimasiID, out.OptimasiKode = id, kode
 	}
 	return out, nil
 }
@@ -299,33 +301,30 @@ func (m *petaJarak) jalur(asal, tujuan string) domain.Jalur {
 	return j
 }
 
-func (o *Optimasi) simpan(ctx context.Context, in OptimasiInput, p parameterTersimpan, out OptimasiOutput, hasil domain.HasilOptimasi, peta *petaJarak) (string, error) {
+func (o *Optimasi) simpan(ctx context.Context, in OptimasiInput, p parameterTersimpan, out OptimasiOutput, hasil domain.HasilOptimasi, peta *petaJarak) (idx.ID, string, error) {
 	now := o.now().UTC()
-	id := "OPT-" + strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:12])
 	parameter, err := json.Marshal(p)
 	if err != nil {
-		return "", fmt.Errorf("encode parameter optimasi: %w", err)
+		return 0, "", fmt.Errorf("encode parameter optimasi: %w", err)
 	}
 	var belum float64
 	for _, b := range hasil.BelumTerpenuhi {
 		belum += b.Ton
 	}
+	// ID rencana dan rute dibuat basis data; repositori mengisi rencana.ID dan rute.OptimasiID.
 	rencana := domain.OptimasiRute{
-		ID: id, KomoditasKode: in.KomoditasKode, Periode: out.Periode, Parameter: string(parameter),
+		KomoditasKode: in.KomoditasKode, Periode: out.Periode, Parameter: string(parameter),
 		TotalVolumeTon: hasil.TotalVolumeTon, TotalBiaya: hasil.TotalBiaya, BelumTerpenuhiTon: math.Round(belum*10) / 10,
-		BiayaPembanding: out.BiayaPembanding, DibuatPada: now,
-	}
-	if in.ActorID != "" {
-		rencana.DibuatOleh = &in.ActorID
+		BiayaPembanding: out.BiayaPembanding, DibuatOleh: idx.PtrAtauNil(in.ActorID), DibuatPada: now,
 	}
 
 	rute := make([]domain.RuteDistribusi, len(hasil.Alokasi))
 	var jarak []domain.JarakAntarWilayah
 	for i, a := range hasil.Alokasi {
 		rute[i] = domain.RuteDistribusi{
-			ID: fmt.Sprintf("RT-%s-%02d", id, i+1), AsalKode: a.AsalKode, TujuanKode: a.TujuanKode, KomoditasKode: in.KomoditasKode,
+			AsalKode: a.AsalKode, TujuanKode: a.TujuanKode, KomoditasKode: in.KomoditasKode,
 			VolumeTon: a.VolumeTon, JarakKm: int(math.Round(a.JarakKm)), JamTempuh: a.JamTempuh, Biaya: a.Biaya,
-			Status: domain.StatusRuteUsulan, Sumber: domain.SumberRuteOptimasi, DibuatPada: now, OptimasiID: &id,
+			Status: domain.StatusRuteUsulan, Sumber: domain.SumberRuteOptimasi, DibuatPada: now,
 		}
 		if j, ok := peta.estimasi[[2]string{a.AsalKode, a.TujuanKode}]; ok {
 			jarak = append(jarak, domain.JarakAntarWilayah{
@@ -338,20 +337,24 @@ func (o *Optimasi) simpan(ctx context.Context, in OptimasiInput, p parameterTers
 		return jarak[i].AsalKode+jarak[i].TujuanKode < jarak[j].AsalKode+jarak[j].TujuanKode
 	})
 
-	if err := o.repo.SimpanOptimasi(ctx, rencana, rute, jarak); err != nil {
+	if err := o.repo.SimpanOptimasi(ctx, &rencana, rute, jarak); err != nil {
 		o.log.Error("spasial: simpan optimasi gagal", map[string]interface{}{"error": err.Error()})
-		return "", err
+		return 0, "", err
+	}
+	kode := ""
+	if rencana.Kode != nil {
+		kode = *rencana.Kode
 	}
 	if err := o.audit.Write(ctx, audit.Entry{
-		AktorID: in.ActorID, Aksi: "OPTIMASI_RUTE", Entitas: "optimasi_rute", EntitasID: id, Hasil: audit.HasilBerhasil,
+		AktorID: in.ActorID, Aksi: "OPTIMASI_RUTE", Entitas: "optimasi_rute", EntitasID: rencana.ID.String(), Hasil: audit.HasilBerhasil,
 		Metadata: map[string]any{
-			"komoditas": in.KomoditasKode, "periode": out.Periode.Format(time.DateOnly), "rute": len(rute),
+			"kode": kode, "komoditas": in.KomoditasKode, "periode": out.Periode.Format(time.DateOnly), "rute": len(rute),
 			"total_volume_ton": hasil.TotalVolumeTon, "total_biaya": hasil.TotalBiaya,
 		},
 	}); err != nil {
 		o.log.Warn("spasial: gagal mencatat audit optimasi", map[string]interface{}{"error": err.Error()})
 	}
-	return id, nil
+	return rencana.ID, kode, nil
 }
 
 // Riwayat mengembalikan rencana yang pernah disimpan, terbaru lebih dulu.

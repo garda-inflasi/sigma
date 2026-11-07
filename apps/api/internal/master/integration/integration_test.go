@@ -320,7 +320,7 @@ func TestMaster_BulkKomoditas(t *testing.T) {
 	})
 
 	t.Run("ajukan lalu setujui menaikkan versi dan tercatat di audit", func(t *testing.T) {
-		before := auditCount("BULK_ajukan_perubahan", "manajer_data")
+		before := auditCount("BULK_ajukan_perubahan", uid("manajer_data"))
 		w := s.call(t, http.MethodPost, path, emailManajer, body("ajukan_perubahan", "GLA", "MYK"))
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		hasil := decodeBulk(t, w)
@@ -328,16 +328,16 @@ func TestMaster_BulkKomoditas(t *testing.T) {
 		assert.Zero(t, hasil.Gagal)
 		assert.Equal(t, "MENUNGGU_PERSETUJUAN", statusOf("GLA"))
 		assert.Equal(t, 1, versiOf("GLA"), "versi naik saat disetujui, bukan saat diajukan")
-		assert.Equal(t, before+1, auditCount("BULK_ajukan_perubahan", "manajer_data"))
+		assert.Equal(t, before+1, auditCount("BULK_ajukan_perubahan", uid("manajer_data")))
 
-		beforeSetuju := auditCount("BULK_setujui", "strategis_bps")
+		beforeSetuju := auditCount("BULK_setujui", uid("strategis_bps"))
 		w = s.call(t, http.MethodPost, path, emailSetujui, body("setujui", "GLA", "MYK"))
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		assert.Equal(t, 2, decodeBulk(t, w).Berhasil)
 		assert.Equal(t, "AKTIF", statusOf("GLA"))
 		assert.Equal(t, 2, versiOf("GLA"))
 		assert.Equal(t, 2, versiOf("MYK"))
-		assert.Equal(t, beforeSetuju+1, auditCount("BULK_setujui", "strategis_bps"))
+		assert.Equal(t, beforeSetuju+1, auditCount("BULK_setujui", uid("strategis_bps")))
 	})
 
 	t.Run("penyetuju kedua juga boleh (FMIPA)", func(t *testing.T) {
@@ -355,7 +355,7 @@ func TestMaster_BulkKomoditas(t *testing.T) {
 		assert.Equal(t, 2, decodeBulk(t, w).Berhasil)
 		assert.Equal(t, "DIARSIPKAN", statusOf("GLA"))
 		assert.Equal(t, "DIARSIPKAN", statusOf("MYK"))
-		assert.EqualValues(t, 1, auditCount("BULK_arsipkan", "superadmin"))
+		assert.EqualValues(t, 1, auditCount("BULK_arsipkan", uid("superadmin")))
 	})
 
 	t.Run("transisi tidak valid dan kode tak dikenal menjadi item gagal", func(t *testing.T) {

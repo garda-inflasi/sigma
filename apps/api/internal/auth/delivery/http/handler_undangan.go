@@ -10,6 +10,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/dto"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -67,7 +68,11 @@ func (h *Handler) UndangPengguna(c *gin.Context) {
 // POST /v1/users/:id/undang-ulang
 // Mengganti undangan akun yang masih menunggu aktivasi: tautan lama hangus, tautan baru dikirim (pengguna.kelola).
 func (h *Handler) UndangUlang(c *gin.Context) {
-	hasil, err := h.uc.KirimUlangUndangan(audit.RequestContext(c), c.Param("id"), c.GetString("user_id"))
+	id, ok := idx.ParamUUID(c, "id", "Pengguna tidak ditemukan")
+	if !ok {
+		return
+	}
+	hasil, err := h.uc.KirimUlangUndangan(audit.RequestContext(c), id, c.GetString("user_id"))
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrUserNotFound):

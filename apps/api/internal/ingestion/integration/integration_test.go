@@ -29,6 +29,9 @@ import (
 
 var pg *pgtest.Server
 
+// idBI adalah UUID baris sumber_data PIHPS (garda_uuid_stabil dari kode SRC-BI), sama dengan hasil seeder.
+var idBI = sumberseeder.IDSumber(pihps.Kode)
+
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Main(m, &pg))
 }
@@ -62,8 +65,8 @@ func newSetup(t *testing.T, name string) *setup {
 	} {
 		require.NoError(t, seed())
 	}
-	require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE id = ?`, pihps.SumberID).Error)
-	require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '101', '1171')`, pihps.SumberID).Error)
+	require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE kode = ?`, pihps.Kode).Error)
+	require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '101', '1171')`, idBI).Error)
 
 	fetcher := &ingestiontest.Fetcher{Respons: map[string][]byte{kunciPIHPS: fixture(t, "pihps/testdata/grid_kota.json")}}
 	repo := postgres.New(db)
@@ -72,7 +75,7 @@ func newSetup(t *testing.T, name string) *setup {
 
 func (s *setup) jalankan(t *testing.T) *domain.EksekusiSumber {
 	t.Helper()
-	run, err := s.runner.Mulai(t.Context(), pihps.SumberID, domain.PemicuCLI, nil)
+	run, err := s.runner.Mulai(t.Context(), pihps.Kode, domain.PemicuCLI, nil)
 	require.NoError(t, err)
 	e, err := run.Jalankan(t.Context())
 	require.NoError(t, err)
@@ -181,7 +184,7 @@ func TestRun_StatistikSumberDihitungDariEksekusi(t *testing.T) {
 		LatensiMs      int
 	}
 	baca := func() {
-		require.NoError(t, s.db.Raw(`SELECT status::text AS status, terakhir_jalan, keberhasilan_7h, latensi_ms FROM sumber_data WHERE id = ?`, pihps.SumberID).Scan(&sumber).Error)
+		require.NoError(t, s.db.Raw(`SELECT status::text AS status, terakhir_jalan, keberhasilan_7h, latensi_ms FROM sumber_data WHERE kode = ?`, pihps.Kode).Scan(&sumber).Error)
 	}
 
 	baca()
@@ -221,7 +224,7 @@ func TestRun_GagalDiambilTercatatDenganGalat(t *testing.T) {
 
 func TestRun_SebagianBilaSebagianPermintaanGagal(t *testing.T) {
 	s := newSetup(t, "ingest_sebagian")
-	require.NoError(t, s.db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '102', '1174')`, pihps.SumberID).Error)
+	require.NoError(t, s.db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '102', '1174')`, idBI).Error)
 	s.fetcher.Galat = map[string]error{"wilayah=102": errors.New("timeout")}
 
 	e := s.jalankan(t)
@@ -233,7 +236,7 @@ func TestRun_SebagianBilaSebagianPermintaanGagal(t *testing.T) {
 	assert.ElementsMatch(t, []string{"wilayah=101", "wilayah=102"}, s.fetcher.Dipanggil())
 
 	var status string
-	require.NoError(t, s.db.Raw(`SELECT status::text FROM sumber_data WHERE id = ?`, pihps.SumberID).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT status::text FROM sumber_data WHERE kode = ?`, pihps.Kode).Scan(&status).Error)
 	assert.Equal(t, "TERTUNDA", status)
 }
 
@@ -261,7 +264,7 @@ func TestRun_SemuaBarisDitolakDianggapGagal(t *testing.T) {
 
 func TestRun_KonfigurasiTakLengkapGagalDenganPesanJelas(t *testing.T) {
 	s := newSetup(t, "ingest_konfigurasi")
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET konfigurasi = '{}' WHERE id = ?`, pihps.SumberID).Error)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET konfigurasi = '{}' WHERE kode = ?`, pihps.Kode).Error)
 
 	e := s.jalankan(t)
 
@@ -280,8 +283,8 @@ func TestMulai_Penolakan(t *testing.T) {
 	_, err = s.runner.Mulai(ctx, "SRC-DJPB", domain.PemicuManual, nil)
 	assert.ErrorIs(t, err, domain.ErrTanpaKonektor)
 
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE id = ?`, pihps.SumberID).Error)
-	_, err = s.runner.Mulai(ctx, pihps.SumberID, domain.PemicuManual, nil)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE kode = ?`, pihps.Kode).Error)
+	_, err = s.runner.Mulai(ctx, pihps.Kode, domain.PemicuManual, nil)
 	assert.ErrorIs(t, err, domain.ErrDijeda)
 	assert.Zero(t, s.hitung(t, "eksekusi_sumber"), "penolakan tidak meninggalkan baris eksekusi")
 }
@@ -290,14 +293,14 @@ func TestMulai_TidakBolehTumpangTindihLaluPulihBilaMacet(t *testing.T) {
 	s := newSetup(t, "ingest_tumpang")
 	ctx := t.Context()
 
-	run, err := s.runner.Mulai(ctx, pihps.SumberID, domain.PemicuJadwal, nil)
+	run, err := s.runner.Mulai(ctx, pihps.Kode, domain.PemicuJadwal, nil)
 	require.NoError(t, err)
-	_, err = s.runner.Mulai(ctx, pihps.SumberID, domain.PemicuManual, nil)
+	_, err = s.runner.Mulai(ctx, pihps.Kode, domain.PemicuManual, nil)
 	assert.ErrorIs(t, err, domain.ErrSudahBerjalan)
 
 	// Proses mati sebelum menyelesaikan run: eksekusi lama dianggap macet dan ditutup.
 	require.NoError(t, s.db.Exec(`UPDATE eksekusi_sumber SET mulai = now() - interval '2 hours' WHERE id = ?`, run.Eksekusi().ID).Error)
-	baru, err := s.runner.Mulai(ctx, pihps.SumberID, domain.PemicuManual, nil)
+	baru, err := s.runner.Mulai(ctx, pihps.Kode, domain.PemicuManual, nil)
 	require.NoError(t, err)
 	assert.NotEqual(t, run.Eksekusi().ID, baru.Eksekusi().ID)
 
@@ -313,7 +316,7 @@ func TestRun_SaatBerjalanSumberDijedaTidakDitimpa(t *testing.T) {
 	tahan := make(chan struct{})
 	s.fetcher.Tahan = tahan
 
-	run, err := s.runner.Mulai(t.Context(), pihps.SumberID, domain.PemicuManual, nil)
+	run, err := s.runner.Mulai(t.Context(), pihps.Kode, domain.PemicuManual, nil)
 	require.NoError(t, err)
 	selesai := make(chan *domain.EksekusiSumber, 1)
 	go func() {
@@ -321,14 +324,14 @@ func TestRun_SaatBerjalanSumberDijedaTidakDitimpa(t *testing.T) {
 		selesai <- e
 	}()
 
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE id = ?`, pihps.SumberID).Error)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE kode = ?`, pihps.Kode).Error)
 	close(tahan)
 	e := <-selesai
 
 	require.NotNil(t, e)
 	assert.Equal(t, domain.StatusSukses, e.Status)
 	var status string
-	require.NoError(t, s.db.Raw(`SELECT status::text FROM sumber_data WHERE id = ?`, pihps.SumberID).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT status::text FROM sumber_data WHERE kode = ?`, pihps.Kode).Scan(&status).Error)
 	assert.Equal(t, "DIJEDA", status, "jeda operator lebih kuat daripada hasil run")
 }
 
@@ -336,7 +339,7 @@ func TestRun_KonteksDibatalkanMencatatGagalTetapTersimpan(t *testing.T) {
 	s := newSetup(t, "ingest_batal")
 	s.fetcher.Tahan = make(chan struct{})
 
-	run, err := s.runner.Mulai(t.Context(), pihps.SumberID, domain.PemicuManual, nil)
+	run, err := s.runner.Mulai(t.Context(), pihps.Kode, domain.PemicuManual, nil)
 	require.NoError(t, err)
 	ctx, batal := context.WithCancel(t.Context())
 	batal()
@@ -356,16 +359,16 @@ func TestRepository_RiwayatDanSampel(t *testing.T) {
 	s.fetcher.Galat = map[string]error{kunciPIHPS: errors.New("mati")}
 	terakhir := s.jalankan(t)
 
-	riwayat, err := s.repo.Eksekusi(t.Context(), pihps.SumberID, 10)
+	riwayat, err := s.repo.Eksekusi(t.Context(), idBI, 10)
 	require.NoError(t, err)
 	require.Len(t, riwayat, 2)
 	assert.Equal(t, terakhir.ID, riwayat[0].ID, "terbaru lebih dulu")
 
-	satu, err := s.repo.Eksekusi(t.Context(), pihps.SumberID, 1)
+	satu, err := s.repo.Eksekusi(t.Context(), idBI, 1)
 	require.NoError(t, err)
 	assert.Len(t, satu, 1)
 
-	sampel, err := s.repo.SampelMentah(t.Context(), pihps.SumberID, 5)
+	sampel, err := s.repo.SampelMentah(t.Context(), idBI, 5)
 	require.NoError(t, err)
 	require.Len(t, sampel, 1)
 	assert.Equal(t, kunciPIHPS, sampel[0].KunciPermintaan)
@@ -377,7 +380,7 @@ func TestRepository_SimpanSilverMembuangDuplikatKunciDalamSatuKiriman(t *testing
 	s := newSetup(t, "ingest_dedupe")
 	tgl := time.Date(2025, 10, 13, 0, 0, 0, 0, time.UTC)
 	baris := func(harga float64) domain.HargaEksternal {
-		return domain.HargaEksternal{SumberID: pihps.SumberID, KomoditasKode: "GLA", KabupatenKode: "1171", Tanggal: tgl, Tipe: domain.TipeHargaKonsumen, Harga: harga, Satuan: "kg"}
+		return domain.HargaEksternal{SumberID: idBI, KomoditasKode: "GLA", KabupatenKode: "1171", Tanggal: tgl, Tipe: domain.TipeHargaKonsumen, Harga: harga, Satuan: "kg"}
 	}
 
 	require.NoError(t, s.repo.SimpanSilver(t.Context(), domain.Hasil{Harga: []domain.HargaEksternal{baris(18000), baris(18100)}}))

@@ -23,7 +23,7 @@ type Permintaan struct {
 	// Samarkan memuat potongan rahasia pada URL (mis. kunci API di jalur) yang harus
 	// disamarkan dari pesan galat dan log.
 	Samarkan []string
-	// SumberID dan PatuhRobots diisi engine.
+	// SumberID (UUID sumber_data) dan PatuhRobots diisi engine.
 	SumberID    string
 	PatuhRobots bool
 }
@@ -44,6 +44,9 @@ type Fetcher interface {
 
 // Masukan adalah bahan konektor untuk satu eksekusi.
 type Masukan struct {
+	// SumberID adalah UUID baris sumber_data yang sedang dijalankan; konektor menulisnya pada baris silver
+	// yang bersumber langsung dari sumber itu (HargaEksternal.SumberID).
+	SumberID string
 	Sekarang time.Time
 	// URLDasar dari sumber_data.url_dasar.
 	URLDasar string
@@ -119,8 +122,9 @@ func jumlah(m map[string]int) int {
 
 // Konektor adalah adaptor satu sumber data.
 type Konektor interface {
-	// SumberID adalah id baris sumber_data yang dilayani.
-	SumberID() string
+	// Kode adalah kode baris sumber_data yang dilayani (sumber_data.kode, mis. SRC-BI): kunci konfigurasi
+	// konektor, bukan ID (UUID) baris.
+	Kode() string
 	// Permintaan merancang permintaan yang harus diambil. Galat bila konfigurasi
 	// atau kredensial belum lengkap (pesan menjelaskan apa yang kurang).
 	Permintaan(in Masukan) ([]Permintaan, error)

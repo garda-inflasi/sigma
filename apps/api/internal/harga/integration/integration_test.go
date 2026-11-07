@@ -256,6 +256,7 @@ func TestDetail(t *testing.T) {
 	assert.Equal(t, rows[0].ID, detail.ID)
 	assert.Equal(t, "LAPANGAN", detail.Sumber)
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/harga/tidak-ada", emailKoordinator, nil).Code)
+	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/harga/999999999", emailKoordinator, nil).Code, "ID bentuk sah tetapi tidak ada")
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/harga/"+url.PathEscape(rows[0].ID), emailMahasiswa, nil).Code)
 }
 
@@ -327,7 +328,7 @@ func TestSaya_OnlyOwnEntries(t *testing.T) {
 	require.NotEmpty(t, rows)
 	for _, e := range rows {
 		require.NotNil(t, e.PetugasID)
-		assert.Equal(t, "mahasiswa_1", *e.PetugasID)
+		assert.Equal(t, uid("mahasiswa_1"), *e.PetugasID)
 	}
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/harga/saya", emailLihatSaja, nil).Code, "tanpa harga.input")
 }
@@ -349,7 +350,7 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, "kg", detail.Satuan, "satuan diambil dari master komoditas")
 	assert.Equal(t, 43500, detail.Harga)
 	require.NotNil(t, detail.PetugasID)
-	assert.Equal(t, "mahasiswa_1", *detail.PetugasID)
+	assert.Equal(t, uid("mahasiswa_1"), *detail.PetugasID)
 
 	var audit int64
 	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_INPUT' AND entitas_id = ?", id).Scan(&audit).Error)
@@ -398,13 +399,13 @@ func TestBulk_ValidasiThenPublikasi(t *testing.T) {
 	s := sharedSuite(t)
 	a, b := s.buat(t, emailMahasiswa), s.buat(t, emailMahasiswa)
 
-	w := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": []string{a, b, "tidak-ada"}})
+	w := s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, map[string]any{"action": "validasi", "ids": []string{a, b, "999999999"}})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, hasilBulk{Berhasil: 2, Gagal: 1}, data[hasilBulk](t, w))
 	assert.Equal(t, "DIVALIDASI", s.status(t, a))
 
 	var audit int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_VALIDASI' AND aktor_id = 'koordinator_lapangan'").Scan(&audit).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_VALIDASI' AND aktor_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan')").Scan(&audit).Error)
 	assert.Positive(t, audit, "aksi massal tercatat di audit trail")
 
 	// Validasi ulang: sudah DIVALIDASI, tidak ada yang berubah.
@@ -462,9 +463,16 @@ func TestBulk_BadRequests(t *testing.T) {
 	s := sharedSuite(t)
 
 	cases := map[string]map[string]any{
-		"aksi tidak dikenal": {"action": "hapus", "ids": []string{"a"}},
-		"tanpa aksi":         {"ids": []string{"a"}},
-		"ids kosong":         {"action": "validasi", "ids": []string{}},
+		"aksi tidak dikenal":  {"action": "hapus", "ids": []string{"1"}},
+		"tanpa aksi":          {"ids": []string{"1"}},
+		"ids kosong":          {"action": "validasi", "ids": []string{}},
+		"id bukan angka":      {"action": "validasi", "ids": []string{"a"}},
+		"kode lama":           {"action": "validasi", "ids": []string{"HRG-D00-00-01-K"}},
+		"id nol":              {"action": "validasi", "ids": []string{"0"}},
+		"id negatif":          {"action": "validasi", "ids": []string{"-4"}},
+		"id berawalan nol":    {"action": "validasi", "ids": []string{"007"}},
+		"satu salah dari dua": {"action": "validasi", "ids": []string{"12", "dua"}},
+		"id pecahan":          {"action": "validasi", "ids": []any{1.5}},
 	}
 	for name, body := range cases {
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/harga/bulk", emailKoordinator, body).Code, name)

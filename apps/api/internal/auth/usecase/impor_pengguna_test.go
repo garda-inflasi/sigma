@@ -194,7 +194,7 @@ func TestUraiCSVImpor_SelBerlebihanDitandai(t *testing.T) {
 // ── Pemeriksaan isi ───────────────────────────────────────────────────
 
 func TestImpor_DryRun_MelaporkanSetiapKelasGalatTanpaMenulis(t *testing.T) {
-	ada := &domain.Pengguna{ID: "u-1", Nama: "Ada", Email: "Sudah@Garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
+	ada := &domain.Pengguna{ID: uid("u-1"), Nama: "Ada", Email: "Sudah@Garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
 	f := newUndanganFixture(t, ada)
 	csv := headerImpor + "\n" +
 		"Budi Santoso,budi@garda.test,OPS_MAHASISWA,FMIPA USK,1171\n" + // 2 sah
@@ -275,7 +275,7 @@ func TestImpor_DuplikatDalamBerkas_BarisPertamaTetapSah(t *testing.T) {
 }
 
 func TestImpor_EmailTerdaftarHanyaDilaporkanSekali(t *testing.T) {
-	ada := &domain.Pengguna{ID: "u-1", Nama: "Ada", Email: "ada@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
+	ada := &domain.Pengguna{ID: uid("u-1"), Nama: "Ada", Email: "ada@garda.test", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "X", Status: "AKTIF"}
 	f := newUndanganFixture(t, ada)
 
 	h := f.imporSah(headerImpor+"\nA,ada@garda.test,OPS_MAHASISWA,X,\nB,ada@garda.test,OPS_MAHASISWA,X,\n", true)

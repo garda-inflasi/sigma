@@ -3,7 +3,8 @@
  * serta penyembunyian aksi itu bagi peran yang hanya boleh melihat.
  *
  * Memakai fasilitas seed CS-03 (Sentra Hortikultura Takengon, OPERASIONAL, kapasitas 250 ton,
- * batas alarm belum diatur). Keadaan baris `cold_storage` dipotret lewat SQL sebelum uji dan
+ * batas alarm belum diatur). Sejak migrasi 000113 `cold_storage.id` adalah UUID dan "CS-03" adalah `kode`
+ * (alias yang tetap diterima API di path dan body), jadi SQL memilih baris menurut `kode`. Keadaan baris `cold_storage` dipotret lewat SQL sebelum uji dan
  * dikembalikan persis di akhir: batas suhu awalnya NULL (bawaan target ± 2 °C), yang tidak bisa
  * dipulihkan lewat API, dan pembacaan manual memperbarui kolom "pembacaan terakhir" fasilitas.
  * Pembacaan uji tidak punya endpoint hapus, jadi dihapus lewat SQL berdasarkan sumber MANUAL
@@ -43,7 +44,7 @@ let snapshot: string[] = [];
 /** Memotret kolom fasilitas sebagai literal SQL (quote_nullable) agar NULL ikut terpulihkan. */
 function potretFasilitas(): string[] {
   const keluaran = jalankanSql(
-    `SELECT concat_ws('|', ${KOLOM_SNAPSHOT.map((k) => `quote_nullable(${k})`).join(", ")}) FROM cold_storage WHERE id = '${ID}'`,
+    `SELECT concat_ws('|', ${KOLOM_SNAPSHOT.map((k) => `quote_nullable(${k})`).join(", ")}) FROM cold_storage WHERE kode = '${ID}'`,
   );
   const nilai = keluaran.split("|");
   expect(nilai, "kolom snapshot lengkap").toHaveLength(KOLOM_SNAPSHOT.length);
@@ -52,19 +53,21 @@ function potretFasilitas(): string[] {
 
 function hapusPembacaanUji(): void {
   jalankanSql(
-    `DELETE FROM telemetri_suhu WHERE fasilitas_id = '${ID}' AND sumber = 'MANUAL' AND (abs(suhu_c - 5.3) < 1e-9 OR abs(suhu_c - 15) < 1e-9 OR abs(suhu_c - 5.37) < 1e-9 OR abs(suhu_c - 20) < 1e-9)`,
+    `DELETE FROM telemetri_suhu WHERE fasilitas_id = (SELECT id FROM cold_storage WHERE kode = '${ID}') AND sumber = 'MANUAL' AND (abs(suhu_c - 5.3) < 1e-9 OR abs(suhu_c - 15) < 1e-9 OR abs(suhu_c - 5.37) < 1e-9 OR abs(suhu_c - 20) < 1e-9)`,
   );
 }
 
 function pulihkanFasilitas(): void {
   jalankanSql(
-    `UPDATE cold_storage SET ${KOLOM_SNAPSHOT.map((k, i) => `${k} = ${snapshot[i]}`).join(", ")} WHERE id = '${ID}'`,
+    `UPDATE cold_storage SET ${KOLOM_SNAPSHOT.map((k, i) => `${k} = ${snapshot[i]}`).join(", ")} WHERE kode = '${ID}'`,
   );
 }
 
 interface DetailApi {
   data: {
     fasilitas: {
+      id: string;
+      kode: string | null;
       kapasitas_ton: number;
       batas_min_c: number;
       batas_maks_c: number;
@@ -106,6 +109,13 @@ test.describe.serial("cold storage: kelola fasilitas", () => {
   }) => {
     const api = await apiSebagai("manajerMutu");
     const awal = (await bacaDetail(api)).fasilitas;
+    // ID fasilitas adalah UUID; kode CS-03 tetap menjadi kode tampilan dan alias path.
+    expect(awal.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(awal.kode).toBe(ID);
+    const lewatUuid = await api.get(`cold-storage/fasilitas/${awal.id}`);
+    expect(lewatUuid.status()).toBe(200);
 
     await masukSebagai(page, "manajerMutu");
     let panel = await bukaPanel(page);

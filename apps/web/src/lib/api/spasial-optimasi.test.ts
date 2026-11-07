@@ -85,10 +85,18 @@ describe("toRencanaOptimasi", () => {
     assert.equal(r.penghematanPersen, 13.8);
   });
 
-  it("meneruskan id rencana yang disimpan", () => {
-    assert.equal(
-      toRencanaOptimasi({ ...respons, optimasi_id: "OPT-1" }).optimasiId,
-      "OPT-1",
-    );
+  it("meneruskan id BIGINT rencana yang disimpan beserta kode tampilannya", () => {
+    const r = toRencanaOptimasi({ ...respons, optimasi_id: "42", optimasi_kode: "OPT-000042" });
+    assert.equal(r.optimasiId, "42");
+    assert.equal(r.optimasiKode, "OPT-000042");
+    // Teks untuk manusia memakai kode, dan id bila kode tidak ada.
+    assert.equal(r.optimasiKode ?? r.optimasiId, "OPT-000042");
+    assert.equal(toRencanaOptimasi({ ...respons, optimasi_id: "42" }).optimasiKode, null);
+  });
+
+  it("tanpa penyimpanan, id dan kode kosong", () => {
+    const r = toRencanaOptimasi(respons);
+    assert.equal(r.optimasiId, null);
+    assert.equal(r.optimasiKode, null);
   });
 });

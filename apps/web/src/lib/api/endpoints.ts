@@ -155,7 +155,7 @@ export const api = {
     /** Rencana distribusi optimal surplus → defisit; `simpan` menulisnya sebagai usulan rute. */
     optimasi: (p: OptimasiParams): Promise<RencanaOptimasi> =>
       MODE_MOCK
-        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], penghematanPersen: null, optimasiId: null }), 400, 800)
+        ? mockDelay(() => ({ komoditasNama: "", periode: "", rute: [], totalVolumeTon: 0, totalBiaya: 0, belumTerpenuhi: [], surplusSisa: [], penghematanPersen: null, optimasiId: null, optimasiKode: null }), 400, 800)
         : apiFetch<OptimasiResponse>("/v1/spasial/optimasi-rute", { method: "POST", body: JSON.stringify(toOptimasiBody(p)) }).then(toRencanaOptimasi),
     /** Poligon wilayah (perkiraan pada data demo); mode mock tidak punya geometri. */
     geometri: (zoom: number): Promise<GeometriWilayah[]> =>
@@ -306,7 +306,7 @@ export const api = {
         : coldStorageClient.detail(id),
     transaksi: (p: TransaksiPayload): Promise<TransaksiHasil> =>
       MODE_MOCK
-        ? mockDelay(() => ({ transaksiId: "TRX-MOCK", lotId: "lotId" in p ? p.lotId : "STK-MOCK", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
+        ? mockDelay(() => ({ transaksiId: "1", lotId: "lotId" in p ? p.lotId : "1", lotBaruId: null, volumeSisaTon: 0, statusLot: "AKTIF" }), 300, 600)
         : coldStorageClient.transaksi(p),
     /** Ubah kapasitas, batas alarm suhu, atau status fasilitas (izin `coldstorage.kelola`, tercatat di audit). */
     ubahFasilitas: (id: string, p: UbahFasilitasPayload): Promise<FasilitasColdStorage> =>

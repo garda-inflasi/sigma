@@ -162,7 +162,10 @@ export interface OptimasiResponse {
   /** Biaya rencana serakah (pasangan terdekat dulu) untuk volume yang sama; null bila tak sebanding. */
   biaya_pembanding: number | null;
   penghematan_persen: number | null;
+  /** ID BIGINT rencana (string desimal); terisi bila rencana disimpan. */
   optimasi_id: string | null;
+  /** Kode tampilan rencana (OPT-000042); terisi bersama `optimasi_id`. */
+  optimasi_kode?: string | null;
 }
 
 export interface RencanaOptimasi {
@@ -178,6 +181,8 @@ export interface RencanaOptimasi {
   penghematanPersen: number | null;
   /** Terisi bila rencana disimpan sebagai usulan rute. */
   optimasiId: string | null;
+  /** Kode tampilan rencana tersimpan; teks untuk manusia memakai `optimasiKode ?? optimasiId`. */
+  optimasiKode: string | null;
 }
 
 /** Badan permintaan POST /v1/spasial/optimasi-rute (snake_case, kolom kosong dibuang). */
@@ -221,6 +226,7 @@ export function toRencanaOptimasi(r: OptimasiResponse): RencanaOptimasi {
     })),
     penghematanPersen: r.penghematan_persen,
     optimasiId: r.optimasi_id,
+    optimasiKode: r.optimasi_kode ?? null,
   };
 }
 
@@ -427,7 +433,10 @@ export function titikDariSkema(
 
 /** `GET /v1/spasial/optimasi-rute`: ringkasan satu rencana optimasi yang tersimpan. */
 export interface RiwayatOptimasiResponse {
+  /** ID BIGINT rencana (string desimal). */
   id: string;
+  /** Kode tampilan (OPT-000042, atau ID lama pada data migrasi). */
+  kode?: string | null;
   komoditas_kode: string;
   komoditas_nama: string;
   periode: string;
@@ -441,6 +450,7 @@ export interface RiwayatOptimasiResponse {
 
 export interface RiwayatOptimasi {
   id: string;
+  kode: string | null;
   komoditasKode: string;
   komoditas: string;
   periode: string;
@@ -454,6 +464,7 @@ export interface RiwayatOptimasi {
 export function toRiwayatOptimasi(r: RiwayatOptimasiResponse): RiwayatOptimasi {
   return {
     id: r.id,
+    kode: r.kode ?? null,
     komoditasKode: r.komoditas_kode,
     komoditas: r.komoditas_nama,
     periode: r.periode,

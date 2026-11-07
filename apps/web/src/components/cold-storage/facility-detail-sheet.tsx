@@ -249,7 +249,7 @@ function DaftarLot({ stok }: { stok: StokColdStorage[] }) {
                 <div className="min-w-0">
                   <p className="truncate font-medium">{s.komoditasNama}</p>
                   <p className="num truncate text-xs text-muted-foreground">
-                    {s.id} · {s.pemilik}
+                    {s.kode ?? s.id} · {s.pemilik}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -297,7 +297,8 @@ function Riwayat({ transaksi }: { transaksi: TransaksiStok[] }) {
                   {t.jenis === "PINDAH" && (
                     <span className="text-muted-foreground">
                       {" "}
-                      ({t.fasilitasAsalId} → {t.fasilitasTujuanId})
+                      ({t.fasilitasAsalKode ?? t.fasilitasAsalId} →{" "}
+                      {t.fasilitasTujuanKode ?? t.fasilitasTujuanId})
                     </span>
                   )}
                 </p>

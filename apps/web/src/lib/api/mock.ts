@@ -86,15 +86,16 @@ export function mockRute(): Rute[] {
     const s = sentra[i % sentra.length];
     const km = (jarakMeter(kabupatenByKode[s.kode], d) / 1000) * 1.35;
     const vol = Math.round(8 + d.delta * 1.6);
-    return { id: `RT-${s.kode}-${d.kode}`, asal: namaWilayah(s.kode), tujuan: d.nama, komoditas: s.kom, volumeTon: vol, jarakKm: Math.round(km), jamTempuh: +(km / 45).toFixed(1), biaya: Math.round(km * vol * tarifTonKm) };
+    // ID BIGINT sebagai string desimal, seperti respons API.
+    return { id: String(i + 1), asal: namaWilayah(s.kode), tujuan: d.nama, komoditas: s.kom, volumeTon: vol, jarakKm: Math.round(km), jamTempuh: +(km / 45).toFixed(1), biaya: Math.round(km * vol * tarifTonKm) };
   });
 }
 
 export function mockKandidatColdStorage(): KandidatColdStorage[] {
   return [
-    { id: "KC-1173", lokasi: "Kota Langsa", skor: 82, alasan: "Simpul timur menuju Sumatera Utara.", rencana: true },
-    { id: "KC-1110", lokasi: "Kab. Bireuen", skor: 77, alasan: "Persimpangan jalur Takengon-pesisir.", rencana: false },
-    { id: "KC-1109", lokasi: "Kab. Pidie", skor: 71, alasan: "Sentra bawang merah.", rencana: false },
+    { id: "1", lokasi: "Kota Langsa", skor: 82, alasan: "Simpul timur menuju Sumatera Utara.", rencana: true },
+    { id: "2", lokasi: "Kab. Bireuen", skor: 77, alasan: "Persimpangan jalur Takengon-pesisir.", rencana: false },
+    { id: "3", lokasi: "Kab. Pidie", skor: 71, alasan: "Sentra bawang merah.", rencana: false },
   ];
 }
 
@@ -274,13 +275,15 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
   const fasilitas = COLD_STORAGE.map((c) => {
     const util = c.status === "RENCANA" ? 0 : c.status === "PERAWATAN" ? 0.22 : 0.58 + rng() * 0.3;
     return {
-      id: c.id, nama: c.nama, wilayah: namaWilayah(c.kabupatenKode), kabupatenKode: c.kabupatenKode,
+      // Mock memakai kode sebagai id; di backend id adalah UUID dan kode berupa alias tampilan.
+      id: c.id, kode: c.id, nama: c.nama, wilayah: namaWilayah(c.kabupatenKode), kabupatenKode: c.kabupatenKode,
       kapasitasTon: c.kapasitasTon, terisiTon: Math.round(c.kapasitasTon * util), suhuTargetC: c.suhuTargetC,
       suhuAktualC: Math.round((c.suhuTargetC + gauss(rng) * 0.8) * 10) / 10, status: c.status, lat: c.lat, lng: c.lng,
     };
   });
   const agregator = ["Koperasi Tani Gayo Makmur", "CV Lambaro Segar", "KUD Pidie Jaya", "Kelompok Tani Bener Meriah"];
   const stok: StokColdStorage[] = [];
+  let nomorLot = 0;
   COLD_STORAGE.filter((c) => c.status !== "RENCANA").forEach((c) => {
     c.fokus.forEach((kode, j) => {
       for (let b = 0; b < 2 + Math.floor(rng() * 2); b++) {
@@ -288,7 +291,8 @@ export function mockColdStorage(): { fasilitas: FasilitasColdStorage[]; stok: St
         const umur = Math.floor(rng() * kom.shelfLifeHari * 0.9);
         const sisa = kom.shelfLifeHari - umur;
         stok.push({
-          id: `STK-${c.id}-${j}${b}`, fasilitasId: c.id, fasilitasNama: c.nama, komoditasKode: kode, komoditasNama: kom.nama,
+          // ID BIGINT sebagai string desimal; kode tampilan lot memakai bentuk lama.
+          id: String(++nomorLot), kode: `STK-${c.id}-${j}${b}`, fasilitasId: c.id, fasilitasNama: c.nama, komoditasKode: kode, komoditasNama: kom.nama,
           volumeTon: Math.round((4 + rng() * 38) * 10) / 10,
           masuk: new Date(ANCHOR_DATE.getTime() - umur * 86_400_000).toISOString(),
           sisaShelfLifeHari: sisa, risikoFoodLoss: Math.max(0.02, Math.min(0.95, 1 - sisa / kom.shelfLifeHari + gauss(rng) * 0.05)),

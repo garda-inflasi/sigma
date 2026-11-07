@@ -30,6 +30,84 @@ const stok: StokWire = {
   pemilik: "KUD",
 };
 
+describe("kunci primer: id BIGINT/UUID dan kode tampilan", () => {
+  const uuid = "f2356c7b-bb80-3d01-84c3-ba32f27a2910";
+
+  it("lot: id BIGINT tetap string dan kode dipetakan; teks manusia memakai kode ?? id", () => {
+    const dengan = toStok({ ...stok, id: "42", kode: "STK-000042", cold_storage_id: uuid });
+    assert.equal(dengan.id, "42");
+    assert.equal(dengan.kode, "STK-000042");
+    assert.equal(dengan.fasilitasId, uuid);
+    assert.equal(dengan.kode ?? dengan.id, "STK-000042");
+
+    const tanpa = toStok({ ...stok, id: "43" });
+    assert.equal(tanpa.kode, null);
+    assert.equal(tanpa.kode ?? tanpa.id, "43", "tanpa kode tampil id");
+  });
+
+  it("transaksi: kode fasilitas asal/tujuan untuk tampilan, id UUID untuk tautan", () => {
+    const d = toDetailFasilitas({
+      fasilitas: {
+        id: uuid,
+        kode: "CS-01",
+        nama: "Cold Storage Lambaro",
+        kabupaten_kode: "1106",
+        kabupaten_nama: "KABUPATEN ACEH BESAR",
+        lat: 5.5,
+        lng: 95.3,
+        kapasitas_ton: 400,
+        terisi_ton: 347,
+        utilisasi_persen: 86.8,
+        suhu_target_c: 4,
+        suhu_aktual_c: 4,
+        status: "OPERASIONAL",
+      },
+      telemetri: [],
+      stok: [],
+      transaksi: [
+        {
+          id: "9",
+          kode: null,
+          lot_id: "42",
+          lot_baru_id: "43",
+          jenis: "PINDAH",
+          volume_ton: 5,
+          komoditas_nama: "BAWANG MERAH",
+          fasilitas_asal_id: uuid,
+          fasilitas_asal_kode: "CS-01",
+          fasilitas_tujuan_id: "11111111-2222-3333-4444-555555555555",
+          fasilitas_tujuan_kode: null,
+          oleh_nama: null,
+          waktu: "2026-10-01T00:00:00Z",
+          alasan: "",
+        },
+      ],
+    });
+
+    assert.equal(d.fasilitas.id, uuid);
+    assert.equal(d.fasilitas.kode, "CS-01");
+    const t = d.transaksi[0];
+    assert.equal(t.id, "9");
+    assert.equal(t.lotBaruId, "43");
+    assert.equal(t.fasilitasAsalKode ?? t.fasilitasAsalId, "CS-01");
+    assert.equal(
+      t.fasilitasTujuanKode ?? t.fasilitasTujuanId,
+      "11111111-2222-3333-4444-555555555555",
+      "tanpa kode tampil id",
+    );
+  });
+
+  it("badan transaksi meneruskan id lot dan fasilitas apa adanya (string)", () => {
+    const keluar = toTransaksiBody({ jenis: "KELUAR", lotId: "42", semua: true, alasan: "dijual" });
+    assert.equal(keluar.lot_id, "42");
+    const pindah = toTransaksiBody({ jenis: "PINDAH", lotId: "42", fasilitasTujuanId: uuid, volumeTon: 1 });
+    assert.equal(pindah.fasilitas_tujuan_id, uuid);
+    const masuk = toTransaksiBody({ jenis: "MASUK", fasilitasId: uuid, komoditasKode: "TLR", pemilik: "KUD", volumeTon: 2 });
+    assert.equal(masuk.fasilitas_id, uuid);
+    assert.equal("lot_id" in masuk, false, "MASUK tidak mengirim lot_id: lot dibuat server");
+  });
+});
+
 describe("toStok", () => {
   it("status lot dari backend; data lama dianggap AKTIF", () => {
     assert.equal(

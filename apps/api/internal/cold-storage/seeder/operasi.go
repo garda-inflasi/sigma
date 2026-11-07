@@ -1,11 +1,13 @@
 package seeder
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 const (
@@ -42,13 +44,13 @@ func BuildTelemetri(now time.Time) []domain.TelemetriSuhu {
 			waktu := akhir.Add(-time.Duration(k) * intervalTelemetri)
 			fase := 2 * math.Pi * float64(waktu.Hour()*60+waktu.Minute()) / (24 * 60)
 
-			suhu := f.SuhuTargetC + 0.35*math.Sin(fase) + (rng.Float64()-0.5)*0.5 + penyimpangan[f.ID][k]
+			suhu := f.SuhuTargetC + 0.35*math.Sin(fase) + (rng.Float64()-0.5)*0.5 + penyimpangan[f.Kode][k]
 			if k == 0 {
 				suhu = *f.SuhuAktualC
 			}
 			lembap := math.Min(100, math.Max(0, 82+4*math.Sin(fase+1)+(rng.Float64()-0.5)*4))
 			out = append(out, domain.TelemetriSuhu{
-				FasilitasID:   f.ID,
+				FasilitasID:   FasilitasID(f.Kode),
 				Waktu:         waktu,
 				SuhuC:         math.Round(suhu*100) / 100,
 				KelembapanPct: &lembap,
@@ -60,15 +62,22 @@ func BuildTelemetri(now time.Time) []domain.TelemetriSuhu {
 }
 
 // BuildTransaksi menyusun satu transaksi MASUK untuk tiap lot demo, pada saat
-// lot masuk, sehingga buku besar konsisten dengan volume awal lot.
-func BuildTransaksi(now time.Time) []domain.TransaksiStok {
+// lot masuk, sehingga buku besar konsisten dengan volume awal lot. lotID memetakan
+// kode lot (STK-CS01-01) ke ID BIGINT-nya; kode transaksi = "TRX-DEMO-" + kode lot,
+// kunci idempotensi seed.
+func BuildTransaksi(now time.Time, lotID map[string]idx.ID) ([]domain.TransaksiStok, error) {
 	stok := BuildStok(now)
 	out := make([]domain.TransaksiStok, len(stok))
 	for i, s := range stok {
+		id, ok := lotID[*s.Kode]
+		if !ok {
+			return nil, fmt.Errorf("lot seed %s belum ada di basis data", *s.Kode)
+		}
 		tujuan := s.ColdStorageID
+		kode := "TRX-DEMO-" + *s.Kode
 		out[i] = domain.TransaksiStok{
-			ID:                "TRX-DEMO-" + s.ID,
-			LotID:             s.ID,
+			Kode:              &kode,
+			LotID:             id,
 			Jenis:             domain.TransaksiMasuk,
 			VolumeTon:         s.VolumeTon,
 			FasilitasTujuanID: &tujuan,
@@ -77,5 +86,5 @@ func BuildTransaksi(now time.Time) []domain.TransaksiStok {
 			Sumber:            domain.SumberDemo,
 		}
 	}
-	return out
+	return out, nil
 }

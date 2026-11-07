@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // ToleransiSuhuC adalah selisih bawaan terhadap suhu target untuk batas alarm
@@ -77,7 +79,7 @@ func DiLuarRentang(suhu, lo, hi float64) bool {
 // TelemetriSuhu memetakan tabel telemetri_suhu.
 type TelemetriSuhu struct {
 	ID            int64     `gorm:"column:id;primaryKey;autoIncrement"`
-	FasilitasID   string    `gorm:"column:fasilitas_id"`
+	FasilitasID   string    `gorm:"column:fasilitas_id;type:uuid"`
 	Waktu         time.Time `gorm:"column:waktu"`
 	SuhuC         float64   `gorm:"column:suhu_c"`
 	KelembapanPct *float64  `gorm:"column:kelembapan_pct"`
@@ -86,15 +88,17 @@ type TelemetriSuhu struct {
 
 func (TelemetriSuhu) TableName() string { return "telemetri_suhu" }
 
-// TransaksiStok memetakan tabel transaksi_stok.
+// TransaksiStok memetakan tabel transaksi_stok. ID adalah BIGINT identity; Kode hanya terisi pada data migrasi
+// (ID lama TRX-...) dan data demo, karena transaksi baru tidak ditampilkan dengan kode.
 type TransaksiStok struct {
-	ID                string    `gorm:"column:id;primaryKey"`
-	LotID             string    `gorm:"column:lot_id"`
-	LotBaruID         *string   `gorm:"column:lot_baru_id"`
+	ID                idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode              *string   `gorm:"column:kode"`
+	LotID             idx.ID    `gorm:"column:lot_id"`
+	LotBaruID         *idx.ID   `gorm:"column:lot_baru_id"`
 	Jenis             string    `gorm:"column:jenis"`
 	VolumeTon         float64   `gorm:"column:volume_ton"`
-	FasilitasAsalID   *string   `gorm:"column:fasilitas_asal_id"`
-	FasilitasTujuanID *string   `gorm:"column:fasilitas_tujuan_id"`
+	FasilitasAsalID   *string   `gorm:"column:fasilitas_asal_id;type:uuid"`
+	FasilitasTujuanID *string   `gorm:"column:fasilitas_tujuan_id;type:uuid"`
 	OlehID            *string   `gorm:"column:oleh_id;type:uuid"`
 	Waktu             time.Time `gorm:"column:waktu"`
 	Alasan            string    `gorm:"column:alasan"`
@@ -103,36 +107,37 @@ type TransaksiStok struct {
 
 func (TransaksiStok) TableName() string { return "transaksi_stok" }
 
-// TransaksiView adalah baris buku besar beserta nama komoditas dan pelaku.
+// TransaksiView adalah baris buku besar beserta nama komoditas, kode fasilitas, dan pelaku.
 type TransaksiView struct {
-	ID                string    `gorm:"column:id"`
-	LotID             string    `gorm:"column:lot_id"`
-	LotBaruID         *string   `gorm:"column:lot_baru_id"`
-	Jenis             string    `gorm:"column:jenis"`
-	VolumeTon         float64   `gorm:"column:volume_ton"`
-	KomoditasKode     string    `gorm:"column:komoditas_kode"`
-	KomoditasNama     string    `gorm:"column:komoditas_nama"`
-	FasilitasAsalID   *string   `gorm:"column:fasilitas_asal_id"`
-	FasilitasTujuanID *string   `gorm:"column:fasilitas_tujuan_id"`
-	OlehNama          *string   `gorm:"column:oleh_nama"`
-	Waktu             time.Time `gorm:"column:waktu"`
-	Alasan            string    `gorm:"column:alasan"`
+	ID                  idx.ID    `gorm:"column:id"`
+	Kode                *string   `gorm:"column:kode"`
+	LotID               idx.ID    `gorm:"column:lot_id"`
+	LotBaruID           *idx.ID   `gorm:"column:lot_baru_id"`
+	Jenis               string    `gorm:"column:jenis"`
+	VolumeTon           float64   `gorm:"column:volume_ton"`
+	KomoditasKode       string    `gorm:"column:komoditas_kode"`
+	KomoditasNama       string    `gorm:"column:komoditas_nama"`
+	FasilitasAsalID     *string   `gorm:"column:fasilitas_asal_id"`
+	FasilitasAsalKode   *string   `gorm:"column:fasilitas_asal_kode"`
+	FasilitasTujuanID   *string   `gorm:"column:fasilitas_tujuan_id"`
+	FasilitasTujuanKode *string   `gorm:"column:fasilitas_tujuan_kode"`
+	OlehNama            *string   `gorm:"column:oleh_nama"`
+	Waktu               time.Time `gorm:"column:waktu"`
+	Alasan              string    `gorm:"column:alasan"`
 }
 
-// TransaksiInput adalah satu transaksi stok yang sudah tervalidasi bentuknya.
-// ID dan LotBaruID dibuat pemanggil agar repositori deterministik dan mudah diuji.
+// TransaksiInput adalah satu transaksi stok yang sudah tervalidasi bentuknya. ID transaksi dan ID lot baru
+// tidak ada di sini: basis data yang membuatnya (identity) dan repositori membacanya dari RETURNING.
 type TransaksiInput struct {
-	ID     string
 	Jenis  string
 	Waktu  time.Time
 	OlehID string
 	Alasan string
 
-	// MASUK: FasilitasID, KomoditasKode, Pemilik, LotID (lot baru), KedaluwarsaPada opsional.
+	// MASUK: FasilitasID (UUID), KomoditasKode, Pemilik, VolumeTon, KedaluwarsaPada opsional; lot dibuat repositori.
 	// KELUAR: LotID, VolumeTon atau Semua.
-	// PINDAH: LotID, FasilitasTujuanID, VolumeTon atau Semua; LotBaruID dipakai pada pindah sebagian.
-	LotID             string
-	LotBaruID         string
+	// PINDAH: LotID, FasilitasTujuanID (UUID), VolumeTon atau Semua; pindah sebagian membuat lot baru di tujuan.
+	LotID             idx.ID
 	FasilitasID       string
 	FasilitasTujuanID string
 	KomoditasKode     string
@@ -151,11 +156,11 @@ type LotSnapshot struct {
 
 // TransaksiHasil adalah akibat satu transaksi.
 type TransaksiHasil struct {
-	TransaksiID string
+	TransaksiID idx.ID
 	Jenis       string
-	LotID       string
+	LotID       idx.ID
 	// LotBaruID terisi pada pindah sebagian.
-	LotBaruID *string
+	LotBaruID *idx.ID
 	// VolumeTon adalah volume yang bergerak; VolumeSisaTon sisa pada lot sumber.
 	VolumeTon     float64
 	VolumeSisaTon float64
@@ -175,17 +180,20 @@ type FasilitasPatch struct {
 
 // BarisBulk adalah hasil aksi massal untuk satu lot.
 type BarisBulk struct {
-	ID        string
+	ID        idx.ID
 	Berhasil  bool
 	Pesan     string
 	VolumeTon float64
-	// TransaksiID terisi bila aksi menghasilkan transaksi stok.
-	TransaksiID string
+	// TransaksiID terisi (bukan nol) bila aksi menghasilkan transaksi stok.
+	TransaksiID idx.ID
 }
 
 // OperasiRepository adalah akses data telemetri dan transaksi stok. Metode
 // yang mengubah stok bersifat atomik dan mengunci baris yang terlibat.
 type OperasiRepository interface {
+	// IDFasilitasDariKode mengembalikan UUID fasilitas yang berkode kode (alias CS-01), atau ErrFasilitasTidakAda.
+	IDFasilitasDariKode(ctx context.Context, kode string) (string, error)
+	// GetFasilitas membaca satu fasilitas menurut UUID; ErrFasilitasTidakAda bila tidak ada.
 	GetFasilitas(ctx context.Context, id string) (*FasilitasView, error)
 	// UpdateFasilitas menerapkan patch dan mengembalikan keadaan sebelum dan sesudah.
 	UpdateFasilitas(ctx context.Context, id string, patch FasilitasPatch) (before, after FasilitasView, err error)
@@ -201,5 +209,5 @@ type OperasiRepository interface {
 	ListTransaksi(ctx context.Context, fasilitasID string, limit int) ([]TransaksiView, error)
 	CatatTransaksi(ctx context.Context, in TransaksiInput) (TransaksiHasil, error)
 	// TandaiPrioritasJual menandai lot tidak-habis dan mengembalikan yang berhasil.
-	TandaiPrioritasJual(ctx context.Context, ids []string) ([]BarisBulk, error)
+	TandaiPrioritasJual(ctx context.Context, ids []idx.ID) ([]BarisBulk, error)
 }

@@ -73,7 +73,7 @@ func TestSeedDemo_RerunMovesDatesWithoutDuplicatingLots(t *testing.T) {
 	assert.EqualValues(t, 23, count(t, db, "stok_cold_storage"))
 
 	var masuk, kedaluwarsa time.Time
-	require.NoError(t, db.Raw(`SELECT masuk_pada, kedaluwarsa_pada FROM stok_cold_storage WHERE id = 'STK-CS02-02'`).Row().Scan(&masuk, &kedaluwarsa))
+	require.NoError(t, db.Raw(`SELECT masuk_pada, kedaluwarsa_pada FROM stok_cold_storage WHERE kode = 'STK-CS02-02'`).Row().Scan(&masuk, &kedaluwarsa))
 	assert.True(t, masuk.Equal(later.Add(-106*24*time.Hour)), "masuk_pada mengikuti now terakhir, dapat %s", masuk)
 	assert.True(t, kedaluwarsa.Equal(masuk.Add(120*24*time.Hour)), "masa simpan 120 hari dari masuk")
 }
@@ -85,4 +85,41 @@ func TestSeedDemo_WithoutFacilitiesFailsOnForeignKey(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Zero(t, count(t, db, "stok_cold_storage"))
+}
+
+// Menjalankan seeder dua kali tidak menambah baris, dan ID BIGINT lot serta transaksi tidak berubah
+// (kunci idempotensi: UUID stabil untuk fasilitas, kode untuk lot dan transaksi).
+func TestSeed_RerunKeepsRowsAndIDs(t *testing.T) {
+	db := migrated(t, "cs_seed_rerun_ids")
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+
+	jalankan := func() {
+		_, err := SeedReference(t.Context(), db)
+		require.NoError(t, err)
+		_, err = SeedDemo(t.Context(), db, seedNow)
+		require.NoError(t, err)
+	}
+	jalankan()
+	var idsSebelum string
+	require.NoError(t, db.Raw(`SELECT string_agg(id::text, ',' ORDER BY id) FROM (
+		SELECT id FROM stok_cold_storage UNION ALL SELECT id FROM transaksi_stok) x`).Scan(&idsSebelum).Error)
+	jalankan()
+	var idsSesudah string
+	require.NoError(t, db.Raw(`SELECT string_agg(id::text, ',' ORDER BY id) FROM (
+		SELECT id FROM stok_cold_storage UNION ALL SELECT id FROM transaksi_stok) x`).Scan(&idsSesudah).Error)
+
+	assert.Equal(t, idsSebelum, idsSesudah, "ID tidak berubah dan tidak ada baris baru")
+	assert.EqualValues(t, 5, count(t, db, "cold_storage"))
+	assert.EqualValues(t, 23, count(t, db, "stok_cold_storage"))
+	assert.EqualValues(t, 23, count(t, db, "transaksi_stok"))
+	assert.EqualValues(t, 4*titikTelemetri, count(t, db, "telemetri_suhu"))
+
+	var id string
+	require.NoError(t, db.Raw(`SELECT id::text FROM cold_storage WHERE kode = 'CS-03'`).Scan(&id).Error)
+	assert.Equal(t, FasilitasID("CS-03"), id)
+	var rujuk int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM transaksi_stok t JOIN stok_cold_storage s ON s.id = t.lot_id
+		WHERE t.kode = 'TRX-DEMO-' || s.kode AND t.fasilitas_tujuan_id = s.cold_storage_id`).Scan(&rujuk).Error)
+	assert.EqualValues(t, 23, rujuk, "setiap transaksi demo menunjuk lot dan fasilitas yang benar")
 }

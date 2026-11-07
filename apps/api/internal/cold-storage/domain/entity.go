@@ -1,14 +1,22 @@
 package domain
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // RisikoTinggiAmbang adalah batas risiko food loss (pecahan 0–1). Lot dengan
 // risiko di atas nilai ini dihitung "berisiko tinggi" pada ringkasan stok.
 const RisikoTinggiAmbang = 0.6
 
-// FasilitasColdStorage maps to the cold_storage table.
+// FasilitasColdStorage maps to the cold_storage table. ID adalah UUID; Kode adalah kode tampilan (CS-01) dan
+// alias di URL, unik, dan boleh kosong untuk fasilitas yang dibuat tanpa kode.
 type FasilitasColdStorage struct {
-	ID            string   `gorm:"column:id;primaryKey"`
+	ID            string   `gorm:"column:id;type:uuid;primaryKey;default:gen_random_uuid()"`
+	Kode          *string  `gorm:"column:kode"`
 	Nama          string   `gorm:"column:nama"`
 	KabupatenKode string   `gorm:"column:kabupaten_kode"`
 	Lat           float64  `gorm:"column:lat"`
@@ -30,10 +38,12 @@ func (FasilitasColdStorage) TableName() string {
 	return "cold_storage"
 }
 
-// StokColdStorage maps to the stok_cold_storage table.
+// StokColdStorage maps to the stok_cold_storage table. ID adalah BIGINT identity yang dibuat basis data; Kode
+// adalah kode tampilan lot (STK-000042, atau ID lama pada data migrasi).
 type StokColdStorage struct {
-	ID              string    `gorm:"column:id;primaryKey"`
-	ColdStorageID   string    `gorm:"column:cold_storage_id;index"`
+	ID              idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode            *string   `gorm:"column:kode"`
+	ColdStorageID   string    `gorm:"column:cold_storage_id;type:uuid"`
 	KomoditasKode   string    `gorm:"column:komoditas_kode"`
 	VolumeTon       float64   `gorm:"column:volume_ton"`
 	MasukPada       time.Time `gorm:"column:masuk_pada"`
@@ -52,6 +62,7 @@ func (StokColdStorage) TableName() string {
 // nama wilayah (join kabupaten) dan volume terisi (jumlah stok fasilitas).
 type FasilitasView struct {
 	ID            string   `gorm:"column:id"`
+	Kode          *string  `gorm:"column:kode"`
 	Nama          string   `gorm:"column:nama"`
 	KabupatenKode string   `gorm:"column:kabupaten_kode"`
 	KabupatenNama string   `gorm:"column:kabupaten_nama"`
@@ -78,7 +89,8 @@ type FasilitasView struct {
 
 // StokView adalah satu lot stok beserta nama fasilitas dan komoditasnya.
 type StokView struct {
-	ID              string    `gorm:"column:id"`
+	ID              idx.ID    `gorm:"column:id"`
+	Kode            *string   `gorm:"column:kode"`
 	ColdStorageID   string    `gorm:"column:cold_storage_id"`
 	ColdStorageNama string    `gorm:"column:cold_storage_nama"`
 	KomoditasKode   string    `gorm:"column:komoditas_kode"`
@@ -109,12 +121,13 @@ const (
 
 // StokQuery adalah kriteria daftar stok: filter, urutan, dan halaman.
 type StokQuery struct {
-	ColdStorageID string
-	Search        string
-	Sort          StokSort
-	Desc          bool
-	Page          int
-	Limit         int
+	// Fasilitas menyaring stok pada satu fasilitas (UUID atau kode); kosong berarti semua.
+	Fasilitas idx.RujukanUUID
+	Search    string
+	Sort      StokSort
+	Desc      bool
+	Page      int
+	Limit     int
 }
 
 // Offset menghitung posisi baris pertama halaman.
@@ -153,5 +166,22 @@ type BulkResult struct {
 	Berhasil  int64
 	VolumeTon float64
 	// IDDitemukan adalah id lot yang diproses; id lain pada permintaan dianggap gagal.
-	IDDitemukan []string
+	IDDitemukan []idx.ID
 }
+
+// RujukanFasilitas membaca teks bebas (isi body atau query) sebagai UUID fasilitas atau, bila bukan UUID,
+// kode fasilitas (alias CS-01). Teks kosong menghasilkan rujukan kosong.
+func RujukanFasilitas(teks string) idx.RujukanUUID {
+	teks = strings.TrimSpace(teks)
+	if id, ok := idx.NormalUUID(teks); ok {
+		return idx.RujukanUUID{ID: id}
+	}
+	return idx.RujukanUUID{Kode: teks}
+}
+
+// KosongRujukan melaporkan rujukan yang tidak menunjuk apa pun.
+func KosongRujukan(r idx.RujukanUUID) bool { return r.ID == "" && r.Kode == "" }
+
+// KodeLot adalah kode tampilan lot baru. Diturunkan dari ID identity yang unik, sehingga dua lot tidak pernah
+// mendapat kode yang sama; kode lama (STK- dan 12 karakter heksadesimal, atau kode seed) berbeda bentuk.
+func KodeLot(id idx.ID) string { return fmt.Sprintf("STK-%06d", int64(id)) }

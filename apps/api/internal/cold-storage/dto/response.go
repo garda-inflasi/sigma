@@ -4,12 +4,15 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 type FasilitasColdStorageResponse struct {
-	ID            string `json:"id"`
-	Nama          string `json:"nama"`
-	KabupatenKode string `json:"kabupaten_kode"`
+	// ID adalah UUID fasilitas; Kode adalah kode tampilannya (CS-01), juga alias di URL.
+	ID            string  `json:"id"`
+	Kode          *string `json:"kode"`
+	Nama          string  `json:"nama"`
+	KabupatenKode string  `json:"kabupaten_kode"`
 	// KabupatenNama adalah nama resmi pada master wilayah, mis. "KABUPATEN ACEH BESAR".
 	KabupatenNama string  `json:"kabupaten_nama"`
 	Lat           float64 `json:"lat"`
@@ -34,7 +37,9 @@ type FasilitasColdStorageResponse struct {
 }
 
 type StokColdStorageResponse struct {
-	ID              string    `json:"id"`
+	// ID adalah ID BIGINT lot (string desimal); Kode adalah kode tampilannya (STK-000042 atau ID lama).
+	ID              idx.ID    `json:"id"`
+	Kode            *string   `json:"kode"`
 	ColdStorageID   string    `json:"cold_storage_id"`
 	ColdStorageNama string    `json:"cold_storage_nama"`
 	KomoditasKode   string    `json:"komoditas_kode"`
@@ -86,7 +91,7 @@ type BulkColdStorageResponse struct {
 }
 
 type BarisBulkResponse struct {
-	ID       string `json:"id"`
+	ID       idx.ID `json:"id"`
 	Berhasil bool   `json:"berhasil"`
 	// Pesan menjelaskan kegagalan; kosong bila berhasil.
 	Pesan string `json:"pesan"`
@@ -101,18 +106,22 @@ type TitikSuhuResponse struct {
 }
 
 type TransaksiStokResponse struct {
-	ID                string    `json:"id"`
-	LotID             string    `json:"lot_id"`
-	LotBaruID         *string   `json:"lot_baru_id"`
-	Jenis             string    `json:"jenis"`
-	VolumeTon         float64   `json:"volume_ton"`
-	KomoditasKode     string    `json:"komoditas_kode"`
-	KomoditasNama     string    `json:"komoditas_nama"`
-	FasilitasAsalID   *string   `json:"fasilitas_asal_id"`
-	FasilitasTujuanID *string   `json:"fasilitas_tujuan_id"`
-	OlehNama          *string   `json:"oleh_nama"`
-	Waktu             time.Time `json:"waktu"`
-	Alasan            string    `json:"alasan"`
+	// ID adalah ID BIGINT transaksi (string desimal); Kode hanya terisi pada data migrasi dan demo.
+	ID                  idx.ID    `json:"id"`
+	Kode                *string   `json:"kode"`
+	LotID               idx.ID    `json:"lot_id"`
+	LotBaruID           *idx.ID   `json:"lot_baru_id"`
+	Jenis               string    `json:"jenis"`
+	VolumeTon           float64   `json:"volume_ton"`
+	KomoditasKode       string    `json:"komoditas_kode"`
+	KomoditasNama       string    `json:"komoditas_nama"`
+	FasilitasAsalID     *string   `json:"fasilitas_asal_id"`
+	FasilitasAsalKode   *string   `json:"fasilitas_asal_kode"`
+	FasilitasTujuanID   *string   `json:"fasilitas_tujuan_id"`
+	FasilitasTujuanKode *string   `json:"fasilitas_tujuan_kode"`
+	OlehNama            *string   `json:"oleh_nama"`
+	Waktu               time.Time `json:"waktu"`
+	Alasan              string    `json:"alasan"`
 }
 
 // DetailFasilitasResponse adalah data halaman detail satu fasilitas.
@@ -139,10 +148,10 @@ type IngestTelemetriResponse struct {
 }
 
 type TransaksiHasilResponse struct {
-	TransaksiID   string  `json:"transaksi_id"`
+	TransaksiID   idx.ID  `json:"transaksi_id"`
 	Jenis         string  `json:"jenis"`
-	LotID         string  `json:"lot_id"`
-	LotBaruID     *string `json:"lot_baru_id"`
+	LotID         idx.ID  `json:"lot_id"`
+	LotBaruID     *idx.ID `json:"lot_baru_id"`
 	VolumeTon     float64 `json:"volume_ton"`
 	VolumeSisaTon float64 `json:"volume_sisa_ton"`
 	StatusLot     string  `json:"status_lot"`
@@ -151,7 +160,7 @@ type TransaksiHasilResponse struct {
 // ToFasilitasResponse memetakan fasilitas (turunan sudah diisi usecase).
 func ToFasilitasResponse(f domain.FasilitasView) FasilitasColdStorageResponse {
 	return FasilitasColdStorageResponse{
-		ID: f.ID, Nama: f.Nama, KabupatenKode: f.KabupatenKode, KabupatenNama: f.KabupatenNama,
+		ID: f.ID, Kode: f.Kode, Nama: f.Nama, KabupatenKode: f.KabupatenKode, KabupatenNama: f.KabupatenNama,
 		Lat: f.Lat, Lng: f.Lng, KapasitasTon: f.KapasitasTon, TerisiTon: f.TerisiTon, UtilisasiPersen: f.UtilisasiPersen,
 		SuhuTargetC: f.SuhuTargetC, SuhuAktualC: f.SuhuAktualC, Status: f.Status,
 		BatasMinC: f.BatasMinC, BatasMaksC: f.BatasMaksC, AlarmSuhu: f.Alarm,
@@ -162,7 +171,7 @@ func ToFasilitasResponse(f domain.FasilitasView) FasilitasColdStorageResponse {
 // ToStokResponse memetakan satu lot stok.
 func ToStokResponse(s domain.StokView) StokColdStorageResponse {
 	return StokColdStorageResponse{
-		ID: s.ID, ColdStorageID: s.ColdStorageID, ColdStorageNama: s.ColdStorageNama,
+		ID: s.ID, Kode: s.Kode, ColdStorageID: s.ColdStorageID, ColdStorageNama: s.ColdStorageNama,
 		KomoditasKode: s.KomoditasKode, KomoditasNama: s.KomoditasNama, VolumeTon: s.VolumeTon,
 		MasukPada: s.MasukPada, KedaluwarsaPada: s.KedaluwarsaPada, SisaMasaSimpanHari: s.SisaMasaSimpanHari,
 		RisikoFoodLoss: s.RisikoFoodLoss, Pemilik: s.Pemilik, Status: s.Status,
@@ -181,9 +190,10 @@ func ToBulkResponse(berhasil, gagal int, volumeTon float64, baris []domain.Baris
 // ToTransaksiResponse memetakan satu baris buku besar.
 func ToTransaksiResponse(t domain.TransaksiView) TransaksiStokResponse {
 	return TransaksiStokResponse{
-		ID: t.ID, LotID: t.LotID, LotBaruID: t.LotBaruID, Jenis: t.Jenis, VolumeTon: t.VolumeTon,
+		ID: t.ID, Kode: t.Kode, LotID: t.LotID, LotBaruID: t.LotBaruID, Jenis: t.Jenis, VolumeTon: t.VolumeTon,
 		KomoditasKode: t.KomoditasKode, KomoditasNama: t.KomoditasNama,
-		FasilitasAsalID: t.FasilitasAsalID, FasilitasTujuanID: t.FasilitasTujuanID,
+		FasilitasAsalID: t.FasilitasAsalID, FasilitasAsalKode: t.FasilitasAsalKode,
+		FasilitasTujuanID: t.FasilitasTujuanID, FasilitasTujuanKode: t.FasilitasTujuanKode,
 		OlehNama: t.OlehNama, Waktu: t.Waktu, Alasan: t.Alasan,
 	}
 }

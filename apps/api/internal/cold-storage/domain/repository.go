@@ -1,6 +1,10 @@
 package domain
 
-import "context"
+import (
+	"context"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 type Repository interface {
 	// ListFasilitas mengembalikan seluruh fasilitas (operasional lebih dulu)
@@ -13,5 +17,5 @@ type Repository interface {
 	// risiko food loss (0–1) untuk kategori berisiko tinggi.
 	RingkasanStok(ctx context.Context, ambang float64) (RingkasanStok, error)
 	// BulkAction memproses aksi massal; id yang tidak ditemukan tidak dihitung.
-	BulkAction(ctx context.Context, ids []string, action BulkAction) (BulkResult, error)
+	BulkAction(ctx context.Context, ids []idx.ID, action BulkAction) (BulkResult, error)
 }

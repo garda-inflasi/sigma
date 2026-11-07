@@ -172,11 +172,11 @@ func TestEngine_StockDeclineAndRainfallRules(t *testing.T) {
 	s := newSuite(t, "ews_engine_stok_cuaca")
 	now := time.Now()
 
-	require.NoError(t, s.db.Exec(`INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
+	require.NoError(t, s.db.Exec(`INSERT INTO cold_storage (kode, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
 		VALUES ('CS-T1', 'CS Uji', '1108', 5.5, 95.3, 100, 4, 'OPERASIONAL')`).Error)
 	lot := func(id string, ton float64, masuk, kedaluwarsa time.Time) {
-		require.NoError(t, s.db.Exec(`INSERT INTO stok_cold_storage (id, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, pemilik, risiko_food_loss, kedaluwarsa_pada)
-			VALUES (?, 'CS-T1', 'CBM-KRT', ?, ?, 'Koperasi', 0.1, ?)`, id, ton, masuk, kedaluwarsa).Error)
+		require.NoError(t, s.db.Exec(`INSERT INTO stok_cold_storage (kode, cold_storage_id, komoditas_kode, volume_ton, masuk_pada, pemilik, risiko_food_loss, kedaluwarsa_pada)
+			VALUES (?, (SELECT id FROM cold_storage WHERE kode = 'CS-T1'), 'CBM-KRT', ?, ?, 'Koperasi', 0.1, ?)`, id, ton, masuk, kedaluwarsa).Error)
 	}
 	lot("L1", 10, now.Add(-10*24*time.Hour), now.Add(-24*time.Hour)) // ada di awal jendela, sudah kedaluwarsa
 	lot("L2", 4, now.Add(-24*time.Hour), now.Add(10*24*time.Hour))   // stok baru yang layak

@@ -142,16 +142,6 @@ var tabelBelumSelaras = map[string]string{
 	"intervensi":             "000112",
 	"intervensi_persetujuan": "000112",
 	"alur_persetujuan":       "000112",
-	// 000113 cold-storage, spasial
-	"cold_storage":          "000113",
-	"stok_cold_storage":     "000113",
-	"transaksi_stok":        "000113",
-	"kandidat_cold_storage": "000113",
-	"optimasi_rute":         "000113",
-	"rute_distribusi":       "000113",
-	"neraca_wilayah":        "000113",
-	"jarak_antar_wilayah":   "000113",
-	"wilayah_geometri":      "000113",
 	// 000114 prediksi, policy-brief
 	"prediksi_harga":     "000114",
 	"prediksi_evaluasi":  "000114",

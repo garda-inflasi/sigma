@@ -4681,7 +4681,7 @@ paths:
         `stok` mengikuti filter, urutan, dan halaman. `meta.volume_hasil_ton`
         menjumlahkan seluruh hasil filter. `ringkasan` mencakup seluruh stok dan
         **tidak** terpengaruh filter. Urutan bawaan adalah sisa masa simpan
-        tersingkat lebih dulu; id lot menjadi pemutus seri agar urutan antar-halaman stabil.
+        tersingkat lebih dulu; id lot (BIGINT, diurutkan secara numerik) menjadi pemutus seri agar urutan antar-halaman stabil.
 
         Memerlukan izin `coldstorage.lihat`.
       operationId: getColdStorage
@@ -4694,8 +4694,10 @@ paths:
           in: query
           schema:
             type: string
-            maxLength: 255
-          description: Hanya stok pada fasilitas ini
+            maxLength: 64
+          description: >-
+            Hanya stok pada fasilitas ini: UUID fasilitas atau kodenya (alias, mis. `CS-03`). Fasilitas yang
+            tidak ada menghasilkan daftar kosong (bukan galat).
           example: CS-03
         - name: q
           in: query
@@ -4775,6 +4777,9 @@ paths:
         (transaksi KELUAR per lot). Semua tercatat di audit trail (`BULK_<aksi>`). Lot yang tidak
         ditemukan atau sudah habis dihitung pada `gagal`; `rincian` memuat hasil per lot.
 
+        `ids` adalah ID BIGINT lot (string desimal atau angka JSON); ID yang bukan bilangan bulat positif
+        (mis. kode lama `STK-…` atau UUID) ditolak dengan 400.
+
         Izin yang diperlukan bergantung pada aksi:
 
         | Aksi | Izin |
@@ -4833,8 +4838,12 @@ paths:
         - name: id
           in: path
           required: true
+          description: >-
+            UUID fasilitas, atau kodenya sebagai alias (mis. `CS-01`, tautan lama tetap berlaku). Teks yang
+            bukan UUID dan lebih panjang dari 64 karakter, serta fasilitas yang tidak ada, dijawab 404.
           schema:
             type: string
+            maxLength: 64
           example: CS-01
         - name: jam
           in: query
@@ -4890,8 +4899,11 @@ paths:
         - name: id
           in: path
           required: true
+          description: UUID fasilitas, atau kodenya sebagai alias (mis. `CS-01`). Selain itu 404.
           schema:
             type: string
+            maxLength: 64
+          example: CS-01
       requestBody:
         required: true
         content:
@@ -5004,6 +5016,11 @@ paths:
         seluruh atau sebagian lot ke fasilitas tujuan OPERASIONAL yang muat (sebagian membentuk lot baru).
         Izin: `coldstorage.kelola`; `PINDAH` juga boleh oleh `logistik.kelola`. Tercatat di audit trail
         (`TRANSAKSI_STOK_<JENIS>`, dengan keadaan lot sebelum/sesudah).
+
+        ID transaksi dan lot dibuat basis data (BIGINT identity), bukan aplikasi. `lot_id` (wajib untuk
+        `KELUAR` dan `PINDAH`) adalah ID BIGINT lot sebagai string desimal atau angka JSON; ID yang salah
+        bentuk (kode lama `STK-…`, UUID, nol, negatif, pecahan) ditolak dengan 400, dan lot yang tidak ada 404.
+        `fasilitas_id` dan `fasilitas_tujuan_id` menerima UUID fasilitas maupun kodenya (alias).
       operationId: createColdStorageTransaksi
       tags:
         - Cold Storage
@@ -5195,7 +5212,11 @@ paths:
         Simulasi memerlukan `spasial.lihat`. `simpan = true` memerlukan `logistik.kelola`: rencana
         ditulis ke `optimasi_rute`, rute menjadi usulan di `/v1/spasial/rute` (sumber `OPTIMASI`),
         rencana lama untuk komoditas dan periode yang sama ditandai `DIGANTIKAN`, dan aksi tercatat
-        di audit trail (`OPTIMASI_RUTE`).
+        di audit trail (`OPTIMASI_RUTE`, `entitas_id` = ID BIGINT rencana).
+
+        ID rencana dan rute dibuat basis data (BIGINT identity), bukan aplikasi: `optimasi_id` adalah ID
+        itu sebagai string desimal dan `optimasi_kode` kode tampilannya (mis. `OPT-000042`). Menghapus
+        rencana menghapus rutenya (CASCADE).
       operationId: optimasiRute
       tags:
         - Spasial
@@ -9628,8 +9649,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: RT-1106-1171
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         asal_kode:
           type: string
         asal:
@@ -9679,8 +9701,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: KC-1173
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         kabupaten_kode:
           type: string
         wilayah:
@@ -10060,7 +10083,11 @@ components:
             optimasi_id:
               type: string
               nullable: true
-              description: Terisi bila rencana disimpan
+              pattern: "^[1-9][0-9]{0,18}$"
+              description: ID BIGINT rencana (string desimal, dari basis data); terisi bila rencana disimpan
+              example: "42"
+            optimasi_kode:
+              $ref: "#/components/schemas/KodeTampilan"
 
     SisaWilayah:
       type: object
@@ -10088,7 +10115,9 @@ components:
             type: object
             properties:
               id:
-                type: string
+                $ref: "#/components/schemas/IdBigint"
+              kode:
+                $ref: "#/components/schemas/KodeTampilan"
               komoditas_kode:
                 type: string
               komoditas_nama:
@@ -10107,8 +10136,8 @@ components:
                 format: double
               dibuat_oleh:
                 type: string
-                format: uuid
                 nullable: true
+                description: Nama pembuat rencana; null bila akunnya sudah dihapus
               dibuat_pada:
                 type: string
                 format: date-time
@@ -10139,8 +10168,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: CS-01
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         nama:
           type: string
           example: Cold Storage Lambaro
@@ -10213,11 +10243,11 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: STK-CS01-01
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         cold_storage_id:
-          type: string
-          example: CS-01
+          $ref: "#/components/schemas/IdUuid"
         cold_storage_nama:
           type: string
           example: Cold Storage Lambaro
@@ -10317,8 +10347,9 @@ components:
           minItems: 1
           maxItems: 500
           items:
-            type: string
-          example: ["STK-CS01-01", "STK-CS03-01"]
+            $ref: "#/components/schemas/IdBigint"
+          description: ID BIGINT lot (string desimal atau angka JSON); ID salah bentuk ditolak dengan 400
+          example: ["1", "9"]
 
     BulkColdStorageResponse:
       type: object
@@ -10352,7 +10383,7 @@ components:
                 type: object
                 properties:
                   id:
-                    type: string
+                    $ref: "#/components/schemas/IdBigint"
                   berhasil:
                     type: boolean
                   pesan:
@@ -10382,13 +10413,16 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         lot_id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
         lot_baru_id:
           type: string
           nullable: true
-          description: Lot yang dibentuk di tujuan pada pindah sebagian
+          pattern: "^[1-9][0-9]{0,18}$"
+          description: ID BIGINT lot yang dibentuk di tujuan pada pindah sebagian
         jenis:
           type: string
           enum: [MASUK, KELUAR, PINDAH]
@@ -10401,10 +10435,16 @@ components:
           type: string
         fasilitas_asal_id:
           type: string
+          format: uuid
           nullable: true
+        fasilitas_asal_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         fasilitas_tujuan_id:
           type: string
+          format: uuid
           nullable: true
+        fasilitas_tujuan_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         oleh_nama:
           type: string
           nullable: true
@@ -10469,6 +10509,8 @@ components:
             properties:
               fasilitas_id:
                 type: string
+                maxLength: 64
+                description: UUID fasilitas atau kodenya (alias, mis. `CS-01`). Respons dan audit memakai UUID.
                 example: CS-01
               waktu:
                 type: string
@@ -10514,7 +10556,7 @@ components:
                 type: object
                 properties:
                   fasilitas_id:
-                    type: string
+                    $ref: "#/components/schemas/IdUuid"
                   waktu:
                     type: string
                     format: date-time
@@ -10536,14 +10578,15 @@ components:
           type: string
           enum: [MASUK, KELUAR, PINDAH]
         lot_id:
-          type: string
-          description: Wajib untuk KELUAR dan PINDAH
+          $ref: "#/components/schemas/IdBigint"
         fasilitas_id:
           type: string
-          description: Wajib untuk MASUK
+          maxLength: 64
+          description: UUID fasilitas atau kodenya (alias, mis. `CS-01`). Wajib untuk MASUK
         fasilitas_tujuan_id:
           type: string
-          description: Wajib untuk PINDAH
+          maxLength: 64
+          description: UUID fasilitas atau kodenya (alias). Wajib untuk PINDAH
         komoditas_kode:
           type: string
           description: Wajib untuk MASUK
@@ -10579,15 +10622,17 @@ components:
           type: object
           properties:
             transaksi_id:
-              type: string
+              $ref: "#/components/schemas/IdBigint"
             jenis:
               type: string
               enum: [MASUK, KELUAR, PINDAH]
             lot_id:
-              type: string
+              $ref: "#/components/schemas/IdBigint"
             lot_baru_id:
               type: string
               nullable: true
+              pattern: "^[1-9][0-9]{0,18}$"
+              description: ID BIGINT lot yang dibentuk di tujuan pada pindah sebagian
             volume_ton:
               type: number
               format: double

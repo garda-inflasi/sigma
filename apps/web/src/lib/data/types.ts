@@ -100,7 +100,10 @@ export interface KartuIntervensi {
 }
 
 export interface StokColdStorage {
+  /** ID BIGINT lot (string desimal). Teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  /** Kode tampilan lot (STK-000042, atau ID lama pada data migrasi); kosong bila tidak ada. */
+  kode?: string | null;
   fasilitasId: string;
   fasilitasNama: string;
   komoditasKode: string;
@@ -118,7 +121,10 @@ export interface StokColdStorage {
 }
 
 export interface FasilitasColdStorage {
+  /** UUID fasilitas. Teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  /** Kode tampilan fasilitas (CS-01), juga alias di URL API; kosong bila tidak ada. */
+  kode?: string | null;
   nama: string;
   wilayah: string;
   kabupatenKode: string;
@@ -150,14 +156,20 @@ export interface TitikSuhu {
 
 /** Satu baris buku besar stok. */
 export interface TransaksiStok {
+  /** ID BIGINT transaksi (string desimal). */
   id: string;
+  /** Hanya terisi pada data migrasi dan demo (TRX-...). */
+  kode?: string | null;
   lotId: string;
   lotBaruId: string | null;
   jenis: "MASUK" | "KELUAR" | "PINDAH";
   volumeTon: number;
   komoditasNama: string;
   fasilitasAsalId: string | null;
+  /** Kode tampilan fasilitas asal/tujuan (CS-01); tampilkan `kode ?? id`. */
+  fasilitasAsalKode?: string | null;
   fasilitasTujuanId: string | null;
+  fasilitasTujuanKode?: string | null;
   olehNama: string | null;
   waktu: string;
   alasan: string;

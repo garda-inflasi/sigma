@@ -18,7 +18,8 @@ export type ColdStorageSort = (typeof COLD_STORAGE_SORTS)[number];
 /** Batas yang sama dengan validasi di backend Go (dto.ColdStorageRequest). */
 export const COLD_STORAGE_MAX_LIMIT = 100;
 export const COLD_STORAGE_MAX_SEARCH = 100;
-const MAX_FASILITAS_ID = 255;
+/** UUID fasilitas atau kodenya (CS-01); sama dengan batas di backend (dto.ColdStorageRequest). */
+const MAX_FASILITAS_ID = 64;
 
 export interface ColdStorageParams {
   /** Hanya stok pada fasilitas ini. */

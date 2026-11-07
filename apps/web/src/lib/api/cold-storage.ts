@@ -25,7 +25,10 @@ import {
 // ── Bentuk data backend ───────────────────────────────────────────────
 
 export interface FasilitasWire {
+  /** UUID fasilitas. */
   id: string;
+  /** Kode tampilan (CS-01), alias di URL API. */
+  kode?: string | null;
   nama: string;
   kabupaten_kode: string;
   /** Nama resmi pada master wilayah, mis. "KABUPATEN ACEH BESAR". */
@@ -46,7 +49,9 @@ export interface FasilitasWire {
 }
 
 export interface StokWire {
+  /** ID BIGINT lot (string desimal). */
   id: string;
+  kode?: string | null;
   cold_storage_id: string;
   cold_storage_nama: string;
   komoditas_kode: string;
@@ -95,14 +100,18 @@ export interface BulkColdStorageResult {
 }
 
 export interface TransaksiStokWire {
+  /** ID BIGINT transaksi (string desimal). */
   id: string;
+  kode?: string | null;
   lot_id: string;
   lot_baru_id: string | null;
   jenis: TransaksiStok["jenis"];
   volume_ton: number;
   komoditas_nama: string;
   fasilitas_asal_id: string | null;
+  fasilitas_asal_kode?: string | null;
   fasilitas_tujuan_id: string | null;
+  fasilitas_tujuan_kode?: string | null;
   oleh_nama: string | null;
   waktu: string;
   alasan: string;
@@ -350,6 +359,7 @@ export function ikonKomoditas(kode: string): IkonKomoditas {
 export function toFasilitas(w: FasilitasWire): FasilitasColdStorage {
   return {
     id: w.id,
+    kode: w.kode ?? null,
     nama: w.nama,
     wilayah: formatWilayah(w.kabupaten_nama),
     kabupatenKode: w.kabupaten_kode,
@@ -370,6 +380,7 @@ export function toFasilitas(w: FasilitasWire): FasilitasColdStorage {
 export function toStok(w: StokWire): StokColdStorage {
   return {
     id: w.id,
+    kode: w.kode ?? null,
     fasilitasId: w.cold_storage_id,
     fasilitasNama: w.cold_storage_nama,
     komoditasKode: w.komoditas_kode,
@@ -387,13 +398,16 @@ export function toStok(w: StokWire): StokColdStorage {
 export function toTransaksi(w: TransaksiStokWire): TransaksiStok {
   return {
     id: w.id,
+    kode: w.kode ?? null,
     lotId: w.lot_id,
     lotBaruId: w.lot_baru_id,
     jenis: w.jenis,
     volumeTon: w.volume_ton,
     komoditasNama: sentenceCase(w.komoditas_nama),
     fasilitasAsalId: w.fasilitas_asal_id,
+    fasilitasAsalKode: w.fasilitas_asal_kode ?? null,
     fasilitasTujuanId: w.fasilitas_tujuan_id,
+    fasilitasTujuanKode: w.fasilitas_tujuan_kode ?? null,
     olehNama: w.oleh_nama,
     waktu: w.waktu,
     alasan: w.alasan,
@@ -512,6 +526,16 @@ const SORT_KEY: Record<
   pemilik: (s) => s.pemilik.toLowerCase(),
 };
 
+/** Pemutus seri: id BIGINT diurut secara numerik ("9" sebelum "10"), id lain secara leksikografis. */
+function bandingId(a: string, b: string): number {
+  if (/^\d+$/.test(a) && /^\d+$/.test(b)) {
+    const x = BigInt(a);
+    const y = BigInt(b);
+    return x < y ? -1 : x > y ? 1 : 0;
+  }
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
  * Menjalankan kriteria daftar pada data mock dengan semantik yang sama seperti
  * backend (filter, cari, urut dengan id sebagai pemutus seri, halaman, agregat),
@@ -541,7 +565,7 @@ export function queryMockColdStorage(
     const ka = key(a);
     const kb = key(b);
     const c = ka < kb ? -1 : ka > kb ? 1 : 0;
-    return c !== 0 ? c * arah : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    return c !== 0 ? c * arah : bandingId(a.id, b.id);
   });
 
   const totalPages = Math.ceil(urut.length / limit);

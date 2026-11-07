@@ -41,12 +41,12 @@ func (h *Handler) GetAll(c *gin.Context) {
 	}
 
 	overview, err := h.uc.GetAll(c.Request.Context(), domain.StokQuery{
-		ColdStorageID: req.ColdStorageID,
-		Search:        req.Q,
-		Sort:          domain.StokSort(req.Sort),
-		Desc:          req.Order == "desc",
-		Page:          req.Page,
-		Limit:         req.Limit,
+		Fasilitas: domain.RujukanFasilitas(req.ColdStorageID),
+		Search:    req.Q,
+		Sort:      domain.StokSort(req.Sort),
+		Desc:      req.Order == "desc",
+		Page:      req.Page,
+		Limit:     req.Limit,
 	})
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data cold storage")

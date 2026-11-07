@@ -36,7 +36,7 @@ func (f *fakeRepo) ListGeometri(context.Context, *domain.BBox) ([]domain.Geometr
 	return f.geometri, f.err
 }
 func (f *fakeRepo) ListJarak(context.Context) ([]domain.JarakAntarWilayah, error) { return nil, f.err }
-func (f *fakeRepo) SimpanOptimasi(context.Context, domain.OptimasiRute, []domain.RuteDistribusi, []domain.JarakAntarWilayah) error {
+func (f *fakeRepo) SimpanOptimasi(context.Context, *domain.OptimasiRute, []domain.RuteDistribusi, []domain.JarakAntarWilayah) error {
 	return f.err
 }
 func (f *fakeRepo) ListOptimasi(context.Context, int) ([]domain.RencanaOptimasi, error) {
@@ -148,19 +148,23 @@ func TestRiwayatOptimasi_Handler(t *testing.T) {
 	t.Run("memetakan ringkasan, pembuat terhapus menjadi null", func(t *testing.T) {
 		nama := "Manajer Data"
 		a := domain.RencanaOptimasi{KomoditasNama: "Bawang merah", DibuatOlehNama: &nama}
-		a.ID, a.KomoditasKode = "OPT-1", "BWM"
+		a.ID, a.Kode, a.KomoditasKode = 1, new("OPT-000001"), "BWM"
 		a.Periode = time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 		a.TotalVolumeTon, a.TotalBiaya, a.BelumTerpenuhiTon = 54, 61_200_000, 3.5
 		a.DibuatPada = time.Date(2026, 11, 2, 14, 40, 0, 0, time.UTC)
 		b := a
-		b.ID, b.DibuatOlehNama = "OPT-2", nil
+		b.ID, b.Kode, b.DibuatOlehNama = 2, nil, nil
 
 		w := get(router(&fakeRepo{riwayat: []domain.RencanaOptimasi{a, b}}), "/spasial/optimasi-rute")
 		require.Equal(t, nethttp.StatusOK, w.Code)
 		rows := body(t, w)["data"].([]any)
 		require.Len(t, rows, 2)
 		first := rows[0].(map[string]any)
-		assert.Equal(t, "OPT-1", first["id"])
+		assert.Equal(t, "1", first["id"], "ID BIGINT ditulis sebagai string desimal")
+		assert.Equal(t, "OPT-000001", first["kode"])
+		assert.Equal(t, "2", rows[1].(map[string]any)["id"])
+		assert.Nil(t, rows[1].(map[string]any)["kode"], "tanpa kode bernilai null, kunci tetap ada")
+		assert.Contains(t, rows[1], "kode")
 		assert.Equal(t, "Bawang merah", first["komoditas_nama"])
 		assert.Equal(t, "2026-11-01", first["periode"])
 		assert.Equal(t, 54.0, first["total_volume_ton"])

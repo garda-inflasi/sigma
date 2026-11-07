@@ -119,11 +119,18 @@ func (r *Repository) ListJarak(ctx context.Context) ([]domain.JarakAntarWilayah,
 	return items, nil
 }
 
-func (r *Repository) SimpanOptimasi(ctx context.Context, rencana domain.OptimasiRute, rute []domain.RuteDistribusi, jarak []domain.JarakAntarWilayah) error {
+func (r *Repository) SimpanOptimasi(ctx context.Context, rencana *domain.OptimasiRute, rute []domain.RuteDistribusi, jarak []domain.JarakAntarWilayah) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&rencana).Error; err != nil {
+		rencana.ID, rencana.Kode = 0, nil // ID dan kode dibuat di sini, tidak oleh pemanggil
+		if err := tx.Create(rencana).Error; err != nil {
 			return fmt.Errorf("simpan rencana optimasi: %w", err)
 		}
+		// Kode tampilan turunan ID identity, jadi tidak mungkin bentrok.
+		kode := domain.KodeOptimasi(rencana.ID)
+		if err := tx.Model(&domain.OptimasiRute{}).Where("id = ?", rencana.ID).Update("kode", kode).Error; err != nil {
+			return fmt.Errorf("beri kode rencana optimasi: %w", err)
+		}
+		rencana.Kode = &kode
 		// Rencana lama untuk komoditas dan periode yang sama tidak lagi berlaku.
 		err := tx.Exec(`
 			UPDATE rute_distribusi SET status = ?
@@ -135,6 +142,9 @@ func (r *Repository) SimpanOptimasi(ctx context.Context, rencana domain.Optimasi
 			return fmt.Errorf("gantikan rute optimasi lama: %w", err)
 		}
 		if len(rute) > 0 {
+			for i := range rute {
+				rute[i].ID, rute[i].Kode, rute[i].OptimasiID = 0, nil, &rencana.ID
+			}
 			if err := tx.Create(&rute).Error; err != nil {
 				return fmt.Errorf("simpan rute optimasi: %w", err)
 			}

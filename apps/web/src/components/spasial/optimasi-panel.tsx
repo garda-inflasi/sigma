@@ -229,7 +229,7 @@ function Hasil({ hasil }: { hasil: RencanaOptimasi }) {
         )}
         {hasil.optimasiId && (
           <span className="ml-2 text-muted-foreground">
-            Disimpan sebagai {hasil.optimasiId}.
+            Disimpan sebagai {hasil.optimasiKode ?? hasil.optimasiId}.
           </span>
         )}
       </p>

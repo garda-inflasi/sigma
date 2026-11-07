@@ -11,8 +11,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/cold-storage/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
-	"github.com/google/uuid"
 )
 
 const (
@@ -64,6 +64,18 @@ func (o *Operasi) record(ctx context.Context, entry audit.Entry) {
 	}
 }
 
+// idFasilitas menentukan UUID fasilitas dari rujukan: UUID dipakai apa adanya (fasilitas yang tidak ada akan
+// dilaporkan ErrFasilitasTidakAda oleh pembacaan atau penguncian berikutnya), kode dicari lebih dulu.
+func (o *Operasi) idFasilitas(ctx context.Context, ref idx.RujukanUUID) (string, error) {
+	if ref.ID != "" {
+		return ref.ID, nil
+	}
+	if ref.Kode == "" {
+		return "", domain.ErrFasilitasTidakAda
+	}
+	return o.repo.IDFasilitasDariKode(ctx, ref.Kode)
+}
+
 // ── Detail fasilitas ──────────────────────────────────────────────────
 
 // TitikSuhu adalah satu pembacaan pada riwayat suhu.
@@ -85,12 +97,16 @@ type Detail struct {
 
 // Detail mengambil fasilitas, riwayat suhu `jam` jam terakhir (terlama dulu),
 // lot tersimpan, dan transaksi terbaru. jam <= 0 memakai DefaultJamTelemetri.
-func (o *Operasi) Detail(ctx context.Context, id string, jam int) (*Detail, error) {
+func (o *Operasi) Detail(ctx context.Context, ref idx.RujukanUUID, jam int) (*Detail, error) {
 	if jam <= 0 {
 		jam = DefaultJamTelemetri
 	}
 	jam = min(jam, MaxJamTelemetri)
 
+	id, err := o.idFasilitas(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
 	f, err := o.repo.GetFasilitas(ctx, id)
 	if err != nil {
 		return nil, err
@@ -130,7 +146,7 @@ func (o *Operasi) Detail(ctx context.Context, id string, jam int) (*Detail, erro
 
 // ── Telemetri ─────────────────────────────────────────────────────────
 
-// Pembacaan adalah satu pembacaan sensor yang dikirim.
+// Pembacaan adalah satu pembacaan sensor yang dikirim. FasilitasID boleh UUID atau kode fasilitas (CS-01).
 type Pembacaan struct {
 	FasilitasID   string
 	Waktu         time.Time
@@ -171,14 +187,15 @@ func (o *Operasi) Ingest(ctx context.Context, in IngestInput) (IngestOutcome, er
 		return IngestOutcome{}, invalid("maksimal %d pembacaan per kiriman", MaxTelemetriBatch)
 	}
 
-	batas := map[string]domain.FasilitasView{}
+	batas := map[string]domain.FasilitasView{} // menurut UUID
+	rujukan := map[string]string{}             // teks isian -> UUID
 	rows := make([]domain.TelemetriSuhu, 0, len(in.Pembacaan))
 	var alarm []AlarmSuhu
 	batasWaktu := o.now().Add(maxWaktuMasaDepan)
 
 	for i, p := range in.Pembacaan {
-		id := strings.TrimSpace(p.FasilitasID)
-		if id == "" {
+		teks := strings.TrimSpace(p.FasilitasID)
+		if teks == "" {
 			return IngestOutcome{}, invalid("pembacaan %d: fasilitas_id wajib diisi", i+1)
 		}
 		if p.SuhuC < -80 || p.SuhuC > 60 || math.IsNaN(p.SuhuC) {
@@ -199,21 +216,35 @@ func (o *Operasi) Ingest(ctx context.Context, in IngestInput) (IngestOutcome, er
 			return IngestOutcome{}, invalid("pembacaan %d: sumber harus SENSOR atau MANUAL", i+1)
 		}
 
+		id, ok := rujukan[teks]
+		if !ok {
+			var err error
+			id, err = o.idFasilitas(ctx, domain.RujukanFasilitas(teks))
+			if err != nil {
+				if errors.Is(err, domain.ErrFasilitasTidakAda) {
+					return IngestOutcome{}, fmt.Errorf("pembacaan %d (%s): %w", i+1, teks, err)
+				}
+				return IngestOutcome{}, err
+			}
+			rujukan[teks] = id
+		}
 		f, ok := batas[id]
 		if !ok {
 			found, err := o.repo.GetFasilitas(ctx, id)
 			if err != nil {
 				if errors.Is(err, domain.ErrFasilitasTidakAda) {
-					return IngestOutcome{}, fmt.Errorf("pembacaan %d (%s): %w", i+1, id, err)
+					return IngestOutcome{}, fmt.Errorf("pembacaan %d (%s): %w", i+1, teks, err)
 				}
 				return IngestOutcome{}, err
 			}
 			if found.Status == domain.StatusFasilitasRencana {
-				return IngestOutcome{}, fmt.Errorf("pembacaan %d (%s): %w", i+1, id, domain.ErrFasilitasTidakAktif)
+				return IngestOutcome{}, fmt.Errorf("pembacaan %d (%s): %w", i+1, teks, domain.ErrFasilitasTidakAktif)
 			}
 			isiTurunan(found)
 			f = *found
+			id = f.ID // bentuk kanonik dari basis data
 			batas[id] = f
+			rujukan[teks] = id
 		}
 
 		rows = append(rows, domain.TelemetriSuhu{FasilitasID: id, Waktu: p.Waktu.UTC(), SuhuC: p.SuhuC, KelembapanPct: p.KelembapanPct, Sumber: sumber})
@@ -234,10 +265,16 @@ func (o *Operasi) Ingest(ctx context.Context, in IngestInput) (IngestOutcome, er
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
+	// entitas_id berisi UUID bila hanya satu fasilitas (riwayat per fasilitas); kiriman banyak fasilitas dicatat
+	// sebagai ringkasan dan daftar UUID-nya ada di metadata (kolom entitas_id terbatas 255 karakter).
+	entitasID := fmt.Sprintf("%d fasilitas", len(ids))
+	if len(ids) == 1 {
+		entitasID = ids[0]
+	}
 	o.record(ctx, audit.Entry{
-		AktorID: in.ActorID, Aksi: "INGEST_TELEMETRI", Entitas: "cold_storage", EntitasID: strings.Join(ids, ","),
+		AktorID: in.ActorID, Aksi: "INGEST_TELEMETRI", Entitas: "cold_storage", EntitasID: entitasID,
 		Hasil:    audit.HasilBerhasil,
-		Metadata: map[string]any{"diterima": out.Diterima, "duplikat": out.Duplikat, "di_luar_rentang": len(alarm)},
+		Metadata: map[string]any{"fasilitas_ids": ids, "diterima": out.Diterima, "duplikat": out.Duplikat, "di_luar_rentang": len(alarm)},
 	})
 	return out, nil
 }
@@ -246,8 +283,10 @@ func (o *Operasi) Ingest(ctx context.Context, in IngestInput) (IngestOutcome, er
 
 // TransaksiRequest adalah permintaan satu transaksi stok.
 type TransaksiRequest struct {
-	Jenis             string
-	LotID             string
+	Jenis string
+	// LotID adalah ID BIGINT lot (KELUAR dan PINDAH); nol berarti tidak diisi.
+	LotID idx.ID
+	// FasilitasID dan FasilitasTujuanID boleh UUID atau kode fasilitas (CS-01).
 	FasilitasID       string
 	FasilitasTujuanID string
 	KomoditasKode     string
@@ -259,14 +298,10 @@ type TransaksiRequest struct {
 	ActorID           string
 }
 
-func newID(prefix string) string {
-	return prefix + strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:12])
-}
-
 // Transaksi mencatat masuk/keluar/pindah stok secara atomik dan menuliskannya
 // ke audit trail. Galat domain (stok tak cukup, kapasitas penuh, dst.) diteruskan.
 func (o *Operasi) Transaksi(ctx context.Context, req TransaksiRequest) (domain.TransaksiHasil, error) {
-	in, err := o.susunTransaksi(req)
+	in, err := o.susunTransaksi(ctx, req)
 	if err != nil {
 		return domain.TransaksiHasil{}, err
 	}
@@ -279,32 +314,34 @@ func (o *Operasi) Transaksi(ctx context.Context, req TransaksiRequest) (domain.T
 		return domain.TransaksiHasil{}, err
 	}
 
-	meta := map[string]any{"transaksi_id": hasil.TransaksiID, "volume_ton": hasil.VolumeTon, "alasan": in.Alasan}
+	meta := map[string]any{"transaksi_id": hasil.TransaksiID.String(), "volume_ton": hasil.VolumeTon, "alasan": in.Alasan}
 	if hasil.LotBaruID != nil {
-		meta["lot_baru_id"] = *hasil.LotBaruID
+		meta["lot_baru_id"] = hasil.LotBaruID.String()
 	}
 	var sebelum any
 	if hasil.Sebelum != nil {
 		sebelum = hasil.Sebelum
 	}
 	o.record(ctx, audit.Entry{
-		AktorID: req.ActorID, Aksi: "TRANSAKSI_STOK_" + hasil.Jenis, Entitas: "stok_cold_storage", EntitasID: hasil.LotID,
+		AktorID: req.ActorID, Aksi: "TRANSAKSI_STOK_" + hasil.Jenis, Entitas: "stok_cold_storage", EntitasID: hasil.LotID.String(),
 		Hasil: audit.HasilBerhasil, Sebelum: sebelum, Sesudah: hasil.Sesudah, Metadata: meta,
 	})
 	return hasil, nil
 }
 
-// susunTransaksi memvalidasi permintaan dan membentuk masukan repositori.
-func (o *Operasi) susunTransaksi(req TransaksiRequest) (domain.TransaksiInput, error) {
+// susunTransaksi memvalidasi permintaan dan membentuk masukan repositori. ID transaksi dan lot baru tidak dibuat
+// di sini: basis data yang memberikannya.
+func (o *Operasi) susunTransaksi(ctx context.Context, req TransaksiRequest) (domain.TransaksiInput, error) {
 	now := o.now()
 	in := domain.TransaksiInput{
-		ID: newID("TRX-"), Jenis: req.Jenis, Waktu: now, OlehID: req.ActorID,
-		Alasan:      strings.TrimSpace(req.Alasan),
-		LotID:       strings.TrimSpace(req.LotID),
-		FasilitasID: strings.TrimSpace(req.FasilitasID), FasilitasTujuanID: strings.TrimSpace(req.FasilitasTujuanID),
+		Jenis: req.Jenis, Waktu: now, OlehID: req.ActorID,
+		Alasan:        strings.TrimSpace(req.Alasan),
+		LotID:         req.LotID,
 		KomoditasKode: strings.TrimSpace(req.KomoditasKode), Pemilik: strings.TrimSpace(req.Pemilik),
 		VolumeTon: req.VolumeTon, Semua: req.Semua, KedaluwarsaPada: req.KedaluwarsaPada,
 	}
+	fasilitas := strings.TrimSpace(req.FasilitasID)
+	tujuan := strings.TrimSpace(req.FasilitasTujuanID)
 
 	if !in.Semua || req.Jenis == domain.TransaksiMasuk {
 		if math.IsNaN(in.VolumeTon) || in.VolumeTon <= 0 || in.VolumeTon > maxVolumeTon {
@@ -314,26 +351,35 @@ func (o *Operasi) susunTransaksi(req TransaksiRequest) (domain.TransaksiInput, e
 
 	switch req.Jenis {
 	case domain.TransaksiMasuk:
-		if in.FasilitasID == "" || in.KomoditasKode == "" || in.Pemilik == "" {
+		if fasilitas == "" || in.KomoditasKode == "" || in.Pemilik == "" {
 			return in, invalid("fasilitas_id, komoditas_kode, dan pemilik wajib diisi untuk MASUK")
 		}
 		if in.KedaluwarsaPada != nil && !in.KedaluwarsaPada.After(now) {
 			return in, invalid("kedaluwarsa_pada harus di masa depan")
 		}
 		in.Semua = false
-		in.LotID = newID("STK-")
+		in.LotID = 0 // lot baru: ID dari basis data
+		id, err := o.idFasilitas(ctx, domain.RujukanFasilitas(fasilitas))
+		if err != nil {
+			return in, err
+		}
+		in.FasilitasID = id
 	case domain.TransaksiKeluar:
-		if in.LotID == "" {
+		if in.LotID == 0 {
 			return in, invalid("lot_id wajib diisi untuk KELUAR")
 		}
 		if in.Alasan == "" {
 			return in, invalid("alasan wajib diisi untuk KELUAR")
 		}
 	case domain.TransaksiPindah:
-		if in.LotID == "" || in.FasilitasTujuanID == "" {
+		if in.LotID == 0 || tujuan == "" {
 			return in, invalid("lot_id dan fasilitas_tujuan_id wajib diisi untuk PINDAH")
 		}
-		in.LotBaruID = newID("STK-")
+		id, err := o.idFasilitas(ctx, domain.RujukanFasilitas(tujuan))
+		if err != nil {
+			return in, err
+		}
+		in.FasilitasTujuanID = id
 	default:
 		return in, invalid("jenis harus MASUK, KELUAR, atau PINDAH")
 	}
@@ -357,7 +403,7 @@ func isDomainError(err error) bool {
 // ── Fasilitas ─────────────────────────────────────────────────────────
 
 // UbahFasilitas menerapkan perubahan parsial (kapasitas, batas alarm, status).
-func (o *Operasi) UbahFasilitas(ctx context.Context, id string, patch domain.FasilitasPatch, actorID string) (*domain.FasilitasView, error) {
+func (o *Operasi) UbahFasilitas(ctx context.Context, ref idx.RujukanUUID, patch domain.FasilitasPatch, actorID string) (*domain.FasilitasView, error) {
 	if patch.KapasitasTon == nil && patch.SuhuMinC == nil && patch.SuhuMaksC == nil && patch.Status == nil {
 		return nil, invalid("tidak ada perubahan")
 	}
@@ -372,6 +418,10 @@ func (o *Operasi) UbahFasilitas(ctx context.Context, id string, patch domain.Fas
 		}
 	}
 
+	id, err := o.idFasilitas(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
 	before, after, err := o.repo.UpdateFasilitas(ctx, id, patch)
 	if err != nil {
 		if !isDomainError(err) {
@@ -438,8 +488,8 @@ func (o *Operasi) BulkMutasi(ctx context.Context, in BulkInput) (BulkOutcome, er
 		if b.Berhasil {
 			out.Berhasil++
 			out.VolumeTon += b.VolumeTon
-			if b.TransaksiID != "" {
-				transaksi = append(transaksi, b.TransaksiID)
+			if b.TransaksiID != 0 {
+				transaksi = append(transaksi, b.TransaksiID.String())
 			}
 		} else {
 			out.Gagal++
@@ -464,12 +514,12 @@ func (o *Operasi) BulkMutasi(ctx context.Context, in BulkInput) (BulkOutcome, er
 
 // buangLot mengeluarkan seluruh sisa tiap lot (satu transaksi atomik per lot),
 // sehingga kegagalan satu lot tidak membatalkan yang lain.
-func (o *Operasi) buangLot(ctx context.Context, ids []string, actorID string) []domain.BarisBulk {
+func (o *Operasi) buangLot(ctx context.Context, ids []idx.ID, actorID string) []domain.BarisBulk {
 	baris := make([]domain.BarisBulk, len(ids))
 	for i, id := range ids {
 		baris[i] = domain.BarisBulk{ID: id}
 		hasil, err := o.repo.CatatTransaksi(ctx, domain.TransaksiInput{
-			ID: newID("TRX-"), Jenis: domain.TransaksiKeluar, Waktu: o.now(), OlehID: actorID,
+			Jenis: domain.TransaksiKeluar, Waktu: o.now(), OlehID: actorID,
 			Alasan: alasanBuang, LotID: id, Semua: true,
 		})
 		switch {
@@ -478,7 +528,7 @@ func (o *Operasi) buangLot(ctx context.Context, ids []string, actorID string) []
 		case errors.Is(err, domain.ErrLotTidakAda), errors.Is(err, domain.ErrLotHabis):
 			baris[i].Pesan = "Lot tidak ditemukan atau sudah habis"
 		default:
-			o.log.Error("cold-storage: discard lot failed", map[string]interface{}{"lot": id, "error": err.Error()})
+			o.log.Error("cold-storage: discard lot failed", map[string]interface{}{"lot": id.String(), "error": err.Error()})
 			baris[i].Pesan = "Gagal memproses lot"
 		}
 	}
@@ -486,8 +536,8 @@ func (o *Operasi) buangLot(ctx context.Context, ids []string, actorID string) []
 }
 
 // gabungBaris menyusun hasil per lot menurut urutan permintaan dari lot yang berhasil.
-func gabungBaris(ids []string, ok []domain.BarisBulk) []domain.BarisBulk {
-	byID := make(map[string]domain.BarisBulk, len(ok))
+func gabungBaris(ids []idx.ID, ok []domain.BarisBulk) []domain.BarisBulk {
+	byID := make(map[idx.ID]domain.BarisBulk, len(ok))
 	for _, b := range ok {
 		byID[b.ID] = b
 	}

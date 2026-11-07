@@ -2466,7 +2466,9 @@ paths:
   /v1/ews:
     get:
       summary: Mendaftar alert EWS (terbaru dahulu)
-      description: Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server.
+      description: |
+        Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server. Setiap alert membawa `id`
+        (BIGINT, string desimal) dan `kode` tampilan (`EWS-…`, mis. `EWS-0901`); UI menampilkan `kode`.
       operationId: listEwsAlerts
       tags:
         - Early Warning System
@@ -2559,9 +2561,11 @@ paths:
         Memerlukan izin `ews.lihat`. Autentikasi lewat header `Authorization: Bearer` atau cookie
         `garda_access` (EventSource browser). Koneksi tetap terbuka (`Content-Type: text/event-stream`);
         server mengirim `retry: 5000`, komentar `: ping` tiap 25 detik, dan event `alert` setiap
-        alert dibuat atau naik tingkat oleh rule engine. `id` event berurut; klien yang menyambung
-        ulang mengirim `Last-Event-ID` (otomatis oleh EventSource) dan hanya menerima peristiwa
-        setelahnya, tanpa duplikat. Tanpa `Last-Event-ID` aliran dimulai dari sekarang.
+        alert dibuat atau naik tingkat oleh rule engine. `id` frame adalah nomor event berurut
+        (`ews_event.id`, bukan ID alert); klien yang menyambung ulang mengirim `Last-Event-ID`
+        (otomatis oleh EventSource) dan hanya menerima peristiwa setelahnya, tanpa duplikat. Tanpa
+        `Last-Event-ID` aliran dimulai dari sekarang. `data` memuat alert bentuk `EwsAlert`: `id` adalah
+        ID alert (string desimal) dan `kode` kode tampilannya.
         Antar-instance disinkronkan lewat Redis pub/sub bila `REDIS_URL` tersedia, dengan polling
         basis data sebagai cadangan. Proxy tidak boleh mem-buffer respons ini.
       operationId: streamEwsAlerts
@@ -2580,7 +2584,7 @@ paths:
         "200":
           description: |
             Aliran SSE. Contoh frame:
-            `id: 42` / `event: alert` / `data: {"id":"EWS-2000","severity":"KRITIS", ...}` (bentuk `EwsAlert`).
+            `id: 42` / `event: alert` / `data: {"id":"2047","kode":"EWS-2000","severity":"KRITIS", ...}` (bentuk `EwsAlert`).
           content:
             text/event-stream:
               schema:
@@ -2741,8 +2745,10 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          description: ID aturan, mis. ATR-LH-CBM-KRT
+            $ref: "#/components/schemas/IdBigint"
+          description: |
+            ID aturan: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama `ATR-…` (mis. ATR-LH-CBM-KRT,
+            maks 64 karakter) sebagai alias. ID yang salah bentuk atau tidak ada dijawab 404.
       requestBody:
         required: true
         content:
@@ -2769,7 +2775,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Aturan tidak ditemukan
+          description: Aturan tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -2821,7 +2827,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            $ref: "#/components/schemas/IdBigint"
+          description: |
+            ID alert: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama/tampilan `EWS-…` (maks 64 karakter)
+            sebagai alias, sehingga tautan lama di notifikasi dan email tetap berlaku. ID yang salah bentuk atau
+            tidak ada dijawab 404.
       responses:
         "200":
           description: Riwayat alert
@@ -2836,7 +2846,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Alert tidak ditemukan
+          description: Alert tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -2856,8 +2866,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          description: ID alert, mis. EWS-1000
+            $ref: "#/components/schemas/IdBigint"
+          description: |
+            ID alert: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama/tampilan `EWS-…` (maks 64 karakter)
+            sebagai alias, sehingga tautan lama di notifikasi dan email tetap berlaku. ID yang salah bentuk atau
+            tidak ada dijawab 404.
       responses:
         "200":
           description: Detail alert
@@ -2866,7 +2879,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/EwsAlertResponse"
         "404":
-          description: Alert tidak ditemukan
+          description: Alert tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -2879,7 +2892,9 @@ paths:
         `akui` dan `selesai` memerlukan izin `ews.akui`; `eskalasi` memerlukan `ews.eskalasi`.
         Hanya transisi sah yang berlaku (BARU -> DIAKUI, BARU/DIAKUI -> DIESKALASI,
         selain SELESAI -> SELESAI); id yang tidak ada atau tak boleh bertransisi dihitung `gagal`.
-        Aksi yang mengubah data dicatat di audit trail.
+        `ids` berisi ID alert (`IdBigint`: string desimal atau angka JSON); entri yang bukan bilangan bulat
+        positif (termasuk kode `EWS-…`) menggagalkan seluruh permintaan dengan 400. Aksi yang mengubah data
+        dicatat di audit trail.
       operationId: bulkEwsAlerts
       tags:
         - Early Warning System
@@ -2899,7 +2914,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/EwsBulkResponse"
         "400":
-          description: Validasi gagal atau aksi tidak valid
+          description: Validasi gagal, aksi tidak valid, atau ada ID yang bukan bilangan bulat positif
           content:
             application/json:
               schema:
@@ -2914,7 +2929,9 @@ paths:
   /v1/intervensi:
     get:
       summary: Mendaftar kartu intervensi (papan kanban)
-      description: Memerlukan izin `intervensi.lihat`. Terurut per siklus, tahap, lalu urutan.
+      description: |
+        Memerlukan izin `intervensi.lihat`. Terurut per siklus, tahap, lalu urutan. Setiap kartu membawa `id` (UUID)
+        dan `kode` tampilan (`INT-…`); UI menampilkan `kode`.
       operationId: listIntervensi
       tags:
         - Intervensi
@@ -2960,7 +2977,9 @@ paths:
       summary: Membuat kartu intervensi
       description: |
         Memerlukan izin `intervensi.kelola`. Kartu masuk ke tahap pertama siklusnya di urutan
-        paling bawah. Aksi dicatat di audit trail.
+        paling bawah. ID kartu (UUID) dibuat basis data; `kode` tampilan `INT-n` dari sequence `intervensi_kode_seq`.
+        `ews_alert_id` (opsional) adalah ID alert pemicu (`IdBigint`); bentuk salah dijawab 400. Aksi dicatat di
+        audit trail.
       operationId: createIntervensi
       tags:
         - Intervensi
@@ -2980,7 +2999,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateIntervensiResponse"
         "400":
-          description: Validasi gagal, atau komoditas/kabupaten/alert/penanggung jawab tidak ditemukan
+          description: |
+            Validasi gagal (termasuk `ews_alert_id` yang bukan ID BIGINT dan penanggung jawab yang bukan UUID), atau
+            komoditas/kabupaten/alert/penanggung jawab dengan format sah tetapi tidak ditemukan
           content:
             application/json:
               schema:
@@ -3036,8 +3057,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          example: INT-301
+            $ref: "#/components/schemas/IdUuid"
+          description: |
+            ID kartu: UUID kanonik (`IdUuid`) atau kode lama/tampilan `INT-…` (maks 64 karakter) sebagai alias, sehingga URL
+            lama seperti `/v1/intervensi/INT-301/riwayat` tetap berlaku. ID yang salah bentuk atau tidak ada dijawab 404.
+          example: 7c45ad90-863d-3572-a70e-aeee5dcb9131
       requestBody:
         required: true
         content:
@@ -3064,7 +3088,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Kartu tidak ditemukan
+          description: Kartu tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3158,7 +3182,8 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            $ref: "#/components/schemas/IdBigint"
+          description: ID permintaan persetujuan (`IntervensiPersetujuan.id`). Yang salah bentuk dijawab 404, sama dengan yang tidak ada.
       requestBody:
         required: true
         content:
@@ -3185,7 +3210,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Permintaan tidak ditemukan
+          description: Permintaan tidak ditemukan (juga untuk `pid` yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3215,8 +3240,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          example: INT-301
+            $ref: "#/components/schemas/IdUuid"
+          description: |
+            ID kartu: UUID kanonik (`IdUuid`) atau kode lama/tampilan `INT-…` (maks 64 karakter) sebagai alias, sehingga URL
+            lama seperti `/v1/intervensi/INT-301/riwayat` tetap berlaku. ID yang salah bentuk atau tidak ada dijawab 404.
+          example: 7c45ad90-863d-3572-a70e-aeee5dcb9131
       requestBody:
         required: true
         content:
@@ -3243,7 +3271,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Kartu tidak ditemukan
+          description: Kartu tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -3262,6 +3290,8 @@ paths:
         Memerlukan izin `intervensi.kelola`. `tugaskan` menambahkan pemanggil sebagai penanggung jawab;
         `eskalasi` menandai kartu dieskalasi ke Dewan Pengarah, menaikkan prioritasnya ke TINGGI, dan membuka
         permintaan telaah di antrean persetujuan (alur `eskalasi`).
+        `ids` berisi ID kartu (UUID kanonik, `IdUuid`); entri yang bukan UUID sah (termasuk kode `INT-…`)
+        menggagalkan seluruh permintaan dengan 400.
         Hasil dikembalikan per kartu (urut sesuai `ids`, id ganda dibuang); kartu yang tidak ada, sudah
         selesai, sudah ditugaskan, atau sudah dieskalasi dilewati tanpa menggagalkan kartu lain. Kartu yang
         berubah naik versi, tercatat di riwayat kartu, dan aksinya di audit trail.
@@ -3284,7 +3314,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkIntervensiResponse"
         "400":
-          description: Aksi atau daftar id tidak valid
+          description: Aksi tidak valid, atau ada ID yang bukan UUID sah
           content:
             application/json:
               schema:
@@ -3310,8 +3340,11 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-          example: INT-301
+            $ref: "#/components/schemas/IdUuid"
+          description: |
+            ID kartu: UUID kanonik (`IdUuid`) atau kode lama/tampilan `INT-…` (maks 64 karakter) sebagai alias, sehingga URL
+            lama seperti `/v1/intervensi/INT-301/riwayat` tetap berlaku. ID yang salah bentuk atau tidak ada dijawab 404.
+          example: 7c45ad90-863d-3572-a70e-aeee5dcb9131
       responses:
         "200":
           description: Riwayat kartu
@@ -3326,7 +3359,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Kartu tidak ditemukan
+          description: Kartu tidak ditemukan (juga untuk ID yang salah bentuk)
           content:
             application/json:
               schema:
@@ -8656,9 +8689,12 @@ components:
           type: string
           format: date-time
         ews_alert_id:
-          type: string
           nullable: true
-          example: EWS-1000
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: >-
+            ID alert EWS pemicu (BIGINT; string desimal atau angka JSON). Bentuk selain bilangan bulat positif
+            (termasuk kode `EWS-…`) dijawab 400; ID sah yang tidak ada dijawab 400 "rujukan tidak ditemukan".
         penanggung_jawab_ids:
           type: array
           maxItems: 20
@@ -8680,8 +8716,9 @@ components:
           type: object
           properties:
             id:
-              type: string
-              example: INT-1000
+              $ref: "#/components/schemas/IdUuid"
+            kode:
+              $ref: "#/components/schemas/KodeTampilan"
             tahap:
               type: string
               example: t-ews
@@ -8749,9 +8786,9 @@ components:
       type: object
       properties:
         id:
-          type: integer
+          $ref: "#/components/schemas/IdBigint"
         intervensi_id:
-          type: string
+          $ref: "#/components/schemas/IdUuid"
         kartu_judul:
           type: string
         kartu_tahap:
@@ -8892,8 +8929,9 @@ components:
           minItems: 1
           maxItems: 100
           items:
-            type: string
-          example: [INT-301, INT-302]
+            $ref: "#/components/schemas/IdUuid"
+          description: ID kartu (UUID kanonik). Entri yang bukan UUID sah dijawab 400.
+          example: ["7c45ad90-863d-3572-a70e-aeee5dcb9131", "a9004fed-0c60-376c-874c-08e53c3b39bf"]
 
     BulkIntervensiResponse:
       type: object
@@ -8916,7 +8954,7 @@ components:
                 type: object
                 properties:
                   id:
-                    type: string
+                    $ref: "#/components/schemas/IdUuid"
                   berhasil:
                     type: boolean
                   alasan:
@@ -8937,7 +8975,7 @@ components:
             type: object
             properties:
               id:
-                type: integer
+                $ref: "#/components/schemas/IdBigint"
               aksi:
                 type: string
                 enum: [BUAT, PINDAH_TAHAP, TUGASKAN, ESKALASI, AJUKAN, SETUJU, TOLAK]
@@ -8971,8 +9009,9 @@ components:
           format: date-time
           nullable: true
         id:
-          type: string
-          example: INT-301
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         siklus:
           type: string
           enum: [NORMAL, TEKANAN, SURPLUS]
@@ -9005,8 +9044,12 @@ components:
             total:
               type: integer
         ews_alert_id:
-          type: string
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: ID alert EWS pemicu kartu (BIGINT); kosong untuk kartu tanpa alert
+        ews_alert_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         penanggung_jawab:
           type: array
           items:
@@ -9014,6 +9057,8 @@ components:
             properties:
               id:
                 type: string
+                format: uuid
+                description: ID pengguna (UUID)
               nama:
                 type: string
         dibuat_pada:
@@ -9079,8 +9124,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: EWS-1000
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         severity:
           type: string
           enum: [INFO, WASPADA, SIAGA, KRITIS]
@@ -9128,8 +9174,12 @@ components:
           format: date-time
           nullable: true
         aturan_id:
-          type: string
           nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: ID aturan ambang yang memicu alert (BIGINT); kosong untuk alert yang tidak berasal dari rule engine
+        aturan_kode:
+          $ref: "#/components/schemas/KodeTampilan"
         dieskalasi_pada:
           type: string
           format: date-time
@@ -9169,8 +9219,9 @@ components:
       type: object
       properties:
         id:
-          type: string
-          example: ATR-LH-CBM-KRT
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         komoditas_kode:
           type: string
           nullable: true
@@ -9269,7 +9320,7 @@ components:
       type: object
       properties:
         id:
-          type: string
+          $ref: "#/components/schemas/IdBigint"
         dari:
           type: string
           nullable: true
@@ -9429,8 +9480,9 @@ components:
           minItems: 1
           maxItems: 500
           items:
-            type: string
-          example: [EWS-1000, EWS-1001]
+            $ref: "#/components/schemas/IdBigint"
+          description: ID alert (BIGINT; string desimal atau angka JSON). Entri lain, termasuk kode `EWS-…`, dijawab 400.
+          example: ["1024", "1025"]
 
     EwsBulkResponse:
       type: object

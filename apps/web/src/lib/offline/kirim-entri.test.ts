@@ -67,6 +67,19 @@ describe("kirimEntri", () => {
     });
   });
 
+  it("antrean tersimpan sebelum migrasi 000111 tetap terkirim: hanya localId dan kolom entri, tanpa ID tugas", async () => {
+    // Isi antrean di IndexedDB hanya memuat localId (Idempotency-Key) dan kolom entri. Tugas ditautkan server menurut
+    // pasar, tipe, dan komoditas, jadi ID tugas lama (TGS-...) maupun ID BIGINT baru tidak pernah ikut dikirim.
+    const tersimpan = JSON.parse(JSON.stringify(entri)) as EntriLokal;
+    jawab(201, { code: "201", message: "Created", data: { id: "32290", status: "DIAJUKAN" } });
+
+    assert.deepEqual(await kirimEntri(tersimpan), { ok: true });
+
+    const body = JSON.parse(permintaan[0].init.body as string) as Record<string, unknown>;
+    for (const kunci of ["id", "tugas", "tugas_id", "entri_id"]) assert.equal(kunci in body, false, kunci);
+    assert.equal((permintaan[0].init.headers as Record<string, string>)["Idempotency-Key"], "uuid-1");
+  });
+
   it("kiriman ulang yang dijawab 200 tetap sukses", async () => {
     jawab(200, {
       code: "200",

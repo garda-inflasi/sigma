@@ -6,7 +6,10 @@ export type Kualitas = "PREMIUM" | "MEDIUM" | "ASALAN";
 export type StatusEntri = "DRAF" | "DIAJUKAN" | "DIVALIDASI" | "DIPUBLIKASI" | "DITOLAK";
 
 export interface EntriHarga {
+  /** ID BIGINT dari API, string angka tak bermakna ("1024"); dipakai untuk tautan dan aksi massal. */
   id: string;
+  /** Kode tampilan (ID lama, mis. HRG-D00-00-01-K); kosong untuk entri baru. Teks untuk manusia: `kode ?? id`. */
+  kode?: string;
   komoditasKode: string;
   komoditasNama: string;
   pasarId: string;
@@ -322,7 +325,10 @@ export interface PolicyBrief {
 }
 
 export interface TugasLapangan {
+  /** ID BIGINT dari API, string angka tak bermakna ("42"); dipakai untuk tautan dan aksi massal. */
   id: string;
+  /** Kode tampilan (ID lama, mis. TGS-mahasiswa_1-1); kosong untuk tugas baru. Teks untuk manusia: `kode ?? id`. */
+  kode?: string;
   judul: string;
   pasarId: string;
   pasarNama: string;

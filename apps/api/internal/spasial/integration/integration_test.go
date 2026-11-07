@@ -216,6 +216,7 @@ func TestSpasial_RuteAndKandidat(t *testing.T) {
 
 	rute := data[[]struct {
 		ID            string  `json:"id"`
+		Kode          string  `json:"kode"`
 		Asal          string  `json:"asal"`
 		Tujuan        string  `json:"tujuan"`
 		KomoditasNama string  `json:"komoditas_nama"`
@@ -228,16 +229,18 @@ func TestSpasial_RuteAndKandidat(t *testing.T) {
 	for i := 1; i < len(rute); i++ {
 		assert.GreaterOrEqual(t, rute[i-1].Biaya, rute[i].Biaya, "terurut menurut biaya menurun")
 	}
-	ids := map[string]bool{}
+	kode := map[string]bool{}
 	for _, r := range rute {
-		ids[r.ID] = true
+		kode[r.Kode] = true
+		assert.Regexp(t, `^[1-9][0-9]*$`, r.ID, "ID BIGINT sebagai string desimal")
 		assert.NotEmpty(t, r.Asal)
 		assert.NotEmpty(t, r.KomoditasNama)
 	}
-	assert.True(t, ids["RT-1106-1171"])
+	assert.True(t, kode["RT-1106-1171"], "kode = ID lama")
 
 	kandidat := data[[]struct {
 		ID           string             `json:"id"`
+		Kode         string             `json:"kode"`
 		Wilayah      string             `json:"wilayah"`
 		Lokasi       string             `json:"lokasi"`
 		Skor         int                `json:"skor"`
@@ -246,6 +249,8 @@ func TestSpasial_RuteAndKandidat(t *testing.T) {
 	}](t, s.call(t, "/v1/spasial/kandidat-cold-storage", emailLihat))
 	require.Len(t, kandidat, 3)
 	assert.Equal(t, "Kota Langsa", kandidat[0].Lokasi)
+	assert.Equal(t, "KC-1173", kandidat[0].Kode)
+	assert.Regexp(t, `^[1-9][0-9]*$`, kandidat[0].ID)
 	assert.Equal(t, 82, kandidat[0].Skor)
 	assert.Equal(t, "RENCANA", kandidat[0].Status)
 	assert.Equal(t, "KOTA LANGSA", kandidat[0].Wilayah)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/spasial/domain"
 	"github.com/garda-inflasi/api/internal/spasial/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // MarkerResponse adalah satu wilayah di peta. Status: defisit | waspada | normal | surplus.
@@ -35,7 +36,9 @@ type NeracaResponse struct {
 
 // RuteResponse adalah satu usulan rute distribusi.
 type RuteResponse struct {
-	ID            string    `json:"id"`
+	// ID adalah ID BIGINT (string desimal); Kode adalah ID lama (RT-1106-1171) pada data seed dan migrasi.
+	ID            idx.ID    `json:"id"`
+	Kode          *string   `json:"kode"`
 	AsalKode      string    `json:"asal_kode"`
 	Asal          string    `json:"asal"`
 	TujuanKode    string    `json:"tujuan_kode"`
@@ -53,7 +56,9 @@ type RuteResponse struct {
 
 // KandidatResponse adalah satu kandidat lokasi cold storage.
 type KandidatResponse struct {
-	ID            string             `json:"id"`
+	// ID adalah ID BIGINT (string desimal); Kode adalah ID lama (KC-1173) pada data seed dan migrasi.
+	ID            idx.ID             `json:"id"`
+	Kode          *string            `json:"kode"`
 	KabupatenKode string             `json:"kabupaten_kode"`
 	Wilayah       string             `json:"wilayah"`
 	Lokasi        string             `json:"lokasi"`
@@ -95,7 +100,7 @@ func ToRuteResponses(items []domain.Rute) []RuteResponse {
 	out := make([]RuteResponse, len(items))
 	for i, r := range items {
 		out[i] = RuteResponse{
-			ID: r.ID, AsalKode: r.AsalKode, Asal: r.AsalNama, TujuanKode: r.TujuanKode, Tujuan: r.TujuanNama,
+			ID: r.ID, Kode: r.Kode, AsalKode: r.AsalKode, Asal: r.AsalNama, TujuanKode: r.TujuanKode, Tujuan: r.TujuanNama,
 			KomoditasKode: r.KomoditasKode, KomoditasNama: r.KomoditasNama, VolumeTon: r.VolumeTon,
 			JarakKm: r.JarakKm, JamTempuh: r.JamTempuh, Biaya: r.Biaya, Status: r.Status, Sumber: r.Sumber,
 			DibuatPada: r.DibuatPada,
@@ -114,7 +119,7 @@ func ToKandidatResponses(items []domain.Kandidat) ([]KandidatResponse, error) {
 			return nil, err
 		}
 		out[i] = KandidatResponse{
-			ID: c.ID, KabupatenKode: c.KabupatenKode, Wilayah: c.KabupatenNama, Lokasi: c.Lokasi, Skor: c.Skor,
+			ID: c.ID, Kode: c.Kode, KabupatenKode: c.KabupatenKode, Wilayah: c.KabupatenNama, Lokasi: c.Lokasi, Skor: c.Skor,
 			KomponenSkor: komponen, Alasan: c.Alasan, Status: c.Status, Sumber: c.Sumber,
 		}
 	}
@@ -202,13 +207,17 @@ type OptimasiResponse struct {
 	// volume yang sama; null bila volumenya berbeda. PenghematanPersen: penghematan rencana optimal terhadapnya.
 	BiayaPembanding   *int64   `json:"biaya_pembanding"`
 	PenghematanPersen *float64 `json:"penghematan_persen"`
-	// OptimasiID terisi (bukan null) bila rencana disimpan.
-	OptimasiID *string `json:"optimasi_id"`
+	// OptimasiID dan OptimasiKode terisi (bukan null) bila rencana disimpan: ID BIGINT (string desimal) dan
+	// kode tampilannya (OPT-000042).
+	OptimasiID   *idx.ID `json:"optimasi_id"`
+	OptimasiKode *string `json:"optimasi_kode"`
 }
 
 // RencanaOptimasiResponse adalah ringkasan satu rencana tersimpan.
 type RencanaOptimasiResponse struct {
-	ID                string    `json:"id"`
+	// ID adalah ID BIGINT (string desimal); Kode adalah kode tampilan (OPT-000042, atau ID lama pada data migrasi).
+	ID                idx.ID    `json:"id"`
+	Kode              *string   `json:"kode"`
 	KomoditasKode     string    `json:"komoditas_kode"`
 	KomoditasNama     string    `json:"komoditas_nama"`
 	Periode           string    `json:"periode"`
@@ -241,8 +250,12 @@ func ToOptimasiResponse(o usecase.OptimasiOutput) OptimasiResponse {
 		BelumTerpenuhi: sisaResponses(o.BelumTerpenuhi), SurplusSisa: sisaResponses(o.SurplusSisa),
 		BiayaPembanding: o.BiayaPembanding, PenghematanPersen: o.PenghematanPersen,
 	}
-	if o.OptimasiID != "" {
-		res.OptimasiID = &o.OptimasiID
+	if o.OptimasiID != 0 {
+		id, kode := o.OptimasiID, o.OptimasiKode
+		res.OptimasiID = &id
+		if kode != "" {
+			res.OptimasiKode = &kode
+		}
 	}
 	return res
 }
@@ -251,7 +264,7 @@ func ToRencanaOptimasiResponses(items []domain.RencanaOptimasi) []RencanaOptimas
 	out := make([]RencanaOptimasiResponse, len(items))
 	for i, r := range items {
 		out[i] = RencanaOptimasiResponse{
-			ID: r.ID, KomoditasKode: r.KomoditasKode, KomoditasNama: r.KomoditasNama, Periode: r.Periode.Format("2006-01-02"),
+			ID: r.ID, Kode: r.Kode, KomoditasKode: r.KomoditasKode, KomoditasNama: r.KomoditasNama, Periode: r.Periode.Format("2006-01-02"),
 			TotalVolumeTon: r.TotalVolumeTon, TotalBiaya: r.TotalBiaya, BelumTerpenuhiTon: r.BelumTerpenuhiTon,
 			DibuatOleh: r.DibuatOlehNama, DibuatPada: r.DibuatPada,
 		}

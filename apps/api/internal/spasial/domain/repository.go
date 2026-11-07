@@ -26,7 +26,9 @@ type OptimasiRepository interface {
 	// SimpanOptimasi menulis rencana, menandai rute optimasi lama untuk komoditas
 	// dan periode yang sama sebagai DIGANTIKAN, menyisipkan rute baru, dan mengisi
 	// cache jarak (pasangan yang sudah ada tidak ditimpa) dalam satu transaksi.
-	SimpanOptimasi(ctx context.Context, rencana OptimasiRute, rute []RuteDistribusi, jarak []JarakAntarWilayah) error
+	// ID rencana dan rute dibuat basis data (identity): rencana.ID dan rencana.Kode terisi
+	// sesudah berhasil, dan rute menunjuk ID itu lewat OptimasiID.
+	SimpanOptimasi(ctx context.Context, rencana *OptimasiRute, rute []RuteDistribusi, jarak []JarakAntarWilayah) error
 	// ListOptimasi mengembalikan rencana tersimpan, terbaru lebih dulu.
 	ListOptimasi(ctx context.Context, limit int) ([]RencanaOptimasi, error)
 }

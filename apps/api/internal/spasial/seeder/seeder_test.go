@@ -83,13 +83,15 @@ func TestBuildRute_FiveMostPressuredRegionsFromSurplusCenters(t *testing.T) {
 		assert.Positive(t, r.JarakKm)
 		assert.Positive(t, r.Biaya)
 		assert.Equal(t, "USULAN", r.Status)
-		assert.Equal(t, "RT-"+r.AsalKode+"-"+r.TujuanKode, r.ID)
+		require.NotNil(t, r.Kode)
+		assert.Equal(t, "RT-"+r.AsalKode+"-"+r.TujuanKode, *r.Kode, "kode = ID lama; kunci idempotensi seeder")
+		assert.Zero(t, r.ID, "ID BIGINT diberi basis data, bukan seeder")
 	}
 	assert.Equal(t, map[string]string{"1171": "1106", "1108": "1117", "1174": "1109", "1107": "1106", "1109": "1117"}, tujuan)
 
 	// 1171 dari 1106: volume = 8 + 21,4 x 1,6 = 42 ton; biaya = jarak x volume x tarif.
 	first := rute[0]
-	assert.Equal(t, "RT-1106-1171", first.ID)
+	assert.Equal(t, "RT-1106-1171", *first.Kode)
 	assert.EqualValues(t, 42, first.VolumeTon)
 	km := jarakMeter(koordinat["1106"], koordinat["1171"]) / 1000 * faktorJalan
 	assert.InDelta(t, km*42*tarifTonKm, float64(first.Biaya), 1)
@@ -112,7 +114,9 @@ func TestBuildKandidat_ScoreIsWeightedAverageOfComponents(t *testing.T) {
 	for _, k := range kandidat {
 		var komponen map[string]float64
 		require.NoError(t, json.Unmarshal([]byte(k.KomponenSkor), &komponen))
-		assert.Len(t, komponen, len(bobotSkor), k.ID)
+		require.NotNil(t, k.Kode)
+		assert.Zero(t, k.ID, "ID BIGINT diberi basis data, bukan seeder")
+		assert.Len(t, komponen, len(bobotSkor), *k.Kode)
 		assert.Equal(t, k.Skor, Skor(komponen))
 	}
 }
@@ -153,6 +157,73 @@ func TestSeedDemo_IsIdempotentWithinAMonthAndKeepsPreviousPeriods(t *testing.T) 
 	assert.EqualValues(t, 5, count(t, db, "rute_distribusi"))
 }
 
+// ID BIGINT tidak pernah ditulis seeder: menjalankan ulang (juga pada bulan lain) tidak mengubah ID baris yang ada,
+// dan kunci idempotensinya adalah kode (rute, kandidat) dan kunci alami (neraca).
+func TestSeedDemo_RerunKeepsIDsAndKeysOnKodeAndNaturalKey(t *testing.T) {
+	db := seededDB(t, "spasial_seed_ids")
+	ctx := t.Context()
+	ids := func(tabel string) string {
+		var out string
+		require.NoError(t, db.Raw(`SELECT string_agg(id::text, ',' ORDER BY id) FROM `+tabel).Scan(&out).Error)
+		return out
+	}
+
+	_, err := SeedDemo(ctx, db, seedNow)
+	require.NoError(t, err)
+	rute, kandidat, neraca := ids("rute_distribusi"), ids("kandidat_cold_storage"), ids("neraca_wilayah")
+	require.NotEmpty(t, rute)
+
+	_, err = SeedDemo(ctx, db, seedNow.Add(24*time.Hour)) // bulan yang sama, hari lain
+	require.NoError(t, err)
+	assert.Equal(t, rute, ids("rute_distribusi"))
+	assert.Equal(t, kandidat, ids("kandidat_cold_storage"))
+	assert.Equal(t, neraca, ids("neraca_wilayah"))
+
+	var kodeRute, kodeKandidat string
+	require.NoError(t, db.Raw(`SELECT string_agg(kode, ',' ORDER BY kode) FROM rute_distribusi`).Scan(&kodeRute).Error)
+	require.NoError(t, db.Raw(`SELECT string_agg(kode, ',' ORDER BY kode) FROM kandidat_cold_storage`).Scan(&kodeKandidat).Error)
+	assert.Equal(t, "RT-1106-1107,RT-1106-1171,RT-1109-1174,RT-1117-1108,RT-1117-1109", kodeRute, "kode = ID lama")
+	assert.Equal(t, "KC-1109,KC-1110,KC-1173", kodeKandidat)
+}
+
+// Seeder dijalankan pada basis data hasil migrasi 000113 (baris sudah ada dengan ID BIGINT dan kode = ID lama):
+// tidak menggandakan baris dan tidak mengubah ID.
+func TestSeedDemo_OnMigratedDatabaseReusesRowsByKodeAndNaturalKey(t *testing.T) {
+	db := pg.NewDatabase(t, "spasial_seed_pasca_migrasi")
+	migrator := pgtest.Migrator(t, db)
+	require.NoError(t, migrator.UpTo(t.Context(), 112))
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	// Bentuk data lama: ID teks, neraca dengan PK komposit.
+	require.NoError(t, db.Exec(`INSERT INTO rute_distribusi (id, asal_kode, tujuan_kode, komoditas_kode, volume_ton, jarak_km, jam_tempuh, biaya)
+		VALUES ('RT-1106-1171', '1106', '1171', 'CBM-KRT', 1, 1, 1, 1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO kandidat_cold_storage (id, kabupaten_kode, lokasi, skor, komponen_skor) VALUES ('KC-1173', '1173', 'Lama', 1, '{}')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO neraca_wilayah (komoditas_kode, kabupaten_kode, periode, surplus_defisit_ton, delta_harga_pct)
+		VALUES ('CBM-KRT', '1171', ?, 1, 1)`, Periode(seedNow)).Error)
+	require.NoError(t, migrator.UpTo(t.Context(), 113))
+	var idRute, idKandidat, idNeraca int64
+	require.NoError(t, db.Raw(`SELECT id FROM rute_distribusi WHERE kode = 'RT-1106-1171'`).Scan(&idRute).Error)
+	require.NoError(t, db.Raw(`SELECT id FROM kandidat_cold_storage WHERE kode = 'KC-1173'`).Scan(&idKandidat).Error)
+	require.NoError(t, db.Raw(`SELECT id FROM neraca_wilayah WHERE komoditas_kode = 'CBM-KRT' AND kabupaten_kode = '1171'`).Scan(&idNeraca).Error)
+
+	_, err = SeedDemo(t.Context(), db, seedNow)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 5, count(t, db, "rute_distribusi"), "RT-1106-1171 hasil migrasi dipakai ulang")
+	assert.EqualValues(t, 3, count(t, db, "kandidat_cold_storage"))
+	assert.EqualValues(t, len(komoditasNeraca)*23, count(t, db, "neraca_wilayah"))
+	var id int64
+	require.NoError(t, db.Raw(`SELECT id FROM rute_distribusi WHERE kode = 'RT-1106-1171'`).Scan(&id).Error)
+	assert.Equal(t, idRute, id)
+	require.NoError(t, db.Raw(`SELECT id FROM kandidat_cold_storage WHERE kode = 'KC-1173'`).Scan(&id).Error)
+	assert.Equal(t, idKandidat, id)
+	require.NoError(t, db.Raw(`SELECT id FROM neraca_wilayah WHERE komoditas_kode = 'CBM-KRT' AND kabupaten_kode = '1171'`).Scan(&id).Error)
+	assert.Equal(t, idNeraca, id)
+	var lokasi string
+	require.NoError(t, db.Raw(`SELECT lokasi FROM kandidat_cold_storage WHERE kode = 'KC-1173'`).Scan(&lokasi).Error)
+	assert.Equal(t, "Kota Langsa", lokasi, "seed memperbarui baris hasil migrasi")
+}
+
 func TestSeedDemo_WithoutMasterExplainsWhatToRunFirst(t *testing.T) {
 	db := pg.NewDatabase(t, "spasial_seed_no_master")
 	pgtest.MigrateUp(t, db)
@@ -181,10 +252,10 @@ func TestWilayahView_ExposesEveryKabupatenAsAPoint(t *testing.T) {
 func TestMigration_RejectsInvalidRouteAndScore(t *testing.T) {
 	db := seededDB(t, "spasial_checks")
 
-	err := db.Exec(`INSERT INTO rute_distribusi (id, asal_kode, tujuan_kode, komoditas_kode, volume_ton, jarak_km, jam_tempuh, biaya)
-		VALUES ('X', '1171', '1171', 'BWM', 5, 1, 1, 1)`).Error
+	err := db.Exec(`INSERT INTO rute_distribusi (asal_kode, tujuan_kode, komoditas_kode, volume_ton, jarak_km, jam_tempuh, biaya)
+		VALUES ('1171', '1171', 'BWM', 5, 1, 1, 1)`).Error
 	assert.ErrorContains(t, err, "chk_rute_distribusi_beda")
 
-	err = db.Exec(`INSERT INTO kandidat_cold_storage (id, kabupaten_kode, lokasi, skor, komponen_skor) VALUES ('X', '1171', 'X', 101, '{}')`).Error
+	err = db.Exec(`INSERT INTO kandidat_cold_storage (kabupaten_kode, lokasi, skor, komponen_skor) VALUES ('1171', 'X', 101, '{}')`).Error
 	assert.ErrorContains(t, err, "chk_kandidat_cold_storage_skor")
 }

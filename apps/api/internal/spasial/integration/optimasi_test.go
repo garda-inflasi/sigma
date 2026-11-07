@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
@@ -36,6 +37,7 @@ type optimasiResp struct {
 	TotalVolumeTon float64 `json:"total_volume_ton"`
 	TotalBiaya     int64   `json:"total_biaya"`
 	OptimasiID     *string `json:"optimasi_id"`
+	OptimasiKode   *string `json:"optimasi_kode"`
 	// Pembanding: rencana serakah untuk volume yang sama.
 	BiayaPembanding   *int64   `json:"biaya_pembanding"`
 	PenghematanPersen *float64 `json:"penghematan_persen"`
@@ -259,13 +261,28 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 
 	require.NotNil(t, first.OptimasiID)
 	require.NotEmpty(t, first.Rute)
+	t.Run("ID dan kode rencana dari basis data, bukan buatan aplikasi", func(t *testing.T) {
+		assert.Regexp(t, `^[1-9][0-9]*$`, *first.OptimasiID, "ID BIGINT sebagai string desimal")
+		require.NotNil(t, first.OptimasiKode)
+		assert.Equal(t, "OPT-"+strings.Repeat("0", 6-len(*first.OptimasiID))+*first.OptimasiID, *first.OptimasiKode, "kode turunan ID identity")
+		var kode string
+		require.NoError(t, db.Raw(`SELECT kode FROM optimasi_rute WHERE id = ?`, *first.OptimasiID).Scan(&kode).Error)
+		assert.Equal(t, *first.OptimasiKode, kode)
+	})
+
 	t.Run("rute usulan tertaut ke rencana dan tampil di daftar rute", func(t *testing.T) {
-		var rows []struct{ ID, Status, Sumber, OptimasiID string }
-		require.NoError(t, db.Raw(`SELECT id, status, sumber, optimasi_id FROM rute_distribusi WHERE optimasi_id = ?`, *first.OptimasiID).Scan(&rows).Error)
+		var rows []struct {
+			ID, Status, Sumber, OptimasiID string
+			Kode                           *string
+		}
+		require.NoError(t, db.Raw(`SELECT id, kode, status, sumber, optimasi_id FROM rute_distribusi WHERE optimasi_id = ?`, *first.OptimasiID).Scan(&rows).Error)
 		require.Len(t, rows, len(first.Rute))
 		for _, r := range rows {
 			assert.Equal(t, "USULAN", r.Status)
 			assert.Equal(t, "OPTIMASI", r.Sumber)
+			assert.Equal(t, *first.OptimasiID, r.OptimasiID, "FK menunjuk ID hasil RETURNING")
+			assert.Nil(t, r.Kode, "rute baru tidak diberi kode buatan aplikasi")
+			assert.Regexp(t, `^[1-9][0-9]*$`, r.ID)
 		}
 
 		list := data[[]map[string]any](t, s.call(t, "/v1/spasial/rute", emailHanyaLihat))
@@ -300,7 +317,7 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 
 		var aksi int64
 		require.NoError(t, db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'OPTIMASI_RUTE' AND entitas_id = ? AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_program')`, *first.OptimasiID).Scan(&aksi).Error)
-		assert.EqualValues(t, 1, aksi)
+		assert.EqualValues(t, 1, aksi, "audit mencatat ID BIGINT rencana")
 	})
 
 	second := save(map[string]any{"komoditas_kode": "CBM-KRT", "tarif_per_ton_km": 5000})
@@ -318,6 +335,7 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 	t.Run("riwayat memuat kedua rencana, terbaru dulu", func(t *testing.T) {
 		type rencana struct {
 			ID            string  `json:"id"`
+			Kode          *string `json:"kode"`
 			KomoditasNama string  `json:"komoditas_nama"`
 			TotalBiaya    int64   `json:"total_biaya"`
 			DibuatOleh    *string `json:"dibuat_oleh"`
@@ -326,6 +344,9 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 
 		require.Len(t, list, 2)
 		assert.Equal(t, *second.OptimasiID, list[0].ID)
+		assert.Equal(t, *first.OptimasiID, list[1].ID)
+		require.NotNil(t, list[0].Kode)
+		assert.Equal(t, *second.OptimasiKode, *list[0].Kode)
 		assert.NotEmpty(t, list[0].KomoditasNama)
 		require.NotNil(t, list[0].DibuatOleh)
 	})
@@ -337,6 +358,50 @@ func TestOptimasi_SavedPlanBecomesProposedRoutesAndSupersedesTheOldOne(t *testin
 		require.NoError(t, db.Raw(`SELECT COUNT(*) FROM rute_distribusi WHERE optimasi_id = ? AND status = 'USULAN'`, *second.OptimasiID).Scan(&n).Error)
 		assert.EqualValues(t, len(second.Rute), n)
 	})
+}
+
+// Aturan ON DELETE 000113: menghapus rencana menghapus rutenya (CASCADE); kabupaten yang dirujuk rute ditahan
+// (RESTRICT); matriks jarak dan geometri ikut terhapus bersama kabupatennya (CASCADE).
+func TestOnDeleteRules_RoutesFollowPlanAndRegionsAreProtected(t *testing.T) {
+	s, db := writableSuite(t, "spasial_on_delete")
+	w := s.post(t, pathOptimasi, emailLogistik, map[string]any{"komoditas_kode": "CBM-KRT", "simpan": true})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	plan := data[optimasiResp](t, w)
+	require.NotNil(t, plan.OptimasiID)
+	require.NotEmpty(t, plan.Rute)
+
+	// Wilayah yang dirujuk rute demo (1106 asal, 1171 tujuan) tidak dapat dihapus.
+	err := db.Exec(`DELETE FROM kabupaten WHERE kode = '1171'`).Error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "23503")
+
+	// Komoditas yang dipakai rencana dan neraca tidak dapat dihapus.
+	err = db.Exec(`DELETE FROM komoditas WHERE kode = 'CBM-KRT'`).Error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "23503")
+
+	var sebelum int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM rute_distribusi`).Scan(&sebelum).Error)
+	require.NoError(t, db.Exec(`DELETE FROM optimasi_rute WHERE id = ?`, *plan.OptimasiID).Error)
+	var sesudah, sisa int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM rute_distribusi`).Scan(&sesudah).Error)
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM rute_distribusi WHERE optimasi_id = ?`, *plan.OptimasiID).Scan(&sisa).Error)
+	assert.Zero(t, sisa, "rute milik rencana ikut terhapus")
+	assert.Equal(t, sebelum-int64(len(plan.Rute)), sesudah, "rute demo tanpa rencana tidak tersentuh")
+
+	// Matriks jarak dan geometri adalah turunan wilayah: dihapus bersama kabupaten yang tidak lagi dirujuk tabel lain.
+	require.NoError(t, db.Exec(`DELETE FROM jarak_antar_wilayah`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode)
+		SELECT '9999', 'KABUPATEN UJI', 'KABUPATEN', 'Uji', 1, 1, provinsi_kode FROM kabupaten LIMIT 1`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO jarak_antar_wilayah (asal_kode, tujuan_kode, jarak_km, jam_tempuh) VALUES ('9999', '1171', 10, 1), ('1171', '9999', 10, 1)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO wilayah_geometri (kabupaten_kode, geojson, min_lat, min_lng, max_lat, max_lng)
+		VALUES ('9999', '{"type":"Polygon","coordinates":[[[1,1],[2,1],[2,2],[1,1]]]}', 1, 1, 2, 2)`).Error)
+	require.NoError(t, db.Exec(`DELETE FROM kabupaten WHERE kode = '9999'`).Error)
+	var n int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM jarak_antar_wilayah`).Scan(&n).Error)
+	assert.Zero(t, n)
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM wilayah_geometri WHERE kabupaten_kode = '9999'`).Scan(&n).Error)
+	assert.Zero(t, n)
 }
 
 func TestMigration000102_RejectsInvalidDistancesAndDownKeepsRoutes(t *testing.T) {

@@ -116,9 +116,19 @@ func (s *Scheduler) Statuses() []Status {
 // ErrUnknownJob dikembalikan RunOnce untuk nama yang tidak terdaftar.
 var ErrUnknownJob = errors.New("jobs: job tidak dikenal")
 
+type kunciManual struct{}
+
+// Manual melaporkan apakah putaran job dijalankan manual (RunOnce, mis. `worker run <job>`), bukan oleh jadwal.
+func Manual(ctx context.Context) bool {
+	manual, _ := ctx.Value(kunciManual{}).(bool)
+	return manual
+}
+
 // RunOnce menjalankan satu putaran job sekarang (tetap dengan advisory lock).
 // ran=false berarti putaran dilewati karena instance lain memegang lock.
+// Context job ditandai Manual.
 func (s *Scheduler) RunOnce(ctx context.Context, name string) (ran bool, err error) {
+	ctx = context.WithValue(ctx, kunciManual{}, true)
 	s.mu.Lock()
 	var job *Job
 	for i := range s.jobs {

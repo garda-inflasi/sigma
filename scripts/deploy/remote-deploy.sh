@@ -127,6 +127,12 @@ require_secret AES_KEY 32
 [[ "${#AES_KEY}" -eq 32 ]] || die "AES_KEY harus tepat 32 karakter." "Gunakan: openssl rand -hex 16"
 [[ -n "${APP_ALLOWED_ORIGINS:-}" ]] || die "APP_ALLOWED_ORIGINS kosong di .env." \
     "Isi dengan origin publik aplikasi, mis. https://app.garda.id"
+# Login DB berhak minimum untuk api/worker (03-C): opsional, tetapi bila diisi sandinya wajib kuat.
+if [[ -n "${DB_APP_USER:-}" ]]; then
+  require_secret DB_APP_PASSWORD 16
+  [[ "${DB_APP_USER}" != "${DB_USER:-${POSTGRES_USER:-garda}}" ]] || die "DB_APP_USER tidak boleh sama dengan pemilik skema." \
+      "Pilih nama lain, mis. DB_APP_USER=garda_app"
+fi
 
 # Compose needs the same variables the app containers use.
 export POSTGRES_DB="${POSTGRES_DB:-garda_inflasi}"
@@ -134,6 +140,8 @@ export POSTGRES_USER="${POSTGRES_USER:-garda}"
 export DB_USER="${DB_USER:-$POSTGRES_USER}"
 export DB_PASSWORD="${DB_PASSWORD:-$POSTGRES_PASSWORD}"
 export DB_NAME="${DB_NAME:-$POSTGRES_DB}"
+export DB_APP_USER="${DB_APP_USER:-}"
+export DB_APP_PASSWORD="${DB_APP_PASSWORD:-}"
 export APP_ENV=production
 
 # ------------------------------------------------------------------------------

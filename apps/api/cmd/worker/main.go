@@ -8,6 +8,8 @@
 //	worker                 jalankan semua job sesuai interval (bawaan)
 //	worker list            cetak job terdaftar dan interval efektifnya
 //	worker run <job>       jalankan satu putaran job lalu keluar
+//	worker verifikasi-arsip <manifest.json>
+//	                       periksa berkas arsip audit tanpa basis data (SHA-256, jumlah baris, rantai hash)
 //
 // Konfigurasi (env): koneksi DB_* seperti API; JOB_<NAMA>_INTERVAL (mis.
 // JOB_DASHBOARD_REFRESH_INTERVAL=5m, "off" untuk menonaktifkan);
@@ -47,6 +49,9 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, getenv func(string) string, out io.Writer, log *logger.Logger) error {
+	if len(args) == 2 && args[0] == "verifikasi-arsip" {
+		return verifikasiArsip(args[1], out)
+	}
 	if err := prodcheck.ValidateWorker(getenv); err != nil {
 		return fmt.Errorf("konfigurasi production tidak aman: %w", err)
 	}
@@ -87,7 +92,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 		fmt.Fprintf(out, "%s: selesai\n", args[1])
 		return nil
 	}
-	return errors.New("pemakaian: worker [list | run <job>]")
+	return errors.New("pemakaian: worker [list | run <job> | verifikasi-arsip <manifest.json>]")
 }
 
 func serve(ctx context.Context, db *gorm.DB, sched *jobs.Scheduler, daemons []daemon, getenv func(string) string, log *logger.Logger) error {

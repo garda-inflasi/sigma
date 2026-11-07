@@ -33,6 +33,9 @@ const (
 	PKHash KategoriPK = "HASH"
 	// PKKomposit: gabungan kolom FK (tabel penghubung) atau induk + urutan (entitas lemah).
 	PKKomposit KategoriPK = "KOMPOSIT"
+	// PKBigintPartisi: tabel berpartisi; PK = (kolom partisi, id) karena PK tabel berpartisi wajib memuat kolom
+	// partisinya, dengan id bigint identity sebagai pengenal unik (satu sequence di induk). Log time-series besar.
+	PKBigintPartisi KategoriPK = "BIGINT_PARTISI"
 )
 
 // kategoriPK adalah matriks kunci primer seluruh tabel aplikasi.
@@ -47,10 +50,14 @@ var kategoriPK = map[string]KategoriPK{
 	// BIGINT: transaksional, time-series, log, operasional.
 	"entri_harga":            PKBigint,
 	"riwayat_status_entri":   PKBigint,
+	"entri_harga_versi":      PKBigint,
 	"tugas_lapangan":         PKBigint,
 	"batas_harga":            PKBigint,
 	"perubahan_master":       PKBigint,
-	"audit_log":              PKBigint,
+	"audit_log":              PKBigintPartisi, // PARTITION BY RANGE (waktu), PK (waktu, id) (000117)
+	"audit_log_verifikasi":   PKBigint,
+	"audit_log_arsip":        PKBigint,
+	"audit_log_arsip_segmen": PKBigint,
 	"aturan_ews":             PKBigint,
 	"aturan_ews_riwayat":     PKBigint,
 	"ews_alert":              PKBigint,
@@ -234,6 +241,11 @@ func pelanggaranPK(tabel string, kat KategoriPK, pk kolomPK, ada bool) []string 
 		}
 		if pk.Identity == "" && !strings.HasPrefix(pk.Bawaan, "nextval(") {
 			return salah("harus GENERATED AS IDENTITY atau BIGSERIAL")
+		}
+	case PKBigintPartisi:
+		kolom, tipe := strings.Split(pk.Kolom, ","), strings.Split(pk.Tipe, ",")
+		if pk.JumlahKol != 2 || kolom[1] != "id" || tipe[1] != "bigint" || pk.Identity == "" {
+			return salah("harus (kolom partisi, id bigint identity)")
 		}
 	case PKKode, PKHash:
 		if pk.JumlahKol != 1 {

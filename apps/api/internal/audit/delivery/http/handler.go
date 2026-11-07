@@ -19,11 +19,27 @@ import (
 )
 
 type Handler struct {
-	uc *usecase.UseCase
+	uc         *usecase.UseCase
+	integritas *usecase.Integritas
 }
 
-func New(uc *usecase.UseCase) *Handler {
-	return &Handler{uc: uc}
+func New(uc *usecase.UseCase, integritas *usecase.Integritas) *Handler {
+	return &Handler{uc: uc, integritas: integritas}
+}
+
+// GET /v1/audit/integritas: verifikasi rantai hash terakhir, partisi bulanan aktif, dan partisi yang sudah
+// diarsipkan (03-C). Verifikasinya sendiri dijalankan worker (job audit_verifikasi), bukan permintaan ini.
+func (h *Handler) Integritas(c *gin.Context) {
+	ringkasan, err := h.integritas.Ringkasan(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil status integritas audit")
+		return
+	}
+	var masalah []domain.Masalah
+	if ringkasan.VerifikasiTerakhir != nil {
+		masalah = usecase.MasalahVerifikasi(*ringkasan.VerifikasiTerakhir)
+	}
+	response.Success(c, dto.ToIntegritasResponse(ringkasan.VerifikasiTerakhir, masalah, ringkasan.Partisi, ringkasan.Arsip))
 }
 
 // GET /v1/audit

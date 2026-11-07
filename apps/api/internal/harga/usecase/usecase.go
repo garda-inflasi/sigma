@@ -313,9 +313,10 @@ func syaratAlasan(action domain.BulkAction) string {
 	return fmt.Sprintf("maksimal %d karakter", MaxAlasan)
 }
 
-// Riwayat mengembalikan perpindahan status entri (ID BIGINT atau kode lama). Pemanggil tanpa hak melihat semua
-// entri (semua false) hanya boleh membuka entri yang ia catat sendiri.
-func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) ([]domain.RiwayatView, error) {
+// bukaEntri mengembalikan entri (ID BIGINT atau kode lama) bila pemanggil boleh melihatnya: pemanggil dengan hak
+// melihat semua entri (semua true) boleh membuka entri mana pun, selain itu hanya entri yang ia catat sendiri.
+// Entri yang tidak boleh dibuka dijawab ErrNotFound, sama dengan entri yang tidak ada.
+func (uc *UseCase) bukaEntri(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) (*domain.EntriView, error) {
 	entri, err := uc.GetHargaByID(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -323,12 +324,51 @@ func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, pemanggilID s
 	if !semua && (entri.PetugasID == nil || *entri.PetugasID != pemanggilID) {
 		return nil, ErrNotFound
 	}
+	return entri, nil
+}
+
+// Riwayat mengembalikan perpindahan status entri (ID BIGINT atau kode lama). Pemanggil tanpa hak melihat semua
+// entri (semua false) hanya boleh membuka entri yang ia catat sendiri.
+func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) ([]domain.RiwayatView, error) {
+	entri, err := uc.bukaEntri(ctx, ref, pemanggilID, semua)
+	if err != nil {
+		return nil, err
+	}
 	items, err := uc.repo.Riwayat(ctx, entri.ID)
 	if err != nil {
 		uc.log.Error("riwayat harga failed", map[string]interface{}{"id": entri.ID.String(), "error": err.Error()})
 		return nil, fmt.Errorf("riwayat harga: %w", err)
 	}
 	return items, nil
+}
+
+// Versi mengembalikan seluruh versi isi entri, yang terlama lebih dulu. Aturan akses sama dengan Riwayat.
+func (uc *UseCase) Versi(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) ([]domain.VersiView, error) {
+	entri, err := uc.bukaEntri(ctx, ref, pemanggilID, semua)
+	if err != nil {
+		return nil, err
+	}
+	items, err := uc.repo.Versi(ctx, entri.ID)
+	if err != nil {
+		uc.log.Error("versi harga failed", map[string]interface{}{"id": entri.ID.String(), "error": err.Error()})
+		return nil, fmt.Errorf("versi harga: %w", err)
+	}
+	return items, nil
+}
+
+// Lineage mengembalikan jejak asal entri harga (PRD §1.4): pencatat, validasi otomatis, validasi, publikasi,
+// penolakan, versi, riwayat status, dan rujukan audit. Aturan akses sama dengan Riwayat.
+func (uc *UseCase) Lineage(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) (domain.Lineage, error) {
+	entri, err := uc.bukaEntri(ctx, ref, pemanggilID, semua)
+	if err != nil {
+		return domain.Lineage{}, err
+	}
+	lineage, err := uc.repo.Lineage(ctx, *entri)
+	if err != nil {
+		uc.log.Error("lineage harga failed", map[string]interface{}{"id": entri.ID.String(), "error": err.Error()})
+		return domain.Lineage{}, fmt.Errorf("lineage harga: %w", err)
+	}
+	return lineage, nil
 }
 
 // catat menulis audit; kegagalan mencatat tidak membatalkan aksi yang sudah tersimpan.

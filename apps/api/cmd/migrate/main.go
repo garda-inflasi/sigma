@@ -6,7 +6,9 @@
 //	migrate down      batalkan satu migrasi terakhir
 //	migrate version   cetak versi skema saat ini
 //
-// Konfigurasi: DATABASE_URL (wajib), MIGRATIONS_DIR (bawaan db/migrations).
+// Konfigurasi: DATABASE_URL (wajib, pemilik skema), MIGRATIONS_DIR (bawaan db/migrations).
+// DB_APP_USER dan DB_APP_PASSWORD (opsional): sesudah `up`, login DB berhak minimum untuk api dan worker dibuat atau
+// kata sandinya diperbarui (anggota garda_aplikasi; tanpa DDL dan tanpa UPDATE/DELETE pada jejak audit).
 package main
 
 import (
@@ -75,6 +77,11 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 		return err
 	}
 
+	appUser, appPassword := getenv("DB_APP_USER"), getenv("DB_APP_PASSWORD")
+	if appUser != "" && appPassword == "" {
+		return errors.New("DB_APP_USER diisi tetapi DB_APP_PASSWORD kosong")
+	}
+
 	switch command {
 	case "up":
 		err = migrator.Up(ctx)
@@ -83,6 +90,12 @@ func run(args []string, getenv func(string) string, out io.Writer) error {
 	}
 	if err != nil {
 		return err
+	}
+	if command == "up" && appUser != "" {
+		if err := migrate.SiapkanPenggunaAplikasi(ctx, db, appUser, appPassword); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "pengguna DB aplikasi: %s (anggota %s)\n", appUser, migrate.PeranAplikasi)
 	}
 
 	version, err := migrator.Version(ctx)

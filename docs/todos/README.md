@@ -82,14 +82,22 @@ komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemis
   - `go test ./...` (99 paket) dan tes web (1.074 unit, 82 komponen) hijau;
   - e2e Playwright 319 tes lolos dua putaran berturut-turut pada stack yang dibangun ulang (DB demo dimigrasi ke 000115).
 
+**Integritas dan retensi audit (7 Nov 2026, [03-C](03-audit.md)):** migrasi `000116`–`000119`.
+
+- **Rantai hash.** Pemicu menghitung SHA-256 berantai pada `audit_log`; job worker `audit_verifikasi` memverifikasi
+  ulang seluruh rantai di Go. Statusnya tampil di kartu "Integritas" halaman `/audit`.
+- **Partisi bulanan.** `audit_log` kini berpartisi per bulan dengan job `audit_partisi`.
+- **Retensi.** Partisi lama diekspor ke berkas arsip ber-manifest lalu dilepas dari basis data.
+- **Hak minimum.** Peran `garda_aplikasi` dan login `DB_APP_USER` tanpa DDL dan tanpa UPDATE/DELETE jejak audit.
+- **Lineage harga.** `entri_harga_versi`, `GET /v1/harga/:id/versi` dan `/lineage`, serta panel "Lineage data".
+
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 
 1. **Belum diuji terhadap layanan nyata** (tidak ada akses/kunci saat dikerjakan): konektor PIHPS, BMKG, dan BPS
    (parser dikunci fixture; id wilayah PIHPS dan id variabel BPS wajib diisi operator), panggilan Claude untuk
    brief (tanpa `ANTHROPIC_API_KEY` brief memakai templat), SMTP sungguhan (di demo email ditangkap Mailpit) dan
    Web Push, serta deploy ujung ke ujung (remote-deploy, rollback, sertifikat ACME).
-2. **Belum dikerjakan (di luar daftar Fase F):** row scope dan pemisahan tugas per peran (02-B), hash berantai dan
-   partisi audit (03-C), antrean dan riwayat persetujuan perubahan isi master data (04-B; aksi status komoditas
+2. **Belum dikerjakan (di luar daftar Fase F):** row scope dan pemisahan tugas per peran (02-B), antrean dan riwayat persetujuan perubahan isi master data (04-B; aksi status komoditas
    sudah tersimpan lewat API, wilayah dan pasar belum punya siklus status), foto entri lapangan (07-C), ensemble dan fitur eksogen model prediksi serta retraining terjadwal (11), batas wilayah resmi
    dan matriks jarak jalan (12), MQTT cold storage (13), WhatsApp, dan konektor Bapanas/DJPb/OpenWeather.
 3. **Data demo atau perkiraan** (berlabel di UI): geometri dan koordinat wilayah, target KPI dan target inflasi awal,

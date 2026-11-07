@@ -43,11 +43,11 @@ services:
     image: garda-api:${IMAGE_TAG:-latest}
     build: !reset null
     environment:
-      <<: *prod-database-url
       APP_ENV: production
       GIN_MODE: release
       APP_ADDR: ":8080"
-      DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD wajib diisi}"
+      # Login berhak minimum (DB_APP_USER/DB_APP_PASSWORD) bila diisi, selain itu pemilik skema.
+      DB_PASSWORD: "${DB_APP_PASSWORD:-${DB_PASSWORD:?DB_PASSWORD wajib diisi}}"
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET wajib diisi}"
       AES_KEY: "${AES_KEY:?AES_KEY wajib diisi}"
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:?APP_ALLOWED_ORIGINS wajib diisi (origin publik)}"
@@ -60,7 +60,7 @@ services:
     environment:
       APP_ENV: production
       GIN_MODE: release
-      DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD wajib diisi}"
+      DB_PASSWORD: "${DB_APP_PASSWORD:-${DB_PASSWORD:?DB_PASSWORD wajib diisi}}"
     restart: unless-stopped
 
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
@@ -73,6 +73,8 @@ services:
       # Migrasi data MFA menyegel mfa_secret dengan AES_KEY: wajib sama dengan kunci api.
       APP_ENV: production
       AES_KEY: "${AES_KEY:?AES_KEY wajib diisi}"
+      DB_APP_USER: "${DB_APP_USER:-}"
+      DB_APP_PASSWORD: "${DB_APP_PASSWORD:-}"
 
   # Produksi hanya mengisi referensi dan admin awal, tidak pernah demo.
   seed:

@@ -4,7 +4,17 @@
  */
 
 import { ROLES, type Role } from "@/lib/rbac/roles";
-import type { AuditDetail, AuditPerubahan, AuditRow } from "@/lib/data/types";
+import type {
+  AuditArsip,
+  AuditDetail,
+  AuditIntegritas,
+  AuditIntegritasStatus,
+  AuditPartisi,
+  AuditPerubahan,
+  AuditRow,
+  AuditVerifikasi,
+} from "@/lib/data/types";
+import { formatAngka } from "@/lib/format";
 import { API_BASE, ApiError } from "./client";
 import { fetchSesi } from "@/lib/auth/sesi-client";
 
@@ -156,6 +166,204 @@ export function toAuditDetail(a: AuditDetailResponse): AuditDetail {
 /** Detail mode mock: baris yang sama tanpa keadaan sebelum/sesudah. */
 export function toMockAuditDetail(row: AuditRow): AuditDetail {
   return { ...row, userAgent: "", correlationId: "", email: "", perubahan: [] };
+}
+
+/** `masalah_pertama` pada verifikasi: baris pertama yang melanggar rantai hash. */
+export interface AuditMasalahResponse {
+  id: string;
+  /** ISI_BERUBAH | RANTAI_PUTUS | ARSIP_TIDAK_COCOK. */
+  jenis: string;
+  keterangan?: string | null;
+}
+
+/** Satu putaran verifikasi rantai hash. ID adalah string desimal. */
+export interface AuditVerifikasiResponse {
+  id: string;
+  mulai: string;
+  selesai?: string | null;
+  /** JADWAL | MANUAL. */
+  pemicu: string;
+  /** VALID | RUSAK | GAGAL. */
+  status: string;
+  jumlah_baris: number;
+  jumlah_masalah: number;
+  id_awal?: string | null;
+  id_akhir?: string | null;
+  hash_akhir?: string | null;
+  masalah_pertama?: AuditMasalahResponse | null;
+  keterangan?: string | null;
+}
+
+export interface AuditPartisiResponse {
+  nama: string;
+  dari: string;
+  sampai: string;
+  /** Perkiraan perencana kueri; null bila belum pernah dianalisis. */
+  perkiraan_baris?: number | null;
+}
+
+export interface AuditArsipResponse {
+  id: string;
+  partisi: string;
+  dari: string;
+  sampai: string;
+  jumlah_baris: number;
+  id_pertama: string;
+  id_terakhir: string;
+  berkas: string;
+  sha256: string;
+  diarsipkan_pada: string;
+}
+
+/** `GET /v1/audit/integritas`: status rantai hash, partisi aktif, dan arsip. */
+export interface AuditIntegritasResponse {
+  /** Null bila verifikasi belum pernah berjalan. */
+  verifikasi_terakhir?: AuditVerifikasiResponse | null;
+  /** Terbaru dulu. */
+  partisi?: AuditPartisiResponse[] | null;
+  /** Terbaru dulu; biasanya kosong. */
+  arsip?: AuditArsipResponse[] | null;
+}
+
+/** Teks kosong atau null menjadi undefined; ID desimal tetap string. */
+const teks = (v: string | number | null | undefined): string | undefined =>
+  v === null || v === undefined || v === "" ? undefined : String(v);
+
+const STATUS_INTEGRITAS: readonly AuditIntegritasStatus[] = ["VALID", "RUSAK", "GAGAL"];
+
+/** AuditVerifikasiResponse (API) → AuditVerifikasi (UI). Status tak dikenal dianggap GAGAL (keadaan rantai tak pasti). */
+function toAuditVerifikasi(v: AuditVerifikasiResponse): AuditVerifikasi {
+  const status = STATUS_INTEGRITAS.find((s) => s === v.status) ?? "GAGAL";
+  return {
+    id: String(v.id),
+    mulai: v.mulai,
+    selesai: teks(v.selesai),
+    pemicu: v.pemicu === "MANUAL" ? "MANUAL" : "JADWAL",
+    status,
+    jumlahBaris: Number(v.jumlah_baris) || 0,
+    jumlahMasalah: Number(v.jumlah_masalah) || 0,
+    idAwal: teks(v.id_awal),
+    idAkhir: teks(v.id_akhir),
+    hashAkhir: teks(v.hash_akhir),
+    masalahPertama: v.masalah_pertama
+      ? {
+          id: String(v.masalah_pertama.id),
+          jenis: v.masalah_pertama.jenis,
+          keterangan: v.masalah_pertama.keterangan ?? "",
+        }
+      : undefined,
+    keterangan: teks(v.keterangan),
+  };
+}
+
+function toAuditPartisi(p: AuditPartisiResponse): AuditPartisi {
+  return {
+    nama: p.nama,
+    dari: p.dari,
+    sampai: p.sampai,
+    perkiraanBaris: p.perkiraan_baris ?? undefined,
+  };
+}
+
+function toAuditArsip(a: AuditArsipResponse): AuditArsip {
+  return {
+    id: String(a.id),
+    partisi: a.partisi,
+    dari: a.dari,
+    sampai: a.sampai,
+    jumlahBaris: Number(a.jumlah_baris) || 0,
+    idPertama: String(a.id_pertama),
+    idTerakhir: String(a.id_terakhir),
+    berkas: a.berkas,
+    sha256: a.sha256,
+    diarsipkanPada: a.diarsipkan_pada,
+  };
+}
+
+/** AuditIntegritasResponse (API) → AuditIntegritas (UI). */
+export function toAuditIntegritas(res: AuditIntegritasResponse): AuditIntegritas {
+  return {
+    verifikasiTerakhir: res.verifikasi_terakhir
+      ? toAuditVerifikasi(res.verifikasi_terakhir)
+      : null,
+    partisi: (res.partisi ?? []).map(toAuditPartisi),
+    arsip: (res.arsip ?? []).map(toAuditArsip),
+  };
+}
+
+const LABEL_MASALAH: Record<string, string> = {
+  ISI_BERUBAH: "isi baris berubah",
+  RANTAI_PUTUS: "rantai putus",
+  ARSIP_TIDAK_COCOK: "tidak cocok dengan arsip",
+};
+
+/** Nama jenis masalah untuk manusia; jenis yang belum dikenal ditampilkan apa adanya. */
+export const labelMasalahAudit = (jenis: string): string =>
+  LABEL_MASALAH[jenis] ?? jenis;
+
+/** Kalimat satu baris yang menjelaskan hasil verifikasi terakhir. */
+export function penjelasanIntegritas(v: AuditVerifikasi | null): string {
+  if (!v) return "Verifikasi rantai hash belum pernah dijalankan.";
+  if (v.status === "VALID")
+    return `Rantai hash utuh: ${formatAngka(v.jumlahBaris)} baris diverifikasi.`;
+  if (v.status === "RUSAK") {
+    const lain = v.jumlahMasalah - 1;
+    const sisa = lain > 0 ? `; ${formatAngka(lain)} masalah lain.` : ".";
+    return v.masalahPertama
+      ? `Terdeteksi perubahan pada baris #${v.masalahPertama.id} (${labelMasalahAudit(v.masalahPertama.jenis)})${sisa}`
+      : `Terdeteksi ${formatAngka(v.jumlahMasalah)} masalah pada rantai hash.`;
+  }
+  return v.keterangan
+    ? `Verifikasi gagal dijalankan: ${v.keterangan}`
+    : "Verifikasi gagal dijalankan.";
+}
+
+/** Jumlah partisi aktif beserta bulan tertua dan terbaru (ISO, awal partisi); kosong bila tak ada partisi. */
+export function rentangPartisiAudit(partisi: AuditPartisi[]): {
+  jumlah: number;
+  terlama?: string;
+  terbaru?: string;
+} {
+  const waktu = partisi
+    .map((p) => p.dari)
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  return { jumlah: partisi.length, terlama: waktu[0], terbaru: waktu.at(-1) };
+}
+
+/** Awal bulan (UTC) dengan selisih `offset` bulan dari `sekarang`. */
+const awalBulan = (sekarang: Date, offset: number) =>
+  new Date(Date.UTC(sekarang.getUTCFullYear(), sekarang.getUTCMonth() + offset, 1));
+
+/** Padanan mode mock: VALID, tiga partisi (bulan depan, ini, lalu; terbaru dulu), tanpa arsip. */
+export function mockAuditIntegritas(sekarang = new Date()): AuditIntegritas {
+  const partisi = [1, 0, -1].map((offset): AuditPartisi => {
+    const dari = awalBulan(sekarang, offset);
+    const kode = `${dari.getUTCFullYear()}${String(dari.getUTCMonth() + 1).padStart(2, "0")}`;
+    return {
+      nama: `audit_log_p${kode}`,
+      dari: dari.toISOString(),
+      sampai: awalBulan(sekarang, offset + 1).toISOString(),
+      perkiraanBaris: offset === 1 ? 0 : offset === 0 ? 120 : 1480,
+    };
+  });
+  const selesai = new Date(sekarang.getTime() - 6 * 3_600_000);
+  return {
+    verifikasiTerakhir: {
+      id: "12",
+      mulai: new Date(selesai.getTime() - 4_000).toISOString(),
+      selesai: selesai.toISOString(),
+      pemicu: "JADWAL",
+      status: "VALID",
+      jumlahBaris: 1600,
+      jumlahMasalah: 0,
+      idAwal: "1",
+      idAkhir: "1600",
+      hashAkhir:
+        "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    },
+    partisi,
+    arsip: [],
+  };
 }
 
 /** Query string `GET /v1/audit` dari filter dan cursor; nilai kosong dibuang. */

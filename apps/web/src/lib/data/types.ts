@@ -32,6 +32,55 @@ export interface EntriHarga {
   alasanPenolakan?: string;
 }
 
+/** Aksi yang menghasilkan satu versi isi entri harga (tabel entri_harga_versi). */
+export type AksiVersiHarga = "INPUT" | "AJUKAN" | "VALIDASI" | "PUBLIKASI" | "TOLAK" | "KEMBALIKAN" | "UBAH" | "MIGRASI";
+
+/** Satu versi isi entri harga: siapa, kapan, status dan harga saat itu, dan kolom yang berubah. */
+export interface VersiEntriHarga {
+  versi: number;
+  aksi: AksiVersiHarga;
+  status: StatusEntri;
+  harga: number;
+  /** Kosong bila pelakunya tidak diketahui (versi migrasi, atau perubahan langsung di basis data). */
+  olehNama?: string;
+  waktu: string;
+  /** Nama kolom entri_harga yang berubah dibanding versi sebelumnya (tanpa kolom waktu). */
+  perubahan: string[];
+}
+
+/** Tahap validasi, publikasi, atau penolakan pada jejak entri. */
+export interface TahapLineageHarga {
+  olehNama?: string;
+  pada?: string;
+  /** Hanya pada penolakan. */
+  alasan?: string;
+}
+
+/** Jejak asal satu entri harga (PRD §1.4), untuk panel detail validasi harga. */
+export interface LineageHarga {
+  petugasNama?: string;
+  /** Waktu harga diamati menurut perangkat petugas. */
+  dicatatPada: string;
+  /** Waktu server menerima entri; jauh sesudah dicatatPada berarti kiriman terlambat. */
+  diterimaPada: string;
+  sumber: string;
+  kodePedagang?: string;
+  /** Judul tugas lapangan yang dipenuhi entri; kosong bila tidak berasal dari tugas. */
+  tugas: string[];
+  /** Bendera cek otomatis yang menyala, dengan label siap tampil. */
+  bendera: string[];
+  skorAnomali: number;
+  deviasiPct: number;
+  validasi?: TahapLineageHarga;
+  publikasi?: TahapLineageHarga;
+  penolakan?: TahapLineageHarga;
+  versiTerkini: number;
+  /** Terlama lebih dulu. */
+  versi: VersiEntriHarga[];
+  /** Kode aksi audit trail yang menyebut entri ini, tanpa duplikat, urut menurut kemunculan pertama. */
+  aksiAudit: string[];
+}
+
 export type JenisEws = "LONJAKAN_HARGA" | "KELANGKAAN_STOK" | "ANOMALI_CUACA" | "OVER_SUPPLY" | "ANOMALI_DATA";
 export type StatusEws = "BARU" | "DIAKUI" | "DIESKALASI" | "SELESAI";
 
@@ -328,6 +377,68 @@ export interface AuditDetail extends AuditRow {
   email: string;
   metadata?: Record<string, unknown>;
   perubahan: AuditPerubahan[];
+}
+
+/** Hasil satu verifikasi rantai hash audit: VALID utuh, RUSAK terdeteksi perubahan, GAGAL verifikasinya sendiri galat. */
+export type AuditIntegritasStatus = "VALID" | "RUSAK" | "GAGAL";
+
+/** Baris pertama yang ditemukan melanggar rantai hash. */
+export interface AuditMasalah {
+  id: string;
+  /** ISI_BERUBAH | RANTAI_PUTUS | ARSIP_TIDAK_COCOK; nilai yang belum dikenal diteruskan apa adanya. */
+  jenis: string;
+  keterangan: string;
+}
+
+/** Satu putaran verifikasi rantai hash (terjadwal atau manual). */
+export interface AuditVerifikasi {
+  id: string;
+  mulai: string;
+  selesai?: string;
+  pemicu: "JADWAL" | "MANUAL";
+  status: AuditIntegritasStatus;
+  jumlahBaris: number;
+  jumlahMasalah: number;
+  idAwal?: string;
+  idAkhir?: string;
+  /** Hash SHA-256 baris terakhir yang diverifikasi (64 heksadesimal). */
+  hashAkhir?: string;
+  masalahPertama?: AuditMasalah;
+  /** Pesan galat untuk status GAGAL. */
+  keterangan?: string;
+}
+
+/** Partisi bulanan tabel audit yang masih aktif. */
+export interface AuditPartisi {
+  nama: string;
+  dari: string;
+  sampai: string;
+  /** Perkiraan perencana kueri; kosong bila tabel belum pernah dianalisis. */
+  perkiraanBaris?: number;
+}
+
+/** Partisi lama yang sudah dipindahkan ke berkas arsip (cold storage). */
+export interface AuditArsip {
+  id: string;
+  partisi: string;
+  dari: string;
+  sampai: string;
+  jumlahBaris: number;
+  idPertama: string;
+  idTerakhir: string;
+  berkas: string;
+  sha256: string;
+  diarsipkanPada: string;
+}
+
+/** Status integritas audit trail (`GET /v1/audit/integritas`). */
+export interface AuditIntegritas {
+  /** Kosong bila verifikasi belum pernah berjalan. */
+  verifikasiTerakhir: AuditVerifikasi | null;
+  /** Terbaru dulu. */
+  partisi: AuditPartisi[];
+  /** Terbaru dulu; biasanya kosong. */
+  arsip: AuditArsip[];
 }
 
 export interface PolicyBrief {

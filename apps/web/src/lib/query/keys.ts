@@ -39,6 +39,7 @@ export const qk = {
     saya: () => ["harga", "saya"] as const,
     detail: (id: string) => ["harga", "detail", id] as const,
     riwayat: (id: string) => ["harga", "riwayat", id] as const,
+    lineage: (id: string) => ["harga", "lineage", id] as const,
     ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
   },
   ews: { all: () => ["ews"] as const, list: () => ["ews", "list"] as const, detail: (id: string) => ["ews", "detail", id] as const, riwayat: (id: string) => ["ews", "riwayat", id] as const, aturan: () => ["ews", "aturan"] as const, preferensi: () => ["ews", "preferensi"] as const },
@@ -74,6 +75,7 @@ export const qk = {
   audit: {
     list: (filter: AuditFilter) => ["audit", "list", filter] as const,
     detail: (id: string) => ["audit", "detail", id] as const,
+    integritas: () => ["audit", "integritas"] as const,
   },
   brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
   tugas: { saya: () => ["tugas", "saya"] as const, detail: (id: string) => ["tugas", "detail", id] as const },

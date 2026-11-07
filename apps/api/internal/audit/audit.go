@@ -47,3 +47,15 @@ func RequestContext(c *gin.Context) context.Context {
 		CorrelationID: id,
 	})
 }
+
+// Integritas memelihara rantai hash, partisi bulanan, dan arsip audit_log (03-C).
+type Integritas = usecase.Integritas
+
+// KonfigRetensi adalah kebijakan masa simpan audit.
+type KonfigRetensi = usecase.KonfigRetensi
+
+// NewIntegritas membuat usecase integritas audit; temuan dan arsip dicatat lewat Writer basis data yang sama.
+func NewIntegritas(db *gorm.DB) *Integritas {
+	repo := postgres.New(db)
+	return usecase.NewIntegritas(repo, usecase.New(repo))
+}

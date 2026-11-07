@@ -19,6 +19,7 @@ import { useDetailHarga, useEntriHarga, useRingkasanHarga, useRiwayatStatus } fr
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { FACET_STATUS_ENTRI, useHargaBulkActions, useHargaColumns } from "./harga-table";
+import { LineageEntri } from "./lineage-entri";
 
 const STATUS_VALID = Object.keys(STATUS_ENTRI) as StatusEntri[];
 const statusDariQuery = (s: string | null) => STATUS_VALID.find((v) => v === s);
@@ -170,6 +171,7 @@ export function HargaPage() {
                   <p className="mb-3 text-sm font-medium">Alur entri</p>
                   {MODE_MOCK ? <AlurEntri e={detail} /> : <RiwayatEntri id={detail.id} />}
                 </div>
+                <LineageEntri id={detail.id} />
               </div>
             </>
           )}

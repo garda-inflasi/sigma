@@ -19,6 +19,7 @@ VM **tidak pernah** build apa pun (`--no-build` wajib di semua `docker compose u
 8. [Referensi Perintah](#8-referensi-perintah)
 9. [Rollback](#9-rollback)
 10. [Backup Database](#10-backup-database)
+    - [10b. Integritas dan retensi audit](#10b-integritas-dan-retensi-audit)
 11. [Ganti Domain / SSL](#11-ganti-domain--ssl)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Referensi Environment Variable](#13-referensi-environment-variable)
@@ -175,6 +176,9 @@ POSTGRES_DB=garda_inflasi
 DB_USER=garda
 DB_PASSWORD=GANTI_DENGAN_HEX_ACAK      # sama dengan POSTGRES_PASSWORD
 DB_NAME=garda_inflasi
+# Login berhak minimum untuk api dan worker (dianjurkan, §10b): dibuat service migrate sesudah migrasi.
+DB_APP_USER=garda_app
+DB_APP_PASSWORD=GANTI_DENGAN_HEX_ACAK  # berbeda dari DB_PASSWORD; minimal 16 karakter
 
 # ── Secrets (WAJIB diganti; deploy DITOLAK bila kosong/contoh/bawaan) ───
 # Pakai hex agar aman di URL dan env: openssl rand -hex 24   (JWT_SECRET, passwords)
@@ -198,6 +202,7 @@ CADDY_TLS=admin@garda.id
 # JOB_DASHBOARD_REFRESH_INTERVAL=5m    # interval job worker (off = nonaktif)
 # JOB_KPI_HITUNG_INTERVAL=1h
 # JOB_AUTH_PEMBERSIHAN_INTERVAL=1h     # pembersihan baris auth kedaluwarsa (lihat tabel di bawah)
+# AUDIT_RETENSI_BULAN=60               # retensi audit ke arsip (§10b); kosong = mati
 
 # ── Masuk dengan Google (opsional, lihat §3.7) ──────────────────────────
 # SSO_GOOGLE_CLIENT_ID=123456789012-xxxxxxxx.apps.googleusercontent.com
@@ -503,6 +508,59 @@ GARDA_RESTORE_CONFIRM=garda_inflasi sh scripts/backup/restore.sh backups/<dump> 
 
 `make db/backup/verify` terhadap `garda_inflasi` yang sedang melayani demo: goose version 51 cocok, 42 tabel/matview cocok baris-per-baris (mis. `entri_harga` 16.142, `agregat_harga_harian` 14.559), database sementara dihapus, `garda_inflasi` tidak disentuh. Jalur negatif juga diuji: checksum rusak ditolak, manifest yang dimanipulasi menggagalkan verifikasi (database sementara tetap dihapus), restore ke database hidup tanpa konfirmasi ditolak, retensi menyisakan 3 dump terbaru dan hanya menghapus dump yang lebih tua dari 14 hari.
 
+## 10b. Integritas dan retensi audit
+
+Jejak audit (`audit_log`) dilindungi tiga lapis ([03-C](todos/03-audit.md)):
+
+1. **Rantai hash.** Setiap baris menyimpan SHA-256 atas hash baris sebelumnya ditambah isinya (pemicu basis data,
+   migrasi 000116). Worker `audit_verifikasi` menghitung ulang seluruh rantai di Go setiap 24 jam dan menyimpan
+   hasilnya. Status terakhir tampil di kartu "Integritas" halaman `/audit` (`GET /v1/audit/integritas`). Hasil
+   `RUSAK` juga dicatat sebagai aksi `VERIFIKASI_AUDIT` dan membuat job tampil gagal di `/healthz` worker. Untuk
+   memverifikasi sekarang:
+
+   ```bash
+   docker compose -f compose.yaml -f compose.prod.yaml exec worker ./worker run audit_verifikasi
+   ```
+
+2. **Pengguna DB berhak minimum.** Isi `DB_APP_USER`/`DB_APP_PASSWORD` di `.env` VM. Service `migrate` (pemilik
+   skema) lalu membuat login itu sebagai anggota peran `garda_aplikasi` (migrasi 000119). Akibatnya:
+   - `api` dan `worker` tidak bisa `UPDATE`/`DELETE`/`TRUNCATE` tabel jejak (`audit_log` dan partisinya,
+     `audit_log_verifikasi`, `audit_log_arsip*`, `entri_harga_versi`);
+   - keduanya juga tidak bisa menjalankan DDL atau menyentuh `goose_db_version`;
+   - penyegaran dashboard dan pemeliharaan partisi lewat fungsi `SECURITY DEFINER`.
+
+   Tanpa `DB_APP_*`, aplikasi memakai pemilik skema seperti sebelumnya (pemicu append-only tetap melindungi), dan API
+   mencatat peringatan saat start. Pemilik skema butuh hak `CREATEROLE` (pengguna `POSTGRES_USER` container
+   superuser, jadi sudah cukup). Pada Postgres terkelola tanpa hak itu, buat peran `garda_aplikasi` (NOLOGIN) secara
+   manual, lalu jalankan `SELECT garda_terapkan_hak_aplikasi();`.
+
+3. **Partisi bulanan dan retensi.** `audit_log` berpartisi per bulan UTC (`audit_log_pYYYYMM`, migrasi 000117).
+   Job `audit_partisi` menyiapkan `AUDIT_PARTISI_KE_DEPAN` bulan ke depan (bawaan 3). Penulis audit juga membuat
+   partisi bulannya sendiri bila belum ada.
+   - Retensi aktif bila `AUDIT_RETENSI_BULAN` diisi (12–1200 bulan; usulan kebijakan: 60).
+   - Partisi yang seluruh rentangnya lebih tua dari itu diekspor ke `AUDIT_ARSIP_DIR` (bawaan `/app/arsip/audit`,
+     volume Docker `audit_arsip`) sebagai `audit_log_pYYYYMM.jsonl.gz` dan `.manifest.json`.
+   - Basis data memeriksa ulang jumlah baris dan ringkasan hash, mencatat arsipnya (`audit_log_arsip` dan segmen
+     rantainya), lalu melepas partisi tersebut.
+   - Verifikasi berikutnya tetap menyambung rantai melewati segmen arsip. Bulan yang sudah diarsipkan tidak bisa
+     diisi lagi.
+
+   **Salin volume `audit_arsip` ke penyimpanan di luar VM**, sama seperti backup; arsip adalah satu-satunya salinan
+   baris lama. Untuk memeriksa satu berkas arsip tanpa basis data:
+
+   ```bash
+   docker compose -f compose.yaml -f compose.prod.yaml exec worker \
+     ./worker verifikasi-arsip /app/arsip/audit/audit_log_p202101.manifest.json
+   ```
+
+Catatan operasional:
+
+- `DROP` partisi saat retensi mengambil kunci eksklusif sesaat pada `pengguna` (kunci asing `aktor_id`). Fungsi
+  retensi memakai `lock_timeout` 3 detik dan dicoba lagi pada putaran berikutnya bila gagal.
+- Migrasi berikutnya **tidak boleh mengubah isi baris `audit_log`**. Perubahan itu memutus rantai dan terlaporkan
+  sebagai perusakan.
+- `goose down` 000117 ditolak bila sudah ada partisi yang diarsipkan; pulihkan dari backup.
+
 ---
 
 ## 11. Ganti Domain / SSL
@@ -602,7 +660,7 @@ Belum / perlu keputusan:
 - Swagger sengaja mati saat `GIN_MODE=release`; Caddy tetap memproksi `/swagger/*` (menghasilkan 404 dari API).
 - CSP ketat untuk halaman Next.js belum ada (butuh nonce); CSP yang ada hanya untuk respons API.
 - Rate limit API di memori per instance (100 req/menit); belum terdistribusi lewat Redis.
-- Pengguna DB aplikasi masih satu dengan pemilik skema ([19 §7](todos/19-migration-seeder.md)); pengguna migrasi terpisah dan pembatasan `audit_log` belum dibuat.
+- Pengguna DB aplikasi berhak minimum tersedia (`DB_APP_USER`, §10b) tetapi opsional; deploy yang belum mengisinya masih memakai pemilik skema untuk api dan worker.
 - Backup belum disalin ke luar VM; belum ada WAL/PITR. Pemantauan/alert (healthcheck gagal, backup gagal) belum ada.
 - Tidak ada pemindaian image/dependensi di alur build; tidak ada rotasi rahasia otomatis (ganti `JWT_SECRET` memutus semua sesi).
 - `middleware.ts` memakai konvensi Next.js lama (deprecated, diganti `proxy.ts` di Next 16); masih berfungsi.
@@ -643,7 +701,11 @@ Lihat §3.6 untuk template lengkap. Variable kunci:
 | Variable | Keterangan |
 |---|---|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Kredensial Postgres |
-| `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Koneksi aplikasi (DSN dirakit compose.prod.yaml) |
+| `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Pemilik skema: dipakai `migrate` dan `seed` (DSN dirakit compose.prod.yaml); juga api/worker bila `DB_APP_*` kosong |
+| `DB_APP_USER` / `DB_APP_PASSWORD` | Login berhak minimum untuk `api` dan `worker` (anggota `garda_aplikasi`, tanpa DDL dan tanpa UPDATE/DELETE jejak audit), dibuat `migrate`. Sandi ≥16 karakter ASCII tanpa spasi. Lihat §10b |
+| `AUDIT_RETENSI_BULAN` / `AUDIT_ARSIP_DIR` | Retensi audit: partisi lebih tua dari N bulan (12–1200) diarsipkan ke direktori (bawaan volume `audit_arsip`). Kosong = mati |
+| `AUDIT_PARTISI_KE_DEPAN` | Partisi bulanan `audit_log` yang disiapkan di depan (bawaan 3, 0–24) |
+| `JOB_AUDIT_PARTISI_INTERVAL` / `JOB_AUDIT_VERIFIKASI_INTERVAL` | Jeda penyiapan partisi + retensi dan verifikasi rantai hash (bawaan `24h`) |
 | `JWT_SECRET` | Signing key JWT (≥32 char acak); dipakai juga BFF Next.js (compose menyalinnya ke `GARDA_JWT_SECRET`) |
 | `AES_KEY` | Enkripsi at-rest, termasuk rahasia MFA (tepat 32 char acak; kunci contoh ditolak). `migrate`, `seed`, dan `api` memakai kunci yang sama |
 | `APP_ALLOWED_ORIGINS` | Origin publik untuk CSRF (wajib, bukan localhost) |

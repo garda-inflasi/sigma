@@ -78,6 +78,18 @@ func (m *mockRepository) Riwayat(ctx context.Context, entriID idx.ID) ([]domain.
 	return items, args.Error(1)
 }
 
+func (m *mockRepository) Versi(ctx context.Context, entriID idx.ID) ([]domain.VersiView, error) {
+	args := m.Called(ctx, entriID)
+	items, _ := args.Get(0).([]domain.VersiView)
+	return items, args.Error(1)
+}
+
+func (m *mockRepository) Lineage(ctx context.Context, entri domain.EntriView) (domain.Lineage, error) {
+	args := m.Called(ctx, entri)
+	lineage, _ := args.Get(0).(domain.Lineage)
+	return lineage, args.Error(1)
+}
+
 var fixedNow = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
 
 // idDariBasisData adalah ID yang "diberikan basis data" pada mockRepository.Simpan.
@@ -476,6 +488,33 @@ func TestRiwayat_OnlyOwnEntryWithoutViewPermission(t *testing.T) {
 	items, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, "koordinator", true)
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
+}
+
+func TestVersiDanLineage_AturanAksesSamaDenganRiwayat(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	pemilik := uid("mahasiswa_1")
+	kode := "HRG-D00-00-01-K"
+	entri := domain.EntriView{ID: 5, Kode: &kode, PetugasID: &pemilik}
+	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 5}).Return(&entri, nil)
+	repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: kode}).Return(&entri, nil)
+	repo.On("Versi", mock.Anything, idx.ID(5)).Return([]domain.VersiView{{Versi: 1, Aksi: "INPUT"}}, nil)
+	repo.On("Lineage", mock.Anything, entri).Return(domain.Lineage{Entri: entri, VersiTerkini: 1}, nil)
+
+	versi, err := uc.Versi(t.Context(), idx.RujukanID{Kode: kode}, pemilik, false)
+	require.NoError(t, err)
+	assert.Len(t, versi, 1, "alias kode lama")
+	lineage, err := uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, pemilik, false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, lineage.VersiTerkini)
+
+	_, err = uc.Versi(t.Context(), idx.RujukanID{ID: 5}, uid("mahasiswa_2"), false)
+	assert.ErrorIs(t, err, ErrNotFound, "entri petugas lain tampil sebagai tidak ada")
+	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, uid("mahasiswa_2"), false)
+	assert.ErrorIs(t, err, ErrNotFound)
+
+	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, "koordinator", true)
+	require.NoError(t, err, "pemegang harga.lihat membuka entri siapa pun")
 }
 
 func TestCreateHarga_StoresAutomaticValidationResult(t *testing.T) {

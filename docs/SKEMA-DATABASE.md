@@ -20,6 +20,11 @@ Sumber kebenaran yang dijalankan mesin:
 | **HASH**     | Satu kolom hash atau token id                                                             | Tabel keamanan: `jwt_blacklist` (jti), `kunci_login` (hash email), `sso_login_state` (hash state)                                                                                                                                                                                                                     | Kuncinya memang nilai yang dicari. Tidak ada entitas bisnis.                                                                                                               |
 | **KOMPOSIT** | Gabungan kolom FK atau induk + urutan                                                     | Tabel penghubung (`role_permissions`, `user_permissions`, `intervensi_pj`, `tugas_entri`, `preferensi_notifikasi`, `pemetaan_sumber`) dan entitas lemah (`alur_persetujuan_langkah`, `intervensi_persetujuan_langkah`), serta definisi atau matriks referensi berkode (`tahap_intervensi_def`, `jarak_antar_wilayah`) | Satu baris per pasangan. Kunci gabungan mencegah duplikat tanpa indeks tambahan.                                                                                           |
 
+**BIGINT berpartisi** (`PKBigintPartisi` di `kunci_test.go`): tabel log berpartisi memakai PK `(kolom partisi, id)`
+karena PK tabel berpartisi wajib memuat kolom partisinya. `id` tetap `bigint GENERATED ALWAYS AS IDENTITY` dengan satu
+sequence di induk, jadi tetap unik; pencarian per `id` lewat indeks `id` biasa di tiap partisi. Saat ini hanya
+`audit_log` (000117).
+
 Tabel time-series dan agregat yang dulu hanya punya kunci alami gabungan, misalnya `andil_inflasi(periode,
 wilayah_kode, komoditas_kode)`, kini memakai PK BIGINT. Kunci alaminya tetap dijaga sebagai `UNIQUE` dan
 dipakai sebagai target `ON CONFLICT` untuk upsert.
@@ -115,7 +120,7 @@ Baris yang dibuat aplikasi tanpa makna kode boleh berisi `kode NULL`, karena ind
 
 ## Matriks tabel
 
-Matriks dikelompokkan per migrasi konversi (`000110`–`000115`). Daftar lengkap FK dan indeks selalu bisa
+Matriks dikelompokkan per migrasi konversi (`000110`–`000115`) dan tabel baru sesudahnya (`000118`). Daftar lengkap FK dan indeks selalu bisa
 diturunkan dari katalog (`\d+ <tabel>` atau kueri di `kunci_test.go`).
 
 ### 000110: pengguna dan keamanan akun
@@ -218,6 +223,31 @@ Catatan 000112: kolom `kode varchar(64)` (UNIQUE) pada `aturan_ews`, `aturan_ews
 | `kpi_nilai`       | BIGINT (BIGSERIAL lama)                                                      | Nilai KPI per periode dan versi (revisi = baris baru).                                                                                                                                                                                                                                                                                                                                    | `kpi_kode` → `kpi_definisi` CASCADE; `wilayah_kode` → `kabupaten` RESTRICT (NULL = seluruh provinsi)                                                                                                                                                                                      | `uq_kpi_nilai (kpi_kode, COALESCE(wilayah_kode, ''), periode, versi)`, `idx_kpi_nilai_kpi_periode`, `idx_kpi_nilai_wilayah_kode`                                                                                                                             |
 | `kpi_target`      | BIGINT (BIGSERIAL lama)                                                      | Target KPI per periode mulai.                                                                                                                                                                                                                                                                                                                                                             | `kpi_kode` → `kpi_definisi` CASCADE; `wilayah_kode` → `kabupaten` RESTRICT (NULL = semua wilayah)                                                                                                                                                                                         | `uq_kpi_target`, `idx_kpi_target_wilayah_kode`                                                                                                                                                                                                               |
 | `audit_log`       | BIGINT identity (dulu VARCHAR UUID teks dari aplikasi)                       | Log append-only bervolume besar. ID BIGINT berurut menurut `waktu`, lalu ID lama; `kode` = ID lama (alias `GET /v1/audit/:id` dan kunci idempotensi seeder demo; NULL untuk baris baru). Pemicu append-only dimatikan hanya selama konversi. Rujukan lunak `entitas_id` (teks, bukan FK) dipetakan ke ID baru untuk entitas `sumber_data`, `langganan_push`, dan `preferensi_notifikasi`. | `aktor_id` → `pengguna` SET NULL (000110)                                                                                                                                                                                                                                                 | `idx_audit_log_waktu_brin` (BRIN), `idx_audit_log_waktu_id (waktu DESC, id DESC)` (cursor), `idx_audit_log_entitas_waktu (entitas, entitas_id, waktu DESC)`, `idx_audit_log_aktor_waktu`, `idx_audit_log_aksi_waktu`, `uq_audit_log_kode`                    |
+
+### 000118: lineage entri harga (03-C)
+
+Tabel baru (bukan konversi), jadi sejak migrasi pertamanya sudah memenuhi invarian di `kunci_test.go`.
+
+| Tabel               | PK     | Alasan                                                                                                                                                                                                                                                                                                                                                                                                                                                  | FK utama                                                                                              | Indeks utama                                                                                                  |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `entri_harga_versi` | BIGINT | Log append-only versi isi entri (lineage per record harga, PRD §1.4): satu baris tiap perubahan isi (`aksi` INPUT, AJUKAN, VALIDASI, PUBLIKASI, TOLAK, KEMBALIKAN, UBAH, MIGRASI), berisi status, harga, pelaku (`oleh`), `perubahan` (kolom non-waktu yang berubah), dan salinan baris (`data jsonb`). Ditulis oleh pemicu `trg_entri_harga_versi` pada `entri_harga`; UPDATE, DELETE langsung, dan TRUNCATE ditolak (`restrict_violation`). | `entri_id` → `entri_harga` CASCADE (satu-satunya penghapusan sah); `oleh` → `pengguna` RESTRICT (000110) | PK, `uq_entri_harga_versi_entri_versi (entri_id, versi)` (sekaligus indeks FK `entri_id`), `idx_entri_harga_versi_oleh` |
+
+Rute `GET /v1/harga/:id/versi` dan `GET /v1/harga/:id/lineage` memakai `:id` BIGINT beralias kode lama (`idx.ParamIDAtauKode`).
+
+### 000116–000117, 000119: integritas dan retensi audit (03-C)
+
+`audit_log` dikonversi menjadi tabel berpartisi bulanan dengan rantai hash. Tabel pendukungnya baru dan append-only
+(pemicu `audit_tolak_ubah_baris`; peran `garda_aplikasi` hanya SELECT/INSERT, 000119).
+
+| Tabel                    | PK                                   | Alasan | FK utama | Indeks utama |
+| ------------------------ | ------------------------------------ | ------ | -------- | ------------ |
+| `audit_log`              | BIGINT berpartisi `(waktu, id)`      | `PARTITION BY RANGE (waktu)`, satu partisi per bulan UTC (`audit_log_pYYYYMM`), tanpa partisi DEFAULT. `hash`/`hash_sebelumnya` (SHA-256, format garda-audit-v1) diisi pemicu dan berantai menurut `id`. `kode` unik global lewat pemicu `trg_audit_log_kode_unik`, bukan constraint. | `aktor_id` → `pengguna` SET NULL | PK `(waktu, id)` (juga cursor `(waktu, id)` dipindai mundur), `idx_audit_log_id`, `idx_audit_log_kode` (parsial), `idx_audit_log_entitas_waktu`, `idx_audit_log_aktor_waktu`, `idx_audit_log_aksi_waktu`, `idx_audit_log_waktu_brin` |
+| `audit_log_verifikasi`   | BIGINT                               | Hasil tiap verifikasi rantai hash (VALID/RUSAK/GAGAL, jumlah baris, masalah). | tanpa FK | `idx_audit_log_verifikasi_mulai (mulai DESC, id DESC)` |
+| `audit_log_arsip`        | BIGINT                               | Partisi yang dilepas ke berkas arsip: rentang, jumlah baris, ringkasan hash, nama berkas, SHA-256 berkas. | tanpa FK | `idx_audit_log_arsip_dari` |
+| `audit_log_arsip_segmen` | BIGINT                               | Rangkaian id berurutan yang diarsipkan beserta hash masuk/keluarnya; menyambung rantai yang masih hidup. | `arsip_id` → `audit_log_arsip` RESTRICT | `idx_audit_log_arsip_segmen_arsip_id`, `idx_audit_log_arsip_segmen_id_awal` |
+
+Baris `audit_log` pada matriks 000115 di atas menggambarkan keadaan sebelum 000117 (`idx_audit_log_waktu_id` dan
+`uq_audit_log_kode` sudah dibuang).
 
 ### Tabel referensi dan konfigurasi yang tidak diubah 000110–000115
 

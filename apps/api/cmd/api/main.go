@@ -55,6 +55,15 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("database connected", map[string]interface{}{"host": dbCfg.Host, "db": dbCfg.DBName})
+	// Hak minimum (03-C): di production pengguna DB aplikasi seharusnya tidak bisa mengubah jejak audit. Pemicu
+	// append-only tetap melindungi, tetapi pemilik skema juga bisa mematikannya; atur DB_APP_USER (docs/DEPLOYMENT.md §10b).
+	if os.Getenv("APP_ENV") == "production" {
+		var bisaUbahAudit bool
+		if err := db.Raw("SELECT has_table_privilege('audit_log', 'UPDATE')").Scan(&bisaUbahAudit).Error; err == nil && bisaUbahAudit {
+			log.Warn("pengguna DB aplikasi masih berhak UPDATE pada audit_log (pemilik skema); gunakan login berhak minimum DB_APP_USER",
+				map[string]interface{}{"user": dbCfg.User})
+		}
+	}
 
 	// Token manager
 	jwtSecret := os.Getenv("JWT_SECRET")

@@ -142,6 +142,9 @@ export const useDetailHarga = (id: string | undefined) =>
 /** Perpindahan status satu entri (timeline detail). */
 export const useRiwayatStatus = (id: string | undefined) =>
   useQuery({ queryKey: qk.harga.riwayat(id ?? ""), queryFn: () => api.harga.riwayat(id!), enabled: !!id });
+/** Jejak asal satu entri (pencatat, cek otomatis, validasi, publikasi, versi, rujukan audit). */
+export const useLineageHarga = (id: string | undefined) =>
+  useQuery({ queryKey: qk.harga.lineage(id ?? ""), queryFn: () => api.harga.lineage(id!), enabled: !!id });
 export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
 /** Alert lengkap dari server; mati bila `id` kosong. */
 export const useEwsDetail = (id: string | null) =>
@@ -384,6 +387,9 @@ export const useAuditDetail = (id: string | undefined) =>
     enabled: !!id,
     staleTime: Infinity, // baris audit tidak pernah berubah
   });
+/** Status integritas rantai hash audit (verifikasi terakhir, partisi, arsip); berubah sekali per putaran verifikasi. */
+export const useIntegritasAudit = () =>
+  useQuery({ queryKey: qk.audit.integritas(), queryFn: api.audit.integritas, staleTime: 60_000 });
 /** Ekspor CSV sesuai filter yang sedang aktif. */
 export function useEksporAudit() {
   return useMutation({

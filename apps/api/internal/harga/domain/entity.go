@@ -108,6 +108,7 @@ type EntriView struct {
 	AdaFoto         bool         `gorm:"column:ada_foto"`
 	FotoURL         *string      `gorm:"column:foto_url"`
 	Catatan         *string      `gorm:"column:catatan"`
+	KodePedagang    *string      `gorm:"column:kode_pedagang"`
 	DicatatPada     time.Time    `gorm:"column:dicatat_pada"`
 	PetugasID       *string      `gorm:"column:petugas_id;type:uuid"`
 	PetugasNama     *string      `gorm:"column:petugas_nama"`

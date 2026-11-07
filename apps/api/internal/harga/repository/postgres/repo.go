@@ -27,7 +27,7 @@ const viewColumns = `
 	e.id, e.kode, e.komoditas_kode, k.nama AS komoditas_nama, e.pasar_id, p.nama AS pasar_nama,
 	p.kabupaten_kode, kb.nama AS kabupaten_nama, e.tipe, e.harga, e.satuan, e.kualitas, e.sumber,
 	e.status, e.deviasi_pct, e.skor_anomali, e.lat, e.lng, e.dalam_geofence,
-	(e.foto_url IS NOT NULL) AS ada_foto, e.foto_url, e.catatan, e.dicatat_pada,
+	(e.foto_url IS NOT NULL) AS ada_foto, e.foto_url, e.catatan, e.kode_pedagang, e.dicatat_pada,
 	e.petugas_id, u.nama AS petugas_nama, e.divalidasi_oleh, e.divalidasi_pada,
 	e.dipublikasi_oleh, e.dipublikasi_pada, e.alasan_penolakan, e.ditolak_oleh, e.ditolak_pada, e.flag_validasi,
 	e.dibuat_pada, e.diupdate_pada`
@@ -354,6 +354,11 @@ func (r *Repository) Transisi(ctx context.Context, ids []idx.ID, aksi domain.Bul
 
 	hasil := make([]domain.HasilTransisi, len(ids))
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Pelaku diberitahukan ke pemicu versi entri (migrasi 000118) lewat GUC lokal-transaksi, sehingga
+		// versi KEMBALIKAN, yang tidak punya kolom pelaku di entri_harga, tetap mencatat pelakunya.
+		if err := tx.Exec("SELECT set_config(?, ?, true)", domain.AktorGUC, aktorID).Error; err != nil {
+			return fmt.Errorf("catat pelaku transaksi: %w", err)
+		}
 		var rows []struct {
 			ID        idx.ID  `gorm:"column:id"`
 			Status    string  `gorm:"column:status"`
@@ -419,6 +424,93 @@ func (r *Repository) Riwayat(ctx context.Context, entriID idx.ID) ([]domain.Riwa
 		 ORDER BY h.waktu, h.id`, entriID).Scan(&items).Error
 	if err != nil {
 		return nil, fmt.Errorf("riwayat status entri: %w", err)
+	}
+	return items, nil
+}
+
+// Versi mengembalikan seluruh versi isi entri (migrasi 000118), yang terlama lebih dulu.
+func (r *Repository) Versi(ctx context.Context, entriID idx.ID) ([]domain.VersiView, error) {
+	var items []domain.VersiView
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT v.versi, v.aksi, v.status::text AS status, v.harga, v.oleh, u.nama AS oleh_nama, v.waktu, v.perubahan, v.data
+		  FROM entri_harga_versi v
+		  LEFT JOIN pengguna u ON u.id = v.oleh
+		 WHERE v.entri_id = ?
+		 ORDER BY v.versi`, entriID).Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("versi entri harga: %w", err)
+	}
+	return items, nil
+}
+
+// Lineage melengkapi entri dengan jejak asalnya: nama pelaku validasi, publikasi, dan penolakan, tugas lapangan
+// yang dipenuhi, seluruh versi, riwayat status, dan rujukan audit trail.
+func (r *Repository) Lineage(ctx context.Context, entri domain.EntriView) (domain.Lineage, error) {
+	out := domain.Lineage{Entri: entri}
+	db := r.db.WithContext(ctx)
+
+	err := db.Raw(`
+		SELECT (SELECT nama FROM pengguna WHERE id = e.divalidasi_oleh)  AS divalidasi_nama,
+		       (SELECT nama FROM pengguna WHERE id = e.dipublikasi_oleh) AS dipublikasi_nama,
+		       (SELECT nama FROM pengguna WHERE id = e.ditolak_oleh)     AS ditolak_nama
+		  FROM entri_harga e
+		 WHERE e.id = ?`, entri.ID).Scan(&out.Nama).Error
+	if err != nil {
+		return out, fmt.Errorf("nama pelaku entri harga: %w", err)
+	}
+
+	err = db.Raw(`
+		SELECT t.id, t.kode, t.judul, te.ditautkan_pada
+		  FROM tugas_entri te
+		  JOIN tugas_lapangan t ON t.id = te.tugas_id
+		 WHERE te.entri_id = ?
+		 ORDER BY te.ditautkan_pada, t.id`, entri.ID).Scan(&out.Tugas).Error
+	if err != nil {
+		return out, fmt.Errorf("tugas lapangan entri harga: %w", err)
+	}
+
+	if out.Versi, err = r.Versi(ctx, entri.ID); err != nil {
+		return out, err
+	}
+	for _, v := range out.Versi {
+		out.VersiTerkini = max(out.VersiTerkini, v.Versi)
+	}
+	if out.Riwayat, err = r.Riwayat(ctx, entri.ID); err != nil {
+		return out, err
+	}
+	if out.Audit, err = r.rujukanAudit(ctx, entri); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// rujukanAudit mengambil baris audit_log yang menyebut entri: baris dengan entitas_id sama dengan ID (atau kode
+// lama) entri, dan aksi massal yang memuatnya di metadata.ids. Batas bawah waktu (satu hari sebelum entri dibuat)
+// membiarkan PostgreSQL memangkas partisi audit_log yang lebih tua; kueri tidak bergantung pada kunci primer
+// audit_log. Hanya kolom ringkas yang dibaca; operator jsonb `?` tidak dipakai karena bentrok dengan placeholder GORM.
+func (r *Repository) rujukanAudit(ctx context.Context, entri domain.EntriView) ([]domain.RujukanAudit, error) {
+	rujukan := []string{entri.ID.String()}
+	if entri.Kode != nil && *entri.Kode != "" {
+		rujukan = append(rujukan, *entri.Kode)
+	}
+
+	kondisi := "a.entitas_id IN ?"
+	args := []any{"entri_harga", entri.DibuatPada.Add(-24 * time.Hour), rujukan}
+	for _, ref := range rujukan {
+		kondisi += " OR a.metadata->'ids' @> jsonb_build_array(CAST(? AS text))"
+		args = append(args, ref)
+	}
+	args = append(args, domain.BatasRujukanAudit)
+
+	var items []domain.RujukanAudit
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT a.id, a.waktu, a.aksi, a.aktor_nama, a.aktor_peran, a.hasil, a.correlation_id
+		  FROM audit_log a
+		 WHERE a.entitas = ? AND a.waktu >= ? AND (`+kondisi+`)
+		 ORDER BY a.waktu, a.id
+		 LIMIT ?`, args...).Scan(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("rujukan audit entri harga: %w", err)
 	}
 	return items, nil
 }

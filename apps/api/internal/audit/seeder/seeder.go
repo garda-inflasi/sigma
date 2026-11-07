@@ -1,6 +1,6 @@
 // Package seeder mengisi contoh jejak audit (hanya demo). Baris audit bersifat
-// append-only, jadi seeder memakai DO NOTHING pada kode (demo-audit-NNNN, kunci
-// alami baris demo): menjalankannya ulang tidak mengubah atau menambah apa pun.
+// append-only, jadi seeder hanya menyisipkan kode (demo-audit-NNNN, kunci alami
+// baris demo) yang belum ada: menjalankannya ulang tidak mengubah atau menambah apa pun.
 package seeder
 
 import (
@@ -13,7 +13,6 @@ import (
 	"github.com/garda-inflasi/api/internal/audit/domain"
 	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // DemoSummary melaporkan baris yang diusulkan oleh SeedDemo.
@@ -55,12 +54,32 @@ var aksiContohSeeds = []aksiContoh{
 // dari now. Prasyarat: akun demo sudah ada (auth.demo).
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
 	rows := BuildEntri(now)
-	err := db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "kode"}},
-		DoNothing: true,
-	}).CreateInBatches(&rows, 50).Error
-	if err != nil {
-		return DemoSummary{}, fmt.Errorf("seed audit demo: %w", err)
+
+	// audit_log berpartisi menurut waktu: UNIQUE (kode) tidak ada lagi sebagai target ON CONFLICT (keunikan kode
+	// dijaga pemicu, yang menolak duplikat dengan galat). Kode yang sudah ada disaring lebih dulu.
+	kode := make([]string, len(rows))
+	for i, row := range rows {
+		kode[i] = *row.Kode
+	}
+	var ada []string
+	if err := db.WithContext(ctx).Model(&domain.AuditLog{}).Where("kode IN ?", kode).Pluck("kode", &ada).Error; err != nil {
+		return DemoSummary{}, fmt.Errorf("seed audit demo: baca kode yang ada: %w", err)
+	}
+	sudah := make(map[string]bool, len(ada))
+	for _, k := range ada {
+		sudah[k] = true
+	}
+	baru := make([]domain.AuditLog, 0, len(rows))
+	// Disisipkan dari yang terlama agar urutan rantai (id) mengikuti waktu.
+	for i := len(rows) - 1; i >= 0; i-- {
+		if !sudah[*rows[i].Kode] {
+			baru = append(baru, rows[i])
+		}
+	}
+	if len(baru) > 0 {
+		if err := db.WithContext(ctx).CreateInBatches(&baru, 50).Error; err != nil {
+			return DemoSummary{}, fmt.Errorf("seed audit demo: %w", err)
+		}
 	}
 	return DemoSummary{Entri: len(rows)}, nil
 }

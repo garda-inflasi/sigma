@@ -114,4 +114,8 @@ type Repository interface {
 	Transisi(ctx context.Context, ids []idx.ID, aksi BulkAction, aktorID, alasan string, waktu time.Time) ([]HasilTransisi, error)
 	// Riwayat mengembalikan perpindahan status entri, yang terlama lebih dulu.
 	Riwayat(ctx context.Context, entriID idx.ID) ([]RiwayatView, error)
+	// Versi mengembalikan seluruh versi isi entri (tabel entri_harga_versi), nomor terkecil lebih dulu.
+	Versi(ctx context.Context, entriID idx.ID) ([]VersiView, error)
+	// Lineage melengkapi entri dengan jejak asalnya (pelaku tiap tahap, tugas lapangan, versi, riwayat status, audit).
+	Lineage(ctx context.Context, entri EntriView) (Lineage, error)
 }

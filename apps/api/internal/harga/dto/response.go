@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/harga/domain"
@@ -157,4 +158,161 @@ func ToRiwayatStatusResponses(items []domain.RiwayatView) []RiwayatStatusRespons
 		out[i] = RiwayatStatusResponse{Dari: h.Dari, Ke: h.Ke, Oleh: h.Oleh, OlehNama: h.OlehNama, Waktu: h.Waktu, Alasan: h.Alasan}
 	}
 	return out
+}
+
+// VersiEntriResponse adalah satu versi isi entri (tabel entri_harga_versi). Perubahan memuat nama kolom
+// entri_harga yang berubah dibanding versi sebelumnya (kolom waktu tidak dihitung; kosong pada versi pertama).
+// Data adalah salinan lengkap baris entri pada versi itu, apa adanya dari basis data.
+type VersiEntriResponse struct {
+	Versi     int             `json:"versi"`
+	Aksi      string          `json:"aksi"`
+	Status    string          `json:"status"`
+	Harga     int             `json:"harga"`
+	Oleh      *string         `json:"oleh"`
+	OlehNama  *string         `json:"oleh_nama"`
+	Waktu     time.Time       `json:"waktu"`
+	Perubahan []string        `json:"perubahan"`
+	Data      json.RawMessage `json:"data"`
+}
+
+func toVersiEntriResponse(v domain.VersiView) VersiEntriResponse {
+	perubahan := make([]string, len(v.Perubahan))
+	copy(perubahan, v.Perubahan)
+	return VersiEntriResponse{
+		Versi: v.Versi, Aksi: v.Aksi, Status: v.Status, Harga: v.Harga, Oleh: v.Oleh, OlehNama: v.OlehNama,
+		Waktu: v.Waktu, Perubahan: perubahan, Data: v.Data,
+	}
+}
+
+// ToVersiEntriResponses memetakan versi; hasilnya selalu larik (bukan null).
+func ToVersiEntriResponses(items []domain.VersiView) []VersiEntriResponse {
+	out := make([]VersiEntriResponse, len(items))
+	for i, v := range items {
+		out[i] = toVersiEntriResponse(v)
+	}
+	return out
+}
+
+// LineageEntriResponse adalah identitas entri pada lineage.
+type LineageEntriResponse struct {
+	ID            idx.ID  `json:"id"`
+	Kode          *string `json:"kode"`
+	KomoditasKode string  `json:"komoditas_kode"`
+	KomoditasNama string  `json:"komoditas_nama"`
+	PasarID       string  `json:"pasar_id"`
+	PasarNama     string  `json:"pasar_nama"`
+	KabupatenKode string  `json:"kabupaten_kode"`
+	KabupatenNama string  `json:"kabupaten_nama"`
+	Tipe          string  `json:"tipe"`
+	Harga         int     `json:"harga"`
+	Satuan        string  `json:"satuan"`
+	Status        string  `json:"status"`
+}
+
+// LineageTugasResponse adalah tugas lapangan yang dipenuhi entri.
+type LineageTugasResponse struct {
+	ID            idx.ID    `json:"id"`
+	Kode          *string   `json:"kode"`
+	Judul         string    `json:"judul"`
+	DitautkanPada time.Time `json:"ditautkan_pada"`
+}
+
+// LineageAsalResponse menjawab siapa mencatat, kapan, dan dari mana. DiterimaPada adalah waktu server menerima
+// entri (dibuat_pada); selisihnya dengan DicatatPada menunjukkan entri yang dikirim terlambat (sinkron offline).
+type LineageAsalResponse struct {
+	Sumber        string                 `json:"sumber"`
+	PetugasID     *string                `json:"petugas_id"`
+	PetugasNama   *string                `json:"petugas_nama"`
+	DicatatPada   time.Time              `json:"dicatat_pada"`
+	DiterimaPada  time.Time              `json:"diterima_pada"`
+	Lat           *float64               `json:"lat"`
+	Lng           *float64               `json:"lng"`
+	DalamGeofence bool                   `json:"dalam_geofence"`
+	KodePedagang  *string                `json:"kode_pedagang"`
+	Tugas         []LineageTugasResponse `json:"tugas"`
+}
+
+// LineageValidasiOtomatisResponse adalah hasil cek otomatis saat entri diterima.
+type LineageValidasiOtomatisResponse struct {
+	FlagValidasi domain.FlagValidasi `json:"flag_validasi"`
+	SkorAnomali  float64             `json:"skor_anomali"`
+	DeviasiPct   float64             `json:"deviasi_pct"`
+}
+
+// LineageTahapResponse adalah satu tahap jejak (validasi atau publikasi); Alasan hanya terisi pada penolakan.
+type LineageTahapResponse struct {
+	Oleh   *string    `json:"oleh"`
+	Nama   *string    `json:"nama"`
+	Pada   *time.Time `json:"pada"`
+	Alasan *string    `json:"alasan,omitempty"`
+}
+
+// LineageAuditResponse menunjuk satu baris audit trail yang menyebut entri.
+type LineageAuditResponse struct {
+	ID            idx.ID    `json:"id"`
+	Waktu         time.Time `json:"waktu"`
+	Aksi          string    `json:"aksi"`
+	AktorNama     *string   `json:"aktor_nama"`
+	AktorPeran    *string   `json:"aktor_peran"`
+	Hasil         string    `json:"hasil"`
+	CorrelationID *string   `json:"correlation_id"`
+}
+
+// LineageResponse adalah jejak asal entri harga (PRD §1.4). Validasi, Publikasi, dan Penolakan bernilai null
+// bila tahap itu belum (atau tidak lagi) berlaku, mis. Validasi null setelah entri dikembalikan ke DRAF.
+type LineageResponse struct {
+	Entri            LineageEntriResponse            `json:"entri"`
+	Asal             LineageAsalResponse             `json:"asal"`
+	ValidasiOtomatis LineageValidasiOtomatisResponse `json:"validasi_otomatis"`
+	Validasi         *LineageTahapResponse           `json:"validasi"`
+	Publikasi        *LineageTahapResponse           `json:"publikasi"`
+	Penolakan        *LineageTahapResponse           `json:"penolakan"`
+	VersiTerkini     int                             `json:"versi_terkini"`
+	Versi            []VersiEntriResponse            `json:"versi"`
+	Riwayat          []RiwayatStatusResponse         `json:"riwayat"`
+	Audit            []LineageAuditResponse          `json:"audit"`
+}
+
+// tahap mengembalikan blok tahap, atau nil bila pelaku dan waktunya sama-sama kosong.
+func tahap(oleh *string, nama *string, pada *time.Time, alasan *string) *LineageTahapResponse {
+	if oleh == nil && pada == nil {
+		return nil
+	}
+	return &LineageTahapResponse{Oleh: oleh, Nama: nama, Pada: pada, Alasan: alasan}
+}
+
+// ToLineageResponse memetakan lineage; semua larik di dalamnya selalu larik (bukan null).
+func ToLineageResponse(l domain.Lineage) LineageResponse {
+	e := l.Entri
+	tugas := make([]LineageTugasResponse, len(l.Tugas))
+	for i, t := range l.Tugas {
+		tugas[i] = LineageTugasResponse{ID: t.ID, Kode: t.Kode, Judul: t.Judul, DitautkanPada: t.DitautkanPada}
+	}
+	audit := make([]LineageAuditResponse, len(l.Audit))
+	for i, a := range l.Audit {
+		audit[i] = LineageAuditResponse{
+			ID: a.ID, Waktu: a.Waktu, Aksi: a.Aksi, AktorNama: a.AktorNama, AktorPeran: a.AktorPeran,
+			Hasil: a.Hasil, CorrelationID: a.CorrelationID,
+		}
+	}
+	return LineageResponse{
+		Entri: LineageEntriResponse{
+			ID: e.ID, Kode: e.Kode, KomoditasKode: e.KomoditasKode, KomoditasNama: e.KomoditasNama,
+			PasarID: e.PasarID, PasarNama: e.PasarNama, KabupatenKode: e.KabupatenKode, KabupatenNama: e.KabupatenNama,
+			Tipe: e.Tipe, Harga: e.Harga, Satuan: e.Satuan, Status: e.Status,
+		},
+		Asal: LineageAsalResponse{
+			Sumber: e.Sumber, PetugasID: e.PetugasID, PetugasNama: e.PetugasNama,
+			DicatatPada: e.DicatatPada, DiterimaPada: e.DibuatPada, Lat: e.Lat, Lng: e.Lng,
+			DalamGeofence: e.DalamGeofence, KodePedagang: e.KodePedagang, Tugas: tugas,
+		},
+		ValidasiOtomatis: LineageValidasiOtomatisResponse{FlagValidasi: e.FlagValidasi, SkorAnomali: e.SkorAnomali, DeviasiPct: e.DeviasiPct},
+		Validasi:         tahap(e.DivalidasiOleh, l.Nama.Divalidasi, e.DivalidasiPada, nil),
+		Publikasi:        tahap(e.DipublikasiOleh, l.Nama.Dipublikasi, e.DipublikasiPada, nil),
+		Penolakan:        tahap(e.DitolakOleh, l.Nama.Ditolak, e.DitolakPada, e.AlasanPenolakan),
+		VersiTerkini:     l.VersiTerkini,
+		Versi:            ToVersiEntriResponses(l.Versi),
+		Riwayat:          ToRiwayatStatusResponses(l.Riwayat),
+		Audit:            audit,
+	}
 }

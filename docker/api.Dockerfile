@@ -42,6 +42,9 @@ COPY --from=builder /app/bin/worker ./worker
 COPY db/migrations /migrations
 ENV MIGRATIONS_DIR=/migrations
 
+# Direktori arsip audit (volume audit_arsip) harus bisa ditulis worker yang berjalan sebagai appuser.
+RUN mkdir -p /app/arsip/audit && chown -R appuser:appgroup /app/arsip
+
 # Use non-root user
 USER appuser
 

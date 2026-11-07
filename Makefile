@@ -111,7 +111,7 @@ docker/backup/up: ## Nyalakan backup terjadwal (profile backup di compose.infra.
 
 # ── Docker Compose targets ──────────────────────────────────────────────
 
-docker/infra/up: ## Start infrastructure services (Postgres, Redis)
+docker/infra/up: ## Start infrastructure services (Postgres, Redis, MongoDB, pgAdmin)
 	docker compose -f compose.infra.yaml up -d
 
 docker/infra/down: ## Stop infrastructure services
@@ -139,6 +139,8 @@ docker/up: ## Start all services (infra + app)
 	@echo "   Frontend : https://localhost"
 	@echo "   API      : https://localhost/api"
 	@echo "   Health   : https://localhost/healthz"
+	@echo "   pgAdmin  : http://localhost:5050 (admin@gardainflasi.id / admin)"
+	@echo "   MongoDB  : localhost:27017"
 
 docker/down: ## Stop all services (app + infra)
 	docker compose down
@@ -158,6 +160,10 @@ DEMO_CADDY_HTTPS_PORT ?= 8453
 DEMO_POSTGRES_VOLUME ?= garda_demo_postgres_data
 DEMO_REDIS_VOLUME ?= garda_demo_redis_data
 DEMO_MAILPIT_PORT ?= 8025
+DEMO_PGADMIN_PORT ?= 5050
+DEMO_MONGO_PORT ?= 27017
+DEMO_PGADMIN_VOLUME ?= garda_demo_pgadmin_data
+DEMO_MONGO_VOLUME ?= garda_demo_mongo_data
 # Mock OIDC (profil sso-mock) untuk "Masuk dengan Google" di demo/e2e. Penerbit http://sso.localhost:<port>/default
 # harus sama bagi browser (loopback host) dan container api (alias jaringan); lihat compose.yaml.
 DEMO_SSO_MOCK_PORT ?= 8089
@@ -169,6 +175,8 @@ DEMO_AUTH_RATE_LIMIT_PER_MENIT ?= 100000
 comma := ,
 DEMO_PROFILES = $(if $(COMPOSE_PROFILES),$(COMPOSE_PROFILES)$(comma))mailpit$(comma)sso-mock
 DEMO_ENV = POSTGRES_VOLUME=$(DEMO_POSTGRES_VOLUME) REDIS_VOLUME=$(DEMO_REDIS_VOLUME) POSTGRES_PORT=$(DEMO_POSTGRES_PORT) REDIS_PORT=$(DEMO_REDIS_PORT) \
+	PGADMIN_PORT=$(DEMO_PGADMIN_PORT) MONGO_PORT=$(DEMO_MONGO_PORT) \
+	PGADMIN_VOLUME=$(DEMO_PGADMIN_VOLUME) MONGO_VOLUME=$(DEMO_MONGO_VOLUME) \
 	CADDY_HTTP_PORT=$(DEMO_CADDY_HTTP_PORT) CADDY_HTTPS_PORT=$(DEMO_CADDY_HTTPS_PORT) \
 	APP_ALLOWED_ORIGINS=http://localhost:$(DEMO_CADDY_HTTP_PORT),https://localhost:$(DEMO_CADDY_HTTPS_PORT) \
 	APP_PUBLIC_URL=http://localhost:$(DEMO_CADDY_HTTP_PORT) \
@@ -190,6 +198,8 @@ docker/demo/up: ## Nyalakan demo: infra, migrasi, seed (reference+demo), lalu ap
 	@echo "✓ Demo berjalan: http://localhost:$(DEMO_CADDY_HTTP_PORT)  (login: superadmin@gardainflasi.id / Garda2024!)"
 	@echo "  Kotak masuk email (Mailpit): http://localhost:$(DEMO_MAILPIT_PORT)"
 	@echo "  Masuk dengan Google (mock OIDC): tombol di halaman masuk; isi username apa saja dan klaim {\"email\":\"superadmin@gardainflasi.id\",\"email_verified\":true}"
+	@echo "  pgAdmin (PostgreSQL Web UI): http://localhost:$(DEMO_PGADMIN_PORT)  (admin@gardainflasi.id / admin)"
+	@echo "  MongoDB (Local): localhost:$(DEMO_MONGO_PORT)"
 
 docker/demo/down: ## Matikan demo (data tetap di volume)
 	$(DEMO_ENV) docker compose down

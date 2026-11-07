@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Garda PostgreSQL",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "garda_inflasi",
+      "Username": "garda",
+      "SSLMode": "prefer"
+    }
+  }
+}
+

@@ -162,7 +162,9 @@ export function EwsDetailSheet({
                     {formatTanggal(a.selesaiPada, "d MMM yyyy HH.mm")}
                   </Baris>
                 )}
-                {a.aturanId && <Baris label="Aturan">{a.aturanId}</Baris>}
+                {a.aturanId && (
+                  <Baris label="Aturan">{a.aturanKode ?? a.aturanId}</Baris>
+                )}
               </dl>
               <div>
                 <h3 className="mb-3 text-sm font-medium">Riwayat status</h3>

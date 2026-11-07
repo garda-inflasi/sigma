@@ -22,6 +22,7 @@ import type { Tahap } from "@/lib/data/siklus";
 import type { KartuIntervensi } from "@/lib/data/types";
 import { siklusMeta } from "@/lib/design/tokens";
 import { formatRelatif, formatTanggal } from "@/lib/format";
+import { labelKode } from "@/lib/kode";
 import { useRiwayatKartu } from "@/lib/query/hooks";
 
 function Baris({
@@ -142,7 +143,7 @@ export function KartuDetailSheet({
           <SheetTitle>{kartu?.judul ?? "Detail intervensi"}</SheetTitle>
           <SheetDescription>
             {kartu
-              ? `${kartu.id} · ${siklusMeta[kartu.siklus].label} · ${labelTahap(kartu.tahap)}`
+              ? `${labelKode(kartu)} · ${siklusMeta[kartu.siklus].label} · ${labelTahap(kartu.tahap)}`
               : "Rincian dan riwayat kartu."}
           </SheetDescription>
         </SheetHeader>
@@ -191,7 +192,9 @@ export function KartuDetailSheet({
                   : "Belum ada"}
               </Baris>
               {kartu.ewsAlertId && (
-                <Baris label="Alert EWS">{kartu.ewsAlertId}</Baris>
+                <Baris label="Alert EWS">
+                  {kartu.ewsAlertKode ?? kartu.ewsAlertId}
+                </Baris>
               )}
               {kartu.dibuatPada && (
                 <Baris label="Dibuat">{formatTanggal(kartu.dibuatPada)}</Baris>

@@ -4,7 +4,8 @@ import type { EwsAlert } from "@/lib/data/types";
 import { layakDiumumkan, mergeAlert, parseAlertEvent } from "./ews-stream";
 
 const payload = {
-  id: "EWS-2000",
+  id: "2000",
+  kode: "EWS-2000",
   severity: "SIAGA",
   jenis: "LONJAKAN_HARGA",
   judul: "Lonjakan harga bawang merah",
@@ -19,11 +20,13 @@ const payload = {
   status: "BARU",
   sumber: "Rule engine EWS",
   dibuat_pada: "2026-11-05T08:00:00Z",
+  aturan_id: "3",
+  aturan_kode: "ATR-LH-BWM",
 };
 
 function alert(over: Partial<EwsAlert> = {}): EwsAlert {
   return {
-    id: "EWS-1",
+    id: "1",
     severity: "WASPADA",
     jenis: "LONJAKAN_HARGA",
     judul: "j",
@@ -44,6 +47,8 @@ describe("parseAlertEvent", () => {
   it("memetakan payload API (snake_case) lewat toEwsAlert, bukan mem-parse mentah", () => {
     const a = parseAlertEvent(JSON.stringify(payload));
     assert.ok(a);
+    assert.equal(a.id, "2000");
+    assert.equal(a.kode, "EWS-2000");
     assert.equal(a.kabupatenKode, "1107");
     assert.equal(a.komoditasNama, "Bawang merah");
     assert.equal(a.wilayah, "Kab. Aceh Barat");
@@ -70,21 +75,21 @@ describe("parseAlertEvent", () => {
 
 describe("mergeAlert", () => {
   it("menaruh alert baru di depan", () => {
-    const lama = alert({ id: "EWS-1" });
+    const lama = alert({ id: "1" });
     assert.deepEqual(
-      mergeAlert([lama], alert({ id: "EWS-2" }))?.map((a) => a.id),
-      ["EWS-2", "EWS-1"],
+      mergeAlert([lama], alert({ id: "2" }))?.map((a) => a.id),
+      ["2", "1"],
     );
   });
 
   it("mengganti alert yang sudah ada di posisinya (tanpa duplikat)", () => {
     const hasil = mergeAlert(
-      [alert({ id: "EWS-2" }), alert({ id: "EWS-1" })],
-      alert({ id: "EWS-1", severity: "KRITIS" }),
+      [alert({ id: "2" }), alert({ id: "1" })],
+      alert({ id: "1", severity: "KRITIS" }),
     );
     assert.deepEqual(
       hasil?.map((a) => a.id),
-      ["EWS-2", "EWS-1"],
+      ["2", "1"],
     );
     assert.equal(hasil?.[1].severity, "KRITIS");
   });
@@ -96,19 +101,19 @@ describe("mergeAlert", () => {
 
 describe("layakDiumumkan", () => {
   it("alert baru atau yang naik tingkat diumumkan; yang sama atau turun tidak", () => {
-    const daftar = [alert({ id: "EWS-1", severity: "SIAGA" })];
-    assert.equal(layakDiumumkan(daftar, alert({ id: "EWS-9" })), true);
-    assert.equal(layakDiumumkan(undefined, alert({ id: "EWS-9" })), true);
+    const daftar = [alert({ id: "1", severity: "SIAGA" })];
+    assert.equal(layakDiumumkan(daftar, alert({ id: "9" })), true);
+    assert.equal(layakDiumumkan(undefined, alert({ id: "9" })), true);
     assert.equal(
-      layakDiumumkan(daftar, alert({ id: "EWS-1", severity: "KRITIS" })),
+      layakDiumumkan(daftar, alert({ id: "1", severity: "KRITIS" })),
       true,
     );
     assert.equal(
-      layakDiumumkan(daftar, alert({ id: "EWS-1", severity: "SIAGA" })),
+      layakDiumumkan(daftar, alert({ id: "1", severity: "SIAGA" })),
       false,
     );
     assert.equal(
-      layakDiumumkan(daftar, alert({ id: "EWS-1", severity: "WASPADA" })),
+      layakDiumumkan(daftar, alert({ id: "1", severity: "WASPADA" })),
       false,
     );
   });

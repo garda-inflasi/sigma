@@ -138,6 +138,19 @@ export function mockEntri(jumlah = 168): EntriHarga[] {
 }
 
 /* ── EWS ──────────────────────────────────────────────────── */
+/**
+ * UUID deterministik berbentuk versi 3 untuk data mock. Hanya meniru bentuk ID server (kartu intervensi
+ * berkunci UUID); nilainya tidak harus sama dengan idx.UUIDStabil di Go.
+ */
+export function uuidMock(ruang: string, kunci: string): string {
+  const rng = mulberry32(hashSeed(`${ruang}:${kunci}`));
+  const hex = (n: number) => Array.from({ length: n }, () => Math.floor(rng() * 16).toString(16)).join("");
+  return `${hex(8)}-${hex(4)}-3${hex(3)}-${"89ab"[Math.floor(rng() * 4)]}${hex(3)}-${hex(12)}`;
+}
+
+/** Alert mock mengikuti bentuk API: `id` string desimal (BIGINT), `kode` tampilan EWS-… (ID lama). */
+const alertMock = (nomor: number, kodeTampil = `EWS-${nomor}`): Pick<EwsAlert, "id" | "kode"> => ({ id: String(nomor), kode: kodeTampil });
+
 function sevDariDelta(d: number): Severity {
   if (d >= 18) return "KRITIS";
   if (d >= 12) return "SIAGA";
@@ -153,7 +166,7 @@ export function mockEws(): EwsAlert[] {
     const kom = komoditasByKode[s.komoditasKode];
     if (s.delta >= 8) {
       alerts.push({
-        id: `EWS-${1000 + i}`, severity: sevDariDelta(s.delta), jenis: "LONJAKAN_HARGA",
+        ...alertMock(1000 + i), severity: sevDariDelta(s.delta), jenis: "LONJAKAN_HARGA",
         judul: `Lonjakan harga ${kom.nama.toLowerCase()}`, komoditasKode: kom.kode, komoditasNama: kom.nama,
         kabupatenKode: s.kabupatenKode, wilayah: namaWilayah(s.kabupatenKode), nilai: Math.round(s.delta * 10) / 10, satuanNilai: "%",
         pesan: `Harga konsumen naik di atas rata-rata 7 hari. Harga terakhir Rp${s.harga.toLocaleString("id-ID")}/${kom.satuan}.`,
@@ -163,7 +176,7 @@ export function mockEws(): EwsAlert[] {
       i++;
     } else if (s.delta <= -7) {
       alerts.push({
-        id: `EWS-${1000 + i}`, severity: "INFO", jenis: "OVER_SUPPLY",
+        ...alertMock(1000 + i), severity: "INFO", jenis: "OVER_SUPPLY",
         judul: `Indikasi surplus ${kom.nama.toLowerCase()}`, komoditasKode: kom.kode, komoditasNama: kom.nama,
         kabupatenKode: s.kabupatenKode, wilayah: namaWilayah(s.kabupatenKode), nilai: Math.round(s.delta * 10) / 10, satuanNilai: "%",
         pesan: "Harga turun di bawah koridor. Pertimbangkan penyerapan ke cold storage.",
@@ -176,19 +189,19 @@ export function mockEws(): EwsAlert[] {
   const last = cuaca[cuaca.length - 1];
   alerts.push(
     {
-      id: "EWS-0901", severity: "SIAGA", jenis: "ANOMALI_CUACA", judul: "Curah hujan ekstrem di sentra Gayo",
+      ...alertMock(901, "EWS-0901"), severity: "SIAGA", jenis: "ANOMALI_CUACA", judul: "Curah hujan ekstrem di sentra Gayo",
       kabupatenKode: "1106", wilayah: namaWilayah("1106"), nilai: last.curahHujanMm, satuanNilai: "mm",
       pesan: "Curah hujan 2,1× normal selama 10 hari. Risiko gagal panen cabai & tomat meningkat.",
       waktu: menitLalu(95), status: "DIAKUI", skorDampak: 81, sumber: "BMKG + OpenWeather",
     },
     {
-      id: "EWS-0902", severity: "WASPADA", jenis: "KELANGKAAN_STOK", judul: "Stok cabai di Cold Storage Lambaro menipis",
+      ...alertMock(902, "EWS-0902"), severity: "WASPADA", jenis: "KELANGKAAN_STOK", judul: "Stok cabai di Cold Storage Lambaro menipis",
       komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", kabupatenKode: "1108", wilayah: namaWilayah("1108"),
       nilai: -32, satuanNilai: "%", pesan: "Stok turun 32% dalam 5 hari; cukup untuk ±4 hari permintaan Banda Aceh.",
       waktu: menitLalu(140), status: "BARU", skorDampak: 74, sumber: "Telemetri cold storage",
     },
     {
-      id: "EWS-0903", severity: "INFO", jenis: "ANOMALI_DATA", judul: "Entri harga di luar geofence",
+      ...alertMock(903, "EWS-0903"), severity: "INFO", jenis: "ANOMALI_DATA", judul: "Entri harga di luar geofence",
       kabupatenKode: "1104", wilayah: namaWilayah("1104"), nilai: 3, satuanNilai: "%",
       pesan: "3 entri tercatat lebih dari 1 km dari Pasar Kutacane. Perlu verifikasi koordinator.",
       waktu: menitLalu(210), status: "SELESAI", skorDampak: 22, sumber: "Validasi otomatis",
@@ -208,7 +221,7 @@ export function randomEws(): EwsAlert {
   const severity = naik ? sevDariDelta(nilai) : "INFO";
   seqLive++;
   return {
-    id: `EWS-L${Date.now()}-${seqLive}`, severity, jenis: naik ? "LONJAKAN_HARGA" : "OVER_SUPPLY",
+    id: String(Date.now()), kode: `EWS-L${Date.now()}-${seqLive}`, severity, jenis: naik ? "LONJAKAN_HARGA" : "OVER_SUPPLY",
     judul: naik ? `Lonjakan harga ${kom.nama.toLowerCase()}` : `Indikasi surplus ${kom.nama.toLowerCase()}`,
     komoditasKode: kom.kode, komoditasNama: kom.nama, kabupatenKode: kab.kode, wilayah: namaWilayah(kab.kode),
     nilai, satuanNilai: "%", pesan: naik ? "Kenaikan melampaui ambang dinamis wilayah." : "Harga produsen turun di bawah koridor.",
@@ -216,14 +229,17 @@ export function randomEws(): EwsAlert {
   };
 }
 
-/** Aturan ambang EWS mode mock: tiga komoditas pilot x lonjakan harga (sama dengan seed ews.reference). */
+/**
+ * Aturan ambang EWS mode mock: tiga komoditas pilot x lonjakan harga (sama dengan seed ews.reference).
+ * `id` string desimal (BIGINT), `kode` = ID lama (alias rute).
+ */
 export function mockEwsAturan(): EwsAturan[] {
   const kanal = ["DASHBOARD", "PUSH"];
   const ket = "Ambang awal, harus dikalibrasi bersama BI/BPS.";
   return [
-    { id: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
-    { id: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
-    { id: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "1", kode: "ATR-LH-BRS-MED", komoditasKode: "BRS-MED", komoditasNama: "Beras medium", jenis: "LONJAKAN_HARGA", waspada: 3, siaga: 5, kritis: 8, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "2", kode: "ATR-LH-CBM-KRT", komoditasKode: "CBM-KRT", komoditasNama: "Cabai merah keriting", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
+    { id: "3", kode: "ATR-LH-BWM", komoditasKode: "BWM", komoditasNama: "Bawang merah", jenis: "LONJAKAN_HARGA", waspada: 8, siaga: 12, kritis: 18, jendelaHari: 7, cooldownJam: 24, kanal, aktif: true, keterangan: ket, versi: 1 },
   ];
 }
 
@@ -258,7 +274,7 @@ export function mockKanban(): KartuIntervensi[] {
     const total = 3 + Math.floor(rng() * 5);
     const pj = [pick(rng, tim), ...(rng() > 0.5 ? [pick(rng, tim)] : [])];
     return {
-      id: `INT-${String(301 + i)}`, siklus: d.siklus, tahap: t.id, judul: d.judul, komoditasKode: d.kom, kabupatenKode: d.kab,
+      id: uuidMock("intervensi", `INT-${301 + i}`), kode: `INT-${301 + i}`, siklus: d.siklus, tahap: t.id, judul: d.judul, komoditasKode: d.kom, kabupatenKode: d.kab,
       prioritas: d.p, rekomendasiAi: Boolean(d.ai),
       penanggungJawab: [...new Map(pj.map((u) => [u.id, { nama: u.nama, inisial: inisialNama(u.nama) }])).values()],
       tenggat: new Date(ANCHOR_DATE.getTime() + (Math.floor(rng() * 9) - 2) * 86_400_000).toISOString(),

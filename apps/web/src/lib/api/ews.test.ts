@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  cocokRujukanAlert,
   satuanAmbang,
   toEwsAlert,
   kunciVapidKeBytes,
@@ -17,7 +18,8 @@ import {
 } from "./ews";
 
 const alert: EwsAlertResponse = {
-  id: "EWS-1000",
+  id: "1000",
+  kode: "EWS-1000",
   severity: "KRITIS",
   jenis: "LONJAKAN_HARGA",
   judul: "Lonjakan harga cabai merah keriting",
@@ -37,7 +39,8 @@ const alert: EwsAlertResponse = {
 describe("toEwsAlert", () => {
   it("memetakan kolom API ke model UI dengan nama wilayah ringkas", () => {
     assert.deepEqual(toEwsAlert(alert), {
-      id: "EWS-1000",
+      id: "1000",
+      kode: "EWS-1000",
       severity: "KRITIS",
       jenis: "LONJAKAN_HARGA",
       judul: "Lonjakan harga cabai merah keriting",
@@ -70,12 +73,41 @@ describe("toEwsAlert", () => {
   it("satuan tak dikenal jatuh ke persen", () => {
     assert.equal(toEwsAlert({ ...alert, satuan_nilai: "?" }).satuanNilai, "%");
   });
+
+  it("id tetap string desimal dan kode opsional (null atau tidak ada tidak membawa kode)", () => {
+    assert.equal(toEwsAlert(alert).id, "1000");
+    assert.equal(toEwsAlert({ ...alert, kode: null }).kode, undefined);
+    const { kode: _kode, ...tanpaKode } = alert;
+    assert.equal(toEwsAlert(tanpaKode).kode, undefined);
+  });
+});
+
+describe("cocokRujukanAlert", () => {
+  const a = { id: "12", kode: "EWS-0901" };
+
+  it("tautan baru memakai id desimal", () => {
+    assert.equal(cocokRujukanAlert(a, "12"), true);
+    assert.equal(cocokRujukanAlert(a, "13"), false);
+  });
+
+  it("tautan lama dari email atau push memakai kode dan tetap menyorot baris yang sama", () => {
+    assert.equal(cocokRujukanAlert(a, "EWS-0901"), true);
+    assert.equal(cocokRujukanAlert(a, "EWS-0902"), false);
+  });
+
+  it("tanpa rujukan tidak ada baris yang cocok, termasuk baris tanpa kode", () => {
+    assert.equal(cocokRujukanAlert(a, null), false);
+    assert.equal(cocokRujukanAlert(a, undefined), false);
+    assert.equal(cocokRujukanAlert(a, ""), false);
+    assert.equal(cocokRujukanAlert({ id: "7" }, "undefined"), false);
+  });
 });
 
 describe("toEwsAturan", () => {
   it("memetakan ambang dan kanal", () => {
     const row = toEwsAturan({
-      id: "ATR-LH-CBM-KRT",
+      id: "1",
+      kode: "ATR-LH-CBM-KRT",
       komoditas_kode: "CBM-KRT",
       komoditas_nama: "Cabai merah keriting",
       kabupaten_kode: null,
@@ -91,6 +123,8 @@ describe("toEwsAturan", () => {
       versi: 3,
     });
     assert.deepEqual([row.waspada, row.siaga, row.kritis], [8, 12, 18]);
+    assert.equal(row.id, "1");
+    assert.equal(row.kode, "ATR-LH-CBM-KRT");
     assert.equal(row.versi, 3);
     assert.equal(row.cooldownJam, 24);
     assert.equal(row.kabupatenKode, undefined);
@@ -169,13 +203,16 @@ describe("detail dan riwayat alert", () => {
   it("toEwsDetail membawa jejak pengakuan, eskalasi, dan penutupan", () => {
     const d = toEwsDetail({
       ...alert,
-      aturan_id: "ATR-LH-CBM",
+      aturan_id: "3",
+      aturan_kode: "ATR-LH-CBM",
       diakui_pada: "2026-10-16T09:00:00Z",
       dieskalasi_pada: "2026-10-16T10:00:00Z",
       selesai_pada: null,
     });
     assert.equal(d.judul, "Lonjakan harga cabai merah keriting");
-    assert.equal(d.aturanId, "ATR-LH-CBM");
+    assert.equal(d.aturanId, "3");
+    assert.equal(d.aturanKode, "ATR-LH-CBM");
+    assert.equal(d.kode, "EWS-1000");
     assert.equal(d.diakuiPada, "2026-10-16T09:00:00Z");
     assert.equal(d.dieskalasiPada, "2026-10-16T10:00:00Z");
     assert.equal(d.selesaiPada, undefined);
@@ -185,17 +222,18 @@ describe("detail dan riwayat alert", () => {
     const d = toEwsDetail(alert);
     assert.equal(d.diakuiPada, undefined);
     assert.equal(d.aturanId, undefined);
+    assert.equal(d.aturanKode, undefined);
   });
 
   it("toEwsRiwayat: perubahan oleh mesin tidak punya pelaku dan status asal", () => {
     assert.deepEqual(
-      toEwsRiwayat({ id: "r1", dari: null, ke: "BARU", oleh_id: null, oleh_nama: null, waktu: "2026-10-16T08:56:00Z", catatan: "Dibuat oleh rule engine" }),
-      { id: "r1", dari: undefined, ke: "BARU", olehNama: undefined, waktu: "2026-10-16T08:56:00Z", catatan: "Dibuat oleh rule engine" },
+      toEwsRiwayat({ id: "1", dari: null, ke: "BARU", oleh_id: null, oleh_nama: null, waktu: "2026-10-16T08:56:00Z", catatan: "Dibuat oleh rule engine" }),
+      { id: "1", dari: undefined, ke: "BARU", olehNama: undefined, waktu: "2026-10-16T08:56:00Z", catatan: "Dibuat oleh rule engine" },
     );
   });
 
   it("toEwsRiwayat: perubahan oleh pengguna memuat nama dan status asal", () => {
-    const r = toEwsRiwayat({ id: "r2", dari: "BARU", ke: "DIAKUI", oleh_id: "u1", oleh_nama: "Manajer Data", waktu: "2026-10-16T09:00:00Z", catatan: "" });
+    const r = toEwsRiwayat({ id: "2", dari: "BARU", ke: "DIAKUI", oleh_id: "u1", oleh_nama: "Manajer Data", waktu: "2026-10-16T09:00:00Z", catatan: "" });
     assert.equal(r.dari, "BARU");
     assert.equal(r.olehNama, "Manajer Data");
   });

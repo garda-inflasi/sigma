@@ -11,7 +11,10 @@ import { inisialNama } from "@/lib/nama";
 import type { Permission } from "@/lib/rbac/permissions";
 
 export interface KartuResponse {
+  /** UUID kartu. */
   id: string;
+  /** Kode tampilan (ID lama, mis. INT-301); kartu tanpa kode bernilai null. */
+  kode?: string | null;
   /** Enum basis data: NORMAL | TEKANAN | SURPLUS. */
   siklus: string;
   tahap: string;
@@ -24,7 +27,10 @@ export interface KartuResponse {
   rekomendasi_ai: boolean;
   progres: { selesai: number; total: number };
   penanggung_jawab: { id: string; nama: string }[];
+  /** ID alert pemicu (string desimal). */
   ews_alert_id: string | null;
+  /** Kode tampilan alert pemicu (mis. EWS-1000). */
+  ews_alert_kode?: string | null;
   dibuat_pada: string;
   selesai_pada: string | null;
   versi: number;
@@ -63,6 +69,7 @@ export function toKartu(r: KartuResponse): KartuIntervensi {
   const siklus = r.siklus.toLowerCase();
   return {
     id: r.id,
+    kode: r.kode ?? undefined,
     siklus: SIKLUS.find((s) => s === siklus) ?? "normal",
     tahap: r.tahap,
     judul: r.judul,
@@ -80,6 +87,7 @@ export function toKartu(r: KartuResponse): KartuIntervensi {
     dieskalasi: r.dieskalasi_pada !== null,
     deskripsi: r.deskripsi || undefined,
     ewsAlertId: r.ews_alert_id ?? undefined,
+    ewsAlertKode: r.ews_alert_kode ?? undefined,
     dibuatPada: r.dibuat_pada,
     selesaiPada: r.selesai_pada ?? undefined,
   };
@@ -182,7 +190,8 @@ export function persetujuanDiDepan(alur: Alur[], tahapSiklus: Tahap[], tahapKini
 export type AksiRiwayat = "BUAT" | "PINDAH_TAHAP" | "TUGASKAN" | "ESKALASI" | "AJUKAN" | "SETUJU" | "TOLAK";
 
 export interface RiwayatResponse {
-  id: number;
+  /** ID BIGINT sebagai string desimal. */
+  id: string;
   aksi: AksiRiwayat;
   dari: string | null;
   ke: string | null;
@@ -193,7 +202,7 @@ export interface RiwayatResponse {
 }
 
 export interface RiwayatKartu {
-  id: number;
+  id: string;
   aksi: AksiRiwayat;
   dari?: string;
   ke?: string;
@@ -293,13 +302,17 @@ export function toBuatBody(input: BuatIntervensiInput): BuatIntervensiBody {
 
 export interface KartuBaru {
   id: string;
+  /** Kode tampilan kartu baru (mis. INT-1000). */
+  kode?: string | null;
   tahap: string;
 }
 
 export type KeputusanPersetujuan = "SETUJU" | "TOLAK";
 
 export interface PersetujuanResponse {
-  id: number;
+  /** ID BIGINT sebagai string desimal. */
+  id: string;
+  /** UUID kartu. */
   intervensi_id: string;
   kartu_judul: string;
   kartu_tahap: string;
@@ -334,7 +347,7 @@ export interface LangkahPersetujuan {
 }
 
 export interface Persetujuan {
-  id: number;
+  id: string;
   kartuId: string;
   kartuJudul: string;
   jenis: PersetujuanResponse["jenis"];

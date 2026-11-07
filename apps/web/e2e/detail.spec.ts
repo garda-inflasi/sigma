@@ -24,6 +24,9 @@ import { cariPengguna } from "./pengguna-helpers";
 const ALERT_ID = "EWS-E2E-1";
 const ALERT_JUDUL = "E2E uji detail peringatan";
 
+// UUID baris sumber SRC-BPS: garda_uuid_stabil('sumber_data', 'SRC-BPS'), sama untuk basis data yang dimigrasi dan yang di-seed.
+const UUID_SUMBER_BPS = "e1f49004-97cf-3b83-9c13-15c6eb3112d6";
+
 const unikPath =
   (path: string) => (r: { url(): string; request(): { method(): string } }) =>
     r.request().method() === "GET" && new URL(r.url()).pathname.endsWith(path);
@@ -273,7 +276,8 @@ test.describe("detail sumber data", () => {
     await tungguTenang(page);
     await page.getByPlaceholder("Cari sumber atau penyedia").fill("BPS WebAPI");
 
-    const detail = page.waitForResponse(unikPath("/v1/sumber-data/SRC-BPS"));
+    // Baris daftar membawa UUID sumber; UI memanggil detail lewat UUID itu, bukan kodenya.
+    const detail = page.waitForResponse(unikPath(`/v1/sumber-data/${UUID_SUMBER_BPS}`));
     await page.getByRole("row", { name: /BPS WebAPI/ }).click();
     expect((await detail).status()).toBe(200);
 
@@ -285,6 +289,8 @@ test.describe("detail sumber data", () => {
       dialog.getByRole("heading", { name: "Informasi sumber" }),
     ).toBeVisible();
     await expect(dialog.getByText("Jadwal cron (WIB)")).toBeVisible();
+    // Teks untuk manusia memakai kode (SRC-BPS), bukan UUID.
+    await expect(dialog.getByText("SRC-BPS", { exact: true })).toBeVisible();
     await expect(dialog).toContainText("0 6 * * *");
     await expect(dialog).toContainText("https://webapi.bps.go.id/v1/api");
     await expect(dialog).toContainText("Sumber: Badan Pusat Statistik (BPS)");
@@ -316,20 +322,28 @@ test.describe("detail sumber data", () => {
   test("API: id tidak dikenal 404 dan tanpa sumber.lihat 403", async () => {
     const manajer = await apiSebagai("manajerData");
     expect((await manajer.get("sumber-data/TIDAK-ADA")).status()).toBe(404);
-    const ok = await manajer.get("sumber-data/SRC-BPS");
+    // UUID yang sah tetapi tidak ada, dan kode lebih panjang dari 64 karakter, juga 404 (bukan 500).
+    expect((await manajer.get("sumber-data/00000000-0000-3000-8000-000000000000")).status()).toBe(404);
+    expect((await manajer.get(`sumber-data/${"a".repeat(65)}`)).status()).toBe(404);
+    const ok = await manajer.get(`sumber-data/${UUID_SUMBER_BPS}`);
     expect(ok.status()).toBe(200);
     const row = (await ok.json()).data as Record<string, unknown>;
     expect(row).toMatchObject({
-      id: "SRC-BPS",
+      id: UUID_SUMBER_BPS,
+      kode: "SRC-BPS",
       jadwal_cron: "0 6 * * *",
       robots_txt_patuh: true,
     });
+    // Kode (ID lama) tetap berlaku sebagai alias: tautan lama tidak putus.
+    const alias = await manajer.get("sumber-data/SRC-BPS");
+    expect(alias.status()).toBe(200);
+    expect(((await alias.json()).data as { id: string }).id).toBe(UUID_SUMBER_BPS);
     // Konfigurasi sumber (bisa berisi kunci API) tidak boleh ikut keluar.
     expect(row).not.toHaveProperty("konfigurasi");
     await manajer.dispose();
 
     const mahasiswa = await apiSebagai("mahasiswa");
-    expect((await mahasiswa.get("sumber-data/SRC-BPS")).status()).toBe(403);
+    expect((await mahasiswa.get(`sumber-data/${UUID_SUMBER_BPS}`)).status()).toBe(403);
     await mahasiswa.dispose();
   });
 });

@@ -198,7 +198,10 @@ export interface ColdStorageView {
 }
 
 export interface SumberData {
+  /** UUID sumber (identitas di URL API dan kunci rujukan). */
   id: string;
+  /** Kode tampilan (ID lama, mis. SRC-BI): teks untuk manusia; juga alias `id` di rute API. */
+  kode: string;
   nama: string;
   penyedia: string;
   jenis: "API" | "SCRAPER";
@@ -233,7 +236,8 @@ export type StatusEksekusi = "BERJALAN" | "SUKSES" | "SEBAGIAN" | "GAGAL";
 
 /** Satu run ingestion sebuah sumber (riwayat eksekusi). */
 export interface EksekusiSumber {
-  id: number;
+  /** ID BIGINT eksekusi, string desimal. */
+  id: string;
   pemicu: "JADWAL" | "MANUAL" | "CLI" | "DEMO";
   status: StatusEksekusi;
   mulai: string;
@@ -252,7 +256,8 @@ export interface EksekusiSumber {
 
 /** Cuplikan payload mentah (bronze) yang terakhir diambil. */
 export interface SampelSumber {
-  id: number;
+  /** ID BIGINT data mentah, string desimal. */
+  id: string;
   kunci: string;
   diambilPada: string;
   ukuran: number;

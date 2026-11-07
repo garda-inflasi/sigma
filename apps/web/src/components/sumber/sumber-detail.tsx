@@ -151,6 +151,9 @@ export function SumberDetail({
                 <section className="space-y-2">
                   <h3 className="text-sm font-medium">Informasi sumber</h3>
                   <dl className="space-y-1.5 rounded-xl bg-white/50 p-3 text-sm dark:bg-white/5">
+                    <BarisInfo label="Kode">
+                      <code className="text-xs">{segar.kode}</code>
+                    </BarisInfo>
                     <BarisInfo label="Jenis">{segar.jenis === "SCRAPER" ? "Scraper" : "API"}</BarisInfo>
                     <BarisInfo label="Cakupan">{segar.cakupan}</BarisInfo>
                     <BarisInfo label="Jadwal cron (WIB)">

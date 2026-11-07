@@ -79,7 +79,8 @@ komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemis
 - **Verifikasi:**
   - migrasi naik-turun pada salinan data demo (data dan struktur pulih persis);
   - seed `reference` + `demo` dua kali tanpa duplikat;
-  - `go test ./...` dan tes web hijau.
+  - `go test ./...` (99 paket) dan tes web (1.074 unit, 82 komponen) hijau;
+  - e2e Playwright 319 tes lolos dua putaran berturut-turut pada stack yang dibangun ulang (DB demo dimigrasi ke 000115).
 
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 

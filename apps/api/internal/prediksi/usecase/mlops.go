@@ -14,6 +14,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/garda-inflasi/api/internal/prediksi/mlclient"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -40,9 +41,33 @@ const (
 	// riwayatLatihHari adalah panjang riwayat harga yang diambil untuk melatih dan meramal.
 	riwayatLatihHari = 180
 	namaModelLatih   = "Seleksi otomatis: naive, seasonal naive, Holt, Holt-Winters"
-	prefixProyeksi   = "PRM"
 	statusSeriOK     = "OK"
+
+	// maksKode adalah lebar kolom kode (varchar(64)) dan batas panjang kode di rute dan body.
+	maksKode = 64
 )
+
+// RujukanModel membaca rujukan model dari masukan klien: bilangan bulat positif adalah ID BIGINT, selain itu
+// kode tampilan (mis. MDL-CBM-KRT-v2.3.1, ID lama sebelum migrasi 000114) yang dicari pada kolom kode. Kode tidak
+// boleh berupa angka murni. Teks kosong atau lebih panjang dari kolom kode bukan rujukan yang sah.
+func RujukanModel(teks string) (idx.RujukanID, bool) {
+	if id, err := idx.Parse(teks); err == nil {
+		return idx.RujukanID{ID: id}, true
+	}
+	if teks == "" || len(teks) > maksKode {
+		return idx.RujukanID{}, false
+	}
+	return idx.RujukanID{Kode: teks}, true
+}
+
+// kodeModel membentuk kode tampilan model "MDL-<komoditas>-<versi>"; nil bila tidak muat di kolom kode.
+func kodeModel(komoditas, versi string) *string {
+	kode := "MDL-" + komoditas + "-" + versi
+	if len(kode) > maksKode {
+		return nil
+	}
+	return &kode
+}
 
 // horizonLatih adalah horizon proyeksi yang dihasilkan, dalam hari.
 var horizonLatih = []int{7, 14, 30}
@@ -116,11 +141,12 @@ func (uc *MLOps) Latih(ctx context.Context, aktorID, kode string) (*domain.Model
 		return nil, err
 	}
 	uc.catat(ctx, audit.Entry{
-		AktorID: aktorID, Aksi: "LATIH_MODEL", Entitas: "model_registry", EntitasID: model.ID, Hasil: audit.HasilBerhasil,
+		AktorID: aktorID, Aksi: "LATIH_MODEL", Entitas: "model_registry", EntitasID: model.ID.String(), Hasil: audit.HasilBerhasil,
 		Sesudah: map[string]any{
 			"versi": model.Versi, "status": model.Status, "mape": model.Mape,
 			"baseline_mape": res.Ringkasan.BaselineMape, "n_seri": res.Ringkasan.NSeriOK,
 		},
+		Metadata: map[string]any{"kode": model.Kode},
 	})
 	return uc.repo.GetModelView(ctx, model.ID)
 }
@@ -170,7 +196,7 @@ func (uc *MLOps) Segarkan(ctx context.Context, aktorID, kode string) (int, error
 	if err != nil {
 		return 0, petakanGalatML(err)
 	}
-	proyeksi, err := proyeksiDariHasil(kode, model.Versi, sekarang, res.Seri, diminta)
+	proyeksi, err := proyeksiDariHasil(kode, model.ID, model.Versi, sekarang, res.Seri, diminta)
 	if err != nil {
 		return 0, err
 	}
@@ -181,7 +207,7 @@ func (uc *MLOps) Segarkan(ctx context.Context, aktorID, kode string) (int, error
 		return 0, err
 	}
 	uc.catat(ctx, audit.Entry{
-		AktorID: aktorID, Aksi: "SEGARKAN_PROYEKSI", Entitas: "model_registry", EntitasID: model.ID, Hasil: audit.HasilBerhasil,
+		AktorID: aktorID, Aksi: "SEGARKAN_PROYEKSI", Entitas: "model_registry", EntitasID: model.ID.String(), Hasil: audit.HasilBerhasil,
 		Sesudah: map[string]any{"versi": model.Versi, "proyeksi": len(proyeksi)},
 	})
 	return len(proyeksi), nil
@@ -243,10 +269,11 @@ func round(v float64, desimal int) float64 {
 	return math.Round(v*p) / p
 }
 
-// bangunModel menyusun baris registri (KANDIDAT) dan proyeksi dari jawaban pelatihan.
+// bangunModel menyusun baris registri (KANDIDAT) dan proyeksi dari jawaban pelatihan. ID model belum ada
+// (diberikan basis data saat disimpan), jadi proyeksi baru ditautkan ke model oleh SimpanModel.
 func bangunModel(kode string, sekarang time.Time, res *mlclient.TrainResponse, diminta map[string]bool) (*domain.ModelRegistry, []domain.PrediksiHarga, error) {
 	versi := "ml-" + sekarang.UTC().Format("20060102-150405")
-	proyeksi, err := proyeksiDariHasil(kode, versi, sekarang, res.Seri, diminta)
+	proyeksi, err := proyeksiDariHasil(kode, 0, versi, sekarang, res.Seri, diminta)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -277,7 +304,7 @@ func bangunModel(kode string, sekarang time.Time, res *mlclient.TrainResponse, d
 	algoritma := ringkasAlgoritma(r.Algoritma)
 	artefak := "ml://garda-ml/" + res.VersiLayanan
 	return &domain.ModelRegistry{
-		ID: "MDL-" + kode + "-" + versi, KomoditasKode: kode, Nama: namaModelLatih, Versi: versi,
+		Kode: kodeModel(kode, versi), KomoditasKode: kode, Nama: namaModelLatih, Versi: versi,
 		Mape: round(r.Mape, 2), Status: domain.StatusKandidat, DilatihPada: sekarang.UTC(),
 		Algorithm: &algoritma, Metrics: string(rawMetrik), FeatureImportance: string(rawImportansi),
 		Sumber: domain.SumberModel, ArtefakURI: &artefak, Catatan: catatanLatih(r),
@@ -339,10 +366,11 @@ func importansiFaktor(seri []mlclient.HasilSeri) []domain.ImportansiFaktor {
 	return out
 }
 
-// proyeksiDariHasil mengubah jawaban ML menjadi baris prediksi_harga bersumber MODEL.
-// Seri yang bukan OK dilewati; id seri di luar `diminta` atau interval yang tidak
+// proyeksiDariHasil mengubah jawaban ML menjadi baris prediksi_harga bersumber MODEL, tanpa ID dan kode: ID
+// diberikan basis data dan baris di-upsert menurut kunci alaminya. modelID boleh 0 bila model belum disimpan.
+// Seri yang bukan OK dilewati; id seri (kode kabupaten) di luar `diminta` atau interval yang tidak
 // berurutan dianggap pelanggaran kontrak.
-func proyeksiDariHasil(kode, versi string, sekarang time.Time, seri []mlclient.HasilSeri, diminta map[string]bool) ([]domain.PrediksiHarga, error) {
+func proyeksiDariHasil(kode string, modelID idx.ID, versi string, sekarang time.Time, seri []mlclient.HasilSeri, diminta map[string]bool) ([]domain.PrediksiHarga, error) {
 	var rows []domain.PrediksiHarga
 	for _, s := range seri {
 		if s.Status != statusSeriOK {
@@ -368,9 +396,8 @@ func proyeksiDariHasil(kode, versi string, sekarang time.Time, seri []mlclient.H
 				return nil, fmt.Errorf("encode faktor: %w", err)
 			}
 			rows = append(rows, domain.PrediksiHarga{
-				ID:            fmt.Sprintf("%s-%s-%s-%d-%s-%s", prefixProyeksi, kode, s.ID, r.HorizonHari, versi, target.Format("20060102")),
 				KomoditasKode: kode, KabupatenKode: s.ID, TanggalTarget: target, HorizonHari: r.HorizonHari,
-				Nilai: r.Nilai, Bawah: r.Bawah, Atas: r.Atas, HargaDasar: s.HargaDasar, ModelVersi: versi,
+				Nilai: r.Nilai, Bawah: r.Bawah, Atas: r.Atas, HargaDasar: s.HargaDasar, ModelID: modelID, ModelVersi: versi,
 				Faktor: string(raw), Sumber: domain.SumberModel, DibuatPada: sekarang.UTC(),
 			})
 		}
@@ -396,20 +423,25 @@ type BulkModelResult struct {
 	Gagal    []GagalModel
 }
 
-// AksiMassal mempromosikan atau mengarsipkan model menurut id. Model yang tidak ada,
-// berstatus tidak sesuai, atau (untuk promosi) lebih buruk dari baseline dilewati dan
-// dilaporkan dengan alasannya. Setiap perubahan dicatat di riwayat model_promosi dan audit.
+// AksiMassal mempromosikan atau mengarsipkan model menurut ID atau kode (RujukanModel). Model yang tidak ada,
+// berstatus tidak sesuai, atau (untuk promosi) lebih buruk dari baseline dilewati dan dilaporkan dengan
+// alasannya; GagalModel.ID memuat rujukan persis seperti dikirim klien. Setiap perubahan dicatat di riwayat
+// model_promosi dan audit (dengan ID BIGINT model).
 func (uc *MLOps) AksiMassal(ctx context.Context, aksi string, ids []string, aktorID string) (BulkModelResult, error) {
 	if aksi != AksiPromosi && aksi != AksiArsip {
 		return BulkModelResult{}, ErrAksiModelTidakValid
 	}
 	var hasil BulkModelResult
 	for _, id := range ids {
+		ref, sah := RujukanModel(id)
 		var err error
-		if aksi == AksiPromosi {
-			err = uc.promosikan(ctx, id, aktorID)
-		} else {
-			err = uc.arsipkan(ctx, id, aktorID)
+		switch {
+		case !sah:
+			err = domain.ErrModelTidakDitemukan
+		case aksi == AksiPromosi:
+			err = uc.promosikan(ctx, ref, aktorID)
+		default:
+			err = uc.arsipkan(ctx, ref, aktorID)
 		}
 		alasan, dilewati := alasanDilewati(err)
 		switch {
@@ -460,8 +492,8 @@ func angka2(v float64) string {
 	return strings.Replace(fmt.Sprintf("%.2f", v), ".", ",", 1)
 }
 
-func (uc *MLOps) promosikan(ctx context.Context, id, aktorID string) error {
-	m, err := uc.repo.GetModel(ctx, id)
+func (uc *MLOps) promosikan(ctx context.Context, ref idx.RujukanID, aktorID string) error {
+	m, err := uc.repo.GetModel(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -471,31 +503,31 @@ func (uc *MLOps) promosikan(ctx context.Context, id, aktorID string) error {
 	if err := cekBaseline(m); err != nil {
 		return err
 	}
-	hasil, err := uc.repo.Promosikan(ctx, id, aktorID, uc.now())
+	hasil, err := uc.repo.Promosikan(ctx, idx.RujukanID{ID: m.ID}, aktorID, uc.now())
 	if err != nil {
 		return err
 	}
 	sesudah := map[string]any{"status": domain.StatusProduksi, "versi": hasil.Model.Versi}
 	if hasil.Digantikan != nil {
-		sesudah["menggantikan"] = hasil.Digantikan.ID
+		sesudah["menggantikan"] = hasil.Digantikan.ID.String()
 	}
 	uc.catat(ctx, audit.Entry{
-		AktorID: aktorID, Aksi: "PROMOSI_MODEL", Entitas: "model_registry", EntitasID: id, Hasil: audit.HasilBerhasil,
+		AktorID: aktorID, Aksi: "PROMOSI_MODEL", Entitas: "model_registry", EntitasID: hasil.Model.ID.String(), Hasil: audit.HasilBerhasil,
 		Sebelum: map[string]any{"status": hasil.DariStatus}, Sesudah: sesudah,
-		Metadata: map[string]any{"komoditas": hasil.Model.KomoditasKode, "rollback": hasil.DariStatus == domain.StatusArsip},
+		Metadata: map[string]any{"komoditas": hasil.Model.KomoditasKode, "kode": hasil.Model.Kode, "rollback": hasil.DariStatus == domain.StatusArsip},
 	})
 	return nil
 }
 
-func (uc *MLOps) arsipkan(ctx context.Context, id, aktorID string) error {
-	m, err := uc.repo.Arsipkan(ctx, id, aktorID, uc.now())
+func (uc *MLOps) arsipkan(ctx context.Context, ref idx.RujukanID, aktorID string) error {
+	m, err := uc.repo.Arsipkan(ctx, ref, aktorID, uc.now())
 	if err != nil {
 		return err
 	}
 	uc.catat(ctx, audit.Entry{
-		AktorID: aktorID, Aksi: "ARSIP_MODEL", Entitas: "model_registry", EntitasID: id, Hasil: audit.HasilBerhasil,
+		AktorID: aktorID, Aksi: "ARSIP_MODEL", Entitas: "model_registry", EntitasID: m.ID.String(), Hasil: audit.HasilBerhasil,
 		Sebelum: map[string]any{"status": domain.StatusKandidat}, Sesudah: map[string]any{"status": m.Status, "versi": m.Versi},
-		Metadata: map[string]any{"komoditas": m.KomoditasKode},
+		Metadata: map[string]any{"komoditas": m.KomoditasKode, "kode": m.Kode},
 	})
 	return nil
 }

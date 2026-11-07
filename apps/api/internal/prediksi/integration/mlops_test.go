@@ -158,6 +158,7 @@ func (s *suite) post(t *testing.T, path, email string, body any) *httptest.Respo
 
 type modelResp struct {
 	ID            string   `json:"id"`
+	Kode          *string  `json:"kode"`
 	KomoditasKode string   `json:"komoditas_kode"`
 	Versi         string   `json:"versi"`
 	Mape          float64  `json:"mape"`

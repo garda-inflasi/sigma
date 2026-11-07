@@ -2,6 +2,7 @@ package integration
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,11 +28,21 @@ func (s *suite) bulkModel(t *testing.T, email, action string, ids ...string) (*b
 	return &r, w.Code
 }
 
-func (s *suite) statusModel(t *testing.T, id string) string {
+// statusModel membaca status model menurut ID BIGINT (teks desimal) atau kodenya.
+func (s *suite) statusModel(t *testing.T, rujukan string) string {
 	t.Helper()
 	var status string
-	require.NoError(t, s.db.Raw(`SELECT status::text FROM model_registry WHERE id = ?`, id).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT status::text FROM model_registry WHERE id::text = ? OR kode = ?`, rujukan, rujukan).Scan(&status).Error)
 	return status
+}
+
+// idModel membaca ID BIGINT (teks desimal) model menurut kodenya.
+func (s *suite) idModel(t *testing.T, kode string) string {
+	t.Helper()
+	var id string
+	require.NoError(t, s.db.Raw(`SELECT id::text FROM model_registry WHERE kode = ?`, kode).Scan(&id).Error)
+	require.NotEmpty(t, id, kode)
+	return id
 }
 
 func TestPromosi_Authorization(t *testing.T) {
@@ -68,7 +79,7 @@ func TestPromosi_AlurLatihPromosiDanRollback(t *testing.T) {
 	})
 
 	t.Run("riwayat dan audit tercatat", func(t *testing.T) {
-		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE model_id = ? AND aksi = 'PROMOSI' AND status_lama = 'KANDIDAT' AND status_baru = 'PRODUKSI' AND model_digantikan_id = ? AND oleh = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID, demoProduksi))
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE model_id = ? AND aksi = 'PROMOSI' AND status_lama = 'KANDIDAT' AND status_baru = 'PRODUKSI' AND model_digantikan_id = (SELECT id FROM model_registry WHERE kode = ?) AND oleh = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID, demoProduksi))
 		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'PROMOSI_MODEL' AND entitas_id = ? AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_data')`, m.ID))
 	})
 
@@ -85,9 +96,11 @@ func TestPromosi_AlurLatihPromosiDanRollback(t *testing.T) {
 		assert.Contains(t, hasil.Detail[0].Alasan, "status model tidak memungkinkan")
 	})
 
-	t.Run("rollback: model lama dikembalikan ke produksi", func(t *testing.T) {
+	t.Run("rollback lewat kode (alias ID lama): model lama dikembalikan ke produksi", func(t *testing.T) {
 		hasil, _ := s.bulkModel(t, emailKelola, "promosi", demoProduksi)
 		assert.Equal(t, 1, hasil.Berhasil)
+		assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'PROMOSI_MODEL' AND entitas_id = ? AND (metadata->>'rollback')::boolean`, s.idModel(t, demoProduksi)),
+			"audit memakai ID BIGINT model walau rujukannya kode")
 		assert.Equal(t, "PRODUKSI", s.statusModel(t, demoProduksi))
 		assert.Equal(t, "ARSIP", s.statusModel(t, m.ID))
 		assert.Equal(t, 2, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE komoditas_kode = 'CBM-KRT'`))
@@ -142,18 +155,21 @@ func TestPromosi_ArsipHanyaUntukKandidat(t *testing.T) {
 	}
 	assert.Contains(t, alasan["MDL-CBM-KRT-v2.3.1"], "status model")
 	assert.Equal(t, "model tidak ditemukan", alasan["MDL-TIDAK-ADA"])
-	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE aksi = 'ARSIP' AND model_id = 'MDL-CBM-KRT-v2.4.0-rc1' AND oleh = garda_uuid_stabil('pengguna', 'manajer_data')`))
-	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'ARSIP_MODEL' AND entitas_id = 'MDL-CBM-KRT-v2.4.0-rc1'`))
+	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM model_promosi WHERE aksi = 'ARSIP' AND model_id = (SELECT id FROM model_registry WHERE kode = 'MDL-CBM-KRT-v2.4.0-rc1')
+		AND oleh = garda_uuid_stabil('pengguna', 'manajer_data') AND kode IS NULL`), "riwayat baru tanpa kode lama")
+	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'ARSIP_MODEL' AND entitas_id = ?`, s.idModel(t, "MDL-CBM-KRT-v2.4.0-rc1")))
 }
 
 func TestPromosi_PermintaanTidakValid(t *testing.T) {
 	s := newMLSuite(t, "prediksi_promosi_400", newFakeML(t).client())
 
 	for nama, body := range map[string]map[string]any{
-		"aksi tidak dikenal": {"action": "hapus", "ids": []string{"x"}},
-		"tanpa aksi":         {"ids": []string{"x"}},
-		"id kosong":          {"action": "arsip", "ids": []string{}},
-		"field lama":         {"aksi": "arsip", "ids": []string{"x"}},
+		"aksi tidak dikenal":      {"action": "hapus", "ids": []string{"x"}},
+		"tanpa aksi":              {"ids": []string{"x"}},
+		"id kosong":               {"action": "arsip", "ids": []string{}},
+		"elemen kosong":           {"action": "arsip", "ids": []string{""}},
+		"rujukan terlalu panjang": {"action": "arsip", "ids": []string{strings.Repeat("M", 65)}},
+		"field lama":              {"aksi": "arsip", "ids": []string{"x"}},
 	} {
 		assert.Equal(t, http.StatusBadRequest, s.post(t, "/v1/prediksi/registri/bulk", emailKelola, body).Code, nama)
 	}
@@ -204,6 +220,8 @@ func TestSimulasi_DihitungServerDanTersimpan(t *testing.T) {
 		AND dibuat_oleh = (SELECT id FROM pengguna WHERE email = ?)
 		AND parameter->>'pasokan_pct' = '10' AND (hasil->>'hasil_pct')::numeric = 8.9`, got.ID, emailBerhak))
 	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM audit_log WHERE aksi = 'SIMULASI_SKENARIO' AND entitas_id = ?`, got.ID))
+	assert.Regexp(t, `^[1-9][0-9]*$`, got.ID, "ID skenario adalah angka desimal (BIGINT) yang diberikan basis data")
+	assert.Equal(t, 1, s.hitung(t, `SELECT COUNT(*) FROM skenario_simulasi WHERE id = ? AND kode IS NULL AND NOT jsonb_exists(hasil, 'id')`, got.ID), "skenario baru tanpa kode, dan snapshot hasil tanpa ID")
 }
 
 func TestSimulasi_NetralSamaDenganProyeksiModel(t *testing.T) {
@@ -244,4 +262,28 @@ func TestSimulasi_PermintaanTidakValid(t *testing.T) {
 	}
 	assert.Equal(t, http.StatusNotFound, s.post(t, "/v1/prediksi/simulasi", emailBerhak, map[string]any{"komoditas_kode": "XXX"}).Code)
 	assert.Equal(t, 0, s.hitung(t, `SELECT COUNT(*) FROM skenario_simulasi`), "permintaan gagal tidak menyimpan skenario")
+}
+
+func TestPromosi_RujukanBisaIDBigintAtauKode(t *testing.T) {
+	s := newMLSuite(t, "prediksi_promosi_rujukan", newFakeML(t).client())
+	const kandidat, produksi = "MDL-CBM-KRT-v2.4.0-rc1", "MDL-CBM-KRT-v2.3.1"
+	idKandidat, idProduksi := s.idModel(t, kandidat), s.idModel(t, produksi)
+	assert.Regexp(t, `^[1-9][0-9]*$`, idKandidat)
+	assert.NotEqual(t, kandidat, idKandidat)
+
+	// ID BIGINT yang tidak ada dan kode yang tidak ada sama-sama dilaporkan tidak ditemukan (bukan 400/500).
+	hasil, kode := s.bulkModel(t, emailKelola, "arsip", "999999999", "MDL-TIDAK-ADA", idProduksi, idKandidat)
+
+	require.Equal(t, http.StatusOK, kode)
+	assert.Equal(t, 1, hasil.Berhasil, "kandidat diarsipkan lewat ID BIGINT")
+	assert.Equal(t, 3, hasil.Gagal)
+	alasan := map[string]string{}
+	for _, d := range hasil.Detail {
+		alasan[d.ID] = d.Alasan
+	}
+	assert.Equal(t, "model tidak ditemukan", alasan["999999999"])
+	assert.Equal(t, "model tidak ditemukan", alasan["MDL-TIDAK-ADA"])
+	assert.Contains(t, alasan[idProduksi], "status model", "model produksi tidak dapat diarsipkan; rujukan dikembalikan persis seperti dikirim")
+	assert.Equal(t, "ARSIP", s.statusModel(t, idKandidat))
+	assert.Equal(t, "ARSIP", s.statusModel(t, kandidat), "ID dan kode menunjuk model yang sama")
 }

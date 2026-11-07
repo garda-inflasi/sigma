@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/garda-inflasi/api/internal/prediksi/mlclient"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,10 +30,11 @@ type fakeMLRepo struct {
 	seriDari  time.Time
 	hariIniEv time.Time
 
+	// models adalah registri palsu, berkunci pada kode model.
 	models       map[string]*domain.ModelRegistry
 	digantikan   *domain.ModelRegistry
-	dipromosikan []string
-	diarsipkan   []string
+	dipromosikan []string // kode model
+	diarsipkan   []string // kode model
 	oleh         string
 	waktu        time.Time
 }
@@ -41,9 +44,16 @@ func (r *fakeMLRepo) SeriKonsumen(_ context.Context, _ string, dari time.Time) (
 	return r.seri, r.err
 }
 
+// idModelBaru adalah ID BIGINT yang "diberikan basis data" kepada model hasil pelatihan di fake.
+const idModelBaru idx.ID = 5
+
 func (r *fakeMLRepo) SimpanModel(_ context.Context, m *domain.ModelRegistry, p []domain.PrediksiHarga) error {
+	if r.errSimpan != nil {
+		return r.errSimpan
+	}
+	m.ID = idModelBaru
 	r.disimpan, r.proyeksi = m, p
-	return r.errSimpan
+	return nil
 }
 
 func (r *fakeMLRepo) SimpanProyeksi(_ context.Context, p []domain.PrediksiHarga) error {
@@ -58,21 +68,31 @@ func (r *fakeMLRepo) ModelProduksi(context.Context, string) (*domain.ModelRegist
 	return r.produksi, nil
 }
 
-func (r *fakeMLRepo) GetModelView(_ context.Context, id string) (*domain.ModelView, error) {
+func (r *fakeMLRepo) GetModelView(_ context.Context, id idx.ID) (*domain.ModelView, error) {
 	return &domain.ModelView{ID: id}, r.err
 }
 
-// GetModel mengembalikan model menurut id dari `models`; ErrModelTidakDitemukan bila tak ada.
-func (r *fakeMLRepo) GetModel(_ context.Context, id string) (*domain.ModelRegistry, error) {
-	if m, ok := r.models[id]; ok {
+// cari mencari model di `models` menurut ID atau kode, seperti repositori sungguhan.
+func (r *fakeMLRepo) cari(ref idx.RujukanID) (*domain.ModelRegistry, bool) {
+	for _, m := range r.models {
+		if (ref.ID != 0 && m.ID == ref.ID) || (ref.Kode != "" && m.Kode != nil && *m.Kode == ref.Kode) {
+			return m, true
+		}
+	}
+	return nil, false
+}
+
+// GetModel mengembalikan model menurut ID atau kode dari `models`; ErrModelTidakDitemukan bila tak ada.
+func (r *fakeMLRepo) GetModel(_ context.Context, ref idx.RujukanID) (*domain.ModelRegistry, error) {
+	if m, ok := r.cari(ref); ok {
 		return m, nil
 	}
 	return nil, domain.ErrModelTidakDitemukan
 }
 
 // Promosikan meniru aturan repositori: model PRODUKSI tidak dapat dipromosikan lagi.
-func (r *fakeMLRepo) Promosikan(_ context.Context, id, oleh string, waktu time.Time) (*domain.HasilPromosi, error) {
-	m, ok := r.models[id]
+func (r *fakeMLRepo) Promosikan(_ context.Context, ref idx.RujukanID, oleh string, waktu time.Time) (*domain.HasilPromosi, error) {
+	m, ok := r.cari(ref)
 	if !ok {
 		return nil, domain.ErrModelTidakDitemukan
 	}
@@ -82,13 +102,13 @@ func (r *fakeMLRepo) Promosikan(_ context.Context, id, oleh string, waktu time.T
 	hasil := &domain.HasilPromosi{DariStatus: m.Status, Digantikan: r.digantikan}
 	m.Status = domain.StatusProduksi
 	hasil.Model = *m
-	r.dipromosikan = append(r.dipromosikan, id)
+	r.dipromosikan = append(r.dipromosikan, *m.Kode)
 	r.oleh, r.waktu = oleh, waktu
 	return hasil, nil
 }
 
-func (r *fakeMLRepo) Arsipkan(_ context.Context, id, oleh string, waktu time.Time) (*domain.ModelRegistry, error) {
-	m, ok := r.models[id]
+func (r *fakeMLRepo) Arsipkan(_ context.Context, ref idx.RujukanID, oleh string, waktu time.Time) (*domain.ModelRegistry, error) {
+	m, ok := r.cari(ref)
 	if !ok {
 		return nil, domain.ErrModelTidakDitemukan
 	}
@@ -96,7 +116,7 @@ func (r *fakeMLRepo) Arsipkan(_ context.Context, id, oleh string, waktu time.Tim
 		return nil, domain.ErrStatusModelTidakValid
 	}
 	m.Status = domain.StatusArsip
-	r.diarsipkan = append(r.diarsipkan, id)
+	r.diarsipkan = append(r.diarsipkan, *m.Kode)
 	r.oleh, r.waktu = oleh, waktu
 	return m, nil
 }
@@ -172,7 +192,7 @@ func TestLatih_MenyimpanKandidatDanProyeksiBersumberModel(t *testing.T) {
 	view, err := u.Latih(t.Context(), uid("u-1"), "CBM-KRT")
 
 	require.NoError(t, err)
-	assert.Equal(t, "MDL-CBM-KRT-ml-20261105-140312", view.ID)
+	assert.Equal(t, idModelBaru, view.ID, "ID model BIGINT dari basis data, bukan buatan aplikasi")
 
 	// Permintaan ke ML: seri dari entri harga, horizon tetap, riwayat 180 hari.
 	assert.Equal(t, "CBM-KRT", ml.gotTrain.KomoditasKode)
@@ -182,6 +202,8 @@ func TestLatih_MenyimpanKandidatDanProyeksiBersumberModel(t *testing.T) {
 
 	m := repo.disimpan
 	require.NotNil(t, m)
+	require.NotNil(t, m.Kode)
+	assert.Equal(t, "MDL-CBM-KRT-ml-20261105-140312", *m.Kode, "kode tampilan model tetap MDL-<komoditas>-<versi>")
 	assert.Equal(t, domain.StatusKandidat, m.Status, "model baru tidak langsung dipakai")
 	assert.Equal(t, domain.SumberModel, m.Sumber)
 	assert.Equal(t, "ml-20261105-140312", m.Versi)
@@ -199,7 +221,11 @@ func TestLatih_MenyimpanKandidatDanProyeksiBersumberModel(t *testing.T) {
 
 	require.Len(t, repo.proyeksi, 2)
 	p := repo.proyeksi[1]
-	assert.Equal(t, "PRM-CBM-KRT-1171-14-ml-20261105-140312-20261118", p.ID)
+	assert.Zero(t, p.ID, "ID proyeksi diberikan basis data")
+	assert.Nil(t, p.Kode, "proyeksi hasil ML di-upsert menurut kunci alaminya, tanpa kode")
+	assert.Equal(t, "1171", p.KabupatenKode)
+	assert.Equal(t, 14, p.HorizonHari)
+	assert.Equal(t, "2026-11-18", p.TanggalTarget.Format(time.DateOnly))
 	assert.Equal(t, domain.SumberModel, p.Sumber)
 	assert.Equal(t, "ml-20261105-140312", p.ModelVersi)
 	assert.Equal(t, [3]int{51500, 53000, 54500}, [3]int{p.Bawah, p.Nilai, p.Atas})
@@ -211,6 +237,8 @@ func TestLatih_MenyimpanKandidatDanProyeksiBersumberModel(t *testing.T) {
 	assert.Equal(t, "LATIH_MODEL", e.Aksi)
 	assert.Equal(t, uid("u-1"), e.AktorID)
 	assert.Equal(t, audit.HasilBerhasil, e.Hasil)
+	assert.Equal(t, "5", e.EntitasID, "audit memakai ID BIGINT model")
+	assert.Equal(t, "model_registry", e.Entitas)
 }
 
 func TestLatih_ImportansiFaktorDinormalkan(t *testing.T) {
@@ -356,8 +384,13 @@ func TestSegarkan_MemakaiParameterTerlatihTanpaMelatihUlang(t *testing.T) {
 	assert.Equal(t, 400.0, ml.gotPred.Seri[0].GalatRMSE["7"])
 	assert.Equal(t, []int{7, 14, 30}, ml.gotPred.Horizon)
 	assert.Equal(t, model.Versi, repo.proyeksi[0].ModelVersi)
+	for _, p := range repo.proyeksi {
+		assert.Equal(t, model.ID, p.ModelID, "proyeksi ditautkan ke model produksi lewat ID")
+		assert.Nil(t, p.Kode)
+	}
 	e, _ := rec.Last()
 	assert.Equal(t, "SEGARKAN_PROYEKSI", e.Aksi)
+	assert.Equal(t, model.ID.String(), e.EntitasID)
 }
 
 func TestSegarkan_Penolakan(t *testing.T) {
@@ -428,12 +461,17 @@ func TestStatus(t *testing.T) {
 	})
 }
 
-func modelUji(id, status, sumber string, mape, baseline float64) *domain.ModelRegistry {
+// idUji adalah ID BIGINT model uji menurut kodenya (pegangan yang dibaca di tes).
+var idUji = map[string]idx.ID{"kandidat": 11, "arsip": 12, "produksi": 13, "lama": 14, "buruk": 15, "baik": 16, "k": 17, "a": 18}
+
+func modelUji(kode, status, sumber string, mape, baseline float64) *domain.ModelRegistry {
 	metrik := `{}`
 	if sumber == domain.SumberModel {
 		metrik = fmt.Sprintf(`{"mape":%v,"baseline_mape":%v}`, mape, baseline)
 	}
-	return &domain.ModelRegistry{ID: id, KomoditasKode: "CBM-KRT", Versi: "v-" + id, Status: status, Sumber: sumber, Mape: mape, Metrics: metrik}
+	return &domain.ModelRegistry{
+		ID: idUji[kode], Kode: &kode, KomoditasKode: "CBM-KRT", Versi: "v-" + kode, Status: status, Sumber: sumber, Mape: mape, Metrics: metrik,
+	}
 }
 
 func TestCekBaseline(t *testing.T) {
@@ -451,7 +489,7 @@ func TestCekBaseline(t *testing.T) {
 }
 
 func TestAksiMassal_PromosiMemanggilRepoDanMencatatAudit(t *testing.T) {
-	lama := &domain.ModelRegistry{ID: "lama", Versi: "v-lama"}
+	lama := modelUji("lama", domain.StatusProduksi, domain.SumberDemo, 1, 0)
 	repo := &fakeMLRepo{
 		digantikan: lama,
 		models: map[string]*domain.ModelRegistry{
@@ -473,8 +511,9 @@ func TestAksiMassal_PromosiMemanggilRepoDanMencatatAudit(t *testing.T) {
 	entries := rec.Entries()
 	require.Len(t, entries, 2)
 	assert.Equal(t, "PROMOSI_MODEL", entries[0].Aksi)
-	assert.Equal(t, "kandidat", entries[0].EntitasID)
-	assert.Equal(t, "lama", entries[0].Sesudah.(map[string]any)["menggantikan"])
+	assert.Equal(t, idUji["kandidat"].String(), entries[0].EntitasID, "audit memakai ID BIGINT, bukan kode")
+	assert.Equal(t, idUji["lama"].String(), entries[0].Sesudah.(map[string]any)["menggantikan"])
+	assert.Equal(t, "kandidat", *entries[0].Metadata["kode"].(*string), "kode tampilan ikut di metadata")
 	assert.Equal(t, false, entries[0].Metadata["rollback"])
 	assert.Equal(t, true, entries[1].Metadata["rollback"], "promosi dari ARSIP adalah rollback")
 }
@@ -557,7 +596,7 @@ type repoGalatPromosi struct {
 	err error
 }
 
-func (r *repoGalatPromosi) Promosikan(context.Context, string, string, time.Time) (*domain.HasilPromosi, error) {
+func (r *repoGalatPromosi) Promosikan(context.Context, idx.RujukanID, string, time.Time) (*domain.HasilPromosi, error) {
 	return nil, r.err
 }
 
@@ -580,4 +619,53 @@ func TestLatih_VersiSudahAdaDiteruskan(t *testing.T) {
 
 	assert.ErrorIs(t, err, domain.ErrModelSudahAda)
 	assert.Empty(t, rec.Entries())
+}
+
+func TestRujukanModel_IDAtauKode(t *testing.T) {
+	kasus := []struct {
+		teks string
+		want idx.RujukanID
+		sah  bool
+	}{
+		{"42", idx.RujukanID{ID: 42}, true},
+		{"MDL-CBM-KRT-v2.3.1", idx.RujukanID{Kode: "MDL-CBM-KRT-v2.3.1"}, true},
+		{"0042", idx.RujukanID{Kode: "0042"}, true}, // bukan ID yang sah (nol di depan): dicari sebagai kode
+		{"-5", idx.RujukanID{Kode: "-5"}, true},     // negatif: dicari sebagai kode, tidak akan ketemu
+		{strings.Repeat("M", 64), idx.RujukanID{Kode: strings.Repeat("M", 64)}, true},
+		{strings.Repeat("M", 65), idx.RujukanID{}, false}, // lebih panjang dari kolom kode
+		{"", idx.RujukanID{}, false},
+	}
+	for _, k := range kasus {
+		got, sah := RujukanModel(k.teks)
+		assert.Equal(t, k.sah, sah, k.teks)
+		assert.Equal(t, k.want, got, k.teks)
+	}
+}
+
+func TestKodeModel_NilBilaTidakMuatDiKolomKode(t *testing.T) {
+	require.NotNil(t, kodeModel("CBM-KRT", "ml-20261105-140312"))
+	assert.Equal(t, "MDL-CBM-KRT-ml-20261105-140312", *kodeModel("CBM-KRT", "ml-20261105-140312"))
+	assert.Nil(t, kodeModel(strings.Repeat("K", 50), "ml-20261105-140312"), "kode terlalu panjang tidak boleh membuat INSERT gagal")
+}
+
+func TestAksiMassal_MenerimaIDBigintDanKodeAlias(t *testing.T) {
+	repo := &fakeMLRepo{models: map[string]*domain.ModelRegistry{
+		"kandidat": modelUji("kandidat", domain.StatusKandidat, domain.SumberDemo, 2, 0),
+		"arsip":    modelUji("arsip", domain.StatusArsip, domain.SumberDemo, 2, 0),
+	}}
+	u, rec := uc(repo, nil)
+
+	// "11" = ID BIGINT kandidat; "arsip" = kode model arsip; ID yang tidak ada dan kode terlalu panjang dilewati.
+	hasil, err := u.AksiMassal(t.Context(), AksiPromosi, []string{"11", "arsip", "999", strings.Repeat("x", 65)}, uid("u-1"))
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, hasil.Berhasil)
+	assert.ElementsMatch(t, []string{"kandidat", "arsip"}, repo.dipromosikan)
+	require.Len(t, hasil.Gagal, 2)
+	assert.Equal(t, GagalModel{ID: "999", Alasan: "model tidak ditemukan"}, hasil.Gagal[0], "ID yang tidak ada")
+	assert.Equal(t, strings.Repeat("x", 65), hasil.Gagal[1].ID, "rujukan ditampilkan persis seperti dikirim")
+	assert.Equal(t, "model tidak ditemukan", hasil.Gagal[1].Alasan)
+	for _, e := range rec.Entries() {
+		assert.Contains(t, []string{"11", "12"}, e.EntitasID, "audit selalu memakai ID BIGINT, juga bila rujukannya kode")
+	}
 }

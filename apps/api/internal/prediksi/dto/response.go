@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 const tanggalISO = "2006-01-02"
@@ -66,9 +67,11 @@ type ProyeksiResponse struct {
 	Sumber        string            `json:"sumber"`
 }
 
-// ModelResponse adalah satu baris registri model.
+// ModelResponse adalah satu baris registri model. ID adalah ID BIGINT (JSON: string desimal); Kode adalah kode
+// tampilan (MDL-<komoditas>-<versi>) yang juga diterima sebagai rujukan model, null bila tidak ada.
 type ModelResponse struct {
-	ID            string  `json:"id"`
+	ID            idx.ID  `json:"id"`
+	Kode          *string `json:"kode"`
 	KomoditasKode string  `json:"komoditas_kode"`
 	KomoditasNama string  `json:"komoditas_nama"`
 	Nama          string  `json:"nama"`
@@ -102,7 +105,7 @@ func ToRingkasan(items []domain.Ringkasan) []RingkasanResponse {
 
 func ToModel(m domain.ModelView) ModelResponse {
 	return ModelResponse{
-		ID: m.ID, KomoditasKode: m.KomoditasKode, KomoditasNama: m.KomoditasNama, Nama: m.Nama, Versi: m.Versi,
+		ID: m.ID, Kode: m.Kode, KomoditasKode: m.KomoditasKode, KomoditasNama: m.KomoditasNama, Nama: m.Nama, Versi: m.Versi,
 		Mape: m.Mape, Drift: m.Drift, Status: m.Status, DilatihPada: m.DilatihPada.Format(time.RFC3339), Sumber: m.Sumber,
 		Catatan: m.Catatan, BaselineMape: m.BaselineMape, MapeRealisasi: m.MapeRealisasi, NEvaluasi: m.NEvaluasi,
 	}
@@ -168,7 +171,8 @@ func ToProyeksi(d domain.Detail) ProyeksiResponse {
 
 func ptr(v int) *int { return &v }
 
-// GagalModelResponse menyebut model yang tidak diproses dan alasannya.
+// GagalModelResponse menyebut model yang tidak diproses dan alasannya. ID adalah rujukan persis seperti
+// dikirim klien (ID BIGINT atau kode).
 type GagalModelResponse struct {
 	ID     string `json:"id"`
 	Alasan string `json:"alasan"`

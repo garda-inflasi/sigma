@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
-	"github.com/google/uuid"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -22,15 +22,16 @@ func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// proyeksi memilih kolom ProyeksiView untuk proyeksi dari model PRODUKSI.
+// proyeksi memilih kolom ProyeksiView untuk proyeksi dari model PRODUKSI. Model dicari lewat FK model_id,
+// dan versinya dibaca dari registri (sumber kebenaran), bukan dari kolom informasi prediksi_harga.model_versi.
 func (r *Repository) proyeksi(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx).Table("prediksi_harga AS p").
-		Select(`p.id, p.komoditas_kode, k.nama AS komoditas_nama, p.kabupaten_kode, kb.nama AS kabupaten_nama,
+		Select(`p.id, p.model_id, p.komoditas_kode, k.nama AS komoditas_nama, p.kabupaten_kode, kb.nama AS kabupaten_nama,
 			p.tanggal_target, p.horizon_hari, p.nilai, p.bawah, p.atas, p.harga_dasar, p.faktor::text AS faktor,
-			p.sumber, p.model_versi, m.nama AS model_nama, m.mape AS model_mape, m.dilatih_pada AS model_dilatih`).
+			p.sumber, m.versi AS model_versi, m.nama AS model_nama, m.mape AS model_mape, m.dilatih_pada AS model_dilatih`).
 		Joins("JOIN komoditas k ON k.kode = p.komoditas_kode").
 		Joins("JOIN kabupaten kb ON kb.kode = p.kabupaten_kode").
-		Joins("JOIN model_registry m ON m.komoditas_kode = p.komoditas_kode AND m.versi = p.model_versi").
+		Joins("JOIN model_registry m ON m.id = p.model_id").
 		Where("m.status = ?", domain.StatusProduksi)
 }
 
@@ -77,7 +78,7 @@ func (r *Repository) Jalur(ctx context.Context, p domain.ProyeksiView, maxHorizo
 	var titik []domain.TitikProyeksi
 	err := r.db.WithContext(ctx).Table("prediksi_harga").
 		Select("tanggal_target, horizon_hari, nilai, bawah, atas").
-		Where("komoditas_kode = ? AND kabupaten_kode = ? AND model_versi = ?", p.KomoditasKode, p.KabupatenKode, p.ModelVersi).
+		Where("komoditas_kode = ? AND kabupaten_kode = ? AND model_id = ?", p.KomoditasKode, p.KabupatenKode, p.ModelID).
 		Where("horizon_hari <= ? AND tanggal_target - horizon_hari = ?::date", maxHorizon, p.TanggalDasar().Format(tanggalSQL)).
 		Order("horizon_hari").
 		Scan(&titik).Error
@@ -107,16 +108,16 @@ func (r *Repository) Riwayat(ctx context.Context, kode, kabupaten string, dari, 
 // dari metrik pelatihan, dan MAPE realisasi dari evaluasi proyeksi model itu.
 func (r *Repository) modelView(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx).Table("model_registry AS m").
-		Select(`m.id, m.komoditas_kode, k.nama AS komoditas_nama, m.nama, m.versi, m.mape, m.drift,
+		Select(`m.id, m.kode, m.komoditas_kode, k.nama AS komoditas_nama, m.nama, m.versi, m.mape, m.drift,
 			m.status::text AS status, m.dilatih_pada, m.sumber, m.catatan,
 			(m.metrics->>'baseline_mape')::float8 AS baseline_mape,
 			ev.mape_realisasi, COALESCE(ev.n_evaluasi, 0) AS n_evaluasi`).
 		Joins("JOIN komoditas k ON k.kode = m.komoditas_kode").
 		Joins(`LEFT JOIN (
-				SELECT p.komoditas_kode, p.model_versi, AVG(ABS(e.galat_pct))::float8 AS mape_realisasi, COUNT(*)::int AS n_evaluasi
+				SELECT p.model_id, AVG(ABS(e.galat_pct))::float8 AS mape_realisasi, COUNT(*)::int AS n_evaluasi
 				FROM prediksi_evaluasi e JOIN prediksi_harga p ON p.id = e.prediksi_id
-				GROUP BY p.komoditas_kode, p.model_versi
-			) ev ON ev.komoditas_kode = m.komoditas_kode AND ev.model_versi = m.versi`)
+				GROUP BY p.model_id
+			) ev ON ev.model_id = m.id`)
 }
 
 func (r *Repository) ListModel(ctx context.Context) ([]domain.ModelView, error) {
@@ -128,7 +129,7 @@ func (r *Repository) ListModel(ctx context.Context) ([]domain.ModelView, error) 
 	return items, nil
 }
 
-func (r *Repository) GetModelView(ctx context.Context, id string) (*domain.ModelView, error) {
+func (r *Repository) GetModelView(ctx context.Context, id idx.ID) (*domain.ModelView, error) {
 	var item domain.ModelView
 	res := r.modelView(ctx).Where("m.id = ?", id).Limit(1).Scan(&item)
 	if res.Error != nil {
@@ -176,6 +177,10 @@ func (r *Repository) SimpanModel(ctx context.Context, m *domain.ModelRegistry, p
 			}
 			return fmt.Errorf("simpan model: %w", err)
 		}
+		// ID model baru diketahui setelah INSERT; proyeksi ditautkan ke sana dan versinya ditulis konsisten.
+		for i := range proyeksi {
+			proyeksi[i].ModelID, proyeksi[i].ModelVersi = m.ID, m.Versi
+		}
 		return upsertProyeksi(tx, proyeksi)
 	})
 }
@@ -184,13 +189,22 @@ func (r *Repository) SimpanProyeksi(ctx context.Context, proyeksi []domain.Predi
 	return upsertProyeksi(r.db.WithContext(ctx), proyeksi)
 }
 
+// upsertProyeksi menulis proyeksi dengan kunci alami (komoditas, kabupaten, tanggal target, horizon, versi model):
+// menulis ulang proyeksi yang sama memperbarui barisnya, bukan menambah. ID dan kode tidak ikut diubah.
 func upsertProyeksi(db *gorm.DB, proyeksi []domain.PrediksiHarga) error {
 	if len(proyeksi) == 0 {
 		return nil
 	}
+	for _, p := range proyeksi {
+		if p.ModelID == 0 || p.ModelVersi == "" {
+			return fmt.Errorf("simpan proyeksi: proyeksi %s/%s horizon %d tanpa model", p.KomoditasKode, p.KabupatenKode, p.HorizonHari)
+		}
+	}
 	err := db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"nilai", "bawah", "atas", "harga_dasar", "faktor", "sumber", "dibuat_pada"}),
+		Columns: []clause.Column{
+			{Name: "komoditas_kode"}, {Name: "kabupaten_kode"}, {Name: "tanggal_target"}, {Name: "horizon_hari"}, {Name: "model_versi"},
+		},
+		DoUpdates: clause.AssignmentColumns([]string{"nilai", "bawah", "atas", "harga_dasar", "faktor", "sumber", "dibuat_pada", "model_id"}),
 	}).CreateInBatches(&proyeksi, 200).Error
 	if err != nil {
 		return fmt.Errorf("simpan proyeksi: %w", err)
@@ -227,9 +241,9 @@ func (r *Repository) EvaluasiJatuhTempo(ctx context.Context, hariIni time.Time) 
 	return res.RowsAffected, nil
 }
 
-func (r *Repository) GetModel(ctx context.Context, id string) (*domain.ModelRegistry, error) {
+func (r *Repository) GetModel(ctx context.Context, ref idx.RujukanID) (*domain.ModelRegistry, error) {
 	var m domain.ModelRegistry
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error
+	err := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).First(&m).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, domain.ErrModelTidakDitemukan
 	}
@@ -239,10 +253,10 @@ func (r *Repository) GetModel(ctx context.Context, id string) (*domain.ModelRegi
 	return &m, nil
 }
 
-// kunciModel membaca satu model dengan kunci baris (FOR UPDATE) di dalam transaksi.
-func kunciModel(tx *gorm.DB, id string) (*domain.ModelRegistry, error) {
+// kunciModel membaca satu model (menurut ID atau kode) dengan kunci baris (FOR UPDATE) di dalam transaksi.
+func kunciModel(tx *gorm.DB, ref idx.RujukanID) (*domain.ModelRegistry, error) {
 	var m domain.ModelRegistry
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&m).Error
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(ref.Kondisi("id", "kode")).First(&m).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, domain.ErrModelTidakDitemukan
 	}
@@ -252,7 +266,7 @@ func kunciModel(tx *gorm.DB, id string) (*domain.ModelRegistry, error) {
 	return &m, nil
 }
 
-func ubahStatus(tx *gorm.DB, id, status string, kolom map[string]any) error {
+func ubahStatus(tx *gorm.DB, id idx.ID, status string, kolom map[string]any) error {
 	kolom["status"] = status
 	if err := tx.Model(&domain.ModelRegistry{}).Where("id = ?", id).Updates(kolom).Error; err != nil {
 		return fmt.Errorf("ubah status model: %w", err)
@@ -260,18 +274,18 @@ func ubahStatus(tx *gorm.DB, id, status string, kolom map[string]any) error {
 	return nil
 }
 
+// catatPromosi menambah riwayat promosi; ID BIGINT diberikan basis data dan kode dibiarkan kosong.
 func catatPromosi(tx *gorm.DB, p domain.ModelPromosi) error {
-	p.ID = uuid.NewString()
 	if err := tx.Create(&p).Error; err != nil {
 		return fmt.Errorf("catat riwayat model: %w", err)
 	}
 	return nil
 }
 
-func (r *Repository) Promosikan(ctx context.Context, id, oleh string, waktu time.Time) (*domain.HasilPromosi, error) {
+func (r *Repository) Promosikan(ctx context.Context, ref idx.RujukanID, oleh string, waktu time.Time) (*domain.HasilPromosi, error) {
 	var hasil domain.HasilPromosi
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		m, err := kunciModel(tx, id)
+		m, err := kunciModel(tx, ref)
 		if err != nil {
 			return err
 		}
@@ -279,7 +293,7 @@ func (r *Repository) Promosikan(ctx context.Context, id, oleh string, waktu time
 			return domain.ErrStatusModelTidakValid
 		}
 		var proyeksi int64
-		err = tx.Model(&domain.PrediksiHarga{}).Where("komoditas_kode = ? AND model_versi = ?", m.KomoditasKode, m.Versi).Count(&proyeksi).Error
+		err = tx.Model(&domain.PrediksiHarga{}).Where("model_id = ?", m.ID).Count(&proyeksi).Error
 		if err != nil {
 			return fmt.Errorf("hitung proyeksi model: %w", err)
 		}
@@ -324,11 +338,11 @@ func (r *Repository) Promosikan(ctx context.Context, id, oleh string, waktu time
 	return &hasil, nil
 }
 
-func (r *Repository) Arsipkan(ctx context.Context, id, oleh string, waktu time.Time) (*domain.ModelRegistry, error) {
+func (r *Repository) Arsipkan(ctx context.Context, ref idx.RujukanID, oleh string, waktu time.Time) (*domain.ModelRegistry, error) {
 	var m *domain.ModelRegistry
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
-		if m, err = kunciModel(tx, id); err != nil {
+		if m, err = kunciModel(tx, ref); err != nil {
 			return err
 		}
 		if m.Status != domain.StatusKandidat {

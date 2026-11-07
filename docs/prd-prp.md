@@ -784,83 +784,74 @@ Platform menggunakan **RBAC 3-Lapis Koordinasi** + unit fungsional di dalamnya.
 
 ### 9.1 Skema Database (Ringkasan)
 
-#### **TimescaleDB (Time-Series)**
-```sql
--- Hypertable: harga
-CREATE TABLE prices (
-  time TIMESTAMPTZ NOT NULL,
-  commodity_id UUID,
-  region_id UUID,
-  price DECIMAL,
-  source VARCHAR(50),
-  confidence DECIMAL
-);
+> **Catatan implementasi (7 Nov 2026).** Rancangan awal bagian ini (TimescaleDB untuk time-series dan MongoDB
+> untuk dokumen) digantikan implementasi nyata: satu basis data **PostgreSQL 16** dengan migrasi goose
+> (`db/migrations`) dan **Redis** untuk cache dan antrean. Kontrak lengkap kunci primer, kunci asing, dan indeks
+> setiap tabel ada di [SKEMA-DATABASE.md](SKEMA-DATABASE.md). Invariannya diuji otomatis terhadap skema hasil
+> migrasi (`TestInvarianKunci`), sehingga tabel baru yang melanggar menggagalkan build.
 
--- Hypertable: volume panen
-CREATE TABLE harvest_volumes (
-  time TIMESTAMPTZ NOT NULL,
-  commodity_id UUID,
-  farmer_group_id UUID,
-  volume DECIMAL,
-  unit VARCHAR(20)
-);
+#### Prinsip kunci
 
--- Hypertable: logistik
-CREATE TABLE logistics (
-  time TIMESTAMPTZ NOT NULL,
-  warehouse_id UUID,
-  stock DECIMAL,
-  food_loss DECIMAL,
-  temperature DECIMAL,
-  humidity DECIMAL
-);
+| Kategori | Bentuk | Dipakai untuk | Contoh |
+| -------- | ------ | ------------- | ------ |
+| **UUID** | `id uuid DEFAULT gen_random_uuid()` | Entitas bisnis dan identitas yang terlihat klien di URL | `pengguna`, `intervensi`, `policy_brief`, `sumber_data`, `cold_storage` |
+| **BIGINT** | `id bigint GENERATED ALWAYS AS IDENTITY` (tabel lama boleh `BIGSERIAL`) | Transaksional, time-series, log, operasional | `entri_harga`, `tugas_lapangan`, `ews_alert`, `transaksi_stok`, `prediksi_harga`, `audit_log` |
+| **KODE** | Kode alami unik | Referensi nasional dan master berkode | `provinsi`, `kabupaten` (kode BPS), `komoditas`, `pasar`, `roles` |
+| **HASH** | Hash atau token id | Tabel keamanan tanpa entitas bisnis | `jwt_blacklist`, `kunci_login`, `sso_login_state` |
+| **KOMPOSIT** | Gabungan kolom FK atau induk + urutan | Tabel penghubung dan entitas lemah | `role_permissions`, `intervensi_pj`, `tugas_entri` |
 
--- Hypertable: fiskal
-CREATE TABLE fiscal_indicators (
-  time TIMESTAMPTZ NOT NULL,
-  region_id UUID,
-  indicator VARCHAR(50),
-  value DECIMAL
-);
-```
+- **Kode tampilan.** Tabel yang ID-nya diubah menyimpan ID lama di kolom `kode` yang unik (mis. `INT-1000`,
+  `PB-2026-10`, `EWS-0901`, `CS-01`). Kode itu ditampilkan kepada manusia, menjadi alias URL lama, dan menjadi kunci
+  idempoten seeder.
+- **Kunci alami.** Tabel agregat dan time-series yang dulu memakai PK gabungan kini ber-PK BIGINT. Kunci alaminya
+  tetap dijaga `UNIQUE` dan menjadi target upsert (mis. `harga_eksternal`, `andil_inflasi`, `neraca_wilayah`).
+- **Kunci asing.**
+  - Tipe kolom FK selalu sama dengan PK induknya, dan tidak ada FK teks ke tabel ber-surrogate key.
+  - Setiap FK punya `ON DELETE` eksplisit:
+    - `CASCADE` untuk anak milik agregat;
+    - `SET NULL` untuk jejak pelaku opsional;
+    - `RESTRICT` untuk bukti asal data dan referensi master.
+  - Setiap FK punya indeks.
+- **Indeks.**
+  - B-tree untuk setiap FK.
+  - Komposit filter+urut sesuai kueri layar.
+  - Parsial untuk antrean, mis. `entri_harga WHERE status = 'DIAJUKAN'` dan alert EWS yang belum selesai.
+  - BRIN untuk kolom waktu tabel time-series besar (`entri_harga`, `telemetri_suhu`, `audit_log`, `data_mentah`,
+    `harga_eksternal`).
 
-#### **MongoDB (Documents)**
-```javascript
-// Collection: produsen
-{
-  _id: ObjectId,
-  name: String,
-  nik: String,
-  location: { type: "Point", coordinates: [lon, lat] },
-  commodity: [String],
-  verified: Boolean,
-  created_at: Date
-}
+#### Kamus data per domain
 
-// Collection: logistik
-{
-  _id: ObjectId,
-  batch_id: String,
-  commodity: String,
-  origin: ObjectId,
-  destination: ObjectId,
-  status: String,
-  shelf_life_days: Number
-}
+| Domain | Tabel utama | PK | Relasi kunci (ON DELETE) |
+| ------ | ----------- | -- | ------------------------ |
+| Identitas dan akses | `pengguna` | UUID | `kabupaten_kode` → `kabupaten` RESTRICT. Sesi, token, kode MFA, izin langsung, dan preferensi milik akun ikut terhapus (CASCADE). Akun yang menjadi bukti asal data tidak bisa dihapus (409; nonaktifkan saja). |
+| | `roles`, `permissions`, `role_permissions`, `user_permissions` | KODE / KOMPOSIT | Katalog RBAC; pasangan izin CASCADE. |
+| Master wilayah dan komoditas | `provinsi`, `kabupaten`, `komoditas`, `pasar` | KODE | `kabupaten` → `provinsi`, `pasar` → `kabupaten`, semuanya RESTRICT. |
+| Harga dan lapangan | `entri_harga` | BIGINT | `pasar_id`, `komoditas_kode` RESTRICT; petugas dan validator → `pengguna` RESTRICT. |
+| | `riwayat_status_entri`, `tugas_lapangan`, `tugas_entri`, `batas_harga`, `perubahan_master` | BIGINT / KOMPOSIT | Riwayat dan tautan tugas → entri CASCADE. |
+| Peringatan dini (EWS) | `aturan_ews`, `ews_alert` | BIGINT | Alert → aturan SET NULL. Riwayat, event SSE, dan notifikasi → alert CASCADE. |
+| Intervensi | `intervensi` | UUID | `ews_alert_id` → alert RESTRICT (alert pemicu adalah bukti asal); `(siklus, tahap)` → `tahap_intervensi_def` RESTRICT. Penanggung jawab, riwayat, dan persetujuan → intervensi CASCADE. |
+| Cold storage | `cold_storage` | UUID | Stok dan telemetri → fasilitas CASCADE. |
+| | `stok_cold_storage`, `transaksi_stok`, `telemetri_suhu` | BIGINT | Buku besar `transaksi_stok` → fasilitas dan lot RESTRICT. |
+| Spasial | `optimasi_rute`, `rute_distribusi`, `kandidat_cold_storage`, `neraca_wilayah` | BIGINT | Rute → rencana optimasi CASCADE. `jarak_antar_wilayah` dan `wilayah_geometri` (kunci kode) → `kabupaten` CASCADE. |
+| Prediksi dan ML | `model_registry`, `prediksi_harga`, `prediksi_evaluasi`, `model_promosi`, `skenario_simulasi` | BIGINT | `prediksi_harga.model_id` → `model_registry` RESTRICT; evaluasi → prediksi CASCADE. |
+| Policy brief | `policy_brief` | UUID, kode `PB-YYYY-MM` unik | Versi (`versi_id` BIGINT) dan job → brief CASCADE. |
+| Sumber data dan ingestion | `sumber_data` | UUID | Pemetaan, eksekusi, dan data mentah → sumber CASCADE. `harga_eksternal` → sumber RESTRICT (bukti asal). |
+| | `eksekusi_sumber`, `data_mentah`, `harga_eksternal`, `cuaca_harian` | BIGINT | Silsilah eksekusi dan data mentah → SET NULL. |
+| Eksekutif, siklus, dan KPI | `andil_inflasi`, `inflasi_bulanan`, `neraca_pangan`, `ruang_fiskal`, `siklus_ekonomi`, `target_kpi`, `kpi_nilai`, `kpi_target` | BIGINT + UNIQUE alami | Wilayah → `kabupaten`/`provinsi` RESTRICT; nilai KPI → definisi CASCADE. |
+| Audit | `audit_log` | BIGINT | `aktor_id` → `pengguna` SET NULL. `entitas_id` adalah rujukan polimorfik teks berisi ID baru. Tabel append-only dijaga pemicu. |
 
-// Collection: log_aktivitas
-{
-  _id: ObjectId,
-  user_id: ObjectId,
-  role: String,
-  action: String,
-  entity: String,
-  timestamp: Date,
-  metadata: Object
-}
-```
+#### Konvensi ID di API
 
-#### **Redis (Cache & Queue)**
+- Rute detail dan aksi berbentuk `/v1/<sumber>/:id`.
+  - `:id` berupa UUID atau ID BIGINT. ID BIGINT ditulis sebagai string desimal di JSON, agar nilai di atas 2^53 tetap
+    utuh di JavaScript.
+  - Entitas yang punya kode juga menerima kode lamanya sebagai alias, jadi tautan dan bookmark lama tetap berlaku.
+- Kode jawaban:
+  - ID salah bentuk dijawab 404, sama dengan ID yang tidak ada.
+  - Menghapus baris yang masih dirujuk FK `RESTRICT` dijawab 409.
+- Respons menyertakan `kode` bila ada. Antarmuka menampilkan kode tampilan, bukan UUID atau angka mentah.
+
+#### Redis (Cache & Queue)
 - Session management
 - Cache data sering diakses (harga terbaru, KPI)
 - Message broker (telemetry:new)

@@ -164,12 +164,38 @@ Dikerjakan **setelah** 01-A, 02-A, dan 04-A, karena isinya dipindah ke seeder ol
 
 ## 6. Tes yang harus ada
 
-- [ ] Tes kontrak skema entity ↔ migrasi (F0-3).
-- [ ] Migrasi `up/down/up` pada DB kosong.
-- [ ] Seeder idempoten (dua kali → baris sama); `demo` menolak `APP_ENV=production`.
+- [x] Tes kontrak skema entity ↔ migrasi (F0-3): `TestEntitiesMatchMigrations` (`internal/platform/schematest`), termasuk kewajiban tag `type:uuid` untuk kolom uuid.
+- [x] Migrasi `up/down/up` pada DB kosong: `TestMigrationsApplyUpDownUp`. Migrasi konversi kunci primer 000110–000115 juga punya tes migrasi data sendiri (isi data lama → Up → periksa → Down → periksa → Up).
+- [x] Seeder idempoten (dua kali → baris sama); `demo` menolak `APP_ENV=production`: tes `seeder` per modul (dua kali jalan, dan di atas DB hasil migrasi kunci primer), `seedkit` dan `cmd/seed` menolak `production`.
 - [x] Seeder `reference` berjalan di atas DB berisi data produksi tanpa mengubah data non-referensi.
-- [ ] Tes asap seed (F0-5).
+- [x] Tes asap seed (F0-5): `internal/platform/smoketest`.
 - [x] Tidak ada akun ber-password default setelah `reference + admin`.
+
+## 6a. Standardisasi kunci primer (7 Nov 2026)
+
+Kontrak: [SKEMA-DATABASE.md](../SKEMA-DATABASE.md). Matriks kategori PK seluruh tabel ada di `kategoriPK`
+(`internal/platform/schematest/kunci_test.go`) dan dijaga `TestInvarianKunci`. Tabel baru wajib terdaftar dan
+selaras sejak migrasi pertamanya.
+
+- [x] `000109` fondasi: `garda_uuid_stabil(ruang, kunci)` (UUID v3 deterministik, identik dengan `idx.UUIDStabil`).
+- [x] `000110` `pengguna` → UUID beserta 41 kolom FK, tabel `pengguna_id_lama` untuk Down dan hash kode MFA lama.
+- [x] `000111` harga, lapangan, master; `000112` EWS, intervensi; `000113` cold storage, spasial (termasuk membuat
+      ulang `mv_kpi_operasional`); `000114` prediksi, policy brief; `000115` sumber data, ingestion, eksekutif, siklus,
+      KPI, dashboard, audit.
+- [x] Konvensi seeder:
+  - Baris UUID memakai `idx.UUIDStabil("<tabel>", "<ID lama>")`, sama dengan hasil migrasi.
+  - Baris BIGINT tidak mengisi `id`. Upsert memakai `ON CONFLICT (kode)` atau kunci alami, tidak pernah
+    `ON CONFLICT (id)` untuk kolom identity.
+  - Anak menemukan induknya lewat kode.
+- [x] Gladi pada salinan data demo (versi 108):
+  - Up 000109–000115 dalam ±6 detik tanpa mengubah jumlah baris.
+  - Down ke 108 memulihkan isi tabel (md5 per tabel) dan struktur (kolom, indeks, constraint, trigger, view) persis.
+  - Seed ulang dua kali tanpa duplikat.
+- [ ] Sebelum produksi: jalankan kueri penjaga migrasi pada salinan data produksi. Kasus yang menghentikan migrasi:
+      ID lebih dari 64 karakter, ID brief bukan `PB-YYYY-MM`, dan baris anak yatim. Jadwalkan jendela pemeliharaan,
+      karena `ALTER COLUMN TYPE` memegang kunci `ACCESS EXCLUSIVE` pada `entri_harga`, `audit_log`, dan `data_mentah`.
+- [ ] Setelah semua kode cadangan MFA lama dirotasi, `pengguna_id_lama` boleh dibuang (migrasi baru; Down 000110
+      tidak lagi bisa memulihkan slug).
 
 ## 7. Operasional database (setelah Fase P, sebelum produksi)
 

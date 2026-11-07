@@ -30,8 +30,10 @@ const (
 	password = "garda_secret"
 	// Basis data bawaan container, dipakai hanya untuk membuat basis data tes.
 	adminDB = "postgres"
-	// Batas hidup container bila proses uji mati sebelum sempat Purge.
-	containerTTLSeconds = 600
+	// Batas hidup container bila proses uji mati sebelum sempat Purge. Harus jauh di atas durasi paket
+	// terlama (auth/integration bisa lebih dari 10 menit saat Docker dipakai banyak proses sekaligus), karena
+	// container yang kedaluwarsa di tengah paket membuat sisa tesnya gagal beruntun.
+	containerTTLSeconds = 1800
 )
 
 // Server adalah container PostgreSQL yang sedang berjalan.

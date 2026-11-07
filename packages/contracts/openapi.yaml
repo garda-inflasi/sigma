@@ -4806,7 +4806,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessResponse"
+                $ref: "#/components/schemas/MasterPasarListResponse"
 
   /v1/master/komoditas/bulk:
     post:
@@ -4819,9 +4819,12 @@ paths:
         melewati rute tetapi mendapat 403 untuk aksi yang bukan haknya.
 
         Transisi yang sah, dinilai per kode:
-        - `ajukan_perubahan`: AKTIF → MENUNGGU_PERSETUJUAN
-        - `setujui`: MENUNGGU_PERSETUJUAN → AKTIF, `versi` bertambah satu
-        - `arsipkan`: AKTIF atau MENUNGGU_PERSETUJUAN → DIARSIPKAN (tidak ada pemulihan)
+        - `ajukan_perubahan`: AKTIF → MENUNGGU_PERSETUJUAN, dan dibuat usulan `TINJAU` di antrean
+          `/v1/master/perubahan`
+        - `setujui`: menerapkan usulan yang menunggu (pengaju tidak boleh menyetujui usulannya sendiri) →
+          AKTIF, `versi` bertambah satu
+        - `arsipkan`: AKTIF atau MENUNGGU_PERSETUJUAN → DIARSIPKAN (tidak ada pemulihan); usulan yang menunggu
+          ditolak dengan alasan "Komoditas diarsipkan"
 
         Kode tak dikenal atau status yang tidak sesuai tidak menggagalkan permintaan;
         item itu dilaporkan di `rincian` dengan `berhasil: false` dan `pesan`. Kode
@@ -4852,6 +4855,722 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Peran tidak memiliki izin untuk aksi ini (setujui tanpa master.setujui, atau ajukan/arsipkan tanpa master.ajukan)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/kecamatan:
+    get:
+      summary: Mendaftar kecamatan (kode BPS 7 digit)
+      description: |
+        Kecamatan se-Aceh dari BPS, terurut menurut `kode`. `q` mencocokkan kode atau nama tanpa peka huruf besar-kecil
+        (karakter wildcard LIKE dianggap literal). Izin `master.lihat`.
+      operationId: listKecamatan
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kabupaten_kode
+          in: query
+          description: Kode BPS kabupaten/kota (4 digit); kosong = semua
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Pencarian pada kode atau nama
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (maksimum 500). Tanpa limit, seluruh baris dikembalikan.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Daftar kecamatan
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil pencarian (bukan hanya halaman ini)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KecamatanListResponse"
+        "400":
+          description: Parameter tidak valid (limit di luar 1-500, page < 1)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/kecamatan/{kode}:
+    get:
+      summary: Detail satu kecamatan
+      operationId: getKecamatan
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          description: Kode BPS kecamatan, 7 digit
+          schema:
+            type: string
+            example: "1171010"
+      responses:
+        "200":
+          description: Kecamatan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KecamatanResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kode tidak dikenal atau salah bentuk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/satuan:
+    get:
+      summary: Mendaftar satuan komoditas
+      description: Katalog satuan beserta jumlah komoditas (semua status) yang memakainya, terurut menurut `kode`.
+      operationId: listSatuan
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Pencarian pada kode atau nama
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (maksimum 500). Tanpa limit, seluruh baris dikembalikan.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Daftar satuan
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil pencarian (bukan hanya halaman ini)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatuanListResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/pedagang:
+    get:
+      summary: Mendaftar pedagang per pasar
+      description: |
+        Terurut menurut `pasar_id`, lalu `kode`. `jumlah_entri` adalah jumlah baris `entri_harga` dengan `pasar_id`
+        dan `kode_pedagang` yang sama (kode entri lapangan tetap teks bebas dan dicocokkan menurut pasangan itu).
+      operationId: listPedagang
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: pasar_id
+          in: query
+          description: Kode pasar (mis. PSR-1171-01); kosong = semua
+          schema:
+            type: string
+        - name: aktif
+          in: query
+          description: Saring menurut status aktif
+          schema:
+            type: string
+            enum: ["true", "false"]
+        - name: q
+          in: query
+          description: Pencarian pada kode atau nama pedagang
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: Ukuran halaman (maksimum 500). Tanpa limit, seluruh baris dikembalikan.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Daftar pedagang
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil pencarian (bukan hanya halaman ini)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedagangListResponse"
+        "400":
+          description: Parameter tidak valid (aktif bukan true/false, limit di luar 1-500)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/komoditas/{kode}:
+    get:
+      summary: Detail komoditas beserta riwayat versi
+      description: |
+        Baris komoditas yang sama dengan daftar, ditambah `riwayat_versi` (terbaru lebih dulu). Setiap versi memuat
+        definisi komoditas yang berlaku antara `berlaku_dari` dan `berlaku_sampai` (null untuk versi yang kini
+        berlaku). Riwayat ditulis pemicu basis data setiap definisi berubah; perubahan status saja bukan versi baru.
+      operationId: getKomoditas
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/KomoditasKode"
+      responses:
+        "200":
+          description: Komoditas dan riwayat versinya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterKomoditasDetailResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kode tidak dikenal atau salah bentuk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Menghapus komoditas yang belum dirujuk
+      description: |
+        Hanya untuk pemegang `master.setujui`. Berhasil (204) bila tidak ada data yang merujuk komoditas dan tidak
+        ada usulan perubahan berstatus MENUNGGU; riwayat versinya ikut terhapus dan audit `HAPUS_MASTER` mencatat
+        salinan baris (`sebelum`). Komoditas yang sudah dirujuk (harga, tugas, batas harga) dijawab 409
+        `MASTER_DIRUJUK`: arsipkan lewat usulan perubahan, jangan hapus.
+      operationId: hapusKomoditas
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/KomoditasKode"
+      responses:
+        "204":
+          description: Dihapus
+        "403":
+          description: Tanpa izin `master.setujui`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kode tidak dikenal atau salah bentuk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            `code` = `MASTER_ADA_USULAN` (masih ada usulan perubahan MENUNGGU; selesaikan dulu) atau
+            `MASTER_DIRUJUK` (masih dirujuk data lain; arsipkan komoditas lewat usulan perubahan)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/komoditas/{kode}/versi:
+    get:
+      summary: Riwayat versi komoditas, atau versi yang berlaku pada waktu tertentu
+      description: |
+        Tanpa `pada`: seluruh riwayat (terbaru lebih dulu), array yang sama dengan `riwayat_versi` pada detail.
+
+        Dengan `pada`: satu objek, yaitu versi dengan `berlaku_dari` terakhir yang <= `pada`; bila `pada` lebih tua
+        dari seluruh riwayat, versi paling awal. Dipakai membaca harga lama terhadap definisi yang berlaku saat itu.
+      operationId: getKomoditasVersi
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/KomoditasKode"
+        - name: pada
+          in: query
+          description: |
+            Waktu acuan: RFC 3339 (`2026-03-01T10:00:00+07:00`) atau `YYYY-MM-DD` yang berarti akhir hari itu menurut
+            WIB (Asia/Jakarta, UTC+7).
+          schema:
+            type: string
+            example: "2026-03-01"
+      responses:
+        "200":
+          description: Daftar versi (tanpa `pada`) atau satu versi (dengan `pada`)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/KomoditasVersiListResponse"
+                  - $ref: "#/components/schemas/KomoditasVersiResponse"
+        "400":
+          description: '`pada` bukan RFC 3339 maupun YYYY-MM-DD'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Komoditas tidak dikenal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/wilayah/{kode}:
+    get:
+      summary: Detail wilayah (kabupaten/kota) beserta cacah kecamatan dan pasar
+      operationId: getWilayah
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: kode
+          in: path
+          required: true
+          description: Kode BPS kabupaten/kota, 4 digit
+          schema:
+            type: string
+            example: "1171"
+      responses:
+        "200":
+          description: Wilayah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterWilayahDetailResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kode tidak dikenal atau salah bentuk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/pasar/{kode}:
+    get:
+      summary: Detail pasar
+      description: '`kode` adalah nilai kolom `pasar.id` (mis. PSR-1171-01).'
+      operationId: getPasar
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PasarKode"
+      responses:
+        "200":
+          description: Pasar beserta nama kabupaten, nama kecamatan (null bila belum dikaitkan), dan jumlah pedagang terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterPasarDetailResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kode tidak dikenal atau salah bentuk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Menghapus pasar yang belum dirujuk
+      description: |
+        Hanya untuk pemegang `master.setujui`. Berhasil (204) bila tidak ada data yang merujuk pasar (entri harga,
+        tugas lapangan, pedagang) dan tidak ada usulan perubahan MENUNGGU; audit `HAPUS_MASTER` mencatat salinan baris.
+        Pasar yang sudah dirujuk dijawab 409 `MASTER_DIRUJUK`: nonaktifkan (`aktif = false`) lewat usulan perubahan.
+      operationId: hapusPasar
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PasarKode"
+      responses:
+        "204":
+          description: Dihapus
+        "403":
+          description: Tanpa izin `master.setujui`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Kode tidak dikenal atau salah bentuk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            `code` = `MASTER_ADA_USULAN` (masih ada usulan perubahan MENUNGGU; selesaikan dulu) atau
+            `MASTER_DIRUJUK` (masih dirujuk data lain; nonaktifkan pasar lewat usulan perubahan)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/perubahan:
+    get:
+      summary: Antrean dan riwayat usulan perubahan master data
+      description: |
+        Usulan perubahan komoditas dan pasar (04-B). `status=MENUNGGU` diurutkan terlama lebih dulu (antrean);
+        status lain terbaru lebih dulu. Jumlah seluruh hasil di header `X-Total-Count`. Butuh `master.lihat`.
+      operationId: listPerubahanMaster
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [MENUNGGU, DISETUJUI, DITOLAK]}}
+        - {name: entitas, in: query, schema: {type: string, enum: [komoditas, pasar]}}
+        - {name: entitas_id, in: query, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200":
+          description: Satu halaman usulan
+          headers:
+            X-Total-Count:
+              schema: {type: integer}
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: string, example: "200"}
+                  message: {type: string, example: "OK"}
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PerubahanMaster"
+        "400":
+          description: Filter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Mengajukan usulan perubahan master data
+      description: |
+        `jenis` `UBAH` mengubah bidang data yang ada; `TAMBAH` mengusulkan data baru dengan kode `entitas_id`.
+        Bidang yang bisa diusulkan:
+        - komoditas: `nama` (1–255), `kategori` (1–100), `satuan` (kode di `/v1/master/satuan`), `harga_acuan`
+          (bulat > 0), `shelf_life_hari` (1–3650), `pilot` (boolean). TAMBAH mewajibkan keenamnya; kode baru
+          huruf kapital/angka/tanda hubung (2–30).
+        - pasar: `nama`, `lat` (−90..90), `lng` (−180..180), `radius_meter` (1–10000), `aktif`, `kecamatan_kode`
+          (kecamatan di kabupaten pasar itu, atau null). TAMBAH mewajibkan `nama`, `kabupaten_kode`, `lat`, `lng`
+          (radius bawaan 400, aktif bawaan true).
+
+        Bidang yang nilainya sama dengan data sekarang dibuang; bila tidak ada yang tersisa dijawab 400
+        `TANPA_PERUBAHAN`. Satu usulan menunggu per data (409 `USULAN_MENUNGGU`). Komoditas yang diusulkan
+        diubah berstatus MENUNGGU_PERSETUJUAN sampai diputuskan. Dicatat di audit trail
+        (`AJUKAN_PERUBAHAN_MASTER`). Butuh `master.ajukan`.
+      operationId: ajukanPerubahanMaster
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entitas, jenis, entitas_id, perubahan, alasan]
+              properties:
+                entitas: {type: string, enum: [komoditas, pasar]}
+                jenis: {type: string, enum: [UBAH, TAMBAH]}
+                entitas_id: {type: string, maxLength: 50, example: CBM-KRT}
+                perubahan:
+                  type: object
+                  additionalProperties: true
+                  example: {harga_acuan: 55000}
+                alasan: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        "201":
+          description: Usulan tersimpan dan menunggu persetujuan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerubahanMasterResponse"
+        "400":
+          description: Isi usulan tidak valid, atau `TANPA_PERUBAHAN`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.ajukan`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Data yang diubah tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: '`USULAN_MENUNGGU`, `KODE_SUDAH_ADA` (TAMBAH), atau `STATUS_TIDAK_SESUAI` (komoditas diarsipkan)'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/perubahan/{id}:
+    get:
+      summary: Detail satu usulan perubahan beserta diff
+      operationId: getPerubahanMaster
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, description: "ID BIGINT usulan (string desimal); salah bentuk dijawab 404", schema: {$ref: "#/components/schemas/IdBigint"}}
+      responses:
+        "200":
+          description: Usulan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerubahanMasterResponse"
+        "404":
+          description: Usulan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/perubahan/{id}/setujui:
+    post:
+      summary: Menyetujui usulan dan menerapkannya
+      description: "Menerapkan isi usulan, menaikkan versi data (riwayat versi komoditas mencatat usulannya), dan mengaktifkan kembali komoditas. Pengaju tidak boleh menyetujui usulannya sendiri (403 PEMISAHAN_TUGAS). Data yang berubah sejak usulan diajukan dijawab 409 USULAN_KEDALUWARSA. Dicatat SETUJUI_PERUBAHAN_MASTER dengan keadaan sebelum/sesudah. Butuh `master.setujui`."
+      operationId: setujuiPerubahanMaster
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {$ref: "#/components/schemas/IdBigint"}}
+      responses:
+        "200":
+          description: Usulan setelah diputuskan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerubahanMasterResponse"
+        "400":
+          description: Alasan tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.setujui`, `PEMISAHAN_TUGAS`, atau `BUKAN_PENGAJU`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Usulan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: '`BUKAN_MENUNGGU`, `USULAN_KEDALUWARSA`, atau `KODE_SUDAH_ADA`'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/perubahan/{id}/tolak:
+    post:
+      summary: Menolak usulan
+      description: "Alasan wajib (3–1000). Komoditas kembali AKTIF tanpa perubahan isi. Pengaju tidak boleh menolak usulannya sendiri (gunakan batalkan). Dicatat TOLAK_PERUBAHAN_MASTER. Butuh `master.setujui`."
+      operationId: tolakPerubahanMaster
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {$ref: "#/components/schemas/IdBigint"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [alasan]
+              properties:
+                alasan: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        "200":
+          description: Usulan setelah diputuskan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerubahanMasterResponse"
+        "400":
+          description: Alasan tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.setujui`, `PEMISAHAN_TUGAS`, atau `BUKAN_PENGAJU`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Usulan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: '`BUKAN_MENUNGGU`, `USULAN_KEDALUWARSA`, atau `KODE_SUDAH_ADA`'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/master/perubahan/{id}/batalkan:
+    post:
+      summary: Membatalkan usulan sendiri
+      description: "Hanya pengaju (403 BUKAN_PENGAJU). Status menjadi DITOLAK dengan alasan penolakan Dibatalkan pengaju. Dicatat BATALKAN_PERUBAHAN_MASTER. Butuh `master.ajukan`."
+      operationId: batalkanPerubahanMaster
+      tags:
+        - Master Data
+      security:
+        - BearerAuth: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {$ref: "#/components/schemas/IdBigint"}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                alasan: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        "200":
+          description: Usulan setelah diputuskan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerubahanMasterResponse"
+        "400":
+          description: Alasan tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `master.ajukan`, `PEMISAHAN_TUGAS`, atau `BUKAN_PENGAJU`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Usulan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: '`BUKAN_MENUNGGU`, `USULAN_KEDALUWARSA`, atau `KODE_SUDAH_ADA`'
           content:
             application/json:
               schema:
@@ -6273,6 +6992,23 @@ components:
       description: Kode komoditas
       schema:
         type: string
+
+    KomoditasKode:
+      name: kode
+      in: path
+      required: true
+      description: Kode komoditas (mis. CBM-KRT)
+      schema:
+        type: string
+        example: CBM-KRT
+    PasarKode:
+      name: kode
+      in: path
+      required: true
+      description: Kode pasar, nilai kolom `pasar.id` (mis. PSR-1171-01)
+      schema:
+        type: string
+        example: PSR-1171-01
 
   schemas:
     # ── Kunci primer (docs/SKEMA-DATABASE.md) ──────────────────────────
@@ -10462,6 +11198,51 @@ components:
               type: string
               description: Kosong pada halaman terakhir
 
+    PelakuUsulan:
+      type: object
+      nullable: true
+      properties:
+        id: {type: string, format: uuid}
+        nama: {type: string, nullable: true}
+
+    PerubahanMaster:
+      type: object
+      properties:
+        id: {$ref: "#/components/schemas/IdBigint"}
+        kode: {type: string, description: "ID lama (hanya baris sebelum 000111)"}
+        entitas: {type: string, enum: [komoditas, pasar]}
+        entitas_id: {type: string}
+        entitas_nama: {type: string, nullable: true, description: "Nama data sekarang, atau nama usulan untuk TAMBAH"}
+        jenis: {type: string, enum: [TAMBAH, UBAH, TINJAU], description: "TINJAU = status saja, dari aksi massal"}
+        versi: {type: integer, description: "Versi data yang berlaku bila disetujui"}
+        status: {type: string, enum: [MENUNGGU, DISETUJUI, DITOLAK]}
+        alasan: {type: string}
+        alasan_penolakan: {type: string}
+        perubahan: {type: object, additionalProperties: true}
+        sebelum: {type: object, additionalProperties: true}
+        diff:
+          type: array
+          items:
+            type: object
+            properties:
+              bidang: {type: string}
+              sebelum: {nullable: true, description: "null untuk data baru"}
+              sesudah: {}
+        diajukan_oleh: {$ref: "#/components/schemas/PelakuUsulan"}
+        dibuat_pada: {type: string, format: date-time}
+        disetujui_oleh: {$ref: "#/components/schemas/PelakuUsulan"}
+        disetujui_pada: {type: string, format: date-time, nullable: true}
+        ditolak_oleh: {$ref: "#/components/schemas/PelakuUsulan"}
+        ditolak_pada: {type: string, format: date-time, nullable: true}
+
+    PerubahanMasterResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/PerubahanMaster"
+
     MasterKomoditasRow:
       type: object
       properties:
@@ -10504,6 +11285,336 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MasterKomoditasRow"
+
+    KecamatanRow:
+      type: object
+      description: Kecamatan (kode BPS 7 digit) beserta kabupaten/kota induknya.
+      required: [kode, nama, kabupaten_kode, kabupaten_nama]
+      properties:
+        kode:
+          type: string
+          example: "1171010"
+        nama:
+          type: string
+          example: Meuraxa
+        kabupaten_kode:
+          type: string
+          example: "1171"
+        kabupaten_nama:
+          type: string
+          example: KOTA BANDA ACEH
+        kode_dagri:
+          type: string
+          description: Padanan kode Kemendagri; tidak ada bila sumber tidak memilikinya
+          example: "117103"
+
+    KecamatanListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/KecamatanRow"
+
+    KecamatanResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/KecamatanRow"
+
+    SatuanRow:
+      type: object
+      required: [kode, nama, jumlah_komoditas]
+      properties:
+        kode:
+          type: string
+          example: kg
+        nama:
+          type: string
+          example: Kilogram
+        jumlah_komoditas:
+          type: integer
+          description: Jumlah komoditas (semua status) yang memakai satuan ini
+
+    SatuanListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SatuanRow"
+
+    PedagangRow:
+      type: object
+      required: [id, pasar_id, pasar_nama, kode, aktif, jumlah_entri]
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        pasar_id:
+          type: string
+          example: PSR-1171-01
+        pasar_nama:
+          type: string
+          example: Pasar Peunayong
+        kode:
+          type: string
+          description: Kode pedagang; sama dengan `kode_pedagang` pada entri harga
+          example: PDG-017
+        nama:
+          type: string
+          description: Tidak ada bila belum diisi
+        aktif:
+          type: boolean
+        jumlah_entri:
+          type: integer
+          format: int64
+          description: Jumlah entri harga dengan `pasar_id` dan `kode_pedagang` yang sama
+
+    PedagangListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PedagangRow"
+
+    KomoditasVersi:
+      type: object
+      description: Satu versi definisi komoditas (riwayat append-only yang ditulis pemicu basis data).
+      required: [id, versi, nama, kategori, satuan, harga_acuan, shelf_life_hari, pilot, berlaku_dari, berlaku_sampai]
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        versi:
+          type: integer
+        nama:
+          type: string
+        kategori:
+          type: string
+        satuan:
+          type: string
+        harga_acuan:
+          type: integer
+          description: Harga konsumen acuan (Rp)
+        shelf_life_hari:
+          type: integer
+        pilot:
+          type: boolean
+        berlaku_dari:
+          type: string
+          format: date-time
+        berlaku_sampai:
+          type: string
+          format: date-time
+          nullable: true
+          description: '`berlaku_dari` versi berikutnya; null untuk versi yang kini berlaku'
+        perubahan_id:
+          allOf:
+            - $ref: "#/components/schemas/IdBigint"
+          description: Usulan perubahan yang menghasilkan versi ini; tidak ada untuk versi dari seed atau impor
+
+    KomoditasVersiListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          description: Terbaru lebih dulu
+          items:
+            $ref: "#/components/schemas/KomoditasVersi"
+
+    KomoditasVersiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/KomoditasVersi"
+
+    MasterKomoditasDetail:
+      description: Baris komoditas yang sama dengan daftar, ditambah riwayat versi (terbaru lebih dulu).
+      allOf:
+        - $ref: "#/components/schemas/MasterKomoditasRow"
+        - type: object
+          required: [riwayat_versi]
+          properties:
+            riwayat_versi:
+              type: array
+              items:
+                $ref: "#/components/schemas/KomoditasVersi"
+            perubahan_menunggu:
+              description: Usulan perubahan yang menunggu persetujuan untuk komoditas ini; null bila tidak ada.
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/PerubahanMaster"
+
+    MasterKomoditasDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/MasterKomoditasDetail"
+
+    MasterWilayahRow:
+      type: object
+      properties:
+        kode:
+          type: string
+          example: "1171"
+        nama:
+          type: string
+          example: KOTA BANDA ACEH
+        jenis:
+          type: string
+          enum: [Kabupaten, Kota]
+        ibukota:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        provinsi_kode:
+          type: string
+          example: "11"
+
+    MasterWilayahDetail:
+      allOf:
+        - $ref: "#/components/schemas/MasterWilayahRow"
+        - type: object
+          required: [jumlah_kecamatan, jumlah_pasar]
+          properties:
+            jumlah_kecamatan:
+              type: integer
+              format: int64
+            jumlah_pasar:
+              type: integer
+              format: int64
+
+    MasterWilayahDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/MasterWilayahDetail"
+
+    MasterPasarRow:
+      type: object
+      required: [id, nama, kabupaten_kode, kecamatan_kode, kecamatan_nama, lat, lng, radius_meter, aktif, versi]
+      properties:
+        id:
+          type: string
+          description: Kode pasar (kolom `pasar.id`)
+          example: PSR-1171-01
+        nama:
+          type: string
+        kabupaten_kode:
+          type: string
+          example: "1171"
+        kecamatan_kode:
+          type: string
+          nullable: true
+          description: Kode BPS kecamatan (7 digit; empat digit awalnya sama dengan `kabupaten_kode`); null bila belum dikaitkan
+        kecamatan_nama:
+          type: string
+          nullable: true
+        lat:
+          type: number
+        lng:
+          type: number
+        radius_meter:
+          type: integer
+        aktif:
+          type: boolean
+        versi:
+          type: integer
+          description: Naik setiap usulan perubahan pasar disetujui
+
+    MasterPasarListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterPasarRow"
+
+    MasterPasarDetail:
+      allOf:
+        - $ref: "#/components/schemas/MasterPasarRow"
+        - type: object
+          required: [kabupaten_nama, jumlah_pedagang]
+          properties:
+            kabupaten_nama:
+              type: string
+            jumlah_pedagang:
+              type: integer
+              format: int64
+              description: Pedagang terdaftar di pasar ini
+            perubahan_menunggu:
+              description: Usulan perubahan yang menunggu persetujuan untuk pasar ini; null bila tidak ada.
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/PerubahanMaster"
+
+    MasterPasarDetailResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          $ref: "#/components/schemas/MasterPasarDetail"
 
     ColdStorageResponse:
       type: object

@@ -10,6 +10,8 @@ import {
   toMasterBulkHasil, toMasterKomoditasRow, toMasterPasarRow, toMasterWilayahRow,
   type MasterBulkAksi, type MasterBulkHasil, type MasterBulkResponse, type MasterKomoditasResponse, type MasterPasarResponse, type MasterWilayahResponse,
 } from "./master";
+import { masterApi, type AktorMock } from "./master-api";
+import { mockBulkKomoditas, mockKomoditasList, mockPasarList, mockWilayahList } from "./master-mock";
 import {
   aktivitasMock, toAktivitasLapangan, toHeatmap, toKpiOperasional,
   type AktivitasLapangan, type AktivitasLapanganResponse, type CuacaResponse, type CuacaWilayah, type Heatmap, type HeatmapResponse, type KpiResponse,
@@ -461,12 +463,17 @@ export const api = {
   },
   master: {
     komoditas: (): Promise<MasterKomoditasRow[]> =>
-      MODE_MOCK ? mockDelay(m.mockMasterKomoditas) : apiFetch<MasterKomoditasResponse[]>("/v1/master/komoditas").then((rows) => rows.map(toMasterKomoditasRow)),
+      MODE_MOCK ? mockDelay(() => mockKomoditasList().map(toMasterKomoditasRow)) : apiFetch<MasterKomoditasResponse[]>("/v1/master/komoditas").then((rows) => rows.map(toMasterKomoditasRow)),
     wilayah: (): Promise<MasterWilayahRow[]> =>
-      MODE_MOCK ? mockDelay(m.mockMasterWilayah) : apiFetch<MasterWilayahResponse[]>("/v1/master/wilayah").then((rows) => rows.map(toMasterWilayahRow)),
+      MODE_MOCK ? mockDelay(() => mockWilayahList().map(toMasterWilayahRow)) : apiFetch<MasterWilayahResponse[]>("/v1/master/wilayah").then((rows) => rows.map(toMasterWilayahRow)),
     /** Pasar beserta nama kabupaten/kota pemiliknya (memuat wilayah juga). */
     pasar: async (): Promise<MasterPasarRow[]> => {
-      if (MODE_MOCK) return mockDelay(m.mockMasterPasar);
+      if (MODE_MOCK) {
+        return mockDelay(() => {
+          const nama = new Map(mockWilayahList().map((w) => [w.kode, toMasterWilayahRow(w).nama]));
+          return mockPasarList().map((p) => toMasterPasarRow(p, nama));
+        });
+      }
       const [pasar, wilayah] = await Promise.all([
         apiFetch<MasterPasarResponse[]>("/v1/master/pasar"),
         apiFetch<MasterWilayahResponse[]>("/v1/master/wilayah"),
@@ -475,9 +482,10 @@ export const api = {
       return pasar.map((p) => toMasterPasarRow(p, nama));
     },
     /** Ajukan/setujui/arsipkan komoditas; izin per aksi diperiksa server, hasil dilaporkan per kode. */
-    bulkKomoditas: (aksi: MasterBulkAksi, kode: string[]): Promise<MasterBulkHasil> =>
+    bulkKomoditas: (aksi: MasterBulkAksi, kode: string[], aktor?: AktorMock): Promise<MasterBulkHasil> =>
       MODE_MOCK
-        ? Promise.reject(new Error("Perubahan master data memerlukan backend."))
+        ? mockDelay(() => toMasterBulkHasil(mockBulkKomoditas(aksi, kode, aktor ?? { id: "pengguna-mock", nama: "Pengguna mock" })), 200, 450)
         : apiFetch<MasterBulkResponse>("/v1/master/komoditas/bulk", { method: "POST", body: JSON.stringify({ action: aksi, kode }) }).then(toMasterBulkHasil),
+    ...masterApi,
   },
 };

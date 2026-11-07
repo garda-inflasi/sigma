@@ -78,6 +78,7 @@ func TestPenggunaUUID_BuatPenggunaIDOpsionalDanHarusUUID(t *testing.T) {
 func TestPenggunaUUID_HapusAkunYangMasihBuktiAsalDataDijawab409LaluNonaktifkan(t *testing.T) {
 	s := setupSuite(t)
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
+	require.NoError(t, s.db.Exec(`INSERT INTO satuan (kode, nama) VALUES ('kg', 'Kilogram') ON CONFLICT DO NOTHING`).Error)
 	require.NoError(t, s.db.Exec(`INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, shelf_life_hari) VALUES ('CBM-KRT', 'Cabai', 'kg', 'cabai', 50000, 7)`).Error)
 	require.NoError(t, s.db.Exec(`INSERT INTO pasar (id, nama, kabupaten_kode, lat, lng) VALUES ('PSR-1', 'Pasar', '1171', 5.5, 95.3)`).Error)
 	require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, dicatat_pada, petugas_id)

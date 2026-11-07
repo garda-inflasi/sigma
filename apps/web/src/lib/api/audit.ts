@@ -121,6 +121,16 @@ export const AUDIT_AKSI = [
   "UBAH_AMBANG_EWS",
   "EKSPOR_DATA",
   "AJUKAN_MASTER",
+  "AJUKAN_PERUBAHAN_MASTER",
+  "SETUJUI_PERUBAHAN_MASTER",
+  "TOLAK_PERUBAHAN_MASTER",
+  "BATALKAN_PERUBAHAN_MASTER",
+  "HAPUS_MASTER",
+  "BULK_ajukan_perubahan",
+  "BULK_setujui",
+  "BULK_arsipkan",
+  "VERIFIKASI_AUDIT",
+  "ARSIP_AUDIT",
 ] as const;
 
 const isRole = (peran: string): peran is Role => peran in ROLES;

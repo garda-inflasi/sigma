@@ -1,6 +1,6 @@
 # 04 — Master data (komoditas, wilayah, pasar)
 
-**Prioritas:** P0 (PRD §1.2) · **Status:** UI ✅ · Backend 🟡 · Terhubung ✅ · Skema & seed ✅ · Tes ✅
+**Prioritas:** P0 (PRD §1.2) · **Status:** UI ✅ · Backend ✅ · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -39,17 +39,71 @@
 **Tujuan:** perubahan master data melewati ajukan → tinjau → setujui, dengan versi dan riwayat (PRD §1.2).
 
 1. **MIG**
-   - [ ] `perubahan_master`: tambah `alasan`, `alasan_penolakan`, `disetujui_pada`. PK sudah `BIGINT` identity (000111) dan indeks antrean parsial `idx_perubahan_master_menunggu (dibuat_pada) WHERE status = 'MENUNGGU'` sudah ada, jadi `index (status)` tidak perlu lagi. FK `diajukan_oleh_id`, `disetujui_oleh_id` → `pengguna` `RESTRICT` (000110). (Referensi ke entitas bersifat polimorfik: `entitas` + `entitas_id` tanpa FK; validasi di aplikasi.)
-   - [ ] `kecamatan` dengan PK **KODE**: `kode varchar(7) PRIMARY KEY` (kode BPS kecamatan, 7 digit, mis. `1171010`), `nama`, `kabupaten_kode varchar(4) NOT NULL REFERENCES kabupaten(kode) ON DELETE RESTRICT` dengan indeks `idx_kecamatan_kabupaten_kode`; lalu `pasar.kecamatan_kode varchar(7) NULL REFERENCES kecamatan(kode) ON DELETE RESTRICT` dengan indeks `idx_pasar_kecamatan_kode`, sesuai hierarki PRD. Daftarkan `kecamatan` sebagai `PKKode` di `kategoriPK` (`kunci_test.go`) dan tambahkan barisnya di matriks [SKEMA-DATABASE](../SKEMA-DATABASE.md).
-2. **SEED**: impor kecamatan se-Aceh dari BPS lewat skrip (catat sumber dan lisensi), bukan ditulis tangan.
+   - [x] `perubahan_master` (000120): tambah `alasan`, `alasan_penolakan`, `disetujui_pada`, serta `jenis` (`TAMBAH`/`UBAH`/`TINJAU`), `sebelum` (nilai bidang saat diajukan, untuk diff), `ditolak_oleh_id` (FK `pengguna` RESTRICT + indeks), dan `ditolak_pada`.
+     - **Kunci dan indeks:** PK `BIGINT` identity (000111) dan indeks antrean parsial `idx_perubahan_master_menunggu` dipakai apa adanya.
+     - **Satu usulan menunggu per data:** indeks unik parsial `uq_perubahan_master_menunggu_entitas (entitas, entitas_id) WHERE status = 'MENUNGGU'`.
+     - **`versi`:** versi data yang berlaku bila usulan disetujui.
+     - **CHECK:** penolakan wajib beralasan; `perubahan` berupa objek. Keduanya `NOT VALID` untuk baris lama.
+     - **Rujukan entitas** tetap polimorfik (`entitas` + `entitas_id` tanpa FK), karena usulan TAMBAH merujuk kode yang belum ada.
+   - [x] `kecamatan` dengan PK **KODE** (000120).
+     - **Kolom:** `kode varchar(7)` (kode BPS 7 digit), `nama`, `kabupaten_kode` → `kabupaten` RESTRICT (`idx_kecamatan_kabupaten_kode`), dan `kode_dagri` (padanan Kemendagri).
+     - **CHECK:** kode 7 digit dan berawalan kode kabupatennya.
+     - **Pasar:** `pasar.kecamatan_kode` → `kecamatan` RESTRICT (`idx_pasar_kecamatan_kode`, CHECK satu kabupaten) dan `pasar.versi` (naik setiap usulan pasar disetujui).
+     - **Pendaftaran:** `PKKode` di `kategoriPK`; baris di [SKEMA-DATABASE](../SKEMA-DATABASE.md).
+2. **SEED**
+   - [x] Impor kecamatan se-Aceh dari BPS lewat skrip (catat sumber dan lisensi), bukan ditulis tangan.
+     - **Skrip:** `cmd/impor-kecamatan` (`make db/impor/kecamatan`) mengambil API bridging wilayah BPS (`sig.bps.go.id`, `periode_merge=2024_1.2022`) per kabupaten dan memvalidasinya.
+     - **Hasil:** `internal/master/seeder/kecamatan_aceh.csv`, 290 kecamatan untuk 23 kabupaten/kota, dengan kepala sumber, tanggal ambil, dan atribusi. Sumber dan syarat penggunaan BPS dicatat di `seeder/SUMBER.md`. Beberapa `nama_dagri` tampak salah ketik di sumber dan dibiarkan apa adanya (dicatat di SUMBER.md).
+     - **Seeder `master.reference`:** meng-upsert `satuan` lalu `kecamatan` (sesudah kabupaten). Toleran skema lama, karena tes migrasi bertahap menjalankannya sebelum 000120/000121.
+     - **Seeder demo `master.demo`:** mengisi `pedagang` dari pasangan (pasar, kode pedagang) entri harga demo.
 3. **API**
    - [x] Aksi massal komoditas `POST /v1/master/komoditas/bulk` (`ajukan_perubahan`, `setujui`, `arsipkan`) dengan izin per aksi: `setujui` butuh `master.setujui` (STRATEGIS_BPS, STRATEGIS_FMIPA), `ajukan_perubahan`/`arsipkan` butuh `master.ajukan` (ADMIN_SISTEM, MANAJER_DATA, MANAJER_PROGRAM). Pengaju tidak dapat menyetujui usulannya sendiri. Transisi dinilai per kode: AKTIF → MENUNGGU_PERSETUJUAN (ajukan); MENUNGGU_PERSETUJUAN → AKTIF dan `versi` + 1 (setujui); AKTIF atau MENUNGGU_PERSETUJUAN → DIARSIPKAN (arsipkan, tanpa pemulihan). Kode tak dikenal atau transisi tak sah menjadi item gagal di `rincian` (`kode`, `berhasil`, `pesan`) tanpa menggagalkan item lain; pembaruan memakai `WHERE status IN (...)` sehingga balapan juga jadi item gagal. Audit `BULK_<aksi>` mencatat kode yang berubah dan yang gagal.
-   - [ ] Hubungkan entity ke `perubahan_master` (riwayat versi, alasan, penolakan); endpoint tolak. Entity `PerubahanMaster` memakai `ID idx.ID` (`gorm:"column:id;primaryKey;autoIncrement"`), `Kode *string`, `DiajukanOlehID string` (`type:uuid`), `DisetujuiOlehID *string` (`type:uuid`, NULL bila belum). Rute `:id` adalah **BIGINT auto-increment** (`idx.ParamID`, ID salah bentuk dijawab `404`; ID lama `PM-...` tersimpan di `kode` tetapi tidak pernah tampil di UI, jadi tidak ada alias): `GET /v1/master/perubahan` (antrean, `status=MENUNGGU` memakai indeks parsial), `GET /v1/master/perubahan/:id`, `POST /v1/master/perubahan/:id/setujui`, `POST /v1/master/perubahan/:id/tolak`. ID di JSON string desimal.
+   - [x] Hubungkan entity ke `perubahan_master` (riwayat versi, alasan, penolakan); endpoint tolak. Entity `PerubahanMaster` (`ID idx.ID`); rute `:id` BIGINT lewat `idx.ParamID` (salah bentuk → 404, tanpa alias kode); ID di JSON string desimal.
+     - **Endpoint:**
+       - `GET /v1/master/perubahan`: antrean `status=MENUNGGU`, terlama lebih dulu; status lain terbaru lebih dulu; `X-Total-Count`.
+       - `GET /v1/master/perubahan/:id`: detail dengan diff per bidang.
+       - `POST /v1/master/perubahan`: ajukan, izin `master.ajukan`.
+       - `POST /v1/master/perubahan/:id/setujui` dan `/tolak`: izin `master.setujui`; tolak wajib beralasan.
+       - `POST /v1/master/perubahan/:id/batalkan`: hanya pengaju.
+     - **Isi usulan:**
+       - Komoditas: `nama`, `kategori`, `satuan`, `harga_acuan`, `shelf_life_hari`, `pilot`.
+       - Pasar: `nama`, `lat`, `lng`, `radius_meter`, `aktif`, `kecamatan_kode`; TAMBAH juga `kabupaten_kode`.
+       - Usulan divalidasi per bidang (`domain.ValidasiUsulan`). Bidang yang tidak berubah dibuang (400 `TANPA_PERUBAHAN` bila tak tersisa).
+     - **Kunci baris dalam transaksi** menjaga aturan:
+       - satu usulan menunggu per data (409 `USULAN_MENUNGGU`);
+       - pengaju tidak memutuskan usulannya sendiri (403 `PEMISAHAN_TUGAS`);
+       - data yang berubah sejak diajukan tidak diterapkan (409 `USULAN_KEDALUWARSA`);
+       - komoditas arsip tidak bisa diubah (409 `STATUS_TIDAK_SESUAI`);
+       - kode TAMBAH unik (409 `KODE_SUDAH_ADA`).
+     - **Persetujuan:**
+       - Isi usulan diterapkan dan `versi` naik.
+       - Riwayat versi komoditas (`komoditas_versi`) menautkan usulannya lewat GUC transaksi `garda.perubahan_master_id`.
+       - Setiap langkah dicatat di audit trail: `AJUKAN_`, `SETUJUI_`, `TOLAK_`, `BATALKAN_PERUBAHAN_MASTER`. Persetujuan mencatat keadaan sebelum/sesudah.
+     - **Aksi massal ikut antrean:**
+       - `ajukan_perubahan` membuat usulan `TINJAU`.
+       - `setujui` menerapkan usulan yang menunggu dengan aturan pemisahan tugas yang sama. Status menunggu lama tanpa baris usulan tetap disetujui seperti dulu.
+       - `arsipkan` menolak usulan yang menunggu ("Komoditas diarsipkan").
+     - **Seeder:** `master.reference` tidak lagi menimpa komoditas/pasar yang sudah diubah lewat persetujuan (`versi > 1`).
+     - **Tes:**
+       - integrasi `internal/master/integration/perubahan_test.go`;
+       - unit `internal/master/domain/perubahan_test.go`.
    - **Wilayah dan pasar: tidak ada endpoint bulk.** Tabel `kabupaten` tidak punya kolom `status`/`versi` dan `pasar` hanya punya `aktif` (boolean), jadi siklus ajukan/setujui/arsip tidak berlaku tanpa migrasi. Migrasi tidak ditambahkan di sini; aksi ajukan/setujui/arsipkan dihapus dari UI untuk kedua entitas itu (tinggal Ekspor CSV). Bila siklus persetujuan wilayah/pasar diperlukan, tambahkan kolom `status` (enum `status_master`) dan `versi` pada `kabupaten` dan `pasar` (atau pakai `perubahan_master`), lalu perluas `domain.TransisiUntuk` dan repo agar generik per tabel.
-   - [ ] Validasi referensial: komoditas atau pasar yang sudah punya data harga hanya dinonaktifkan, tidak dihapus. Basis data sudah menegakkannya: FK dari `entri_harga`, `tugas_lapangan`, `batas_harga`, `pasar`, dan `kabupaten` ke tabel kode berlaku `ON DELETE RESTRICT`, jadi `DELETE` master yang masih dirujuk gagal dengan `23503`; endpoint hapus (bila ada) menjawab `409` dengan saran menonaktifkan (`aktif = false` untuk pasar, status `DIARSIPKAN` untuk komoditas). Rute detail master memakai `:kode` (bukan `:id`), mis. `/v1/master/komoditas/:kode`, `/v1/master/wilayah/:kode`, `/v1/master/pasar/:kode` (nilainya kolom `pasar.id`, mis. `PSR-1171-01`), `/v1/master/kecamatan/:kode`; kode tak dikenal dijawab `404`.
+   - [x] Validasi referensial: komoditas atau pasar yang sudah punya data harga hanya dinonaktifkan, tidak dihapus.
+     - **Basis data:** FK `RESTRICT` menegakkannya (23503).
+     - **`DELETE /v1/master/komoditas/:kode` dan `/pasar/:kode`** (izin `master.setujui`):
+       - 204 bila tidak dirujuk (riwayat versi ikut CASCADE) dan dicatat `HAPUS_MASTER`;
+       - 409 `MASTER_DIRUJUK` dengan saran mengarsipkan komoditas atau menonaktifkan pasar lewat usulan;
+       - 409 `MASTER_ADA_USULAN` bila ada usulan menunggu;
+       - 404 untuk kode tak dikenal.
+     - **Rute detail ber-`:kode`:** `/v1/master/komoditas/:kode` (+ `riwayat_versi`, `perubahan_menunggu`), `/wilayah/:kode` (+ jumlah kecamatan/pasar), `/pasar/:kode` (+ kecamatan, pedagang, `perubahan_menunggu`), `/kecamatan/:kode`. Kode tak dikenal atau salah bentuk dijawab 404.
 4. **FE**
    - [x] Aksi ajukan/setujui/arsipkan di `/master/komoditas` memanggil API (`api.master.bulkKomoditas`, hook `useBulkMasterKomoditas`), menampilkan kode yang ditolak, memuat ulang daftar; "Setujui" hanya untuk `master.setujui`, "Ajukan perubahan"/"Arsipkan" hanya untuk `master.ajukan`.
-   - [ ] Dialog ajukan perubahan (isi perubahan), antrean persetujuan, riwayat versi dan diff.
+   - [x] Dialog ajukan perubahan (isi perubahan), antrean persetujuan, riwayat versi dan diff.
+     - **Dialog usulan** (`components/master/usulan-dialog.tsx`): UBAH/TAMBAH komoditas dan pasar. Hanya bidang yang berubah dikirim; validasi klien mengikuti aturan server; satuan dan kecamatan dari API.
+     - **Antrean `/master/perubahan`:** tab Menunggu/Riwayat, filter entitas, paginasi server, detail dengan tabel diff, aksi Setujui/Tolak/Batalkan sesuai izin dan kepemilikan. Lencana jumlah menunggu tampil di navigasi untuk `master.setujui`.
+     - **Sheet detail komoditas/pasar:** riwayat versi, kartu usulan menunggu, Hapus dengan pesan 409.
+     - **Tab baru:** `/master/kecamatan`, `/master/pedagang` (pencarian dan paginasi sisi server lewat `X-Total-Count`) dan `/master/satuan`.
+     - **Mode mock:** backend palsu di memori (`master-mock.ts`) dengan alur yang sama.
 5. **TES**
    - [x] Unit usecase (transisi per aksi, item gagal, kode ganda, balapan, audit) dan integrasi (izin per aksi untuk ADMIN_SISTEM, MANAJER_DATA, STRATEGIS_BPS, STRATEGIS_FMIPA, peran lihat-saja; ajukan → setujui menaikkan versi; arsipkan dari AKTIF dan dari MENUNGGU; transisi tak sah; audit).
    - [x] e2e `apps/web/e2e/master.spec.ts`: manajer.data mengajukan (bertahan setelah muat ulang, tanpa tombol Setujui), strategis.bps menyetujui (versi + 1), wilayah/pasar tanpa aksi status, 403/400/item gagal lewat API. Arsip tidak diuji di e2e (tidak ada pemulihan).
@@ -69,6 +123,12 @@ Migrasi `000111_pk_harga_lapangan_master.sql`; kontrak lengkap di [SKEMA-DATABAS
 
 ## 04-C — Pelengkap master *(Fase F, prioritas rendah)*
 
-- [ ] `satuan`, `pedagang` (sekarang `entri_harga.kode_pedagang` string bebas), dan keputusan `kualitas` (enum atau tabel).
-- [ ] `komoditas`: `berlaku_dari`/`berlaku_sampai` atau tabel riwayat versi agar harga lama merujuk definisi yang berlaku saat itu.
-- [ ] Paginasi dan pencarian sisi server untuk data besar (kecamatan se-Aceh; `kecamatan` berkunci KODE `kode varchar(7)`, urut menurut `kode`).
+- [x] `satuan`, `pedagang` (sekarang `entri_harga.kode_pedagang` string bebas), dan keputusan `kualitas` (enum atau tabel). Migrasi 000121.
+  - **`satuan`:** PK KODE; `komoditas.satuan` menjadi FK RESTRICT.
+  - **`pedagang`:** PK BIGINT, `UNIQUE (pasar_id, kode)`. `entri_harga.kode_pedagang` tetap teks bebas agar entri luring tidak gagal; dicocokkan menurut pasar + kode.
+  - **Kualitas:** **tetap enum** (PREMIUM/MEDIUM/ASALAN). Nilainya sedikit, stabil, dan tanpa atribut lain.
+  - **API:** `GET /v1/master/satuan` dan `GET /v1/master/pedagang?pasar_id=`.
+- [x] `komoditas`: `berlaku_dari`/`berlaku_sampai` atau tabel riwayat versi agar harga lama merujuk definisi yang berlaku saat itu. Dipilih tabel riwayat `komoditas_versi` (000121).
+  - **Pengisian:** append-only, ditulis pemicu setiap isi komoditas berubah, dengan `berlaku_dari` dan `perubahan_id` usulan yang menghasilkannya.
+  - **API:** `GET /v1/master/komoditas/:kode/versi?pada=` mengembalikan definisi yang berlaku pada waktu itu. Tanggal dibaca sebagai akhir hari WIB; harga yang lebih tua dari riwayat memakai versi paling awal.
+- [x] Paginasi dan pencarian sisi server untuk data besar: `GET /v1/master/kecamatan?kabupaten_kode=&q=&page=&limit=` (urut `kode`, `X-Total-Count`), begitu pula pedagang; dipakai tab web tanpa memuat semua baris.

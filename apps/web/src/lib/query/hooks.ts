@@ -11,7 +11,9 @@ import { ringkasHasilKartu, type AksiKartu, type BuatIntervensiInput, type Keput
 import type { SumberBulkAksi } from "@/lib/api/sumber";
 import type { AuditFilter } from "@/lib/api/audit";
 import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
-import { MASTER_BULK_LABEL, ringkasDitolak, type MasterBulkAksi } from "@/lib/api/master";
+import { MASTER_BULK_LABEL, ringkasDitolak, type KecamatanParams, type MasterBulkAksi, type PedagangParams } from "@/lib/api/master";
+import { ENTITAS_LABEL, pesanGalatMaster, type EntitasPerubahan, type PerubahanParams, type UsulanBody } from "@/lib/api/master-perubahan";
+import { useOptionalSession } from "@/lib/auth/session-context";
 import { MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { PembacaanManualPayload, TransaksiPayload, UbahFasilitasPayload } from "@/lib/api/cold-storage";
@@ -434,18 +436,106 @@ export const useTugasDetail = (id: string | null) =>
 export const useMasterKomoditas = (enabled = true) => useQuery({ queryKey: qk.master.komoditas(), queryFn: api.master.komoditas, enabled });
 export const useMasterWilayah = (enabled = true) => useQuery({ queryKey: qk.master.wilayah(), queryFn: api.master.wilayah, enabled });
 export const useMasterPasar = (enabled = true) => useQuery({ queryKey: qk.master.pasar(), queryFn: api.master.pasar, enabled });
+/** Pelaku aksi untuk mode mock (server membaca pelaku dari token). */
+function useAktorMaster() {
+  const sesi = useOptionalSession();
+  return sesi ? { id: sesi.id, nama: sesi.nama } : null;
+}
 /** Ajukan/setujui/arsipkan komoditas; daftar dimuat ulang dari server, kode yang ditolak dilaporkan satu per satu. */
 export function useBulkMasterKomoditas() {
   const qc = useQueryClient();
+  const aktor = useAktorMaster();
   return useMutation({
-    mutationFn: ({ aksi, kode }: { aksi: MasterBulkAksi; kode: string[] }) => api.master.bulkKomoditas(aksi, kode),
+    mutationFn: ({ aksi, kode }: { aksi: MasterBulkAksi; kode: string[] }) => api.master.bulkKomoditas(aksi, kode, aktor),
     onSuccess: (hasil, { aksi }) => {
       const kata = MASTER_BULK_LABEL[aksi];
       if (hasil.berhasil > 0) toast.success(`${hasil.berhasil.toLocaleString("id-ID")} komoditas ${kata}`, { description: hasil.gagal ? undefined : "Tercatat di audit trail." });
       if (hasil.gagal > 0) toast.error(`${hasil.gagal.toLocaleString("id-ID")} komoditas ditolak`, { description: ringkasDitolak(hasil.ditolak) });
     },
     onError: (err) => toast.error("Aksi master data gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." }),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.komoditas() }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.all() }),
+  });
+}
+
+/* Detail, referensi, dan usulan perubahan master (04-B/04-C). Detail yang gagal tidak diulang agar sheet cepat menampilkan galat. */
+export const useKomoditasDetail = (kode: string | null) =>
+  useQuery({ queryKey: qk.master.komoditasDetail(kode ?? ""), queryFn: () => api.master.komoditasDetail(kode!), enabled: !!kode, retry: false });
+export const usePasarDetail = (kode: string | null) =>
+  useQuery({ queryKey: qk.master.pasarDetail(kode ?? ""), queryFn: () => api.master.pasarDetail(kode!), enabled: !!kode, retry: false });
+export const useWilayahDetail = (kode: string | null) =>
+  useQuery({ queryKey: qk.master.wilayahDetail(kode ?? ""), queryFn: () => api.master.wilayahDetail(kode!), enabled: !!kode, retry: false });
+/** Satu halaman kecamatan dari server; halaman lama tetap tampil selagi halaman baru dimuat. */
+export const useKecamatanHalaman = (params: KecamatanParams) =>
+  useQuery({ queryKey: qk.master.kecamatan(params), queryFn: () => api.master.kecamatan(params), placeholderData: keepPreviousData });
+/** Seluruh kecamatan satu kabupaten/kota (pilihan di form pasar). */
+export const useKecamatanKabupaten = (kabupatenKode: string | null) =>
+  useQuery({ queryKey: qk.master.kecamatanKabupaten(kabupatenKode ?? ""), queryFn: () => api.master.kecamatanKabupaten(kabupatenKode!), enabled: !!kabupatenKode, staleTime: 5 * 60_000 });
+/** Satu kecamatan menurut kode (nama untuk kode di tabel diff); kode kosong tidak memuat apa pun. */
+export const useKecamatanByKode = (kode: string | null | undefined) =>
+  useQuery({ queryKey: qk.master.kecamatanDetail(kode ?? ""), queryFn: () => api.master.kecamatanDetail(kode!), enabled: !!kode, staleTime: Infinity, retry: false });
+export const useSatuan = (enabled = true) => useQuery({ queryKey: qk.master.satuan(), queryFn: api.master.satuan, enabled, staleTime: 5 * 60_000 });
+export const usePedagangHalaman = (params: PedagangParams) =>
+  useQuery({ queryKey: qk.master.pedagang(params), queryFn: () => api.master.pedagang(params), placeholderData: keepPreviousData });
+export const usePerubahanHalaman = (params: PerubahanParams) =>
+  useQuery({ queryKey: qk.master.perubahan(params), queryFn: () => api.master.perubahan(params), placeholderData: keepPreviousData });
+export const usePerubahanDetail = (id: string | null) =>
+  useQuery({ queryKey: qk.master.perubahanDetail(id ?? ""), queryFn: () => api.master.perubahanDetail(id!), enabled: !!id, retry: false });
+/** Jumlah usulan yang menunggu keputusan (lencana navigasi); hanya untuk pemegang izin persetujuan. */
+export const useJumlahUsulanMenunggu = (enabled: boolean) =>
+  useQuery({ queryKey: qk.master.perubahanMenunggu(), queryFn: api.master.jumlahMenunggu, enabled, refetchInterval: 60_000 });
+
+/**
+ * Mengajukan usulan ubah/tambah. Toast hanya untuk berhasil; galat tampil di dialog (400 per field, 409
+ * USULAN_MENUNGGU/KODE_SUDAH_ADA/STATUS_TIDAK_SESUAI). Semua query master disegarkan sesudahnya.
+ */
+export function useAjukanPerubahanMaster() {
+  const qc = useQueryClient();
+  const aktor = useAktorMaster();
+  return useMutation({
+    mutationFn: (body: UsulanBody) => api.master.ajukan(body, aktor),
+    onSuccess: (p) =>
+      toast.success(p.jenis === "TAMBAH" ? "Usulan data baru diajukan" : "Usulan perubahan diajukan", { description: "Menunggu keputusan pemegang izin persetujuan." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.all() }),
+  });
+}
+export function useSetujuiPerubahanMaster() {
+  const qc = useQueryClient();
+  const aktor = useAktorMaster();
+  return useMutation({
+    mutationFn: (id: string) => api.master.setujui(id, aktor),
+    onSuccess: (p) => toast.success("Usulan disetujui", { description: `${ENTITAS_LABEL[p.entitas]} ${p.entitasNama ?? p.entitasId} kini versi ${p.versi}. Tercatat di audit trail.` }),
+    onError: (err) => toast.error("Usulan tidak dapat disetujui", { description: pesanGalatMaster(err) }),
+    // Juga saat gagal (mis. USULAN_KEDALUWARSA, BUKAN_MENUNGGU): daftar dimuat ulang agar keadaan terbaru tampil.
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.all() }),
+  });
+}
+/** Menolak usulan dengan alasan; galat tampil di dialog penolakan, bukan toast. */
+export function useTolakPerubahanMaster() {
+  const qc = useQueryClient();
+  const aktor = useAktorMaster();
+  return useMutation({
+    mutationFn: ({ id, alasan }: { id: string; alasan: string }) => api.master.tolak(id, alasan, aktor),
+    onSuccess: () => toast.success("Usulan ditolak", { description: "Alasan penolakan tersimpan dan tampil bagi pengaju." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.all() }),
+  });
+}
+export function useBatalkanPerubahanMaster() {
+  const qc = useQueryClient();
+  const aktor = useAktorMaster();
+  return useMutation({
+    mutationFn: ({ id, alasan }: { id: string; alasan?: string }) => api.master.batalkan(id, alasan, aktor),
+    onSuccess: () => toast.success("Usulan dibatalkan"),
+    onError: (err) => toast.error("Usulan tidak dapat dibatalkan", { description: pesanGalatMaster(err) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.all() }),
+  });
+}
+/** Menghapus komoditas/pasar; galat 409 tampil di dialog konfirmasi. */
+export function useHapusMaster() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entitas, kode }: { entitas: EntitasPerubahan; kode: string }) => api.master.hapus(entitas, kode),
+    onSuccess: (_, { entitas, kode }) => toast.success(`${ENTITAS_LABEL[entitas]} ${kode} dihapus`, { description: "Tercatat di audit trail." }),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.master.all() }),
   });
 }
 

@@ -17,10 +17,19 @@ type UseCase struct {
 	repo  domain.Repository
 	audit audit.Writer
 	log   *logger.Logger
+	// perubahan (opsional) menghubungkan aksi massal dengan antrean usulan (04-B); nil = hanya status.
+	perubahan domain.RepositoryPerubahan
 }
 
 func New(repo domain.Repository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
 	return &UseCase{repo: repo, audit: auditWriter, log: log}
+}
+
+// DenganPerubahan menghubungkan aksi massal dengan antrean usulan: ajukan membuat usulan TINJAU, setujui
+// menerapkan usulan yang menunggu (pemisahan tugas berlaku), arsipkan menutup usulan yang menunggu.
+func (uc *UseCase) DenganPerubahan(repo domain.RepositoryPerubahan) *UseCase {
+	uc.perubahan = repo
+	return uc
 }
 
 func (uc *UseCase) ListKomoditas(ctx context.Context, q domain.ListQuery) ([]domain.Komoditas, int64, error) {
@@ -63,15 +72,11 @@ func (uc *UseCase) BulkKomoditas(ctx context.Context, kode []string, action, act
 		case !transisi.Boleh(status):
 			item.Pesan = fmt.Sprintf("Status %s tidak sesuai: %s", status, transisi.Syarat)
 		default:
-			changed, err := uc.repo.UbahStatusKomoditas(ctx, k, transisi)
+			pesan, err := uc.jalankanBulk(ctx, domainAction, transisi, k, actorID)
 			if err != nil {
 				return hasil, fmt.Errorf("bulk komoditas: %w", err)
 			}
-			if changed {
-				item.Berhasil = true
-			} else {
-				item.Pesan = "Status berubah saat diproses; muat ulang lalu coba lagi"
-			}
+			item.Berhasil, item.Pesan = pesan == "", pesan
 		}
 		if item.Berhasil {
 			hasil.Berhasil++
@@ -93,6 +98,60 @@ func (uc *UseCase) BulkKomoditas(ctx context.Context, kode []string, action, act
 		}
 	}
 	return hasil, nil
+}
+
+// pesanBalapan dipakai bila status berubah di antara pemeriksaan dan pembaruan.
+const pesanBalapan = "Status berubah saat diproses; muat ulang lalu coba lagi"
+
+// jalankanBulk menerapkan satu aksi massal pada satu kode. Pesan kosong berarti berhasil; galat hanya untuk
+// kegagalan sistem.
+func (uc *UseCase) jalankanBulk(ctx context.Context, aksi domain.BulkAction, transisi domain.Transisi, kode, aktorID string) (string, error) {
+	gagal := func(err error) (string, error) {
+		if pesan, ok := PesanItemGagal(err); ok {
+			return pesan, nil
+		}
+		return "", err
+	}
+	if uc.perubahan != nil {
+		switch aksi {
+		case domain.BulkAjukanPerubahan:
+			_, err := uc.perubahan.Ajukan(ctx, domain.UsulanBaru{
+				Entitas: domain.EntitasKomoditas, Jenis: domain.JenisTinjau, EntitasID: kode,
+				Perubahan: map[string]any{}, Alasan: "Diajukan lewat aksi massal", AktorID: aktorID,
+			})
+			if err != nil {
+				return gagal(err)
+			}
+			return "", nil
+		case domain.BulkSetujui:
+			_, err := uc.perubahan.PutuskanMenunggu(ctx, domain.EntitasKomoditas, kode,
+				domain.Keputusan{Aksi: domain.KeputusanSetujui, AktorID: aktorID})
+			if err == nil {
+				return "", nil
+			}
+			if !errors.Is(err, domain.ErrUsulanTidakAda) {
+				return gagal(err)
+			}
+			// Status menunggu tanpa baris usulan (data sebelum 04-B): setujui statusnya saja.
+		case domain.BulkArsipkan:
+			ok, err := uc.perubahan.ArsipkanKomoditas(ctx, kode, aktorID)
+			if err != nil {
+				return "", err
+			}
+			if !ok {
+				return pesanBalapan, nil
+			}
+			return "", nil
+		}
+	}
+	changed, err := uc.repo.UbahStatusKomoditas(ctx, kode, transisi)
+	if err != nil {
+		return "", err
+	}
+	if !changed {
+		return pesanBalapan, nil
+	}
+	return "", nil
 }
 
 // uniq membuang kode kosong dan ganda dengan mempertahankan urutan.

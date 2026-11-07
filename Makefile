@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/impor/kecamatan openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -36,7 +36,7 @@ test/api/short: ## Run short Go tests (no integration)
 	cd apps/api && go test ./... -v -count=1 -short
 
 # Paket integrasi: tiap yang memakai Docker (dockertest). Tambahkan paket baru di sini.
-INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/harga/seeder/... ./internal/lapangan/integration/... ./internal/lapangan/seeder/... ./internal/dashboard/integration/... ./internal/dashboard/seeder/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./internal/ingestion/seeder/... ./cmd/ingest/...
+INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/harga/seeder/... ./internal/lapangan/integration/... ./internal/lapangan/seeder/... ./internal/dashboard/integration/... ./internal/dashboard/seeder/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./internal/ingestion/seeder/... ./cmd/ingest/... ./internal/master/integration/... ./internal/master/seeder/... ./internal/audit/integration/... ./internal/audit/seeder/...
 
 test/api/integration: ## Run Go integration tests (requires Docker)
 	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1
@@ -82,6 +82,11 @@ db/seed/admin: ## Seed akun admin awal (SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD)
 
 db/seed/demo: ## Seed data demo (ditolak bila APP_ENV=production)
 	cd apps/api && go run ./cmd/seed demo
+
+# Menyegarkan kecamatan_aceh.csv dari API bridging wilayah BPS (perlu internet). Hasilnya di-commit; seeder
+# master.reference menanamnya. Sumber dan lisensi: apps/api/internal/master/seeder/SUMBER.md.
+db/impor/kecamatan: ## Impor kecamatan se-Aceh dari BPS ke seeder/kecamatan_aceh.csv
+	cd apps/api && go run ./cmd/impor-kecamatan
 
 # ── OpenAPI: sumber tunggal packages/contracts/openapi.yaml ─────────────
 # apps/api/pkg/swagger/openapi.yaml adalah salinan hasil generasi (go:embed tidak bisa

@@ -1,5 +1,5 @@
 import {
-  BrainCircuit, Workflow, ClipboardCheck, Database, FileText, Gauge, Landmark, Map, PlugZap, ScrollText, Siren, Smartphone,
+  BrainCircuit, Workflow, ClipboardCheck, Database, FileText, Gauge, GitPullRequest, Landmark, Map, PlugZap, ScrollText, Siren, Smartphone,
   Snowflake, SquareKanban, Target, Users, type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/rbac/permissions";
@@ -10,7 +10,7 @@ export interface NavItem {
   icon: LucideIcon;
   /** Tanpa izin = terbuka untuk seluruh pengguna konsol */
   perm?: Permission;
-  badge?: "ews" | "validasi";
+  badge?: "ews" | "validasi" | "master";
   keywords?: string[];
 }
 
@@ -28,7 +28,8 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
     items: [
       { href: "/data/harga", label: "Validasi harga", icon: ClipboardCheck, perm: "harga.lihat", badge: "validasi", keywords: ["entri", "lapangan", "verifikasi"] },
       { href: "/sumber-data", label: "Sumber data & API", icon: PlugZap, perm: "sumber.lihat", keywords: ["bps", "bi", "bmkg", "scraper"] },
-      { href: "/master/komoditas", label: "Master data", icon: Database, perm: "master.lihat", keywords: ["komoditas", "wilayah", "pasar"] },
+      { href: "/master/komoditas", label: "Master data", icon: Database, perm: "master.lihat", keywords: ["komoditas", "wilayah", "pasar", "kecamatan", "satuan", "pedagang"] },
+      { href: "/master/perubahan", label: "Antrean perubahan master", icon: GitPullRequest, perm: "master.lihat", badge: "master", keywords: ["usulan", "persetujuan", "setujui", "tolak", "versi"] },
     ],
   },
   {
@@ -64,7 +65,14 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
 
 export const NAV_FLAT = NAV.flatMap((g) => g.items);
 
+/**
+ * Entri nav aktif untuk satu path. Kecocokan persis (path sama atau anak dari href) didahulukan; baru bila tidak
+ * ada, dipakai kecocokan tingkat grup (dua segmen pertama), mis. `/master/pasar` menyalakan "Master data" yang
+ * href-nya `/master/komoditas`. Tanpa urutan ini `/master/perubahan` ikut menyalakan "Master data".
+ */
 export function activeNav(pathname: string, items = NAV_FLAT) {
-  return items.filter((i) => pathname === i.href || pathname.startsWith(`${i.href.split("/").slice(0, 2).join("/")}/`) || pathname.startsWith(`${i.href}/`))
-    .sort((a, b) => b.href.length - a.href.length)[0];
+  const terpanjang = (a: NavItem, b: NavItem) => b.href.length - a.href.length;
+  const persis = items.filter((i) => pathname === i.href || pathname.startsWith(`${i.href}/`)).sort(terpanjang)[0];
+  if (persis) return persis;
+  return items.filter((i) => pathname.startsWith(`${i.href.split("/").slice(0, 2).join("/")}/`)).sort(terpanjang)[0];
 }

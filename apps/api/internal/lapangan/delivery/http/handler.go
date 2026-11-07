@@ -2,15 +2,21 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/lapangan/dto"
 	"github.com/garda-inflasi/api/internal/lapangan/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
+
+// maksKodeTugas adalah panjang kolom kode (varchar(64)): rujukan lebih panjang pasti bukan kode yang ada.
+const maksKodeTugas = 64
 
 type Handler struct {
 	uc *usecase.UseCase
@@ -41,8 +47,15 @@ func (h *Handler) ListSaya(c *gin.Context) {
 }
 
 // GET /v1/lapangan/tugas/:id
+//
+// :id adalah ID BIGINT atau kode lama tugas (TGS-<slug>-<n>): tautan dan antrean PWA yang dibuat sebelum migrasi
+// 000111 tetap berlaku. Teks kosong atau lebih dari 64 karakter dijawab 404 tanpa menyentuh basis data.
 func (h *Handler) Get(c *gin.Context) {
-	item, err := h.uc.GetDetail(c.Request.Context(), c.Param("id"), pemanggil(c))
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKodeTugas, "Tugas tidak ditemukan")
+	if !ok {
+		return
+	}
+	item, err := h.uc.GetDetail(c.Request.Context(), ref, pemanggil(c))
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Tugas tidak ditemukan")
@@ -55,14 +68,22 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // POST /v1/lapangan/tugas/bulk
+//
+// ids berisi ID BIGINT (string angka) atau kode lama (TGS-...), supaya klien yang masih memegang ID lama tetap
+// dilayani. Rujukan lebih panjang dari 64 karakter menolak seluruh permintaan dengan 400.
 func (h *Handler) Bulk(c *gin.Context) {
 	var req dto.BulkTugasRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
+	refs, err := rujukanDaftar(req.IDs)
+	if err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
 
-	hasil, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Aksi, pemanggil(c))
+	hasil, err := h.uc.BulkAction(audit.RequestContext(c), refs, req.Aksi, pemanggil(c))
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidAction):
@@ -97,4 +118,25 @@ func (h *Handler) Acuan(c *gin.Context) {
 		return
 	}
 	response.Success(c, dto.ToAcuanResponse(data))
+}
+
+// rujukanDaftar membaca daftar id aksi massal: bilangan bulat positif menjadi ID BIGINT, teks lain (kode lama
+// seperti TGS-mahasiswa_1-1) menjadi rujukan kode. Entri kosong dibuang.
+func rujukanDaftar(ids []string) ([]idx.RujukanID, error) {
+	refs := make([]idx.RujukanID, 0, len(ids))
+	for _, teks := range ids {
+		teks = strings.TrimSpace(teks)
+		if teks == "" {
+			continue
+		}
+		if id, err := idx.Parse(teks); err == nil {
+			refs = append(refs, idx.RujukanID{ID: id})
+			continue
+		}
+		if len(teks) > maksKodeTugas {
+			return nil, fmt.Errorf("ids: rujukan lebih dari %d karakter", maksKodeTugas)
+		}
+		refs = append(refs, idx.RujukanID{Kode: teks})
+	}
+	return refs, nil
 }

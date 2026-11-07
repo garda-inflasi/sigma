@@ -47,7 +47,10 @@ export interface ProyeksiResponse {
 }
 
 export interface ModelResponse {
+  /** ID BIGINT model sebagai string desimal ("123"). */
   id: string;
+  /** Kode tampilan MDL-<komoditas>-<versi>; juga diterima sebagai rujukan model. Null bila tidak ada. */
+  kode: string | null;
   komoditas_kode: string;
   komoditas_nama: string;
   nama: string;
@@ -180,7 +183,9 @@ export interface BarisProyeksi {
 
 /** Satu baris tabel "Registri model". */
 export interface BarisModel {
+  /** ID BIGINT model (string). Dipakai untuk tautan dan aksi; teks untuk manusia memakai `kode ?? id`. */
   id: string;
+  kode: string | null;
   komoditasKode: string;
   komoditas: string;
   versi: string;
@@ -255,6 +260,7 @@ export function toBarisProyeksi(r: RingkasanResponse): BarisProyeksi {
 export function toBarisModel(r: ModelResponse): BarisModel {
   return {
     id: r.id,
+    kode: r.kode ?? null,
     komoditasKode: r.komoditas_kode,
     komoditas: r.komoditas_nama,
     versi: r.versi,

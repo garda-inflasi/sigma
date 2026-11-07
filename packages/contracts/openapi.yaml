@@ -5276,7 +5276,9 @@ paths:
   /v1/policy-brief:
     get:
       summary: Mendaftar policy brief
-      description: Seluruh brief, periode terbaru lebih dulu.
+      description: |
+        Seluruh brief, periode terbaru lebih dulu (urut menurut `kode` PB-YYYY-MM, bukan UUID). Setiap brief
+        punya `id` UUID dan `kode` PB-YYYY-MM yang unik: satu periode hanya punya satu brief.
       operationId: listPolicyBrief
       tags:
         - Policy Brief
@@ -5302,8 +5304,13 @@ paths:
       description: |
         Isi brief per bagian (ringkasan, temuan, risiko, rekomendasi untuk Pemda dan TPID) beserta
         lampiran sitasi sumber tiap angka, label draf yang wajib ditampilkan, dan jejak penyusunan
-        (model, versi prompt, dan hash prompt bila LLM dipakai). Dipakai klien untuk memantau brief
+        (model, versi prompt, dan hash prompt bila LLM dipakai), serta `riwayat_versi` (versi isi terbaru
+        dulu, dengan `id` versi BIGINT yang dirujuk telaah dan revisi). Dipakai klien untuk memantau brief
         berstatus `DIPROSES` sampai `DRAF` atau `GAGAL`.
+
+        `{id}` adalah UUID brief atau kodenya (`PB-YYYY-MM`, alias tautan lama seperti
+        `/v1/policy-brief/PB-2026-10`). UUID huruf besar dinormalkan. Rujukan yang tidak ada, bukan UUID
+        sah dan bukan kode, kosong, atau lebih dari 64 karakter dijawab 404 tanpa menyentuh basis data.
       operationId: getPolicyBrief
       tags:
         - Policy Brief
@@ -5313,9 +5320,12 @@ paths:
         - name: id
           in: path
           required: true
+          description: UUID brief atau kode `PB-YYYY-MM` (alias).
           schema:
-            type: string
-            example: PB-2026-11
+            oneOf:
+              - $ref: "#/components/schemas/IdUuid"
+              - $ref: "#/components/schemas/PolicyBriefKode"
+          example: dfb2ba45-a711-317e-a45e-313f19d1ab43
       responses:
         "200":
           description: Brief lengkap
@@ -5330,7 +5340,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Brief tidak ditemukan
+          description: Brief tidak ditemukan, atau `{id}` bukan UUID sah maupun kode yang dikenal
           content:
             application/json:
               schema:
@@ -5351,9 +5361,12 @@ paths:
         narasi yang menulis angka sendiri atau memakai placeholder tak dikenal ditolak dan digantikan
         templat (alasannya dicatat). Hasil LLM berlabel "Draf AI — wajib ditelaah manusia".
 
-        Brief `GAGAL`, atau `DIPROSES` yang tidak berubah lebih dari 5 menit (proses mati), dapat disusun
-        ulang dengan permintaan yang sama. Aksi dicatat di audit trail (`GENERATE_BRIEF`,
-        `BRIEF_DRAF_SELESAI`, `BRIEF_DRAF_GAGAL`).
+        Satu periode hanya punya satu brief: `kode` (`PB-YYYY-MM`) unik dan menjadi kunci idempotensi,
+        sedangkan `id` UUID diberikan basis data. Brief `GAGAL`, atau `DIPROSES` yang tidak berubah lebih dari
+        5 menit (proses mati), dapat disusun ulang dengan permintaan yang sama (brief yang sama, job baru);
+        periode yang sudah punya brief lain dijawab 409. Permintaan bersamaan untuk periode yang sama
+        menghasilkan satu brief dan sisanya 409. Aksi dicatat di audit trail (`GENERATE_BRIEF`,
+        `BRIEF_DRAF_SELESAI`, `BRIEF_DRAF_GAGAL`) dengan `entitas_id` = UUID brief.
       operationId: generatePolicyBrief
       tags:
         - Policy Brief
@@ -5385,7 +5398,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Periode itu sudah punya brief (bukan GAGAL dan tidak basi)
+          description: Periode itu sudah punya brief (bukan GAGAL dan tidak basi); satu periode, satu brief
           content:
             application/json:
               schema:
@@ -5396,8 +5409,9 @@ paths:
       summary: Aksi massal pada policy brief
       description: |
         `telaah` memajukan DRAF menjadi TELAAH (izin `brief.susun`); `setujui` memajukan TELAAH
-        menjadi DISETUJUI (izin `brief.setujui`). Brief yang tidak ada atau bukan di status asal
-        dihitung gagal. Setiap perubahan dicatat di audit trail.
+        menjadi DISETUJUI (izin `brief.setujui`). Setiap elemen `ids` adalah UUID brief atau kodenya
+        (`PB-YYYY-MM`). Brief yang tidak ada atau bukan di status asal dihitung gagal. Setiap perubahan
+        dicatat di audit trail dengan `entitas_id` = UUID brief (juga bila rujukannya kode).
       operationId: bulkPolicyBrief
       tags:
         - Policy Brief
@@ -5417,7 +5431,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BulkResultResponse"
         "400":
-          description: Aksi tidak dikenal atau id kosong
+          description: Aksi tidak dikenal, `ids` kosong, atau ada elemen kosong atau lebih dari 64 karakter
           content:
             application/json:
               schema:
@@ -5644,7 +5658,10 @@ paths:
   /v1/prediksi/registri:
     get:
       summary: Registri model prediksi
-      description: Seluruh versi model (produksi, kandidat, arsip) beserta MAPE dan drift.
+      description: |
+        Seluruh versi model (produksi, kandidat, arsip) beserta MAPE dan drift. Setiap model punya `id` BIGINT
+        (string desimal) dan `kode` tampilan `MDL-<komoditas>-<versi>`; keduanya diterima sebagai rujukan model
+        di `POST /v1/prediksi/registri/bulk`.
       operationId: listModelPrediksi
       tags:
         - Prediksi
@@ -5672,8 +5689,10 @@ paths:
         model produksi komoditas yang sama dalam satu transaksi; `arsip` mengarsipkan KANDIDAT (model
         produksi tidak dapat diarsipkan langsung). Model yang tidak ada, berstatus tidak sesuai, belum
         punya proyeksi, atau (untuk model hasil pelatihan) MAPE backtest-nya lebih buruk dari baseline
-        naif dilewati dan dilaporkan di `detail`. Izin `model.kelola`; riwayat di `model_promosi`;
-        audit `PROMOSI_MODEL`/`ARSIP_MODEL`.
+        naif dilewati dan dilaporkan di `detail`. Setiap elemen `ids` adalah ID BIGINT model atau kodenya
+        (mis. `MDL-CBM-KRT-v2.3.1`, alias ID lama); rujukan yang tidak ada dilaporkan "model tidak ditemukan"
+        per model, bukan 404. Izin `model.kelola`; riwayat di `model_promosi`; audit
+        `PROMOSI_MODEL`/`ARSIP_MODEL` dengan `entitas_id` = ID BIGINT model.
       operationId: bulkModelPrediksi
       tags:
         - Prediksi
@@ -5693,7 +5712,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PrediksiBulkModelResponse"
         "400":
-          description: Aksi tidak dikenal atau id kosong
+          description: Aksi tidak dikenal, `ids` kosong, atau ada elemen kosong atau lebih dari 64 karakter
           content:
             application/json:
               schema:
@@ -5712,8 +5731,9 @@ paths:
         Dihitung di server dari proyeksi model PRODUKSI (bawaan Kota Banda Aceh, 14 hari) ditambah
         efek tiap parameter (koefisien x parameter). Koefisien saat ini berupa asumsi generik
         (`sumber: ASUMSI`) karena riwayat pasokan, cuaca, dan subsidi belum tersedia untuk diestimasi;
-        hasilnya diberi `terbatas: true` dan `catatan`. Skenario disimpan di `skenario_simulasi` dan
-        dicatat di audit (`SIMULASI_SKENARIO`). Field yang tidak diisi berarti netral.
+        hasilnya diberi `terbatas: true` dan `catatan`. Skenario disimpan di `skenario_simulasi` (ID BIGINT
+        dari basis data, dikembalikan di `id`) dan dicatat di audit (`SIMULASI_SKENARIO`, `entitas_id` = id).
+        Field yang tidak diisi berarti netral.
       operationId: simulasiPrediksi
       tags:
         - Prediksi
@@ -7785,8 +7805,11 @@ components:
           type: array
           minItems: 1
           maxItems: 200
+          description: UUID brief atau kode `PB-YYYY-MM` (alias); tiap elemen 1 sampai 64 karakter.
           items:
             type: string
+            minLength: 1
+            maxLength: 64
           example: [PB-2026-10]
 
     BulkResultResponse:
@@ -10516,13 +10539,40 @@ components:
           type: string
           enum: [OPERASIONAL, PERAWATAN, RENCANA]
 
+    PolicyBriefKode:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^PB-[0-9]{4}-(0[1-9]|1[0-2])$'
+      description: >-
+        Kode tampilan brief `PB-YYYY-MM`: NOT NULL, unik (satu brief per periode), dan diterima sebagai alias
+        `id` di `/v1/policy-brief/{id}`. Dijaga CHECK dan UNIQUE di basis data.
+      example: PB-2026-10
+
+    PolicyBriefVersi:
+      type: object
+      description: Satu versi isi brief, satu baris per penyusunan (bahan telaah dan revisi).
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        versi:
+          type: integer
+          minimum: 1
+          description: Nomor urut versi pada brief itu; (brief, versi) unik.
+        oleh:
+          type: string
+          description: Nama penulis versi
+        waktu:
+          type: string
+          format: date-time
+
     PolicyBrief:
       type: object
       properties:
         id:
-          type: string
-          description: PB-YYYY-MM
-          example: PB-2026-10
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/PolicyBriefKode"
         periode:
           type: string
           example: Oktober 2026
@@ -10627,6 +10677,11 @@ components:
               type: string
               nullable: true
               description: Alasan kegagalan penyusunan, atau alasan LLM digantikan templat.
+            riwayat_versi:
+              type: array
+              description: Versi isi, terbaru dulu; kosong selama draf pertama belum selesai (dan untuk brief contoh).
+              items:
+                $ref: "#/components/schemas/PolicyBriefVersi"
 
     PolicyBriefDetailResponse:
       type: object
@@ -10744,7 +10799,10 @@ components:
     PrediksiModel:
       type: object
       properties:
-        id: {type: string, example: MDL-CBM-KRT-v2.3.1}
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
         komoditas_kode: {type: string}
         komoditas_nama: {type: string}
         nama: {type: string}
@@ -10776,7 +10834,8 @@ components:
           type: array
           minItems: 1
           maxItems: 100
-          items: {type: string, example: MDL-CBM-KRT-v2.4.0-rc1}
+          description: ID BIGINT model (string desimal) atau kodenya (alias ID lama); tiap elemen 1 sampai 64 karakter.
+          items: {type: string, minLength: 1, maxLength: 64, example: MDL-CBM-KRT-v2.4.0-rc1}
 
     PrediksiBulkModelResponse:
       type: object
@@ -10793,7 +10852,7 @@ components:
               items:
                 type: object
                 properties:
-                  id: {type: string}
+                  id: {type: string, description: Rujukan persis seperti dikirim klien (ID BIGINT atau kode)}
                   alasan: {type: string}
 
     PrediksiSimulasiRequest:
@@ -10810,7 +10869,8 @@ components:
     PrediksiSimulasi:
       type: object
       properties:
-        id: {type: string}
+        id:
+          $ref: "#/components/schemas/IdBigint"
         komoditas_kode: {type: string}
         komoditas_nama: {type: string}
         kabupaten_kode: {type: string}

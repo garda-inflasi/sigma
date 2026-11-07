@@ -24,7 +24,9 @@ const KOLOM_CSV =
   "komoditas_kode;komoditas_nama;kabupaten_kode;horizon_hari;tanggal;aktual;proyeksi;bawah;atas;model_versi;sumber";
 
 type Model = {
+  /** ID BIGINT model sebagai string desimal; `kode` adalah kode tampilan (MDL-<komoditas>-<versi>). */
   id: string;
+  kode: string | null;
   komoditas_kode: string;
   versi: string;
   status: string;
@@ -111,7 +113,7 @@ test.describe("prediksi dan KPI", () => {
       DELETE FROM model_promosi
        WHERE model_id = '${baru.id}' OR model_digantikan_id = '${baru.id}'
           OR (model_id = '${lama.id}' AND waktu >= '${mulai}');
-      DELETE FROM prediksi_harga WHERE komoditas_kode = '${KOMODITAS}' AND model_versi = '${baru.versi}';
+      DELETE FROM prediksi_harga WHERE model_id = '${baru.id}';
       DELETE FROM model_registry WHERE id = '${baru.id}';`);
     disiapkan = null;
   });

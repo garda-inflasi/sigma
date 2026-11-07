@@ -6,7 +6,10 @@
 import type { PolicyBrief } from "@/lib/data/types";
 
 export interface PolicyBriefResponse {
+  /** UUID brief. */
   id: string;
+  /** Kode tampilan PB-YYYY-MM; juga alias id di /v1/policy-brief/{id}. */
+  kode: string;
   periode: string;
   judul: string;
   status: string;
@@ -35,6 +38,14 @@ export interface SitasiBrief {
   sumber: string;
 }
 
+/** Satu versi isi brief; `id` adalah versi_id (BIGINT sebagai string) untuk dirujuk telaah dan revisi. */
+export interface VersiBriefResponse {
+  id: string;
+  versi: number;
+  oleh: string;
+  waktu: string;
+}
+
 export interface PolicyBriefDetailResponse extends PolicyBriefResponse {
   /** Kosong ({}) selama brief belum selesai disusun atau gagal. */
   konten: {
@@ -47,12 +58,24 @@ export interface PolicyBriefDetailResponse extends PolicyBriefResponse {
   prompt_versi: string | null;
   prompt_hash: string | null;
   galat: string | null;
+  /** Versi isi, terbaru dulu; kosong selama draf pertama belum selesai. */
+  riwayat_versi: VersiBriefResponse[];
 }
 
 /** Brief lengkap dengan isi, sitasi, dan jejak penyusunan (model dan prompt bila LLM dipakai). */
+/** Satu versi isi brief; `id` adalah versi_id yang dirujuk telaah dan revisi. */
+export interface VersiBrief {
+  id: string;
+  versi: number;
+  oleh: string;
+  waktu: string;
+}
+
 export interface PolicyBriefDetail extends PolicyBrief {
   bagian: BagianBrief[];
   sitasi: SitasiBrief[];
+  /** Versi isi, terbaru dulu. */
+  riwayatVersi: VersiBrief[];
   /** Mis. alasan LLM digantikan templat. */
   catatan?: string;
   model?: string;
@@ -86,6 +109,7 @@ function toSumberNarasi(sumber: string): PolicyBrief["sumberNarasi"] {
 export function toPolicyBrief(b: PolicyBriefResponse): PolicyBrief {
   return {
     id: b.id,
+    kode: b.kode,
     periode: b.periode,
     judul: b.judul,
     status: toStatus(b.status),
@@ -104,6 +128,7 @@ export function toPolicyBriefDetail(b: PolicyBriefDetailResponse): PolicyBriefDe
     ...toPolicyBrief(b),
     bagian: b.konten.bagian ?? [],
     sitasi: b.konten.lampiran ?? [],
+    riwayatVersi: (b.riwayat_versi ?? []).map((v) => ({ id: v.id, versi: v.versi, oleh: v.oleh, waktu: v.waktu })),
     ...(b.konten.catatan ? { catatan: b.konten.catatan } : {}),
     ...(b.model_llm ? { model: b.model_llm } : {}),
     ...(b.prompt_versi ? { promptVersi: b.prompt_versi } : {}),

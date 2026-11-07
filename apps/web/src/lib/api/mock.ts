@@ -352,11 +352,11 @@ export function mockAudit(): AuditRow[] {
 
 export function mockBriefs(): PolicyBrief[] {
   return [
-    { id: "PB-2026-10", periode: "Oktober 2026", judul: "Meredam tekanan harga cabai pascacurah hujan ekstrem di dataran tinggi Gayo", status: "DRAF", disusunOleh: "Siti Humaira", diperbarui: menitLalu(45), jumlahRekomendasi: 5, halaman: 8 },
-    { id: "PB-2026-09", periode: "September 2026", judul: "Optimalisasi cold storage untuk serapan surplus kentang dan tomat", status: "DISETUJUI", disusunOleh: "Siti Humaira", diperbarui: menitLalu(9800), jumlahRekomendasi: 4, halaman: 7 },
-    { id: "PB-2026-08", periode: "Agustus 2026", judul: "Stabilisasi harga beras menjelang panen gadu", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(52000), jumlahRekomendasi: 3, halaman: 6 },
-    { id: "PB-2026-07", periode: "Juli 2026", judul: "Pola distribusi ikan tongkol di wilayah pesisir timur", status: "DIDISTRIBUSIKAN", disusunOleh: "Fajar Ramadhan", diperbarui: menitLalu(95000), jumlahRekomendasi: 4, halaman: 9 },
-    { id: "PB-2026-06", periode: "Juni 2026", judul: "Kesiapan pasokan pangan Iduladha di 23 kabupaten/kota", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(138000), jumlahRekomendasi: 6, halaman: 10 },
+    { id: "dfb2ba45-a711-317e-a45e-313f19d1ab43", kode: "PB-2026-10", periode: "Oktober 2026", judul: "Meredam tekanan harga cabai pascacurah hujan ekstrem di dataran tinggi Gayo", status: "DRAF", disusunOleh: "Siti Humaira", diperbarui: menitLalu(45), jumlahRekomendasi: 5, halaman: 8 },
+    { id: "16b1de54-bd34-3609-b70e-37c2056b89ed", kode: "PB-2026-09", periode: "September 2026", judul: "Optimalisasi cold storage untuk serapan surplus kentang dan tomat", status: "DISETUJUI", disusunOleh: "Siti Humaira", diperbarui: menitLalu(9800), jumlahRekomendasi: 4, halaman: 7 },
+    { id: "41ed31b7-b973-30d9-ac38-f89a7253f41a", kode: "PB-2026-08", periode: "Agustus 2026", judul: "Stabilisasi harga beras menjelang panen gadu", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(52000), jumlahRekomendasi: 3, halaman: 6 },
+    { id: "2a9920a5-e625-3fe1-be1f-10e136e3abe1", kode: "PB-2026-07", periode: "Juli 2026", judul: "Pola distribusi ikan tongkol di wilayah pesisir timur", status: "DIDISTRIBUSIKAN", disusunOleh: "Fajar Ramadhan", diperbarui: menitLalu(95000), jumlahRekomendasi: 4, halaman: 9 },
+    { id: "3b124e4a-5309-3f91-b9c2-c6910fe080e5", kode: "PB-2026-06", periode: "Juni 2026", judul: "Kesiapan pasokan pangan Iduladha di 23 kabupaten/kota", status: "DIDISTRIBUSIKAN", disusunOleh: "Siti Humaira", diperbarui: menitLalu(138000), jumlahRekomendasi: 6, halaman: 10 },
   ];
 }
 

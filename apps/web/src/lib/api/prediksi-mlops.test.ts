@@ -9,7 +9,8 @@ import {
 } from "./prediksi";
 
 const model = (patch: Partial<BarisModel>): BarisModel => ({
-  id: "MDL-1",
+  id: "1",
+  kode: "MDL-CBM-KRT-ml-20261105-090000",
   komoditasKode: "CBM-KRT",
   komoditas: "Cabai merah keriting",
   versi: "ml-20261105-090000",

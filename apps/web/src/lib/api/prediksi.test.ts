@@ -117,7 +117,8 @@ describe("toBarisProyeksi", () => {
 
 describe("toBarisModel", () => {
   const model = {
-    id: "MDL-X",
+    id: "123",
+    kode: "MDL-X-v2.3.1",
     komoditas_kode: "X",
     komoditas_nama: "Beras medium",
     nama: "n",
@@ -134,7 +135,8 @@ describe("toBarisModel", () => {
 
   it("memetakan registri", () => {
     assert.deepEqual(toBarisModel({ ...model, status: "KANDIDAT" }), {
-      id: "MDL-X",
+      id: "123",
+      kode: "MDL-X-v2.3.1",
       komoditasKode: "X",
       komoditas: "Beras medium",
       versi: "v2.3.1",
@@ -157,6 +159,13 @@ describe("toBarisModel", () => {
     assert.equal(baris.baselineMape, 3.1);
     assert.equal(baris.mapeRealisasi, 2.8);
     assert.equal(baris.nEvaluasi, 12);
+  });
+
+  it("ID adalah string desimal (BIGINT) dan kode tampilan dibawa terpisah; model tanpa kode memetakan null", () => {
+    const baris = toBarisModel({ ...model, status: "PRODUKSI" });
+    assert.equal(baris.id, "123");
+    assert.equal(baris.kode, "MDL-X-v2.3.1");
+    assert.equal(toBarisModel({ ...model, kode: null, status: "PRODUKSI" }).kode, null);
   });
 
   it("status tak dikenal dianggap ARSIP, bukan produksi", () => {

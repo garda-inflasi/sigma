@@ -133,15 +133,6 @@ var tabelBelumSelaras = map[string]string{
 	"perubahan_master": "000111",
 	"pasar":            "000111",
 	"kabupaten":        "000111",
-	// 000112 ews, intervensi
-	"aturan_ews":             "000112",
-	"aturan_ews_riwayat":     "000112",
-	"ews_alert":              "000112",
-	"ews_riwayat":            "000112",
-	"ews_event":              "000112",
-	"intervensi":             "000112",
-	"intervensi_persetujuan": "000112",
-	"alur_persetujuan":       "000112",
 	// 000113 cold-storage, spasial
 	"cold_storage":          "000113",
 	"stok_cold_storage":     "000113",

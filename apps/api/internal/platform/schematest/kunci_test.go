@@ -152,15 +152,6 @@ var tabelBelumSelaras = map[string]string{
 	"neraca_wilayah":        "000113",
 	"jarak_antar_wilayah":   "000113",
 	"wilayah_geometri":      "000113",
-	// 000114 prediksi, policy-brief
-	"prediksi_harga":     "000114",
-	"prediksi_evaluasi":  "000114",
-	"model_registry":     "000114",
-	"model_promosi":      "000114",
-	"skenario_simulasi":  "000114",
-	"policy_brief":       "000114",
-	"policy_brief_versi": "000114",
-	"brief_job":          "000114",
 	// 000115 sumber-data, ingestion, eksekutif, siklus, kpi, dashboard, audit
 	"sumber_data":     "000115",
 	"eksekusi_sumber": "000115",

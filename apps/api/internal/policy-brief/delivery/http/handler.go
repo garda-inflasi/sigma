@@ -7,6 +7,7 @@ import (
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 	"github.com/garda-inflasi/api/internal/policy-brief/dto"
 	"github.com/garda-inflasi/api/internal/policy-brief/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -32,8 +33,15 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // GET /v1/policy-brief/:id
+//
+// :id adalah UUID brief atau kodenya (mis. PB-2026-10, alias tautan lama). Teks kosong atau lebih panjang dari
+// 64 karakter dijawab 404 tanpa menyentuh basis data; kode yang tidak ada juga 404.
 func (h *Handler) Get(c *gin.Context) {
-	detail, err := h.uc.Detail(c.Request.Context(), c.Param("id"))
+	ref, ok := idx.ParamUUIDAtauKode(c, "id", usecase.MaksKode, "Policy brief tidak ditemukan")
+	if !ok {
+		return
+	}
+	detail, err := h.uc.Detail(c.Request.Context(), ref)
 	switch {
 	case errors.Is(err, usecase.ErrBriefTidakAda):
 		response.NotFound(c, "Policy brief tidak ditemukan")
@@ -59,7 +67,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	case errors.Is(err, usecase.ErrPeriodeTidakValid):
 		response.BadRequest(c, "Periode harus berformat YYYY-MM, mis. 2026-10")
 	case errors.Is(err, usecase.ErrPeriodeSudahAda):
-		response.Conflict(c, "Brief untuk periode ini sudah ada")
+		response.Conflict(c, "Brief untuk periode ini sudah ada (satu periode hanya punya satu brief)")
 	case err != nil:
 		response.InternalError(c, "Gagal membuat policy brief")
 	default:
@@ -68,7 +76,7 @@ func (h *Handler) Generate(c *gin.Context) {
 }
 
 // Bulk menangani POST /v1/policy-brief/bulk. Mengajukan telaah butuh brief.susun,
-// menyetujui butuh brief.setujui.
+// menyetujui butuh brief.setujui. Setiap elemen ids adalah UUID atau kode brief.
 func (h *Handler) Bulk(c *gin.Context) {
 	var req dto.BulkRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

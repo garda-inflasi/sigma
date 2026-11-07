@@ -30,6 +30,7 @@ import (
 	briefRoutes "github.com/garda-inflasi/api/internal/policy-brief/routes"
 	briefseeder "github.com/garda-inflasi/api/internal/policy-brief/seeder"
 	prediksiseeder "github.com/garda-inflasi/api/internal/prediksi/seeder"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -147,6 +148,7 @@ func (s *suite) login(t *testing.T, email string) string {
 
 type briefRow struct {
 	ID                string `json:"id"`
+	Kode              string `json:"kode"`
 	Periode           string `json:"periode"`
 	Judul             string `json:"judul"`
 	Status            string `json:"status"`
@@ -158,13 +160,30 @@ type briefRow struct {
 	LabelDraf         string `json:"label_draf"`
 }
 
+type versiRow struct {
+	ID    string `json:"id"`
+	Versi int    `json:"versi"`
+	Oleh  string `json:"oleh"`
+	Waktu string `json:"waktu"`
+}
+
 type detailRow struct {
 	briefRow
-	Konten      domain.Konten `json:"konten"`
-	ModelLLM    *string       `json:"model_llm"`
-	PromptVersi *string       `json:"prompt_versi"`
-	PromptHash  *string       `json:"prompt_hash"`
-	Galat       *string       `json:"galat"`
+	Konten       domain.Konten `json:"konten"`
+	ModelLLM     *string       `json:"model_llm"`
+	PromptVersi  *string       `json:"prompt_versi"`
+	PromptHash   *string       `json:"prompt_hash"`
+	Galat        *string       `json:"galat"`
+	RiwayatVersi []versiRow    `json:"riwayat_versi"`
+}
+
+// briefID membaca UUID brief menurut kodenya dari basis data (brief hasil Generate memakai gen_random_uuid()).
+func (s *suite) briefID(t *testing.T, kode string) string {
+	t.Helper()
+	var id string
+	require.NoError(t, s.db.Raw(`SELECT id::text FROM policy_brief WHERE kode = ?`, kode).Scan(&id).Error)
+	require.NotEmpty(t, id, kode)
+	return id
 }
 
 func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {
@@ -218,7 +237,7 @@ func TestPolicyBrief_Authorization(t *testing.T) {
 		"pembaca tanpa brief.susun tidak boleh menyusun")
 
 	var n int64
-	require.NoError(t, s.db.Table("policy_brief").Where("id = ?", "PB-2027-01").Count(&n).Error)
+	require.NoError(t, s.db.Table("policy_brief").Where("kode = ?", "PB-2027-01").Count(&n).Error)
 	assert.Zero(t, n, "permintaan yang ditolak tidak boleh menyimpan brief")
 }
 
@@ -229,10 +248,12 @@ func TestPolicyBrief_ListReturnsSeededBriefsNewestFirst(t *testing.T) {
 
 	byID := map[string]briefRow{}
 	for _, b := range got {
-		byID[b.ID] = b
+		byID[b.Kode] = b
+		assert.True(t, idx.ValidUUID(b.ID), "ID brief adalah UUID, bukan lagi PB-YYYY-MM: %s", b.ID)
 	}
-	for _, id := range []string{"PB-2026-10", "PB-2026-09", "PB-2026-08", "PB-2026-07", "PB-2026-06"} {
-		require.Contains(t, byID, id)
+	for _, kode := range []string{"PB-2026-10", "PB-2026-09", "PB-2026-08", "PB-2026-07", "PB-2026-06"} {
+		require.Contains(t, byID, kode)
+		assert.Equal(t, idx.UUIDStabil("policy_brief", kode), byID[kode].ID, "UUID brief seed = idx.UUIDStabil")
 	}
 	oct := byID["PB-2026-10"]
 	assert.Equal(t, "Oktober 2026", oct.Periode)
@@ -245,7 +266,7 @@ func TestPolicyBrief_ListReturnsSeededBriefsNewestFirst(t *testing.T) {
 	assert.Equal(t, domain.LabelDemo, oct.LabelDraf)
 
 	for i := 1; i < len(got); i++ {
-		assert.Greater(t, got[i-1].ID, got[i].ID, "daftar harus berurut periode terbaru lebih dulu")
+		assert.Greater(t, got[i-1].Kode, got[i].Kode, "daftar harus berurut periode terbaru lebih dulu (menurut kode, bukan UUID)")
 	}
 }
 
@@ -258,8 +279,39 @@ func TestPolicyBrief_DetailBriefContohBerlabelDemo(t *testing.T) {
 	assert.Equal(t, domain.LabelDemo, d.Konten.Label)
 	assert.Len(t, d.Konten.Butir("rekomendasi"), 5)
 	assert.Nil(t, d.ModelLLM)
+	assert.Equal(t, "PB-2026-10", d.Kode)
+	assert.NotNil(t, d.RiwayatVersi, "riwayat_versi selalu larik (kosong untuk brief contoh tanpa versi)")
+	assert.Empty(t, d.RiwayatVersi)
 
 	assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/policy-brief/PB-1999-01", emailPembaca, nil).Code)
+}
+
+func TestPolicyBrief_DetailMenerimaUUIDMaupunKodeAlias(t *testing.T) {
+	s := sharedSuite(t)
+	uuid := idx.UUIDStabil("policy_brief", "PB-2026-09")
+
+	lewatKode := decode[detailRow](t, s.call(t, http.MethodGet, "/v1/policy-brief/PB-2026-09", emailPembaca, nil))
+	lewatUUID := decode[detailRow](t, s.call(t, http.MethodGet, "/v1/policy-brief/"+uuid, emailPembaca, nil))
+	lewatUUIDBesar := decode[detailRow](t, s.call(t, http.MethodGet, "/v1/policy-brief/"+strings.ToUpper(uuid), emailPembaca, nil))
+
+	assert.Equal(t, uuid, lewatKode.ID)
+	assert.Equal(t, lewatKode, lewatUUID, "ID dan kode menunjuk brief yang sama")
+	assert.Equal(t, lewatKode, lewatUUIDBesar, "UUID huruf besar dinormalkan")
+
+	t.Run("tidak ada atau salah bentuk dijawab 404 tanpa menyentuh kolom uuid", func(t *testing.T) {
+		for _, path := range []string{
+			"/v1/policy-brief/00000000-0000-4000-8000-000000000000", // UUID sah yang tidak ada
+			"/v1/policy-brief/PB-1999-01",                           // kode yang tidak ada
+			"/v1/policy-brief/bukan-uuid",                           // bukan UUID dan bukan kode
+			"/v1/policy-brief/12345",                                // angka murni bukan kode brief
+			"/v1/policy-brief/" + strings.Repeat("P", 65),           // lebih panjang dari kolom kode
+			"/v1/policy-brief/%20",                                  // spasi
+			"/v1/policy-brief/urn:uuid:" + uuid,                     // ejaan UUID non-kanonik
+			"/v1/policy-brief/" + strings.ReplaceAll(uuid, "-", ""), // tanpa tanda hubung
+		} {
+			assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, path, emailPembaca, nil).Code, path)
+		}
+	})
 }
 
 func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
@@ -267,7 +319,8 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 
 	d := s.generate(t, "2026-11")
 
-	assert.Equal(t, "PB-2026-11", d.ID)
+	assert.Equal(t, "PB-2026-11", d.Kode)
+	assert.True(t, idx.ValidUUID(d.ID), "ID brief baru adalah UUID dari basis data: %s", d.ID)
 	assert.Equal(t, "November 2026", d.Periode)
 	assert.Equal(t, "Dr. Nurul Aini, S.E., M.E.", d.DisusunOleh, "penyusun diambil dari token")
 	assert.Equal(t, "TEMPLAT", d.SumberNarasi)
@@ -319,20 +372,29 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 			Fakta []domain.Fakta `json:"fakta"`
 		}
 		var raw string
-		require.NoError(t, s.db.Raw(`SELECT snapshot_data::text FROM policy_brief WHERE id = 'PB-2026-11'`).Scan(&raw).Error)
+		require.NoError(t, s.db.Raw(`SELECT snapshot_data::text FROM policy_brief WHERE kode = 'PB-2026-11'`).Scan(&raw).Error)
 		require.NoError(t, json.Unmarshal([]byte(raw), &snapshot))
 		assert.Greater(t, len(snapshot.Fakta), len(d.Konten.Lampiran), "snapshot memuat semua fakta, lampiran hanya yang dipakai")
 
 		var jumlah int64
-		require.NoError(t, s.db.Table("policy_brief_versi").Where("brief_id = 'PB-2026-11' AND versi = 1 AND oleh = garda_uuid_stabil('pengguna', 'manajer_kebijakan')").Count(&jumlah).Error)
+		require.NoError(t, s.db.Table("policy_brief_versi").Where("brief_id = ? AND versi = 1 AND oleh = garda_uuid_stabil('pengguna', 'manajer_kebijakan')", d.ID).Count(&jumlah).Error)
 		assert.EqualValues(t, 1, jumlah)
 		var job struct{ Status string }
-		require.NoError(t, s.db.Raw(`SELECT status FROM brief_job WHERE brief_id = 'PB-2026-11'`).Scan(&job).Error)
+		require.NoError(t, s.db.Raw(`SELECT status FROM brief_job WHERE brief_id = ? AND kode IS NULL`, d.ID).Scan(&job).Error)
 		assert.Equal(t, "SELESAI", job.Status)
+
+		// Respons detail mengekspos versi_id (BIGINT) supaya telaah dan revisi bisa merujuknya.
+		require.Len(t, d.RiwayatVersi, 1)
+		assert.Equal(t, 1, d.RiwayatVersi[0].Versi)
+		assert.Regexp(t, `^[1-9][0-9]*$`, d.RiwayatVersi[0].ID)
+		assert.Equal(t, "Dr. Nurul Aini, S.E., M.E.", d.RiwayatVersi[0].Oleh)
+		var idVersi string
+		require.NoError(t, s.db.Raw(`SELECT id::text FROM policy_brief_versi WHERE brief_id = ? AND versi = 1`, d.ID).Scan(&idVersi).Error)
+		assert.Equal(t, idVersi, d.RiwayatVersi[0].ID, "versi_id di respons = id baris policy_brief_versi")
 
 		for aksi, hasil := range map[string]string{"GENERATE_BRIEF": auditdomain.HasilBerhasil, "BRIEF_DRAF_SELESAI": auditdomain.HasilBerhasil} {
 			var trail auditdomain.AuditLog
-			require.NoError(t, s.db.Where("aksi = ? AND entitas_id = ?", aksi, "PB-2026-11").First(&trail).Error, aksi)
+			require.NoError(t, s.db.Where("aksi = ? AND entitas_id = ?", aksi, d.ID).First(&trail).Error, aksi)
 			assert.Equal(t, "policy_brief", trail.Entitas)
 			assert.Equal(t, hasil, trail.Hasil)
 			require.NotNil(t, trail.AktorID)
@@ -342,7 +404,8 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 
 	t.Run("brief baru tampil di daftar dengan label dan jumlah rekomendasi", func(t *testing.T) {
 		listed := decode[[]briefRow](t, s.call(t, http.MethodGet, "/v1/policy-brief", emailPembaca, nil))
-		assert.Equal(t, "PB-2026-11", listed[0].ID)
+		assert.Equal(t, "PB-2026-11", listed[0].Kode)
+		assert.Equal(t, d.ID, listed[0].ID)
 		assert.Equal(t, "DRAF", listed[0].Status)
 		assert.Equal(t, len(d.Konten.Butir(domain.BagianRekomendasiPemda))+len(d.Konten.Butir(domain.BagianRekomendasiTPID)), listed[0].JumlahRekomendasi)
 		assert.Equal(t, domain.LabelDrafTemplat, listed[0].LabelDraf)
@@ -421,7 +484,7 @@ func TestPolicyBrief_GenerateDenganLLMMenyimpanJejakModelDanLabelDrafAI(t *testi
 	assert.Equal(t, "Desember 2026", ada["PERIODE"])
 
 	var catatan auditdomain.AuditLog
-	require.NoError(t, s.db.Where("aksi = 'BRIEF_DRAF_SELESAI' AND entitas_id = 'PB-2026-12'").First(&catatan).Error)
+	require.NoError(t, s.db.Where("aksi = 'BRIEF_DRAF_SELESAI' AND entitas_id = ?", d.ID).First(&catatan).Error)
 	require.NotNil(t, catatan.Metadata)
 	assert.Contains(t, *catatan.Metadata, "claude-sonnet-5-5")
 	assert.Contains(t, *catatan.Metadata, narasiLLM().Meta.PromptHash)
@@ -453,7 +516,7 @@ func TestPolicyBrief_LLMGagalAtauMengarangAngkaDigantikanTemplat(t *testing.T) {
 			assert.Contains(t, d.Konten.Catatan, "draf memakai templat")
 
 			var teks string
-			require.NoError(t, s.db.Raw(`SELECT konten::text FROM policy_brief WHERE id = ?`, "PB-"+k.periode).Scan(&teks).Error)
+			require.NoError(t, s.db.Raw(`SELECT konten::text FROM policy_brief WHERE kode = ?`, "PB-"+k.periode).Scan(&teks).Error)
 			assert.NotContains(t, teks, "melonjak")
 		})
 	}
@@ -472,10 +535,10 @@ func TestPolicyBrief_GagalMengumpulkanDataLaluDiulang(t *testing.T) {
 	require.NotNil(t, gagal.Galat)
 	assert.Contains(t, *gagal.Galat, "kumpulkan data")
 	var job struct{ Status string }
-	require.NoError(t, s.db.Raw(`SELECT status FROM brief_job WHERE brief_id = 'PB-2027-05'`).Scan(&job).Error)
+	require.NoError(t, s.db.Raw(`SELECT status FROM brief_job WHERE brief_id = ?`, gagal.ID).Scan(&job).Error)
 	assert.Equal(t, "GAGAL", job.Status)
 	var trail auditdomain.AuditLog
-	require.NoError(t, s.db.Where("aksi = 'BRIEF_DRAF_GAGAL' AND entitas_id = 'PB-2027-05'").First(&trail).Error)
+	require.NoError(t, s.db.Where("aksi = 'BRIEF_DRAF_GAGAL' AND entitas_id = ?", gagal.ID).First(&trail).Error)
 	assert.Equal(t, auditdomain.HasilGagal, trail.Hasil)
 
 	// Brief GAGAL tidak bisa ditelaah.
@@ -487,12 +550,15 @@ func TestPolicyBrief_GagalMengumpulkanDataLaluDiulang(t *testing.T) {
 	require.Equal(t, http.StatusCreated, ulang.Code, "brief GAGAL boleh disusun ulang: %s", ulang.Body.String())
 	pulih := s.tunggu(t, "PB-2027-05", "DRAF")
 	assert.Nil(t, pulih.Galat, "galat lama dibersihkan")
+	assert.Equal(t, gagal.ID, pulih.ID, "diulang pada brief yang sama (satu periode, satu brief)")
 
-	var versi, jobs int64
-	require.NoError(t, s.db.Table("policy_brief_versi").Where("brief_id = 'PB-2027-05'").Count(&versi).Error)
-	require.NoError(t, s.db.Table("brief_job").Where("brief_id = 'PB-2027-05'").Count(&jobs).Error)
+	var versi, jobs, brief int64
+	require.NoError(t, s.db.Table("policy_brief_versi").Where("brief_id = ?", gagal.ID).Count(&versi).Error)
+	require.NoError(t, s.db.Table("brief_job").Where("brief_id = ?", gagal.ID).Count(&jobs).Error)
+	require.NoError(t, s.db.Table("policy_brief").Where("kode = 'PB-2027-05'").Count(&brief).Error)
 	assert.EqualValues(t, 1, versi)
 	assert.EqualValues(t, 2, jobs, "tiap percobaan punya job")
+	assert.EqualValues(t, 1, brief, "mengulang tidak membuat brief kedua")
 }
 
 func TestPolicyBrief_GenerateRejectsDuplicateAndInvalidPeriod(t *testing.T) {
@@ -503,24 +569,27 @@ func TestPolicyBrief_GenerateRejectsDuplicateAndInvalidPeriod(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
 
 		var status string
-		require.NoError(t, s.db.Raw("SELECT status::text FROM policy_brief WHERE id = ?", "PB-2026-09").Scan(&status).Error)
+		require.NoError(t, s.db.Raw("SELECT status::text FROM policy_brief WHERE kode = ?", "PB-2026-09").Scan(&status).Error)
 		assert.Equal(t, "DISETUJUI", status)
+		var n int64
+		require.NoError(t, s.db.Table("policy_brief").Where("kode = ?", "PB-2026-09").Count(&n).Error)
+		assert.EqualValues(t, 1, n, "satu periode hanya punya satu brief")
 	})
 
 	t.Run("brief yang sedang diproses tidak disusun ganda", func(t *testing.T) {
-		require.NoError(t, s.db.Exec(`INSERT INTO policy_brief (id, periode, judul, status, ringkasan, rekomendasi, halaman, disusun_oleh_id)
+		require.NoError(t, s.db.Exec(`INSERT INTO policy_brief (kode, periode, judul, status, ringkasan, rekomendasi, halaman, disusun_oleh_id)
 			VALUES ('PB-2027-06', 'Juni 2027', 'x', 'DIPROSES', 'x', '[]', 1, garda_uuid_stabil('pengguna', 'manajer_kebijakan'))`).Error)
 
 		w := s.call(t, http.MethodPost, "/v1/policy-brief/generate", emailPenyusun, map[string]string{"periode": "2027-06"})
 
 		assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
 		var jobs int64
-		require.NoError(t, s.db.Table("brief_job").Where("brief_id = 'PB-2027-06'").Count(&jobs).Error)
+		require.NoError(t, s.db.Table("brief_job").Where("brief_id = ?", s.briefID(t, "PB-2027-06")).Count(&jobs).Error)
 		assert.Zero(t, jobs)
 	})
 
 	t.Run("brief diproses yang prosesnya mati boleh diulang", func(t *testing.T) {
-		require.NoError(t, s.db.Exec(`INSERT INTO policy_brief (id, periode, judul, status, ringkasan, rekomendasi, halaman, disusun_oleh_id, diperbarui)
+		require.NoError(t, s.db.Exec(`INSERT INTO policy_brief (kode, periode, judul, status, ringkasan, rekomendasi, halaman, disusun_oleh_id, diperbarui)
 			VALUES ('PB-2027-07', 'Juli 2027', 'x', 'DIPROSES', 'x', '[]', 1, garda_uuid_stabil('pengguna', 'manajer_kebijakan'), now() - interval '10 minutes')`).Error)
 
 		w := s.call(t, http.MethodPost, "/v1/policy-brief/generate", emailPenyusun, map[string]string{"periode": "2027-07"})
@@ -542,16 +611,50 @@ func TestPolicyBrief_GenerateRejectsDuplicateAndInvalidPeriod(t *testing.T) {
 	})
 }
 
+// TestPolicyBrief_GenerateBersamaanSatuBriefPerPeriode: permintaan bersamaan untuk periode yang sama menghasilkan
+// satu brief (kode PB-YYYY-MM unik; ON CONFLICT (kode) DO NOTHING), satu job, dan sisanya 409.
+func TestPolicyBrief_GenerateBersamaanSatuBriefPerPeriode(t *testing.T) {
+	s := sharedSuite(t)
+	tok := s.login(t, emailPenyusun) // login sekali dulu: cache token tidak aman untuk goroutine
+
+	const pemanggil = 6
+	kode := make(chan int, pemanggil)
+	for i := 0; i < pemanggil; i++ {
+		go func() {
+			body, _ := json.Marshal(map[string]string{"periode": "2027-08"})
+			req := httptest.NewRequest(http.MethodPost, "/v1/policy-brief/generate", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+tok)
+			w := httptest.NewRecorder()
+			s.router.ServeHTTP(w, req)
+			kode <- w.Code
+		}()
+	}
+	hitung := map[int]int{}
+	for i := 0; i < pemanggil; i++ {
+		hitung[<-kode]++
+	}
+
+	assert.Equal(t, 1, hitung[http.StatusCreated], "tepat satu permintaan membuat brief: %v", hitung)
+	assert.Equal(t, pemanggil-1, hitung[http.StatusConflict], "sisanya 409: %v", hitung)
+	var brief, jobs int64
+	require.NoError(t, s.db.Table("policy_brief").Where("kode = 'PB-2027-08'").Count(&brief).Error)
+	require.NoError(t, s.db.Table("brief_job").Where("brief_id = (SELECT id FROM policy_brief WHERE kode = 'PB-2027-08')").Count(&jobs).Error)
+	assert.EqualValues(t, 1, brief)
+	assert.EqualValues(t, 1, jobs, "satu job untuk satu penyusunan")
+	s.tunggu(t, "PB-2027-08", "DRAF")
+}
+
 func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
 	s := sharedSuite(t)
 	const emailPenyetuju = "strategis.djpb@gardainflasi.id" // brief.setujui, tanpa brief.susun
 
-	s.generate(t, "2027-02")
-	ids := []string{"PB-2027-02", "tidak-ada"}
+	d := s.generate(t, "2027-02")
+	ids := []string{"PB-2027-02", "tidak-ada"} // kode (alias ID lama) dan rujukan yang tidak ada
 
 	statusBrief := func() string {
 		var status string
-		require.NoError(t, s.db.Raw("SELECT status::text FROM policy_brief WHERE id = ?", "PB-2027-02").Scan(&status).Error)
+		require.NoError(t, s.db.Raw("SELECT status::text FROM policy_brief WHERE kode = ?", "PB-2027-02").Scan(&status).Error)
 		return status
 	}
 
@@ -568,6 +671,9 @@ func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
 	t.Run("aksi dan id tidak valid", func(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "hapus", "ids": ids}).Code)
 		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": []string{}}).Code)
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": []string{""}}).Code, "elemen kosong")
+		assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": []string{strings.Repeat("P", 65)}}).Code, "lebih dari 64 karakter")
+		assert.Equal(t, "DRAF", statusBrief())
 	})
 
 	t.Run("setujui dari DRAF dilewati", func(t *testing.T) {
@@ -586,7 +692,8 @@ func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
 		again := s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyusun, map[string]any{"action": "telaah", "ids": ids})
 		assert.Equal(t, bulkRes{Gagal: 2}, decode[bulkRes](t, again), "mengulang tidak mengubah apa pun")
 
-		w = s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyetuju, map[string]any{"action": "setujui", "ids": ids})
+		// Persetujuan lewat UUID (bukan kode): ID dan kode sama-sama sah sebagai rujukan.
+		w = s.call(t, http.MethodPost, "/v1/policy-brief/bulk", emailPenyetuju, map[string]any{"action": "setujui", "ids": []string{d.ID, "tidak-ada"}})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		assert.Equal(t, bulkRes{Berhasil: 1, Gagal: 1}, decode[bulkRes](t, w))
 		assert.Equal(t, "DISETUJUI", statusBrief())
@@ -595,7 +702,7 @@ func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
 	t.Run("setiap perubahan tercatat tepat sekali", func(t *testing.T) {
 		for aksi, aktor := range map[string]string{"BRIEF_TELAAH": uid("manajer_kebijakan"), "BRIEF_SETUJUI": uid("strategis_djpb")} {
 			var rows []auditdomain.AuditLog
-			require.NoError(t, s.db.Where("aksi = ? AND entitas_id = ?", aksi, "PB-2027-02").Find(&rows).Error)
+			require.NoError(t, s.db.Where("aksi = ? AND entitas_id = ?", aksi, d.ID).Find(&rows).Error)
 			require.Len(t, rows, 1, aksi)
 			require.NotNil(t, rows[0].AktorID)
 			assert.Equal(t, aktor, *rows[0].AktorID)

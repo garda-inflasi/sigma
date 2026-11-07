@@ -11,8 +11,8 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 	"github.com/garda-inflasi/api/internal/policy-brief/generator"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -32,7 +32,23 @@ const (
 
 	halamanKerangka = 1
 	kataPerHalaman  = 300
+
+	// MaksKode adalah panjang maksimum kode brief di rute dan body (kolom kode varchar(64)).
+	MaksKode = 64
 )
+
+// RujukanBrief membaca rujukan brief dari masukan klien: UUID kanonik adalah ID, selain itu kode (mis.
+// PB-2026-10, alias ID lama) yang dicari pada kolom kode. Teks kosong atau lebih panjang dari MaksKode bukan
+// rujukan yang sah.
+func RujukanBrief(teks string) (idx.RujukanUUID, bool) {
+	if id, ok := idx.NormalUUID(teks); ok {
+		return idx.RujukanUUID{ID: id}, true
+	}
+	if teks == "" || len(teks) > MaksKode {
+		return idx.RujukanUUID{}, false
+	}
+	return idx.RujukanUUID{Kode: teks}, true
+}
 
 // UseCase menyusun, membaca, dan memajukan status policy brief.
 type UseCase struct {
@@ -61,19 +77,28 @@ func (uc *UseCase) List(ctx context.Context) ([]domain.BriefView, error) {
 	return uc.repo.List(ctx)
 }
 
-// Detail mengembalikan satu brief lengkap dengan isi, label draf, dan jejak penyusunannya.
-func (uc *UseCase) Detail(ctx context.Context, id string) (*domain.DetailView, error) {
-	d, err := uc.repo.GetDetail(ctx, id)
+// Detail mengembalikan satu brief (menurut UUID atau kode) lengkap dengan isi, label draf, jejak penyusunan, dan
+// riwayat versi isi (ID versi BIGINT untuk dirujuk telaah dan revisi).
+func (uc *UseCase) Detail(ctx context.Context, ref idx.RujukanUUID) (*domain.DetailView, error) {
+	d, err := uc.repo.GetDetail(ctx, ref)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrBriefTidakAda
 	}
-	return d, err
+	if err != nil {
+		return nil, err
+	}
+	if d.RiwayatVersi, err = uc.repo.ListVersi(ctx, d.ID); err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 // Generate memulai penyusunan draf brief untuk periode (YYYY-MM) atas nama penyusun dan
 // segera mengembalikan brief berstatus DIPROSES; draf disusun di latar belakang dari data
 // nyata (inflasi, harga, peringatan dini, proyeksi) dan klien memantau lewat Detail sampai
-// status menjadi DRAF (atau GAGAL). Brief GAGAL, atau DIPROSES yang prosesnya mati, dapat diulang.
+// status menjadi DRAF (atau GAGAL). Satu periode hanya punya satu brief (kode PB-YYYY-MM unik): periode yang
+// sudah punya brief dijawab ErrPeriodeSudahAda, kecuali brief itu GAGAL, atau DIPROSES yang prosesnya mati,
+// yang dapat diulang (brief yang sama, job baru).
 func (uc *UseCase) Generate(ctx context.Context, penyusunID, periode string) (*domain.BriefView, error) {
 	tanggal, err := time.Parse(domain.FormatPeriode, periode)
 	if err != nil {
@@ -83,7 +108,7 @@ func (uc *UseCase) Generate(ctx context.Context, penyusunID, periode string) (*d
 	sekarang := uc.now()
 
 	pb := &domain.PolicyBrief{
-		ID:            domain.BriefID(tanggal),
+		Kode:          domain.KodeBrief(tanggal),
 		Periode:       label,
 		Judul:         fmt.Sprintf("Policy brief %s (sedang disusun)", label),
 		Status:        domain.StatusDiproses,
@@ -92,7 +117,7 @@ func (uc *UseCase) Generate(ctx context.Context, penyusunID, periode string) (*d
 		Halaman:       halamanKerangka,
 		DisusunOlehID: penyusunID,
 	}
-	dibuat, err := uc.repo.Create(ctx, pb)
+	dibuat, err := uc.repo.Create(ctx, pb) // mengisi pb.ID (UUID), juga bila brief periode itu sudah ada
 	if err != nil {
 		return nil, err
 	}
@@ -106,14 +131,14 @@ func (uc *UseCase) Generate(ctx context.Context, penyusunID, periode string) (*d
 		}
 	}
 
-	job := &domain.BriefJob{ID: uuid.NewString(), BriefID: pb.ID, Status: domain.JobBerjalan, Mulai: sekarang.UTC()}
+	job := &domain.BriefJob{BriefID: pb.ID, Status: domain.JobBerjalan, Mulai: sekarang.UTC()} // ID job dari basis data
 	if err := uc.repo.MulaiJob(ctx, job); err != nil {
 		return nil, err
 	}
 	uc.catat(ctx, audit.Entry{
 		AktorID: penyusunID, Aksi: "GENERATE_BRIEF", Entitas: "policy_brief", EntitasID: pb.ID, Hasil: audit.HasilBerhasil,
 		Sesudah:  map[string]any{"status": domain.StatusDiproses, "periode": label},
-		Metadata: map[string]any{"job": job.ID, "penyusun": uc.namaPenyusun()},
+		Metadata: map[string]any{"job": job.ID.String(), "kode": pb.Kode, "penyusun": uc.namaPenyusun()},
 	})
 
 	// Jawaban selalu keadaan saat dimulai (DIPROSES), walau penyusunan yang cepat sudah selesai.
@@ -155,7 +180,7 @@ func (uc *UseCase) proses(ctx context.Context, penyusunID string, job *domain.Br
 		uc.gagal(ctx, penyusunID, job, errors.New("status brief berubah selama penyusunan"))
 		return
 	}
-	meta := map[string]any{"job": job.ID, "penyusun": draf.Penyusun}
+	meta := map[string]any{"job": job.ID.String(), "penyusun": draf.Penyusun}
 	if draf.ModelLLM != nil {
 		meta["model_llm"], meta["prompt_versi"], meta["prompt_hash"] = *draf.ModelLLM, *draf.PromptVersi, *draf.PromptHash
 	}
@@ -169,7 +194,7 @@ func (uc *UseCase) proses(ctx context.Context, penyusunID string, job *domain.Br
 }
 
 func (uc *UseCase) gagal(ctx context.Context, penyusunID string, job *domain.BriefJob, sebab error) {
-	uc.log.Error("policy-brief: penyusunan draf gagal", map[string]interface{}{"id": job.BriefID, "job": job.ID, "error": sebab.Error()})
+	uc.log.Error("policy-brief: penyusunan draf gagal", map[string]interface{}{"id": job.BriefID, "job": job.ID.String(), "error": sebab.Error()})
 	// Konteks proses mungkin sudah habis waktu; pencatatan kegagalan tetap harus jalan.
 	catatan, batal := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer batal()
@@ -178,7 +203,7 @@ func (uc *UseCase) gagal(ctx context.Context, penyusunID string, job *domain.Bri
 	}
 	uc.catat(catatan, audit.Entry{
 		AktorID: penyusunID, Aksi: "BRIEF_DRAF_GAGAL", Entitas: "policy_brief", EntitasID: job.BriefID, Hasil: audit.HasilGagal,
-		Metadata: map[string]any{"job": job.ID, "galat": sebab.Error()},
+		Metadata: map[string]any{"job": job.ID.String(), "galat": sebab.Error()},
 	})
 }
 
@@ -295,8 +320,9 @@ var transisiAksi = map[string][2]string{
 	domain.AksiSetujui: {domain.StatusTelaah, domain.StatusDisetujui},
 }
 
-// BulkAction memajukan status brief. Brief yang tidak ada atau bukan di status asal
-// dihitung gagal; setiap perubahan dicatat di audit.
+// BulkAction memajukan status brief. Setiap elemen ids adalah UUID atau kode brief (RujukanBrief). Brief yang
+// tidak ada, bukan di status asal, atau rujukannya tidak sah dihitung gagal; setiap perubahan dicatat di
+// audit dengan UUID brief (juga bila rujukannya kode).
 func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID string) (BulkResult, error) {
 	rute, ok := transisiAksi[aksi]
 	if !ok {
@@ -305,7 +331,12 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID s
 
 	var hasil BulkResult
 	for _, id := range ids {
-		berubah, err := uc.repo.Transisi(ctx, id, rute[0], rute[1])
+		ref, sah := RujukanBrief(id)
+		if !sah {
+			hasil.Gagal++
+			continue
+		}
+		briefID, berubah, err := uc.repo.Transisi(ctx, ref, rute[0], rute[1])
 		if err != nil {
 			return hasil, err
 		}
@@ -315,7 +346,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID s
 		}
 		hasil.Berhasil++
 		uc.catat(ctx, audit.Entry{
-			AktorID: aktorID, Aksi: "BRIEF_" + strings.ToUpper(aksi), Entitas: "policy_brief", EntitasID: id,
+			AktorID: aktorID, Aksi: "BRIEF_" + strings.ToUpper(aksi), Entitas: "policy_brief", EntitasID: briefID,
 			Hasil:   audit.HasilBerhasil,
 			Sebelum: map[string]any{"status": rute[0]},
 			Sesudah: map[string]any{"status": rute[1]},

@@ -2441,6 +2441,127 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/harga/{id}/versi:
+    get:
+      summary: Versi isi entri harga
+      description: |
+        Satu baris tiap kali isi entri berubah: dibuat, diajukan, divalidasi, diterbitkan, ditolak, dikembalikan
+        ke draf, atau diubah tanpa pindah status. Versi ditulis oleh pemicu basis data (tabel
+        `entri_harga_versi`, append-only), jadi semua jalur tulis tercatat. Yang terlama lebih dulu.
+
+        `aksi` adalah INPUT, AJUKAN, VALIDASI, PUBLIKASI, TOLAK, KEMBALIKAN, UBAH, atau MIGRASI (versi 1 entri
+        yang sudah ada saat fitur ini dipasang; pelakunya tidak diketahui). `perubahan` memuat nama kolom
+        `entri_harga` yang berubah dibanding versi sebelumnya (kolom waktu tidak dihitung; kosong pada versi
+        pertama). `data` adalah salinan lengkap baris entri pada versi itu apa adanya dari basis data
+        (nama kolom basis data; ID dan angka berupa angka JSON, bukan string).
+
+        Akses sama dengan `/v1/harga/{id}/riwayat`: `harga.lihat` membuka semua entri; petugas dengan
+        `harga.input` hanya entri yang ia catat sendiri (entri lain tampil sebagai 404).
+      operationId: getHargaVersi
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: >-
+            ID BIGINT entri (string angka, mis. `1024`) atau kode lama sebagai alias tautan lama (mis.
+            `HRG-D00-00-01-K`). Teks kosong, lebih dari 64 karakter, atau yang bukan ID sah dan bukan kode
+            yang ada dijawab 404 tanpa menyentuh data lain.
+          schema:
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
+                description: Kode lama (`kode`)
+      responses:
+        "200":
+          description: Versi entri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersiEntriHargaResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.lihat` maupun `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Entri tidak ada atau bukan milik pemanggil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/harga/{id}/lineage:
+    get:
+      summary: Lineage (jejak asal) entri harga
+      description: |
+        Asal data satu entri harga dalam satu jawaban (PRD §1.4): siapa mencatat dan dari mana (`asal`), hasil
+        validasi otomatis, siapa memvalidasi, menerbitkan, atau menolak, seluruh versi isi, riwayat status, dan
+        rujukan ke audit trail. `validasi`, `publikasi`, dan `penolakan` bernilai null bila tahap itu belum atau
+        tidak lagi berlaku (mis. `validasi` null setelah entri dikembalikan ke DRAF).
+
+        `audit` memuat paling banyak 100 baris `audit_log` yang menyebut entri (aksi input, atau aksi massal yang
+        memuat ID entri di `metadata.ids`), yang terlama lebih dulu; rincian lengkap ada di halaman audit trail
+        (`/audit?entitas=entri_harga&entitas_id={id}`).
+
+        Akses sama dengan `/v1/harga/{id}/riwayat`: `harga.lihat` membuka semua entri; petugas dengan
+        `harga.input` hanya entri yang ia catat sendiri (entri lain tampil sebagai 404).
+      operationId: getHargaLineage
+      tags:
+        - Harga
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: >-
+            ID BIGINT entri (string angka, mis. `1024`) atau kode lama sebagai alias tautan lama (mis.
+            `HRG-D00-00-01-K`). Teks kosong, lebih dari 64 karakter, atau yang bukan ID sah dan bukan kode
+            yang ada dijawab 404 tanpa menyentuh data lain.
+          schema:
+            anyOf:
+              - $ref: "#/components/schemas/IdBigint"
+              - type: string
+                maxLength: 64
+                description: Kode lama (`kode`)
+      responses:
+        "200":
+          description: Lineage entri
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineageEntriHargaResponse"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `harga.lihat` maupun `harga.input`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Entri tidak ada atau bukan milik pemanggil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/harga/{id}:
     get:
       summary: Mendapatkan detail entri harga
@@ -4460,6 +4581,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `audit.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/audit/integritas:
+    get:
+      summary: Status integritas jejak audit (rantai hash, partisi, arsip)
+      description: |
+        Setiap baris audit_log menyimpan `hash` = SHA-256 atas `hash_sebelumnya` ditambah isi baris (format
+        garda-audit-v1, migrasi 000116), berurutan menurut id. Worker `audit_verifikasi` menghitung ulang seluruh rantai
+        berkala (bawaan 24 jam) dan menyimpan hasilnya; endpoint ini hanya membaca hasil terakhir, partisi bulanan
+        yang aktif (000117), dan partisi yang sudah dilepas ke penyimpanan dingin. Butuh izin `audit.lihat`.
+      operationId: auditIntegritas
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Status integritas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditIntegritasResponse"
         "401":
           description: Tidak terautentikasi
           content:
@@ -8331,6 +8485,253 @@ components:
                 type: string
                 nullable: true
 
+    VersiEntriHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersiEntriHarga"
+
+    VersiEntriHarga:
+      type: object
+      properties:
+        versi:
+          type: integer
+          minimum: 1
+          description: Nomor urut per entri, mulai dari 1
+        aksi:
+          type: string
+          enum: [INPUT, AJUKAN, VALIDASI, PUBLIKASI, TOLAK, KEMBALIKAN, UBAH, MIGRASI]
+        status:
+          type: string
+          enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+          description: Status entri pada versi ini
+        harga:
+          type: integer
+          description: Harga entri pada versi ini
+        oleh:
+          type: string
+          format: uuid
+          nullable: true
+          description: Pelaku; null bila tidak diketahui (versi MIGRASI, atau perubahan langsung di basis data)
+        oleh_nama:
+          type: string
+          nullable: true
+        waktu:
+          type: string
+          format: date-time
+        perubahan:
+          type: array
+          items:
+            type: string
+          description: Nama kolom `entri_harga` yang berubah dibanding versi sebelumnya, tanpa kolom waktu
+          example: [divalidasi_oleh, status]
+        data:
+          type: object
+          additionalProperties: true
+          description: >-
+            Salinan lengkap baris `entri_harga` pada versi ini apa adanya dari basis data (ID dan angka berupa
+            angka JSON, bukan string).
+
+    LineageEntriHargaResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/LineageEntriHarga"
+
+    LineageEntriHarga:
+      type: object
+      properties:
+        entri:
+          type: object
+          description: Identitas entri
+          properties:
+            id:
+              $ref: "#/components/schemas/IdBigint"
+            kode:
+              $ref: "#/components/schemas/KodeTampilan"
+            komoditas_kode:
+              type: string
+            komoditas_nama:
+              type: string
+            pasar_id:
+              type: string
+            pasar_nama:
+              type: string
+            kabupaten_kode:
+              type: string
+            kabupaten_nama:
+              type: string
+            tipe:
+              type: string
+              enum: [PRODUSEN, KONSUMEN]
+            harga:
+              type: integer
+            satuan:
+              type: string
+            status:
+              type: string
+              enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+        asal:
+          type: object
+          description: Siapa mencatat, kapan, dan dari mana
+          properties:
+            sumber:
+              type: string
+              enum: [LAPANGAN, PIHPS, BAPANAS, PORTAL_DAERAH]
+            petugas_id:
+              type: string
+              format: uuid
+              nullable: true
+            petugas_nama:
+              type: string
+              nullable: true
+            dicatat_pada:
+              type: string
+              format: date-time
+              description: Waktu harga diamati (menurut perangkat petugas)
+            diterima_pada:
+              type: string
+              format: date-time
+              description: Waktu server menerima entri (`dibuat_pada`); jauh sesudah `dicatat_pada` berarti kiriman terlambat
+            lat:
+              type: number
+              nullable: true
+            lng:
+              type: number
+              nullable: true
+            dalam_geofence:
+              type: boolean
+            kode_pedagang:
+              type: string
+              nullable: true
+            tugas:
+              type: array
+              description: Tugas lapangan yang dipenuhi entri; larik kosong bila tidak berasal dari tugas
+              items:
+                type: object
+                properties:
+                  id:
+                    $ref: "#/components/schemas/IdBigint"
+                  kode:
+                    $ref: "#/components/schemas/KodeTampilan"
+                  judul:
+                    type: string
+                  ditautkan_pada:
+                    type: string
+                    format: date-time
+        validasi_otomatis:
+          type: object
+          description: Hasil cek otomatis saat entri diterima
+          properties:
+            flag_validasi:
+              $ref: "#/components/schemas/FlagValidasi"
+            skor_anomali:
+              type: number
+            deviasi_pct:
+              type: number
+        validasi:
+          allOf:
+            - $ref: "#/components/schemas/LineageTahap"
+          nullable: true
+          description: Null bila belum divalidasi (atau sudah dikembalikan ke DRAF)
+        publikasi:
+          allOf:
+            - $ref: "#/components/schemas/LineageTahap"
+          nullable: true
+          description: Null bila belum diterbitkan
+        penolakan:
+          allOf:
+            - $ref: "#/components/schemas/LineageTahap"
+          nullable: true
+          description: Null bila tidak ditolak; `alasan` terisi
+        versi_terkini:
+          type: integer
+          description: Nomor versi terbesar; 0 bila entri belum punya versi
+        versi:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersiEntriHarga"
+        riwayat:
+          type: array
+          description: Perpindahan status, yang terlama lebih dulu (sama dengan `/v1/harga/{id}/riwayat`)
+          items:
+            type: object
+            properties:
+              dari:
+                type: string
+                nullable: true
+              ke:
+                type: string
+                enum: [DRAF, DIAJUKAN, DIVALIDASI, DIPUBLIKASI, DITOLAK]
+              oleh:
+                type: string
+                format: uuid
+                nullable: true
+              oleh_nama:
+                type: string
+                nullable: true
+              waktu:
+                type: string
+                format: date-time
+              alasan:
+                type: string
+                nullable: true
+        audit:
+          type: array
+          description: Rujukan ke audit trail (paling banyak 100, yang terlama lebih dulu)
+          items:
+            type: object
+            properties:
+              id:
+                $ref: "#/components/schemas/IdBigint"
+              waktu:
+                type: string
+                format: date-time
+              aksi:
+                type: string
+                example: HARGA_VALIDASI
+              aktor_nama:
+                type: string
+                nullable: true
+              aktor_peran:
+                type: string
+                nullable: true
+              hasil:
+                type: string
+              correlation_id:
+                type: string
+                nullable: true
+
+    LineageTahap:
+      type: object
+      properties:
+        oleh:
+          type: string
+          format: uuid
+          nullable: true
+        nama:
+          type: string
+          nullable: true
+        pada:
+          type: string
+          format: date-time
+          nullable: true
+        alasan:
+          type: string
+          description: Hanya pada `penolakan`
+
     HargaDetailResponse:
       type: object
       properties:
@@ -9899,6 +10300,147 @@ components:
                   type: array
                   items:
                     $ref: "#/components/schemas/AuditPerubahan"
+                hash:
+                  type: string
+                  description: SHA-256 baris ini (hex 64 karakter) dalam rantai hash audit
+                hash_sebelumnya:
+                  type: string
+                  description: Hash baris sebelumnya (hex); tidak ada pada baris pertama rantai
+
+    AuditMasalahIntegritas:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        jenis:
+          type: string
+          enum: [ISI_BERUBAH, RANTAI_PUTUS, ARSIP_TIDAK_COCOK]
+          description: >-
+            ISI_BERUBAH: isi baris tidak cocok dengan hash-nya. RANTAI_PUTUS: hash_sebelumnya tidak sama dengan hash baris
+            sebelumnya (baris disisipkan, dihapus, atau hash diganti). ARSIP_TIDAK_COCOK: rantai tidak tersambung ke segmen
+            yang sudah diarsipkan.
+        keterangan:
+          type: string
+
+    AuditVerifikasi:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        mulai:
+          type: string
+          format: date-time
+        selesai:
+          type: string
+          format: date-time
+        pemicu:
+          type: string
+          enum: [JADWAL, MANUAL]
+        status:
+          type: string
+          enum: [VALID, RUSAK, GAGAL]
+          description: GAGAL berarti verifikasinya sendiri gagal dijalankan (lihat `keterangan`); keadaan rantai tidak diketahui.
+        jumlah_baris:
+          type: integer
+          format: int64
+        jumlah_segmen:
+          type: integer
+          format: int64
+          description: Segmen arsip yang dilewati rantai
+        jumlah_masalah:
+          type: integer
+          format: int64
+        id_awal:
+          $ref: "#/components/schemas/IdBigint"
+        id_akhir:
+          $ref: "#/components/schemas/IdBigint"
+        hash_akhir:
+          type: string
+          description: Hash kepala rantai (hex) saat verifikasi
+        masalah_pertama:
+          $ref: "#/components/schemas/AuditMasalahIntegritas"
+        masalah:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/AuditMasalahIntegritas"
+        keterangan:
+          type: string
+
+    AuditIntegritasResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: "OK"
+        data:
+          type: object
+          required: [verifikasi_terakhir, partisi, arsip]
+          properties:
+            verifikasi_terakhir:
+              description: null bila verifikasi belum pernah berjalan
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/AuditVerifikasi"
+            partisi:
+              type: array
+              description: Partisi bulanan (UTC) yang aktif, terbaru lebih dulu
+              items:
+                type: object
+                properties:
+                  nama:
+                    type: string
+                    example: audit_log_p202611
+                  dari:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  sampai:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  perkiraan_baris:
+                    type: integer
+                    format: int64
+                    nullable: true
+                    description: Perkiraan planner; null bila belum pernah dianalisis
+            arsip:
+              type: array
+              description: Partisi yang sudah dilepas ke berkas arsip (retensi), terbaru lebih dulu
+              items:
+                type: object
+                properties:
+                  id:
+                    $ref: "#/components/schemas/IdBigint"
+                  partisi:
+                    type: string
+                  dari:
+                    type: string
+                    format: date-time
+                  sampai:
+                    type: string
+                    format: date-time
+                  jumlah_baris:
+                    type: integer
+                    format: int64
+                  id_pertama:
+                    $ref: "#/components/schemas/IdBigint"
+                  id_terakhir:
+                    $ref: "#/components/schemas/IdBigint"
+                  berkas:
+                    type: string
+                    example: audit_log_p202101.jsonl.gz
+                  sha256:
+                    type: string
+                    description: SHA-256 berkas arsip (hex)
+                  retensi_bulan:
+                    type: integer
+                  diarsipkan_pada:
+                    type: string
+                    format: date-time
 
     AuditPageResponse:
       type: object

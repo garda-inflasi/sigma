@@ -66,6 +66,9 @@ services:
       disable: true
     environment:
       <<: *database-env
+      # Login DB berhak minimum untuk api dan worker (03-C): dibuat/diperbarui sesudah migrasi bila diisi.
+      DB_APP_USER: "${DB_APP_USER:-}"
+      DB_APP_PASSWORD: "${DB_APP_PASSWORD:-}"
       # Migrasi data MFA menyegel mfa_secret lama dengan AES_KEY: harus sama dengan kunci api.
       APP_ENV: "${APP_ENV:-development}"
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"
@@ -103,11 +106,13 @@ services:
       GIN_MODE: "${GIN_MODE:-release}"
       DB_HOST: postgres
       DB_PORT: "5432"
-      DB_USER: "${DB_USER:-garda}"
-      DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
+      # Login berhak minimum (DB_APP_USER, dibuat service migrate) bila diisi; kosong = pemilik skema (lokal).
+      # api tidak menerima DATABASE_URL pemilik skema.
+      DB_USER: "${DB_APP_USER:-${DB_USER:-garda}}"
+      DB_PASSWORD: "${DB_APP_PASSWORD:-${DB_PASSWORD:-garda_secret}}"
       DB_NAME: "${DB_NAME:-garda_inflasi}"
       DB_SSLMODE: disable
-      <<: [*database-env, *notifikasi-env, *ews-env]
+      <<: [*notifikasi-env, *ews-env]
       REDIS_URL: "redis://redis:6379"
       # Origin publik yang boleh mengubah data lewat cookie (proteksi CSRF di Go).
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:-http://localhost,https://localhost}"
@@ -162,8 +167,8 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
-      DB_USER: "${DB_USER:-garda}"
-      DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
+      DB_USER: "${DB_APP_USER:-${DB_USER:-garda}}"
+      DB_PASSWORD: "${DB_APP_PASSWORD:-${DB_PASSWORD:-garda_secret}}"
       DB_NAME: "${DB_NAME:-garda_inflasi}"
       DB_SSLMODE: disable
       APP_ENV: "${APP_ENV:-development}"
@@ -176,6 +181,14 @@ services:
       JOB_AUTH_PEMBERSIHAN_LOGIN_HARI: "${JOB_AUTH_PEMBERSIHAN_LOGIN_HARI:-90}"
       JOB_AUTH_PEMBERSIHAN_RESET_HARI: "${JOB_AUTH_PEMBERSIHAN_RESET_HARI:-7}"
       JOB_AUTH_PEMBERSIHAN_BATCH: "${JOB_AUTH_PEMBERSIHAN_BATCH:-1000}"
+      # Integritas audit (03-C): partisi bulanan ke depan, verifikasi rantai hash, dan retensi ke arsip.
+      # Retensi mati selama AUDIT_RETENSI_BULAN kosong; berkas arsip ditulis ke volume audit_arsip
+      # (salin berkala ke penyimpanan di luar VM, lihat docs/DEPLOYMENT.md).
+      JOB_AUDIT_PARTISI_INTERVAL: "${JOB_AUDIT_PARTISI_INTERVAL:-24h}"
+      JOB_AUDIT_VERIFIKASI_INTERVAL: "${JOB_AUDIT_VERIFIKASI_INTERVAL:-24h}"
+      AUDIT_PARTISI_KE_DEPAN: "${AUDIT_PARTISI_KE_DEPAN:-3}"
+      AUDIT_RETENSI_BULAN: "${AUDIT_RETENSI_BULAN:-}"
+      AUDIT_ARSIP_DIR: "${AUDIT_ARSIP_DIR:-/app/arsip/audit}"
       # Penjadwal cron ingestion (PIHPS, BMKG, BPS). Bawaan mati: lokal/demo tidak memanggil internet.
       INGEST_SCHEDULER: "${INGEST_SCHEDULER:-}"
       BPS_API_KEY: "${BPS_API_KEY:-}"
@@ -184,6 +197,8 @@ services:
       # Sinyal SSE ke api lewat Redis pub/sub (tanpa Redis, api membaca outbox ews_event).
       REDIS_URL: "redis://redis:6379"
       <<: [*notifikasi-env, *ews-env]
+    volumes:
+      - audit_arsip:/app/arsip
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/healthz"]
       interval: 30s
@@ -308,3 +323,6 @@ networks:
     name: garda_inflasi_net
     external: true
 
+volumes:
+  # Berkas arsip partisi audit_log yang dilepas oleh retensi (penyimpanan dingin).
+  audit_arsip:

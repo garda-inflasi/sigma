@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"time"
 
@@ -74,6 +75,9 @@ type PerubahanResponse struct {
 type AuditDetailResponse struct {
 	AuditRowResponse
 	Perubahan []PerubahanResponse `json:"perubahan"`
+	// Hash dan HashSebelumnya (hex) menautkan entri ke rantai hash (migrasi 000116).
+	Hash           string `json:"hash,omitempty"`
+	HashSebelumnya string `json:"hash_sebelumnya,omitempty"`
 }
 
 // ToAuditDetailResponse memetakan entri dan perubahannya ke bentuk API.
@@ -82,5 +86,103 @@ func ToAuditDetailResponse(row domain.AuditLog, changes []domain.Perubahan) Audi
 	for i, c := range changes {
 		perubahan[i] = PerubahanResponse{Path: c.Path, Jenis: c.Jenis, Sebelum: c.Sebelum, Sesudah: c.Sesudah}
 	}
-	return AuditDetailResponse{AuditRowResponse: toAuditRowResponse(row), Perubahan: perubahan}
+	return AuditDetailResponse{
+		AuditRowResponse: toAuditRowResponse(row), Perubahan: perubahan,
+		Hash: hex.EncodeToString(row.Hash), HashSebelumnya: hex.EncodeToString(row.HashSebelumnya),
+	}
+}
+
+// MasalahResponse adalah satu temuan verifikasi rantai.
+type MasalahResponse struct {
+	ID         idx.ID `json:"id"`
+	Jenis      string `json:"jenis"`
+	Keterangan string `json:"keterangan"`
+}
+
+// VerifikasiResponse adalah hasil satu verifikasi rantai hash.
+type VerifikasiResponse struct {
+	ID             idx.ID            `json:"id"`
+	Mulai          time.Time         `json:"mulai"`
+	Selesai        time.Time         `json:"selesai"`
+	Pemicu         string            `json:"pemicu"`
+	Status         string            `json:"status"`
+	JumlahBaris    int64             `json:"jumlah_baris"`
+	JumlahSegmen   int64             `json:"jumlah_segmen"`
+	JumlahMasalah  int64             `json:"jumlah_masalah"`
+	IDAwal         *idx.ID           `json:"id_awal,omitempty"`
+	IDAkhir        *idx.ID           `json:"id_akhir,omitempty"`
+	HashAkhir      string            `json:"hash_akhir,omitempty"`
+	MasalahPertama *MasalahResponse  `json:"masalah_pertama,omitempty"`
+	Masalah        []MasalahResponse `json:"masalah,omitempty"`
+	Keterangan     *string           `json:"keterangan,omitempty"`
+}
+
+// PartisiResponse adalah satu partisi bulanan audit_log yang aktif.
+type PartisiResponse struct {
+	Nama           string     `json:"nama"`
+	Dari           *time.Time `json:"dari"`
+	Sampai         *time.Time `json:"sampai"`
+	PerkiraanBaris *int64     `json:"perkiraan_baris"`
+}
+
+// ArsipResponse adalah satu partisi yang sudah dilepas ke penyimpanan dingin.
+type ArsipResponse struct {
+	ID             idx.ID    `json:"id"`
+	Partisi        string    `json:"partisi"`
+	Dari           time.Time `json:"dari"`
+	Sampai         time.Time `json:"sampai"`
+	JumlahBaris    int64     `json:"jumlah_baris"`
+	IDPertama      *idx.ID   `json:"id_pertama,omitempty"`
+	IDTerakhir     *idx.ID   `json:"id_terakhir,omitempty"`
+	Berkas         string    `json:"berkas"`
+	SHA256         string    `json:"sha256"`
+	RetensiBulan   int       `json:"retensi_bulan"`
+	DiarsipkanPada time.Time `json:"diarsipkan_pada"`
+}
+
+// IntegritasResponse adalah status integritas audit: verifikasi terakhir (null bila belum pernah), partisi aktif
+// (terbaru lebih dulu), dan arsip (terbaru lebih dulu).
+type IntegritasResponse struct {
+	VerifikasiTerakhir *VerifikasiResponse `json:"verifikasi_terakhir"`
+	Partisi            []PartisiResponse   `json:"partisi"`
+	Arsip              []ArsipResponse     `json:"arsip"`
+}
+
+// ToIntegritasResponse memetakan ringkasan integritas ke bentuk API; masalah adalah daftar temuan verifikasi terakhir.
+func ToIntegritasResponse(v *domain.Verifikasi, masalah []domain.Masalah, partisi []domain.Partisi, arsip []domain.Arsip) IntegritasResponse {
+	out := IntegritasResponse{Partisi: make([]PartisiResponse, len(partisi)), Arsip: make([]ArsipResponse, len(arsip))}
+	if v != nil {
+		r := &VerifikasiResponse{
+			ID: v.ID, Mulai: v.Mulai, Selesai: v.Selesai, Pemicu: v.Pemicu, Status: v.Status,
+			JumlahBaris: v.JumlahBaris, JumlahSegmen: v.JumlahSegmen, JumlahMasalah: v.JumlahMasalah,
+			IDAwal: idOpsional(v.IDAwal), IDAkhir: idOpsional(v.IDAkhir), HashAkhir: hex.EncodeToString(v.HashAkhir),
+			Keterangan: v.Keterangan,
+		}
+		for _, m := range masalah {
+			r.Masalah = append(r.Masalah, MasalahResponse{ID: idx.ID(m.ID), Jenis: m.Jenis, Keterangan: m.Keterangan})
+		}
+		if len(r.Masalah) > 0 {
+			r.MasalahPertama = &r.Masalah[0]
+		}
+		out.VerifikasiTerakhir = r
+	}
+	for i, p := range partisi {
+		out.Partisi[i] = PartisiResponse{Nama: p.Nama, Dari: p.Dari, Sampai: p.Sampai, PerkiraanBaris: p.PerkiraanBaris}
+	}
+	for i, a := range arsip {
+		out.Arsip[i] = ArsipResponse{
+			ID: a.ID, Partisi: a.Partisi, Dari: a.Dari, Sampai: a.Sampai, JumlahBaris: a.JumlahBaris,
+			IDPertama: idOpsional(a.IDPertama), IDTerakhir: idOpsional(a.IDTerakhir), Berkas: a.Berkas,
+			SHA256: a.SHA256Berkas, RetensiBulan: a.RetensiBulan, DiarsipkanPada: a.DiarsipkanPada,
+		}
+	}
+	return out
+}
+
+func idOpsional(v *int64) *idx.ID {
+	if v == nil {
+		return nil
+	}
+	id := idx.ID(*v)
+	return &id
 }

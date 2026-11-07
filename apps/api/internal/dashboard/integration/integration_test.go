@@ -321,7 +321,7 @@ func TestPublishingPricesRefreshesDashboardAggregates(t *testing.T) {
 	t.Cleanup(func() {
 		assert.Eventually(t, func() bool {
 			var aktif int64
-			_ = s.db.Raw("SELECT COUNT(*) FROM pg_stat_activity WHERE query ILIKE 'REFRESH MATERIALIZED VIEW%' AND state = 'active'").Scan(&aktif).Error
+			_ = s.db.Raw("SELECT COUNT(*) FROM pg_stat_activity WHERE (query ILIKE 'REFRESH MATERIALIZED VIEW%' OR query ILIKE 'SELECT garda_segarkan_mv%') AND state = 'active'").Scan(&aktif).Error
 			return aktif == 0
 		}, 20*time.Second, 100*time.Millisecond)
 	})

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,7 +20,16 @@ func New(db *gorm.DB) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, log *domain.AuditLog) error {
-	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {
+	err := r.db.WithContext(ctx).Create(log).Error
+	// audit_log berpartisi bulanan tanpa partisi DEFAULT: baris untuk bulan yang partisinya belum dibuat (mis. worker
+	// mati berbulan-bulan) ditolak sebagai check violation. Penulis membuat partisi bulan itu lalu mencoba sekali lagi.
+	if errors.Is(err, gorm.ErrCheckConstraintViolated) {
+		if _, errPartisi := r.SiapkanPartisi(ctx, log.Waktu, 1); errPartisi == nil {
+			log.ID = 0
+			err = r.db.WithContext(ctx).Create(log).Error
+		}
+	}
+	if err != nil {
 		return fmt.Errorf("simpan audit log: %w", err)
 	}
 	return nil
@@ -43,7 +53,8 @@ func (r *Repository) FindActor(ctx context.Context, id string) (*domain.Actor, e
 
 func (r *Repository) Get(ctx context.Context, ref idx.RujukanID) (*domain.AuditLog, error) {
 	var row domain.AuditLog
-	res := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).Limit(1).Find(&row)
+	// Tabel berpartisi: id dan kode dicari lintas partisi (idx_audit_log_id, idx_audit_log_kode).
+	res := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).Order("id").Limit(1).Find(&row)
 	if res.Error != nil {
 		return nil, fmt.Errorf("ambil audit log: %w", res.Error)
 	}

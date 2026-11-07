@@ -20,10 +20,11 @@ type Dependencies struct {
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
 	uc := usecase.New(repo)
-	handler := http.New(uc)
+	handler := http.New(uc, usecase.NewIntegritas(repo, uc))
 
 	auth, canRead := middleware.JWTAuth(deps.Token), middleware.RequirePermission("audit.lihat")
 	engine.GET("/audit", auth, canRead, handler.List)
 	engine.GET("/audit/export", auth, canRead, handler.Export)
+	engine.GET("/audit/integritas", auth, canRead, handler.Integritas)
 	engine.GET("/audit/:id", auth, canRead, handler.Get)
 }

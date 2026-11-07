@@ -83,8 +83,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	}
 
 	for _, view := range refresher.Views {
-		// Nama view berasal dari konstanta, bukan masukan pengguna.
-		if err := db.WithContext(ctx).Exec("REFRESH MATERIALIZED VIEW " + view).Error; err != nil {
+		if err := db.WithContext(ctx).Exec("SELECT garda_segarkan_mv(?, false)", view).Error; err != nil {
 			return DemoSummary{}, fmt.Errorf("refresh %s: %w", view, err)
 		}
 	}

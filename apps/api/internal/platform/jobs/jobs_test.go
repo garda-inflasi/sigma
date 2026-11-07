@@ -72,8 +72,10 @@ func newScheduler(t *testing.T, name string) (*Scheduler, *gorm.DB) {
 func TestRunOnceRunsAndRecords(t *testing.T) {
 	s, _ := newScheduler(t, "jobs_runonce")
 	var n int32
-	require.NoError(t, s.Add(Job{Name: "hitung", Interval: time.Minute, Run: func(context.Context) error {
+	var manual bool
+	require.NoError(t, s.Add(Job{Name: "hitung", Interval: time.Minute, Run: func(ctx context.Context) error {
 		atomic.AddInt32(&n, 1)
+		manual = Manual(ctx)
 		return nil
 	}}))
 
@@ -81,6 +83,8 @@ func TestRunOnceRunsAndRecords(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ran)
 	assert.EqualValues(t, 1, n)
+	assert.True(t, manual, "RunOnce menandai putaran sebagai manual")
+	assert.False(t, Manual(context.Background()))
 
 	st := s.Statuses()[0]
 	assert.Equal(t, 1, st.Runs)

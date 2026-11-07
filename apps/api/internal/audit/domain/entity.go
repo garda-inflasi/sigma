@@ -37,6 +37,9 @@ type AuditLog struct {
 	Sebelum       *string   `gorm:"column:sebelum;type:jsonb"`
 	Sesudah       *string   `gorm:"column:sesudah;type:jsonb"`
 	Metadata      *string   `gorm:"column:metadata;type:jsonb"`
+	// HashSebelumnya dan Hash diisi pemicu basis data (rantai hash, migrasi 000116); aplikasi hanya membacanya.
+	HashSebelumnya []byte `gorm:"column:hash_sebelumnya;type:bytea;->"`
+	Hash           []byte `gorm:"column:hash;type:bytea;->"`
 }
 
 func (AuditLog) TableName() string {

@@ -17,7 +17,7 @@ var Views = []string{"agregat_harga_harian", "mv_heatmap_harga", "mv_kpi_operasi
 
 const refreshTimeout = 2 * time.Minute
 
-// Refresher menjalankan REFRESH MATERIALIZED VIEW CONCURRENTLY (pembaca tidak
+// Refresher menjalankan REFRESH MATERIALIZED VIEW CONCURRENTLY lewat garda_segarkan_mv (pembaca tidak
 // terblokir). Permintaan yang datang saat penyegaran berjalan digabung menjadi
 // satu penyegaran lanjutan.
 type Refresher struct {
@@ -50,8 +50,9 @@ func Shared(db *gorm.DB, log *logger.Logger) *Refresher {
 // Refresh menyegarkan semua view dan menunggu selesai.
 func (r *Refresher) Refresh(ctx context.Context) error {
 	for _, view := range Views {
-		// Nama view berasal dari konstanta di atas, bukan masukan pengguna.
-		if err := r.db.WithContext(ctx).Exec("REFRESH MATERIALIZED VIEW CONCURRENTLY " + view).Error; err != nil {
+		// Lewat fungsi SECURITY DEFINER (migrasi 000119): REFRESH butuh pemilik view, sedangkan pengguna DB aplikasi
+		// sengaja bukan pemilik (hak minimum).
+		if err := r.db.WithContext(ctx).Exec("SELECT garda_segarkan_mv(?, true)", view).Error; err != nil {
 			return fmt.Errorf("refresh %s: %w", view, err)
 		}
 	}

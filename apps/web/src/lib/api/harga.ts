@@ -217,6 +217,11 @@ const LABEL_BENDERA: [keyof Omit<FlagValidasiResponse, "median" | "jarak_meter">
   ["tanpa_lokasi", "Tanpa koordinat GPS"],
 ];
 
+/** Bendera yang menyala, berurut dari yang paling berat, dengan label siap tampil. */
+export function toBendera(flag: FlagValidasiResponse): DetailHarga["bendera"] {
+  return LABEL_BENDERA.filter(([kode]) => flag[kode]).map(([kode, label]) => ({ kode, label }));
+}
+
 export function toDetailHarga(r: HargaDetailResponse): DetailHarga {
   return {
     lat: r.lat ?? undefined,
@@ -224,6 +229,6 @@ export function toDetailHarga(r: HargaDetailResponse): DetailHarga {
     fotoUrl: r.foto_url ?? undefined,
     median: r.flag_validasi.median || undefined,
     jarakMeter: r.flag_validasi.jarak_meter || undefined,
-    bendera: LABEL_BENDERA.filter(([kode]) => r.flag_validasi[kode]).map(([kode, label]) => ({ kode, label })),
+    bendera: toBendera(r.flag_validasi),
   };
 }

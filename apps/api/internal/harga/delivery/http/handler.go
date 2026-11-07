@@ -274,3 +274,45 @@ func (h *Handler) Riwayat(c *gin.Context) {
 	}
 	response.Success(c, dto.ToRiwayatStatusResponses(items))
 }
+
+// GET /v1/harga/:id/versi
+//
+// Seluruh versi isi entri (siapa, kapan, aksi, kolom yang berubah, salinan baris), yang terlama lebih dulu.
+// Akses dan :id sama dengan GET /v1/harga/:id/riwayat.
+func (h *Handler) Versi(c *gin.Context) {
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKodeEntri, "Entri harga tidak ditemukan")
+	if !ok {
+		return
+	}
+	items, err := h.uc.Versi(c.Request.Context(), ref, c.GetString("user_id"), middleware.HasPermission(c, "harga.lihat"))
+	if err != nil {
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Entri harga tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil versi entri")
+		return
+	}
+	response.Success(c, dto.ToVersiEntriResponses(items))
+}
+
+// GET /v1/harga/:id/lineage
+//
+// Jejak asal entri (PRD §1.4): pencatat, validasi otomatis, validasi, publikasi, penolakan, versi, riwayat status,
+// dan rujukan audit trail. Akses dan :id sama dengan GET /v1/harga/:id/riwayat.
+func (h *Handler) Lineage(c *gin.Context) {
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKodeEntri, "Entri harga tidak ditemukan")
+	if !ok {
+		return
+	}
+	lineage, err := h.uc.Lineage(c.Request.Context(), ref, c.GetString("user_id"), middleware.HasPermission(c, "harga.lihat"))
+	if err != nil {
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Entri harga tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil lineage entri")
+		return
+	}
+	response.Success(c, dto.ToLineageResponse(lineage))
+}

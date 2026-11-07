@@ -169,6 +169,8 @@ func TestAuditID_TetapAppendOnly(t *testing.T) {
 func TestAuditID_EksporMelewatiBatasHalamanTanpaMenggandakan(t *testing.T) {
 	s := newSuite(t, "audit_id_ekspor")
 	token := s.login(t, adminEmail)
+	// audit_log berpartisi bulanan (000117): sisipan SQL mentah ke bulan lampau butuh partisinya lebih dulu.
+	require.NoError(t, s.db.Exec(`SELECT audit_log_siapkan_partisi('2026-04-01 08:00+00', 1)`).Error)
 	require.NoError(t, s.db.Exec(`
 		INSERT INTO audit_log (waktu, aksi, entitas, entitas_id, hasil)
 		SELECT '2026-04-01 08:00+00', 'UJI_EKSPOR', 'uji', 'e-' || n, 'BERHASIL' FROM generate_series(1, 1100) n`).Error)

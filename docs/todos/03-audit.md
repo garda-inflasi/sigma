@@ -16,7 +16,7 @@
 - **Paginasi dan ekspor** memakai cursor `(waktu, id)` dengan `id` numerik (urutan `waktu DESC, id DESC`, indeks `idx_audit_log_waktu_id`), jadi urutan antar-baris berwaktu sama mengikuti urutan penyisipan, bukan leksikografis. Cursor lama (berisi UUID) dijawab 400; klien memulai dari halaman pertama. CSV tidak berubah.
 - `entitas_id` tetap **rujukan polimorfik berupa teks, bukan FK**: berisi ID baru entitasnya (UUID atau angka). Baris lama dipetakan oleh migrasi per entitas (000110 `pengguna`, 000115 `sumber_data`, `langganan_push`, `preferensi_notifikasi`); nilai yang bukan ID (`ekspor`, `3 sumber`, rentang periode KPI) tidak disentuh.
 - `aktor_id` uuid → `pengguna` **SET NULL** (000110). Indeks: **BRIN `waktu`**, `(waktu DESC, id DESC)` untuk cursor, `(entitas, entitas_id, waktu DESC)` untuk riwayat per entitas, `(aktor_id, waktu DESC)`, `(aksi, waktu DESC)`; `(entitas, entitas_id)` dan `(waktu)` dibuang karena redundan.
-- Pemicu `trg_audit_log_append_only` dan `trg_audit_log_no_truncate` dimatikan hanya selama konversi (satu transaksi, Up dan Down) lalu dinyalakan lagi. Tidak ada rantai hash atau kolom turunan dari `id`, jadi konversi tidak merusak verifikasi apa pun; hash berantai (03-C) masih belum ada.
+- Pemicu `trg_audit_log_append_only` dan `trg_audit_log_no_truncate` dimatikan hanya selama konversi (satu transaksi, Up dan Down) lalu dinyalakan lagi. Saat 000115 belum ada rantai hash; sejak 000116 migrasi tidak boleh lagi mengubah isi baris audit (lihat 03-C).
 
 ---
 
@@ -62,9 +62,41 @@
 ## 03-C — Integritas dan retensi _(Fase F, kebutuhan kepatuhan)_
 
 1. **MIG**
-   - [ ] Hash berantai (`hash_sebelumnya`, `hash`) dan job verifikasi berkala. Rantai dihitung atas `id` BIGINT berurut (bukan `kode`), jadi urutan identity adalah urutan rantai; migrasi konversi lebih dulu menetapkan ID menurut `waktu`.
-   - [ ] Partisi bulanan (`PARTITION BY RANGE (waktu)`) + job pembuat partisi. PK tabel berpartisi harus memuat kolom partisi (`PRIMARY KEY (waktu, id)`), `uq_audit_log_kode` ikut menjadi `UNIQUE (waktu, kode)`, dan rute `:id` perlu `waktu` atau pencarian lintas partisi; putuskan sebelum mulai. BRIN `waktu` tetap dipakai per partisi.
-   - [ ] `REVOKE UPDATE, DELETE` dari pengguna DB aplikasi (lihat [19 §7](19-migration-seeder.md)).
+   - [x] Hash berantai (`hash_sebelumnya`, `hash`) dan job verifikasi berkala (000116). Rantai dihitung atas `id` BIGINT berurut (bukan `kode`): urutan identity adalah urutan rantai.
+     - **Format garda-audit-v1:** SHA-256 atas `hash_sebelumnya` ditambah isi baris. Kolom `aktor_id` tidak ikut karena FK `SET NULL` boleh mengosongkannya; pelaku tetap terlindungi lewat snapshot `aktor_nama/email/peran`.
+     - **Dua implementasi:** pemicu SQL `audit_log_hitung_hash` dan Go `domain.HitungHash`. Keduanya dikunci vektor uji yang sama dan dicocokkan di tes integrasi.
+     - **Urutan rantai:** pemicu `BEFORE INSERT FOR EACH STATEMENT` mengambil advisory lock sebelum identity dibagikan, jadi urutan id = urutan commit. Baris yang dilewati `ON CONFLICT` tidak memutus rantai. Penulisan dalam transaksi REPEATABLE READ atau SERIALIZABLE ditolak.
+     - **Baris lama:** diberi hash urut id saat migrasi.
+     - **Verifikasi:** job worker `audit_verifikasi` (24 jam) menghitung ulang seluruh rantai di Go dalam satu snapshot dan menyimpan hasilnya di `audit_log_verifikasi`. Jenis masalah: `ISI_BERUBAH`, `RANTAI_PUTUS`, `ARSIP_TIDAK_COCOK`. Hasil RUSAK dicatat sebagai `VERIFIKASI_AUDIT` dan membuat job tampil gagal di `/healthz`.
+     - **API dan UI:** `GET /v1/audit/integritas` (izin `audit.lihat`) ditampilkan sebagai kartu "Integritas" di `/audit`. Detail entri kini memuat `hash` dan `hash_sebelumnya`.
+   - [x] Partisi bulanan (`PARTITION BY RANGE (waktu)`) dan job pembuat partisi (000117).
+     - **Kunci:** PK `(waktu, id)`, kategori `PKBigintPartisi` di `kunci_test.go`.
+     - **Keputusan rute `:id`:** pencarian lintas partisi lewat `idx_audit_log_id`, tanpa `waktu` di URL. Alias `kode` lewat indeks parsial `idx_audit_log_kode`.
+     - **Keputusan `kode`:** bukan `UNIQUE (waktu, kode)`. Keunikan dijaga global oleh pemicu `trg_audit_log_kode_unik` yang berjalan di bawah kunci rantai, jadi bebas balapan. Seeder demo menyaring kode yang sudah ada, bukan `ON CONFLICT`.
+     - **Indeks:** `idx_audit_log_waktu_id` dibuang karena digantikan PK yang dipindai mundur. BRIN `waktu` tetap per partisi.
+     - **Tanpa partisi DEFAULT.** Migrasi menyiapkan bulan lalu sampai +3. Job `audit_partisi` menjaga jendela ke depan (`AUDIT_PARTISI_KE_DEPAN`). Penulis audit membuat partisi bulannya sendiri bila belum ada, termasuk baris bertanggal mundur, kecuali bulan yang sudah diarsipkan.
+     - **Partisi baru:** dibuat terpisah lalu di-ATTACH, sehingga baca dan tulis audit tidak berhenti. Tiap partisi punya pemicu tolak-TRUNCATE sendiri dan tidak bisa diakses langsung.
+     - **Sisipan SQL mentah** ke bulan tanpa partisi butuh `audit_log_siapkan_partisi` lebih dulu (fixture tes diperbarui).
+   - [x] `REVOKE UPDATE, DELETE` dari pengguna DB aplikasi (000119, [19 §7](19-migration-seeder.md)).
+     - **Peran grup `garda_aplikasi` (NOLOGIN):** DML pada data, sequence, dan fungsi pemeliharaan; tanpa DDL dan tanpa TRUNCATE. Tabel jejak hanya SELECT/INSERT: `audit_log` dan partisinya, `audit_log_verifikasi`, `audit_log_arsip*`, `entri_harga_versi`. `goose_db_version` tertutup.
+     - **Login aplikasi:** `cmd/migrate` membuat atau memperbarui login `DB_APP_USER`/`DB_APP_PASSWORD`. Kata sandi dikirim sebagai verifier SCRAM yang dihitung di Go. Compose menghubungkan api dan worker dengan login itu; migrate dan seed tetap memakai pemilik skema; api tidak lagi menerima `DATABASE_URL` pemilik.
+     - **REFRESH dashboard** lewat `garda_segarkan_mv` (SECURITY DEFINER).
+     - **Tanpa `DB_APP_*`:** perilaku lama tetap (pemicu append-only melindungi) dan API mencatat peringatan saat start.
+     - **Bukti:** `internal/platform/migrate/pengguna_aplikasi_test.go` login sebagai pengguna aplikasi. Ubah atau hapus jejak, DDL, partisi langsung, dan tabel migrasi ditolak `42501`; tulis audit, refresh dashboard, verifikasi, dan retensi tetap jalan.
 2. **API/Ops**
-   - [ ] Retensi: lepas partisi lama ke penyimpanan dingin sesuai kebijakan masa simpan (PDP).
-   - [ ] Data lineage per record harga: siapa input, validasi, publikasi, versi (PRD §1.4).
+   - [x] Retensi: lepas partisi lama ke penyimpanan dingin sesuai kebijakan masa simpan (PDP).
+     - **Kebijakan:** `AUDIT_RETENSI_BULAN` (12–1200, kosong = mati; usulan kebijakan 60).
+     - **Ekspor:** job `audit_partisi` mengekspor partisi yang seluruhnya lebih tua ke `AUDIT_ARSIP_DIR` sebagai `jsonl.gz` dan manifest. Hash tiap baris diperiksa ulang, dan baris yang rusak tidak diarsipkan.
+     - **Pelepasan:** `audit_log_lepas_partisi` (SECURITY DEFINER, minimal 12 bulan) memeriksa ulang jumlah baris dan ringkasan hash di bawah kunci. Fungsi itu mencatat `audit_log_arsip` dan segmen rantainya, lalu melakukan DETACH dan DROP. Kepala rantai tidak pernah diarsipkan.
+     - **Sambungan rantai:** verifikasi berikutnya menyambung rantai lewat segmen arsip, termasuk id yang menyelang di batas bulan.
+     - **Pemeriksaan luring:** `worker verifikasi-arsip <manifest>` memeriksa berkas tanpa basis data. Manifest yang belum sempat ditulis dilengkapi pada putaran berikutnya. Setiap pelepasan dicatat sebagai `ARSIP_AUDIT`.
+     - **Batas:** `goose down` 000117 ditolak bila sudah ada arsip. Ops tercatat di [DEPLOYMENT §10b](../DEPLOYMENT.md).
+   - [x] Data lineage per record harga: siapa input, validasi, publikasi, versi (PRD §1.4). Lihat [06](06-harga-validasi.md).
+     - **Tabel `entri_harga_versi` (000118):** append-only, ditulis pemicu pada setiap perubahan isi `entri_harga`. Pelaku diambil dari GUC transaksi `garda.aktor_id` atau kolom pelakunya. Mengulang seeder tidak menambah versi.
+     - **API:** `GET /v1/harga/:id/versi` dan `GET /v1/harga/:id/lineage` (asal input, validasi otomatis, validasi/publikasi/penolakan, versi, riwayat status, rujukan audit).
+     - **UI:** panel "Lineage data" di detail harga.
+
+**Belum / di luar 03-C:**
+
+- Jangkar eksternal hash kepala rantai (mis. dikirim ke log terpisah atau penyimpanan WORM). Saat ini rantai mendeteksi perubahan oleh siapa pun yang tidak menghitung ulang seluruh rantai sesudahnya, dan setiap verifikasi menyimpan hash kepala.
+- Salinan otomatis volume arsip ke luar VM masih langkah ops, sama seperti backup.

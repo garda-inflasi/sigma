@@ -124,8 +124,14 @@ supaya API bisa diskalakan tanpa menggandakan job dan job berat tidak mengganggu
 - **Interval dari env:** `JOB_<NAMA>_INTERVAL` (durasi Go: `30s`, `5m`, `1h`; `off` menonaktifkan).
   Bawaan: `JOB_DASHBOARD_REFRESH_INTERVAL=5m`, `JOB_KPI_HITUNG_INTERVAL=1h`, `JOB_KPI_HITUNG_BULAN=2`,
   `JOB_AUTH_PEMBERSIHAN_INTERVAL=1h` (+ `JOB_AUTH_PEMBERSIHAN_{LOGIN_HARI=90,RESET_HARI=7,BATCH=1000}`; lihat `cmd/worker/register_auth.go`).
+  Integritas audit (03-C, `cmd/worker/register_audit.go`): `audit_partisi` (`JOB_AUDIT_PARTISI_INTERVAL=24h`) menyiapkan
+  `AUDIT_PARTISI_KE_DEPAN=3` partisi bulanan ke depan lalu menjalankan retensi bila `AUDIT_RETENSI_BULAN` dan
+  `AUDIT_ARSIP_DIR` diisi; `audit_verifikasi` (`JOB_AUDIT_VERIFIKASI_INTERVAL=24h`) menghitung ulang rantai hash,
+  dilewati bila verifikasi terakhir masih lebih baru dari setengah interval (kecuali lewat `worker run`). Keduanya
+  berbagi kunci pemeliharaan, jadi tidak pernah berjalan bersamaan.
   `WORKER_HEALTH_ADDR` (bawaan `:8081`, `off` mematikan) menyajikan `/healthz` berisi status tiap job.
-- **CLI:** `worker list` mencetak job dan interval efektif; `worker run <job>` menjalankan satu putaran (tetap berlock).
+- **CLI:** `worker list` mencetak job dan interval efektif; `worker run <job>` menjalankan satu putaran (tetap berlock;
+  `jobs.Manual(ctx)` bernilai true); `worker verifikasi-arsip <manifest.json>` memeriksa berkas arsip audit tanpa basis data.
 
 **Mendaftarkan job baru** (mis. ingestion, rule engine EWS): buat `cmd/worker/register_<modul>.go`
 (satu berkas per modul, tidak menyentuh berkas lain) dengan pola:

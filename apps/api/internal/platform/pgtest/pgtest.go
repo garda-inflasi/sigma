@@ -129,6 +129,18 @@ func (s *Server) open(dbName string) (*gorm.DB, error) {
 	})
 }
 
+// BukaSebagai membuka basis data dbName sebagai pengguna lain (mis. login aplikasi berhak minimum); koneksinya ditutup
+// saat tes selesai.
+func (s *Server) BukaSebagai(t *testing.T, dbName, namaPengguna, sandi string) *gorm.DB {
+	t.Helper()
+	db, err := database.New(database.Config{
+		Host: s.host, Port: s.port, User: namaPengguna, Password: sandi, DBName: dbName, SSLMode: "disable",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { closeDB(db) })
+	return db
+}
+
 // DSN mengembalikan DATABASE_URL untuk basis data bernama dbName; dipakai tes
 // yang menjalankan biner (mis. cmd/seed) terhadap container ini.
 func (s *Server) DSN(dbName string) string {

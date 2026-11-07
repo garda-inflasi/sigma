@@ -188,6 +188,8 @@ func TestRiwayatPeran_MembacaAksiApaPunYangMencatatPeranDanMenyaringSisanya(t *t
 	a := s.mulaiSesi(t, emailAdmin, uaMac).access
 	s.buatPengguna(t, a, uid("riw-3"), "OPS_MAHASISWA", "OPERASIONAL")
 
+	// audit_log berpartisi bulanan (000117): partisi Januari 2099 dibuat lebih dulu (fungsi internal pemilik skema).
+	require.NoError(t, s.db.Exec(`SELECT audit_log_buat_partisi('2099-01-01')`).Error)
 	sisip := func(aksi, entitas, entitasID, hasil, sebelum, sesudah, waktu string) {
 		t.Helper()
 		var sb, sd any

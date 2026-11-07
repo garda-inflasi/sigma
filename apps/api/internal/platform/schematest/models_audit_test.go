@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("audit", &auditdomain.AuditLog{})
+	registerModels("audit", &auditdomain.AuditLog{}, &auditdomain.Verifikasi{}, &auditdomain.Arsip{}, &auditdomain.SegmenArsipRow{})
 }

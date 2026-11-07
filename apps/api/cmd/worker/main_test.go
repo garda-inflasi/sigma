@@ -28,7 +28,7 @@ func quiet() *logger.Logger { return logger.New(logger.ERROR, os.Stderr) }
 func TestBuildSchedulerRegistersDefaultJobs(t *testing.T) {
 	s, err := buildScheduler(deps{log: quiet(), getenv: env(nil)})
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"auth_pembersihan", "dashboard_refresh", "kpi_hitung"}, s.Names())
+	assert.ElementsMatch(t, []string{"auth_pembersihan", "dashboard_refresh", "kpi_hitung", "audit_partisi", "audit_verifikasi"}, s.Names())
 	for _, st := range s.Statuses() {
 		assert.NotEqual(t, "0s", st.Interval, st.Name)
 	}
@@ -68,10 +68,31 @@ func TestBuildSchedulerRejectsBadEnv(t *testing.T) {
 	for k, v := range map[string]string{
 		"JOB_DASHBOARD_REFRESH_INTERVAL": "sering",
 		"JOB_KPI_HITUNG_BULAN":           "0",
+		"AUDIT_PARTISI_KE_DEPAN":         "25",
+		"AUDIT_RETENSI_BULAN":            "11",
 	} {
 		_, err := buildScheduler(deps{log: quiet(), getenv: env(map[string]string{k: v})})
 		assert.Error(t, err, k)
 	}
+}
+
+func TestKonfigAuditIntegritas(t *testing.T) {
+	keDepan, retensi, err := konfigAuditIntegritas(env(nil))
+	require.NoError(t, err)
+	assert.Equal(t, auditPartisiKeDepan, keDepan)
+	assert.Nil(t, retensi, "retensi mati bila AUDIT_RETENSI_BULAN kosong")
+
+	_, retensi, err = konfigAuditIntegritas(env(map[string]string{"AUDIT_RETENSI_BULAN": "60", "AUDIT_ARSIP_DIR": "/arsip"}))
+	require.NoError(t, err)
+	require.NotNil(t, retensi)
+	assert.Equal(t, 60, retensi.Bulan)
+	assert.Equal(t, "/arsip", retensi.Dir)
+
+	_, _, err = konfigAuditIntegritas(env(map[string]string{"AUDIT_RETENSI_BULAN": "60"}))
+	assert.Error(t, err, "retensi tanpa direktori arsip ditolak")
+	_, retensi, err = konfigAuditIntegritas(env(map[string]string{"AUDIT_RETENSI_BULAN": "off"}))
+	require.NoError(t, err)
+	assert.Nil(t, retensi)
 }
 
 func TestHealthAddr(t *testing.T) {
@@ -91,7 +112,7 @@ func TestRunJobsAgainstMigratedDatabase(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	for _, name := range []string{"dashboard_refresh", "kpi_hitung", "auth_pembersihan"} {
+	for _, name := range []string{"dashboard_refresh", "kpi_hitung", "auth_pembersihan", "audit_partisi", "audit_verifikasi"} {
 		ran, err := s.RunOnce(ctx, name)
 		require.NoError(t, err, name)
 		assert.True(t, ran, name)

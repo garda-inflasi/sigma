@@ -15,6 +15,7 @@ import { formatTanggal } from "@/lib/format";
 import { useAudit, useEksporAudit } from "@/lib/query/hooks";
 import { AuditDetailSheet } from "./audit-detail-sheet";
 import { AuditFilterBar } from "./audit-filter-bar";
+import { AuditIntegritasCard } from "./audit-integritas-card";
 
 const HASIL_BADGE = {
   BERHASIL: <StatusBadge tone="normal">Berhasil</StatusBadge>,
@@ -114,6 +115,7 @@ export function AuditPage() {
           </button>
         }
       />
+      <AuditIntegritasCard onLihatBaris={setDetailId} />
       <AuditFilterBar filter={filter} onChange={setFilter} />
       <AuditDetailSheet
         id={detailId}

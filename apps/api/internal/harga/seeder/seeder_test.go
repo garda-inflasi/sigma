@@ -233,6 +233,38 @@ func TestSeedDemo_IsIdempotent(t *testing.T) {
 	assert.Zero(t, tanpaPetugas)
 }
 
+// TestSeedDemo_TidakMenambahVersiSaatDiulang: pemicu versi (migrasi 000118) mencatat tiap entri baru satu kali;
+// menjalankan seeder ulang hanya menggeser kolom waktu (tanggal relatif terhadap now), jadi tidak boleh menambah versi
+// (DoD: seed dua kali, jumlah baris sama).
+func TestSeedDemo_TidakMenambahVersiSaatDiulang(t *testing.T) {
+	db := pg.NewDatabase(t, "harga_seed_versi")
+	pgtest.MigrateUp(t, db)
+	_, err := masterseeder.SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	_, err = authseeder.SeedDemo(t.Context(), db)
+	require.NoError(t, err)
+
+	scan := func(sql string) (n int64) {
+		require.NoError(t, db.Raw(sql).Scan(&n).Error, sql)
+		return n
+	}
+	first, err := SeedDemo(t.Context(), db, seedNow)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, first.Entri, scan("SELECT count(*) FROM entri_harga_versi"), "satu versi untuk tiap entri baru")
+	assert.EqualValues(t, first.Entri, scan("SELECT count(*) FROM entri_harga_versi WHERE versi = 1 AND aksi = 'INPUT' AND oleh IS NOT NULL"),
+		"versi pertama entri seed: INPUT oleh petugas pencatat")
+	terbaru := scan("SELECT extract(epoch FROM max(dicatat_pada))::bigint FROM entri_harga")
+
+	for _, now := range []time.Time{seedNow.Add(26 * time.Hour), seedNow.Add(26*time.Hour + 5*time.Minute)} {
+		_, err = SeedDemo(t.Context(), db, now)
+		require.NoError(t, err)
+		assert.EqualValues(t, first.Entri, scan("SELECT count(*) FROM entri_harga_versi"), "seed ulang pada %s tidak menambah versi", now)
+	}
+	assert.Greater(t, scan("SELECT extract(epoch FROM max(dicatat_pada))::bigint FROM entri_harga"), terbaru, "waktu entri memang bergeser oleh seed ulang")
+	assert.Zero(t, scan("SELECT count(*) FROM entri_harga_versi WHERE versi > 1"))
+}
+
 // TestSeedDemo_IDBigintStabilDanMengikutiWaktu: kode (ID lama) menjadi kunci idempotensi, ID BIGINT diberi basis data
 // menaik menurut waktu pencatatan, tidak berubah saat seeder diulang, dan riwayat menunjuk entri yang benar.
 func TestSeedDemo_IDBigintStabilDanMengikutiWaktu(t *testing.T) {

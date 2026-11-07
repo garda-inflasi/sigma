@@ -1,7 +1,7 @@
 import { ApiError, apiFetch, mockDelay, MODE_MOCK } from "./client";
 import {
-  queryMockAudit, toAuditDetail, toAuditPage, toAuditQuery, toMockAuditDetail, unduhEksporAudit,
-  type AuditDetailResponse, type AuditFilter, type AuditPage, type AuditPageResponse, type HasilEkspor,
+  mockAuditIntegritas, queryMockAudit, toAuditDetail, toAuditIntegritas, toAuditPage, toAuditQuery, toMockAuditDetail, unduhEksporAudit,
+  type AuditDetailResponse, type AuditFilter, type AuditIntegritasResponse, type AuditPage, type AuditPageResponse, type HasilEkspor,
 } from "./audit";
 import { exportCsv } from "@/lib/csv";
 import { coldStorageClient, queryMockColdStorage, type BulkColdStorageResult, type HasilTelemetri, type PembacaanManualPayload, type TransaksiHasil, type TransaksiPayload, type UbahFasilitasPayload } from "./cold-storage";
@@ -19,6 +19,8 @@ import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery, toRiwayatStatus, toDetailHarga,
   type DetailHarga, type EntriHargaResponse, type HargaDetailResponse, type HargaParams, type RincianBulk, type RiwayatStatus, type RiwayatStatusResponse, type RingkasanHarga,
 } from "./harga";
+import { toLineageHarga, type LineageResponse } from "./harga-lineage";
+import { mockLineageById } from "./harga-lineage-mock";
 import { mockEwsDetail, mockEwsRiwayat } from "./ews-mock";
 import { mockSumberDetail } from "./sumber-mock";
 import { toTugasDetail, toTugasLapangan, type TugasDetail, type TugasDetailResponse, type TugasLapanganResponse } from "./lapangan";
@@ -56,7 +58,7 @@ import { USERS } from "@/lib/data/reference";
 import { toEksekusi, toPipeline, toSampel, toSumberData, toSumberDetail, type SumberDetailData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
-  AuditDetail, ColdStorageView, DetailFasilitas, FasilitasColdStorage, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow,
+  AuditDetail, AuditIntegritas, ColdStorageView, DetailFasilitas, FasilitasColdStorage, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, LineageHarga, MasterKomoditasRow, MasterPasarRow,
   MasterWilayahRow, PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
 } from "@/lib/data/types";
 
@@ -188,6 +190,9 @@ export const api = {
     /** Perpindahan status satu entri; mode mock tidak punya riwayat tersimpan. */
     riwayat: (id: string): Promise<RiwayatStatus[]> =>
       MODE_MOCK ? mockDelay([]) : apiFetch<RiwayatStatusResponse[]>(`/v1/harga/${encodeURIComponent(id)}/riwayat`).then((rows) => rows.map(toRiwayatStatus)),
+    /** Jejak asal satu entri: pencatat, cek otomatis, validasi, publikasi, versi, dan rujukan audit; mode mock menurunkannya dari entri mock. */
+    lineage: (id: string): Promise<LineageHarga> =>
+      MODE_MOCK ? mockDelay(() => mockLineageById(id)) : apiFetch<LineageResponse>(`/v1/harga/${encodeURIComponent(id)}/lineage`).then(toLineageHarga),
     ringkasan: (hari = 7): Promise<RingkasanHarga> =>
       MODE_MOCK ? mockDelay(() => ringkasanDariEntri(m.mockEntri())) : apiFetch<RingkasanHarga>(`/v1/harga/ringkasan?hari=${hari}`),
   },
@@ -402,6 +407,11 @@ export const api = {
             return toMockAuditDetail(row);
           })
         : apiFetch<AuditDetailResponse>(`/v1/audit/${encodeURIComponent(id)}`).then(toAuditDetail),
+    /** Status rantai hash audit: verifikasi terakhir, partisi bulanan aktif, dan arsip. */
+    integritas: (): Promise<AuditIntegritas> =>
+      MODE_MOCK
+        ? mockDelay(() => mockAuditIntegritas())
+        : apiFetch<AuditIntegritasResponse>("/v1/audit/integritas").then(toAuditIntegritas),
     /** Mengunduh CSV sesuai filter (dibuat server; mode mock membuatnya di klien). */
     ekspor: (filter: AuditFilter): Promise<HasilEkspor> =>
       MODE_MOCK

@@ -170,7 +170,7 @@ func TestGold_MembandingkanHargaLapanganDenganEksternal(t *testing.T) {
 	s := newSetup(t, "ingest_gold")
 	s.jalankan(t) // PIHPS: BRS-MED Kota Banda Aceh 2025-10-13 = 13.900
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+		INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 		VALUES ('EH-GOLD-1', 'BRS-MED', 'PSR-1171-01', 'KONSUMEN', 15000, 'kg', 'DIVALIDASI', '2025-10-13 05:00:00+00'),
 		       ('EH-GOLD-2', 'CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 70000, 'kg', 'DIVALIDASI', '2025-10-20 05:00:00+00')`).Error)
 

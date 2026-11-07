@@ -80,7 +80,7 @@ func TestPenggunaUUID_HapusAkunYangMasihBuktiAsalDataDijawab409LaluNonaktifkan(t
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	require.NoError(t, s.db.Exec(`INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, shelf_life_hari) VALUES ('CBM-KRT', 'Cabai', 'kg', 'cabai', 50000, 7)`).Error)
 	require.NoError(t, s.db.Exec(`INSERT INTO pasar (id, nama, kabupaten_kode, lat, lng) VALUES ('PSR-1', 'Pasar', '1171', 5.5, 95.3)`).Error)
-	require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, dicatat_pada, petugas_id)
+	require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, dicatat_pada, petugas_id)
 		VALUES ('EH-HAPUS', 'CBM-KRT', 'PSR-1', 'KONSUMEN', 52000, 'kg', now(), ?::uuid)`, userBiasa).Error)
 
 	w := s.panggil(t, http.MethodDelete, "/v1/users/"+userBiasa, nil, admin.access)

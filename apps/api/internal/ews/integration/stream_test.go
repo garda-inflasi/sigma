@@ -133,7 +133,7 @@ func TestStream_DeliversRuleEngineAlertsWithResumeAndNoDuplicates(t *testing.T) 
 	assert.Equal(t, "BARU", first.Status)
 
 	// Kondisi memburuk: alert yang sama naik tingkat dan dikirim lagi sebagai peristiwa baru.
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'H2'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'H2'`).Error)
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
 	f2, ok := live.next(5 * time.Second)
 	require.True(t, ok)

@@ -85,3 +85,9 @@ var komoditasAceh = []domain.Komoditas{
 	{Kode: "KTG", Nama: "Kentang", Satuan: "kg", Kategori: "Hortikultura", HargaAcuan: 16000, ShelfLifeHari: 75},
 	{Kode: "TMT", Nama: "Tomat", Satuan: "kg", Kategori: "Hortikultura", HargaAcuan: 12000, ShelfLifeHari: 14},
 }
+
+// satuanKomoditas adalah katalog satuan; setiap Satuan pada komoditasAceh wajib ada di sini (FK komoditas.satuan).
+var satuanKomoditas = []domain.Satuan{
+	{Kode: "kg", Nama: "Kilogram"},
+	{Kode: "liter", Nama: "Liter"},
+}

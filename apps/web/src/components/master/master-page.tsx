@@ -1,79 +1,62 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
-import { motion } from "motion/react";
-import { Archive, CheckCircle2, Download, FilePen } from "lucide-react";
-import Link from "next/link";
-import { useMemo } from "react";
-import type { BulkAction } from "@/components/data-table/bulk-action-bar";
-import { DataTable } from "@/components/data-table/data-table";
-import { KomoditasIcon } from "@/components/garda/komoditas-icon";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 import { PageHeader } from "@/components/garda/page-header";
-import { StatusBadge } from "@/components/garda/status-badge";
-import { exportCsv } from "@/lib/csv";
-import type { MasterBulkAksi } from "@/lib/api/master";
-import { ENTITAS, type Entitas } from "@/lib/data/master";
-import type { MasterKomoditasRow, MasterPasarRow, MasterWilayahRow } from "@/lib/data/types";
-import { useBulkMasterKomoditas, useMasterKomoditas, useMasterPasar, useMasterWilayah } from "@/lib/query/hooks";
-import { formatRupiah } from "@/lib/format";
-import { spring } from "@/lib/motion/presets";
-import { cn } from "@/lib/utils";
+import { SpringButton } from "@/components/garda/spring-button";
+import { useCan } from "@/lib/auth/session-context";
+import type { Entitas } from "@/lib/data/master";
+import { KecamatanPanel } from "./kecamatan-panel";
+import { KomoditasPanel } from "./komoditas-panel";
+import { MasterTabs } from "./master-tabs";
+import { PasarPanel } from "./pasar-panel";
+import { PedagangPanel } from "./pedagang-panel";
+import { SatuanPanel } from "./satuan-panel";
+import { UsulanDialog, type TargetUsulan } from "./usulan-dialog";
+import { WilayahPanel } from "./wilayah-panel";
 
-type Status = "AKTIF" | "MENUNGGU_PERSETUJUAN" | "DIARSIPKAN";
-interface Baris { id: string; kode: string; nama: string; info: string; info2: string; versi: number; status: Status }
-
-const barisKomoditas = (rows: MasterKomoditasRow[]): Baris[] =>
-  rows.map((k) => ({ id: k.id, kode: k.kode, nama: k.nama, info: `${k.kategori}, per ${k.satuan}${k.pilot ? ", pilot" : ""}`, info2: formatRupiah(k.hargaAcuan), versi: k.versi, status: k.status }));
-const barisWilayah = (rows: MasterWilayahRow[]): Baris[] =>
-  rows.map((k) => ({ id: k.id, kode: k.kode, nama: k.nama, info: `Ibu kota ${k.ibukota}`, info2: `${k.lat.toFixed(2)}, ${k.lng.toFixed(2)}`, versi: 1, status: "AKTIF" }));
-const barisPasar = (rows: MasterPasarRow[]): Baris[] =>
-  rows.map((p) => ({ id: p.id, kode: p.id, nama: p.nama, info: p.kabupaten, info2: `Geofence ${p.radiusMeter} m`, versi: 1, status: p.aktif ? "AKTIF" : "DIARSIPKAN" }));
-
-const STATUS: Record<Status, { tone: "normal" | "waspada" | "netral"; label: string }> = { AKTIF: { tone: "normal", label: "Aktif" }, MENUNGGU_PERSETUJUAN: { tone: "waspada", label: "Menunggu persetujuan" }, DIARSIPKAN: { tone: "netral", label: "Diarsipkan" } };
-
-/** Master data dengan versioning & persetujuan (pengaju ≠ penyetuju). */
+/**
+ * Master data dengan versioning dan persetujuan (pengaju ≠ penyetuju). Komoditas dan pasar berubah lewat usulan
+ * yang diputuskan di antrean persetujuan (`/master/perubahan`); wilayah, kecamatan, satuan, dan pedagang hanya
+ * dibaca. "Tambah" mengajukan data baru (izin master.ajukan).
+ */
 export function MasterPage({ entitas }: { entitas: Entitas }) {
-  const komoditas = useMasterKomoditas(entitas === "komoditas");
-  const wilayah = useMasterWilayah(entitas === "wilayah");
-  const pasar = useMasterPasar(entitas === "pasar");
-  const bulkKomoditas = useBulkMasterKomoditas();
-  const rows = useMemo<Baris[] | undefined>(
-    () => ({ komoditas: komoditas.data && barisKomoditas(komoditas.data), wilayah: wilayah.data && barisWilayah(wilayah.data), pasar: pasar.data && barisPasar(pasar.data) })[entitas],
-    [entitas, komoditas.data, wilayah.data, pasar.data],
-  );
-  const isLoading = { komoditas, wilayah, pasar }[entitas].isLoading;
-  const kolom = useMemo<ColumnDef<Baris>[]>(() => [
-    { accessorKey: "kode", header: "Kode", cell: ({ getValue }) => <span className="num text-xs">{getValue<string>()}</span> },
-    { accessorKey: "nama", header: "Nama", cell: ({ row: { original: r } }) => <span className="flex items-center gap-2 font-medium">{entitas === "komoditas" && <KomoditasIcon kode={r.kode} className="text-muted-foreground" />}{r.nama}</span> },
-    { accessorKey: "info", header: entitas === "komoditas" ? "Kategori" : entitas === "wilayah" ? "Ibu kota" : "Kabupaten/kota", cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span> },
-    { accessorKey: "info2", header: entitas === "komoditas" ? "Harga acuan" : entitas === "wilayah" ? "Koordinat" : "Geofence", cell: ({ getValue }) => <span className="num text-xs">{getValue<string>()}</span> },
-    { accessorKey: "versi", header: "Versi", cell: ({ getValue }) => <span className="num">v{getValue<number>()}</span> },
-    { accessorKey: "status", header: "Status", filterFn: "equals", cell: ({ getValue }) => { const s = STATUS[getValue<Status>()]; return <StatusBadge tone={s.tone}>{s.label}</StatusBadge>; } },
-  ], [entitas]);
-  // Hanya komoditas yang punya siklus status/versi di server; wilayah dan pasar tidak, jadi hanya bisa diekspor.
-  const kirim = (aksi: MasterBulkAksi) => (r: Baris[]) => bulkKomoditas.mutateAsync({ aksi, kode: r.map((x) => x.kode) }).catch(() => undefined);
-  const aksiStatus: BulkAction<Baris>[] = entitas !== "komoditas" ? [] : [
-    { id: "ajukan", label: "Ajukan perubahan", icon: FilePen, perm: "master.ajukan", enabled: (r) => r.every((x) => x.status === "AKTIF"), run: kirim("ajukan_perubahan") },
-    { id: "setujui", label: "Setujui", icon: CheckCircle2, perm: "master.setujui", tone: "data", enabled: (r) => r.every((x) => x.status === "MENUNGGU_PERSETUJUAN"), run: kirim("setujui") },
-    { id: "arsip", label: "Arsipkan", icon: Archive, perm: "master.ajukan", tone: "danger", enabled: (r) => r.every((x) => x.status !== "DIARSIPKAN"), confirm: { title: "Arsipkan data terpilih?", description: (n) => `${n} data tidak lagi muncul di form lapangan dan tidak dapat dipulihkan dari layar ini. Riwayat entri lama tetap tersimpan.`, actionLabel: "Arsipkan" }, run: kirim("arsipkan") },
-  ];
-  const actions: BulkAction<Baris>[] = [
-    ...aksiStatus,
-    { id: "ekspor", label: "Ekspor CSV", icon: Download, run: (r) => exportCsv(r, [{ header: "Kode", value: (x) => x.kode }, { header: "Nama", value: (x) => x.nama }, { header: "Keterangan", value: (x) => x.info }, { header: "Versi", value: (x) => x.versi }, { header: "Status", value: (x) => x.status }], `master-${entitas}`) },
-  ];
+  const bisaAjukan = useCan("master.ajukan");
+  const [tambah, setTambah] = useState<TargetUsulan | null>(null);
+  const bisaTambah =
+    bisaAjukan && (entitas === "komoditas" || entitas === "pasar");
+
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      <PageHeader title="Master data" description="Standar kode wilayah BPS dan komoditas nasional. Setiap perubahan berversi dan membutuhkan persetujuan." />
-      <nav className="glass-subtle inline-flex rounded-xl p-1" aria-label="Entitas master">
-        {(Object.keys(ENTITAS) as Entitas[]).map((e) => (
-          <Link key={e} href={`/master/${e}`} className={cn("relative h-9 rounded-lg px-4 text-sm font-medium leading-9", e === entitas ? "text-white" : "text-muted-foreground hover:text-foreground")}>
-            {e === entitas && <motion.span layoutId="master-tab" transition={spring.layout} className="absolute inset-0 rounded-lg bg-navy-800 dark:bg-navy-600" />}
-            <span className="relative">{ENTITAS[e]}</span>
-          </Link>
-        ))}
-      </nav>
-      <DataTable data={rows} isLoading={isLoading} columns={kolom} getRowId={(r) => r.id} entityLabel="data" bulkActions={actions} searchPlaceholder={`Cari ${ENTITAS[entitas].toLowerCase()}`}
-        facets={[{ columnId: "status", label: "Status", options: Object.entries(STATUS).map(([value, v]) => ({ value, label: v.label })) }]} />
+      <PageHeader
+        title="Master data"
+        description="Standar kode wilayah BPS dan komoditas nasional. Setiap perubahan berversi dan membutuhkan persetujuan."
+        actions={
+          bisaTambah && (
+            <SpringButton
+              variant="primary"
+              onClick={() =>
+                setTambah({ entitas: entitas as "komoditas" | "pasar" })
+              }
+            >
+              <Plus />{" "}
+              {entitas === "komoditas" ? "Tambah komoditas" : "Tambah pasar"}
+            </SpringButton>
+          )
+        }
+      />
+      <MasterTabs aktif={entitas} />
+      {entitas === "komoditas" && <KomoditasPanel />}
+      {entitas === "wilayah" && <WilayahPanel />}
+      {entitas === "pasar" && <PasarPanel />}
+      {entitas === "kecamatan" && <KecamatanPanel />}
+      {entitas === "satuan" && <SatuanPanel />}
+      {entitas === "pedagang" && <PedagangPanel />}
+      <UsulanDialog
+        target={tambah}
+        open={!!tambah}
+        onOpenChange={(o) => !o && setTambah(null)}
+      />
     </div>
   );
 }

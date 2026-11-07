@@ -1,5 +1,11 @@
 package domain
 
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
+
 // Provinsi memetakan tabel provinsi.
 type Provinsi struct {
 	Kode string `gorm:"column:kode;primaryKey"`
@@ -8,6 +14,16 @@ type Provinsi struct {
 
 func (Provinsi) TableName() string {
 	return "provinsi"
+}
+
+// Satuan memetakan tabel satuan (katalog satuan komoditas, PK kode).
+type Satuan struct {
+	Kode string `gorm:"column:kode;primaryKey"`
+	Nama string `gorm:"column:nama"`
+}
+
+func (Satuan) TableName() string {
+	return "satuan"
 }
 
 // Komoditas memetakan tabel komoditas.
@@ -42,15 +58,33 @@ func (Kabupaten) TableName() string {
 	return "kabupaten"
 }
 
-// Pasar adalah pasar pada master data, dengan geofence untuk entri lapangan.
+// Kecamatan memetakan tabel kecamatan (kode BPS 7 digit; diimpor dari BPS, lihat seeder/SUMBER.md).
+type Kecamatan struct {
+	Kode          string  `gorm:"column:kode;primaryKey"`
+	Nama          string  `gorm:"column:nama"`
+	KabupatenKode string  `gorm:"column:kabupaten_kode"`
+	KodeDagri     *string `gorm:"column:kode_dagri"`
+}
+
+func (Kecamatan) TableName() string {
+	return "kecamatan"
+}
+
+// Pasar adalah pasar pada master data, dengan geofence untuk entri lapangan. KecamatanKode opsional;
+// Versi naik setiap usulan perubahan pasar disetujui.
 type Pasar struct {
 	ID            string  `gorm:"column:id;primaryKey"`
 	Nama          string  `gorm:"column:nama"`
 	KabupatenKode string  `gorm:"column:kabupaten_kode"`
+	KecamatanKode *string `gorm:"column:kecamatan_kode"`
 	Lat           float64 `gorm:"column:lat"`
 	Lng           float64 `gorm:"column:lng"`
 	RadiusMeter   int     `gorm:"column:radius_meter;default:400"`
 	Aktif         bool    `gorm:"column:aktif;default:true"`
+	Versi         int     `gorm:"column:versi;default:1"`
+
+	// KecamatanNama bukan kolom: repositori mengisinya pada daftar pasar (lihat ListPasar).
+	KecamatanNama *string `gorm:"-"`
 }
 
 func (Pasar) TableName() string {
@@ -135,4 +169,39 @@ type HasilBulk struct {
 	Berhasil int
 	Gagal    int
 	Rincian  []RincianBulk
+}
+
+// Pedagang memetakan tabel pedagang: daftar pedagang per pasar. entri_harga.kode_pedagang tetap teks bebas dan
+// dicocokkan menurut (PasarID, Kode).
+type Pedagang struct {
+	ID         idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	PasarID    string    `gorm:"column:pasar_id"`
+	Kode       string    `gorm:"column:kode"`
+	Nama       *string   `gorm:"column:nama"`
+	Aktif      bool      `gorm:"column:aktif;default:true"`
+	DibuatPada time.Time `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (Pedagang) TableName() string {
+	return "pedagang"
+}
+
+// KomoditasVersi memetakan tabel komoditas_versi (append-only): salinan definisi komoditas setiap kali isinya
+// berubah, ditulis pemicu basis data. Aplikasi hanya membacanya.
+type KomoditasVersi struct {
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	KomoditasKode string    `gorm:"column:komoditas_kode"`
+	Versi         int       `gorm:"column:versi"`
+	Nama          string    `gorm:"column:nama"`
+	Kategori      string    `gorm:"column:kategori"`
+	Satuan        string    `gorm:"column:satuan"`
+	HargaAcuan    int       `gorm:"column:harga_acuan"`
+	ShelfLifeHari int       `gorm:"column:shelf_life_hari"`
+	Pilot         bool      `gorm:"column:pilot"`
+	BerlakuDari   time.Time `gorm:"column:berlaku_dari"`
+	PerubahanID   *idx.ID   `gorm:"column:perubahan_id"`
+}
+
+func (KomoditasVersi) TableName() string {
+	return "komoditas_versi"
 }

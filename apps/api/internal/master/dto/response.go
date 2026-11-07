@@ -24,14 +24,19 @@ type MasterWilayahRowResponse struct {
 	ProvinsiKode string  `json:"provinsi_kode"`
 }
 
+// MasterPasarRowResponse: kecamatan_kode dan kecamatan_nama null bila pasar belum dikaitkan dengan kecamatan;
+// versi naik setiap usulan perubahan pasar disetujui.
 type MasterPasarRowResponse struct {
 	ID            string  `json:"id"`
 	Nama          string  `json:"nama"`
 	KabupatenKode string  `json:"kabupaten_kode"`
+	KecamatanKode *string `json:"kecamatan_kode"`
+	KecamatanNama *string `json:"kecamatan_nama"`
 	Lat           float64 `json:"lat"`
 	Lng           float64 `json:"lng"`
 	RadiusMeter   int     `json:"radius_meter"`
 	Aktif         bool    `json:"aktif"`
+	Versi         int     `json:"versi"`
 }
 
 // RincianBulkResponse adalah hasil satu kode pada aksi massal.
@@ -86,7 +91,8 @@ func ToPasarRows(items []domain.Pasar) []MasterPasarRowResponse {
 	rows := make([]MasterPasarRowResponse, len(items))
 	for i, p := range items {
 		rows[i] = MasterPasarRowResponse{
-			ID: p.ID, Nama: p.Nama, KabupatenKode: p.KabupatenKode, Lat: p.Lat, Lng: p.Lng, RadiusMeter: p.RadiusMeter, Aktif: p.Aktif,
+			ID: p.ID, Nama: p.Nama, KabupatenKode: p.KabupatenKode, KecamatanKode: p.KecamatanKode, KecamatanNama: p.KecamatanNama,
+			Lat: p.Lat, Lng: p.Lng, RadiusMeter: p.RadiusMeter, Aktif: p.Aktif, Versi: p.Versi,
 		}
 	}
 	return rows

@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSession } from "@/lib/auth/session-context";
 import { NAV, activeNav } from "@/lib/nav";
 import { spring } from "@/lib/motion/presets";
-import { useRingkasanHarga } from "@/lib/query/hooks";
+import { useJumlahUsulanMenunggu, useRingkasanHarga } from "@/lib/query/hooks";
 import { can } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
 import { useEwsStore } from "@/lib/stores/ews-store";
@@ -26,7 +26,9 @@ function useBadges() {
   const unread = useEwsStore((s) => s.unread);
   const { data } = useRingkasanHarga(90, can(sesi, "harga.lihat"));
   const validasi = can(sesi, "harga.validasi") || can(sesi, "harga.publikasi") ? (data?.diajukan ?? 0) : 0;
-  return { ews: unread, validasi };
+  const bisaSetujuiMaster = can(sesi, "master.setujui");
+  const master = useJumlahUsulanMenunggu(bisaSetujuiMaster).data ?? 0;
+  return { ews: unread, validasi, master: bisaSetujuiMaster ? master : 0 };
 }
 
 export function NavList({ collapsed = false, layoutId = "sidebar-active", onNavigate }: { collapsed?: boolean; layoutId?: string; onNavigate?: () => void }) {

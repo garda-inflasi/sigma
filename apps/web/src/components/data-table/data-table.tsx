@@ -48,6 +48,8 @@ interface DataTableProps<T> {
   server?: ServerTable;
   /** Baris tambahan di bawah toolbar, mis. kontrol filter khusus halaman (mode server). */
   filterBar?: ReactNode;
+  /** Sembunyikan kotak cari (mis. daftar server yang tidak mendukung pencarian). */
+  tanpaCari?: boolean;
   className?: string;
 }
 
@@ -60,7 +62,7 @@ interface DataTableProps<T> {
  */
 export function DataTable<T>({
   data, columns, getRowId, entityLabel, bulkActions = [], isLoading, searchPlaceholder = "Cari…", facets = [],
-  initialFilters = [], initialSorting = [], toolbar, pageSize = 25, rowTone, onRowClick, empty, hiddenColumns = [], server, filterBar, className,
+  initialFilters = [], initialSorting = [], toolbar, pageSize = 25, rowTone, onRowClick, empty, hiddenColumns = [], server, filterBar, tanpaCari = false, className,
 }: DataTableProps<T>) {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => Object.fromEntries(hiddenColumns.map((c) => [c, false])));
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -200,7 +202,7 @@ export function DataTable<T>({
     <div className={cn("glass overflow-hidden rounded-xl", className)}>
       {/* Toolbar */}
       <div className="flex flex-col gap-3 border-b border-border/70 p-4 lg:flex-row lg:items-center">
-        <label className="relative flex-1 lg:max-w-sm">
+        <label className={cn("relative flex-1 lg:max-w-sm", tanpaCari && "hidden")}>
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={server ? draftCari : globalFilter}

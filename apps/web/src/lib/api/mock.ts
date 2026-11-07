@@ -16,7 +16,7 @@ import { COLD_STORAGE, USERS, kabupatenByKode, komoditasByKode, pasarById } from
 import { SIKLUS_TAHAP } from "@/lib/data/siklus";
 import { jarakMeter } from "@/lib/offline/acuan";
 import type {
-  AuditRow, EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional, MasterKomoditasRow, MasterPasarRow, MasterWilayahRow,
+  AuditRow, EntriHarga, EwsAlert, FasilitasColdStorage, KartuIntervensi, KpiOperasional,
   PenggunaRow, PolicyBrief, ProyeksiXai, RingkasanEksekutif, SelHeatmap, StatusEntri, StokColdStorage, SumberData,
   TugasLapangan,
 } from "@/lib/data/types";
@@ -392,25 +392,6 @@ export function mockTugas(): TugasLapangan[] {
     { id: "879", kode: "TGS-879", judul: "Survei harga konsumen sore", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["IKN-TGK", "TLR", "MYK", "GLA"], tenggat: jam(-3), status: "TERLAMBAT", target: 4, terisi: 1, tipe: "KONSUMEN" },
     { id: "875", kode: "TGS-875", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "BWM", "BRS-MED", "TLR"], tenggat: jam(-22), status: "SELESAI", target: 4, terisi: 4, tipe: "KONSUMEN" },
   ];
-}
-
-export function mockMasterKomoditas(): MasterKomoditasRow[] {
-  return KOMODITAS.map((k, i) => ({
-    id: k.kode, kode: k.kode, nama: k.nama, kategori: k.kategori, satuan: k.satuan, hargaAcuan: k.hargaAcuan, pilot: k.pilot,
-    versi: 1 + (i % 3), status: i === 3 ? "MENUNGGU_PERSETUJUAN" : "AKTIF",
-  }));
-}
-
-export function mockMasterWilayah(): MasterWilayahRow[] {
-  return KABUPATEN.map((k) => ({
-    id: k.kode, kode: k.kode, nama: `${k.jenis === "Kota" ? "Kota" : "Kab."} ${k.nama}`, ibukota: k.ibukota, lat: k.lat, lng: k.lng,
-  }));
-}
-
-export function mockMasterPasar(): MasterPasarRow[] {
-  return PASAR.map((p) => ({
-    id: p.id, nama: p.nama, kabupaten: kabupatenByKode[p.kabupatenKode].nama, radiusMeter: p.radiusMeter, aktif: true,
-  }));
 }
 
 /* ── Eksekutif & XAI ─────────────────────────────────────── */

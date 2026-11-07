@@ -1,6 +1,8 @@
 import type { AuditFilter } from "@/lib/api/audit";
 import type { HargaParams } from "@/lib/api/harga";
 import type { ColdStorageParams } from "@/lib/api/cold-storage-query";
+import type { KecamatanParams, PedagangParams } from "@/lib/api/master";
+import type { PerubahanParams } from "@/lib/api/master-perubahan";
 
 /** Pabrik query key — hierarkis agar invalidasi dapat dilakukan per domain. */
 export const qk = {
@@ -80,8 +82,21 @@ export const qk = {
   brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
   tugas: { saya: () => ["tugas", "saya"] as const, detail: (id: string) => ["tugas", "detail", id] as const },
   master: {
+    /** Akar seluruh query master; invalidasinya menyegarkan daftar, detail, dan antrean usulan sekaligus. */
+    all: () => ["master"] as const,
     komoditas: () => ["master", "komoditas"] as const,
     wilayah: () => ["master", "wilayah"] as const,
     pasar: () => ["master", "pasar"] as const,
+    komoditasDetail: (kode: string) => ["master", "komoditas", "detail", kode] as const,
+    wilayahDetail: (kode: string) => ["master", "wilayah", "detail", kode] as const,
+    pasarDetail: (kode: string) => ["master", "pasar", "detail", kode] as const,
+    kecamatan: (params: KecamatanParams) => ["master", "kecamatan", "halaman", params] as const,
+    kecamatanKabupaten: (kabupaten: string) => ["master", "kecamatan", "kabupaten", kabupaten] as const,
+    kecamatanDetail: (kode: string) => ["master", "kecamatan", "detail", kode] as const,
+    satuan: () => ["master", "satuan"] as const,
+    pedagang: (params: PedagangParams) => ["master", "pedagang", params] as const,
+    perubahan: (params: PerubahanParams) => ["master", "perubahan", "daftar", params] as const,
+    perubahanDetail: (id: string) => ["master", "perubahan", "detail", id] as const,
+    perubahanMenunggu: () => ["master", "perubahan", "menunggu"] as const,
   },
 };

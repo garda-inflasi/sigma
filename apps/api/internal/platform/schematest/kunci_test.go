@@ -51,6 +51,8 @@ var kategoriPK = map[string]KategoriPK{
 	"entri_harga":            PKBigint,
 	"riwayat_status_entri":   PKBigint,
 	"entri_harga_versi":      PKBigint,
+	"komoditas_versi":        PKBigint,
+	"pedagang":               PKBigint,
 	"tugas_lapangan":         PKBigint,
 	"batas_harga":            PKBigint,
 	"perubahan_master":       PKBigint,
@@ -104,6 +106,8 @@ var kategoriPK = map[string]KategoriPK{
 	"kabupaten":        PKKode,
 	"komoditas":        PKKode,
 	"pasar":            PKKode,
+	"kecamatan":        PKKode, // kode BPS 7 digit (000120)
+	"satuan":           PKKode, // katalog satuan komoditas (000121)
 	"wilayah_geometri": PKKode, // 1:1 dengan kabupaten: PK sekaligus FK ke kabupaten.kode
 	"permissions":      PKKode,
 	"roles":            PKKode,

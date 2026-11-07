@@ -41,7 +41,11 @@ func (r *Repository) ListPasar(ctx context.Context, kabupatenKode string, q doma
 	}
 	var items []domain.Pasar
 	total, err := r.list(query, q, "id", []string{"id", "nama"}, &items)
-	return items, total, err
+	if err != nil {
+		return items, total, err
+	}
+	// Nama kecamatan bukan kolom pasar: diisi dengan satu kueri untuk halaman ini.
+	return items, total, isiNamaKecamatan(r.db.WithContext(ctx), items)
 }
 
 // list menerapkan pencarian dan paginasi pada query dasar, lalu mengisi dest.

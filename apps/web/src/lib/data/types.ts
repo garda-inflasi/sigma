@@ -485,6 +485,7 @@ export interface MasterKomoditasRow {
   satuan: string;
   hargaAcuan: number;
   pilot: boolean;
+  shelfLifeHari: number;
   versi: number;
   status: "AKTIF" | "MENUNGGU_PERSETUJUAN" | "DIARSIPKAN";
 }
@@ -504,8 +505,14 @@ export interface MasterPasarRow {
   nama: string;
   /** Label kabupaten/kota pemilik pasar. */
   kabupaten: string;
+  kabupatenKode: string;
+  lat: number;
+  lng: number;
   radiusMeter: number;
   aktif: boolean;
+  kecamatanKode: string | null;
+  kecamatanNama: string | null;
+  versi: number;
 }
 
 /** Asal angka dashboard eksekutif; "DEMO" = data contoh, bukan angka resmi. */

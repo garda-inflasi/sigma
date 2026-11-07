@@ -27,7 +27,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 1   | Autentikasi, MFA, sesi                    | `/masuk`, `/lupa-password` | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [01-auth.md](01-auth.md)                                   |
 | 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
 | 3   | Audit trail                               | `/audit`                   | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [03-audit.md](03-audit.md)                                 |
-| 4   | Master data                               | `/master/[entitas]`        | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
+| 4   | Master data                               | `/master/[entitas]`        | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
 | 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
 | 6   | Validasi harga                            | `/data/harga`              | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [06-harga-validasi.md](06-harga-validasi.md)               |
 | 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
@@ -91,14 +91,25 @@ komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemis
 - **Hak minimum.** Peran `garda_aplikasi` dan login `DB_APP_USER` tanpa DDL dan tanpa UPDATE/DELETE jejak audit.
 - **Lineage harga.** `entri_harga_versi`, `GET /v1/harga/:id/versi` dan `/lineage`, serta panel "Lineage data".
 
+**Master data (7 Nov 2026, [04](04-master-data.md)):** migrasi `000120`–`000121`.
+
+- **Antrean usulan.** Usulan perubahan komoditas dan pasar (TAMBAH/UBAH) lewat `/v1/master/perubahan`. Aturannya:
+  pemisahan tugas, satu usulan menunggu per data, deteksi usulan kedaluwarsa, dan audit setiap langkah. Aksi massal
+  komoditas ikut antrean.
+- **Kecamatan BPS.** 290 kecamatan diimpor lewat skrip dari API BPS dan ditautkan ke pasar.
+- **Pelengkap master.** `satuan` (FK komoditas), `pedagang` per pasar, dan riwayat versi komoditas untuk "definisi
+  yang berlaku saat itu".
+- **API dan web.** Detail/hapus per kode dengan 409 untuk data yang masih dirujuk. Di web: dialog usulan, antrean
+  `/master/perubahan`, serta tab kecamatan, satuan, dan pedagang.
+
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 
 1. **Belum diuji terhadap layanan nyata** (tidak ada akses/kunci saat dikerjakan): konektor PIHPS, BMKG, dan BPS
    (parser dikunci fixture; id wilayah PIHPS dan id variabel BPS wajib diisi operator), panggilan Claude untuk
    brief (tanpa `ANTHROPIC_API_KEY` brief memakai templat), SMTP sungguhan (di demo email ditangkap Mailpit) dan
    Web Push, serta deploy ujung ke ujung (remote-deploy, rollback, sertifikat ACME).
-2. **Belum dikerjakan (di luar daftar Fase F):** row scope dan pemisahan tugas per peran (02-B), antrean dan riwayat persetujuan perubahan isi master data (04-B; aksi status komoditas
-   sudah tersimpan lewat API, wilayah dan pasar belum punya siklus status), foto entri lapangan (07-C), ensemble dan fitur eksogen model prediksi serta retraining terjadwal (11), batas wilayah resmi
+2. **Belum dikerjakan (di luar daftar Fase F):** row scope dan pemisahan tugas per peran (02-B), siklus persetujuan untuk wilayah (kabupaten tetap referensi BPS
+   tanpa usulan), foto entri lapangan (07-C), ensemble dan fitur eksogen model prediksi serta retraining terjadwal (11), batas wilayah resmi
    dan matriks jarak jalan (12), MQTT cold storage (13), WhatsApp, dan konektor Bapanas/DJPb/OpenWeather.
 3. **Data demo atau perkiraan** (berlabel di UI): geometri dan koordinat wilayah, target KPI dan target inflasi awal,
    skor ruang fiskal heuristik, koefisien simulasi skenario prediksi. Perlu konfirmasi pemilik program.

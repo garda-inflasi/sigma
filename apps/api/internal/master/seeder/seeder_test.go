@@ -154,13 +154,18 @@ func TestSeedReference_IsIdempotentAndKeepsOperationalColumns(t *testing.T) {
 
 	first, err := SeedReference(t.Context(), db)
 	require.NoError(t, err)
-	assert.Equal(t, ReferenceSummary{Provinsi: 1, Kabupaten: 23, Pasar: 24, Komoditas: 14}, first)
+	kecamatan, err := Kecamatan()
+	require.NoError(t, err)
+	assert.Equal(t, ReferenceSummary{Satuan: 2, Provinsi: 1, Kabupaten: 23, Kecamatan: len(kecamatan), Pasar: 24, Komoditas: 14}, first)
 
 	afterFirst := rowCounts(t, db)
 
-	// Perubahan operasional (persetujuan, nonaktif) dan koreksi referensi.
+	// Perubahan operasional (persetujuan, nonaktif), perubahan yang sudah disetujui (versi > 1), dan baris versi
+	// awal yang menyimpang dari seed.
 	require.NoError(t, db.Exec(`UPDATE komoditas SET status = 'MENUNGGU_PERSETUJUAN', versi = 3, harga_acuan = 1 WHERE kode = 'BRS-MED'`).Error)
+	require.NoError(t, db.Exec(`UPDATE komoditas SET harga_acuan = 2 WHERE kode = 'BRS-PRM'`).Error)
 	require.NoError(t, db.Exec(`UPDATE pasar SET aktif = false WHERE id = 'PSR-1171-01'`).Error)
+	require.NoError(t, db.Exec(`UPDATE pasar SET nama = 'Pasar disetujui', versi = 2 WHERE id = 'PSR-1171-02'`).Error)
 
 	_, err = SeedReference(t.Context(), db)
 	require.NoError(t, err)
@@ -174,7 +179,13 @@ func TestSeedReference_IsIdempotentAndKeepsOperationalColumns(t *testing.T) {
 	require.NoError(t, db.Raw(`SELECT status::text AS status, versi, harga_acuan FROM komoditas WHERE kode = 'BRS-MED'`).Scan(&row).Error)
 	assert.Equal(t, "MENUNGGU_PERSETUJUAN", row.Status, "status operasional tidak ditimpa")
 	assert.Equal(t, 3, row.Versi)
-	assert.Equal(t, 13900, row.HargaAcuan, "kolom referensi dikembalikan")
+	assert.Equal(t, 1, row.HargaAcuan, "isi yang sudah disetujui (versi > 1) tidak ditimpa seed")
+	var hargaPrm int
+	require.NoError(t, db.Raw(`SELECT harga_acuan FROM komoditas WHERE kode = 'BRS-PRM'`).Scan(&hargaPrm).Error)
+	assert.Equal(t, 15800, hargaPrm, "baris versi awal dikembalikan ke seed")
+	var namaPasar string
+	require.NoError(t, db.Raw(`SELECT nama FROM pasar WHERE id = 'PSR-1171-02'`).Scan(&namaPasar).Error)
+	assert.Equal(t, "Pasar disetujui", namaPasar, "pasar yang sudah disetujui (versi > 1) tidak ditimpa seed")
 	var aktif bool
 	require.NoError(t, db.Raw(`SELECT aktif FROM pasar WHERE id = 'PSR-1171-01'`).Scan(&aktif).Error)
 	assert.False(t, aktif, "status aktif pasar tidak ditimpa")
@@ -183,7 +194,7 @@ func TestSeedReference_IsIdempotentAndKeepsOperationalColumns(t *testing.T) {
 func rowCounts(t *testing.T, db *gorm.DB) map[string]int64 {
 	t.Helper()
 	counts := map[string]int64{}
-	for _, table := range []string{"provinsi", "kabupaten", "pasar", "komoditas"} {
+	for _, table := range []string{"satuan", "provinsi", "kabupaten", "kecamatan", "pasar", "komoditas"} {
 		counts[table] = rowCount(t, db, table)
 	}
 	return counts
@@ -244,4 +255,15 @@ func TestSeedReference_FKMasterRestrictDanSeedTidakMenghapus(t *testing.T) {
 	tolak(`DELETE FROM kabupaten WHERE kode = '1199'`)
 	require.NoError(t, db.Exec(`DELETE FROM pasar WHERE id = 'PSR-1199-01'`).Error)
 	require.NoError(t, db.Exec(`DELETE FROM kabupaten WHERE kode = '1199'`).Error)
+}
+
+// Setiap satuan komoditas seed wajib ada di katalog satuan (FK komoditas.satuan, migrasi 000121).
+func TestSatuanSeedMencakupSemuaKomoditas(t *testing.T) {
+	katalog := map[string]bool{}
+	for _, s := range Satuan() {
+		katalog[s.Kode] = true
+	}
+	for _, k := range Komoditas() {
+		assert.True(t, katalog[k.Satuan], "satuan %q milik %s belum ada di katalog", k.Satuan, k.Kode)
+	}
 }

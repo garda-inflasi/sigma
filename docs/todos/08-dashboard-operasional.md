@@ -10,6 +10,13 @@
 - **API Go (`analytics`, MongoDB):** `/v1/operations/*`, `/v1/regions/status-map`, `/v1/field-activities/progress`. **Tidak dipanggil web.**
 - **Kritis:** repository dashboard ([repo.go](../../apps/api/internal/dashboard/repository/postgres/repo.go)) memakai SQL mentah pada tabel `kpi_operasional` dan `heatmap_sel` yang **tidak ada di migrasi**. Entity siklus memakai tabel `siklus_ekonomi` dan tipe `siklus_ekonomi`; migrasi hanya punya enum `siklus` dan tidak punya tabelnya. Jadi `/v1/dashboard/operasional/*` dan `/v1/siklus/aktif` (warna ambient seluruh UI) error pada DB hasil migrasi.
 
+### Kunci primer (000115, ✅)
+
+- `siklus_ekonomi.id` kini **BIGINT identity** (dulu VARCHAR `SE-11-DEMO`; ID berurut menurut `dibuat_pada`); ID lama di `kode` (UNIQUE) menjadi kunci idempotensi seeder demo (`ON CONFLICT (kode)`). `wilayah_kode` → `provinsi` **RESTRICT** (indeks `idx_siklus_ekonomi_wilayah`); satu siklus aktif per wilayah tetap dijaga indeks unik parsial `uq_siklus_ekonomi_aktif`. Tidak ada rute `:id`: `GET /v1/siklus/aktif?wilayah_kode=` memakai kode wilayah.
+- `target_kpi.id` kini **BIGINT identity** dengan `UNIQUE (indikator, periode_mulai)` (kunci alami lama) sebagai target upsert seeder `reference`.
+- Agregat (`agregat_harga_harian`, `mv_heatmap_harga`, `mv_kpi_operasional`) adalah materialized view dengan kunci alaminya sendiri; tidak ada PK surrogate. `gold_harga_harian` dan `cuaca_harian` ([05](05-sumber-data.md)) dibaca tanpa bergantung pada PK.
+- Tugas yang belum selesai di bawah (filter wilayah/komoditas/periode, row scope) memakai kode wilayah/komoditas sebagai parameter kueri (`kabupaten_kode`, `komoditas_kode`), bukan ID surrogate.
+
 ---
 
 ## 08-A — KPI, heatmap, dan siklus dari data nyata *(Fase P, urutan #8)*

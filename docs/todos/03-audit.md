@@ -9,6 +9,15 @@
 - **API Go:** `GET /v1/audit` (izin `audit.lihat`). Paket `internal/audit` menyediakan `Writer` (disuntikkan ke auth dan cold-storage) dan daftar dengan filter server + cursor.
 - **Skema:** `audit_log` (000002): `id`, `waktu`, `aktor_id` FK, `aksi`, `entitas`, `entitas_id`, `hasil`, `ip`, `metadata` JSONB. Struct `AuditLog` kini satu (`internal/audit/domain`); seeder `audit.demo` mengisi contoh.
 
+### Kunci primer (000115, ✅)
+
+- `audit_log.id` kini **BIGINT `GENERATED ALWAYS AS IDENTITY`** (dulu VARCHAR berisi UUID teks buatan aplikasi; `uuid.NewString()` di `usecase.buildRow` dihapus, basis data yang memberi ID). ID lama disimpan di `kode varchar(64)` (UNIQUE, NULL untuk baris baru): alias rute dan kunci idempotensi seeder demo (`demo-audit-NNNN`, `ON CONFLICT (kode) DO NOTHING`). ID baru berurut menurut `waktu`, lalu ID lama.
+- **Rute `GET /v1/audit/:id`** memakai `idx.ParamIDAtauKode` (maks 64 karakter): ID BIGINT atau kode lama; angka murni selalu dibaca sebagai ID; ID salah bentuk (`0`, `-5`, `007`, kode > 64 karakter) dijawab **404**. JSON `id` berupa string desimal (`"4301"`) dan baris lama memuat `kode`.
+- **Paginasi dan ekspor** memakai cursor `(waktu, id)` dengan `id` numerik (urutan `waktu DESC, id DESC`, indeks `idx_audit_log_waktu_id`), jadi urutan antar-baris berwaktu sama mengikuti urutan penyisipan, bukan leksikografis. Cursor lama (berisi UUID) dijawab 400; klien memulai dari halaman pertama. CSV tidak berubah.
+- `entitas_id` tetap **rujukan polimorfik berupa teks, bukan FK**: berisi ID baru entitasnya (UUID atau angka). Baris lama dipetakan oleh migrasi per entitas (000110 `pengguna`, 000115 `sumber_data`, `langganan_push`, `preferensi_notifikasi`); nilai yang bukan ID (`ekspor`, `3 sumber`, rentang periode KPI) tidak disentuh.
+- `aktor_id` uuid → `pengguna` **SET NULL** (000110). Indeks: **BRIN `waktu`**, `(waktu DESC, id DESC)` untuk cursor, `(entitas, entitas_id, waktu DESC)` untuk riwayat per entitas, `(aktor_id, waktu DESC)`, `(aksi, waktu DESC)`; `(entitas, entitas_id)` dan `(waktu)` dibuang karena redundan.
+- Pemicu `trg_audit_log_append_only` dan `trg_audit_log_no_truncate` dimatikan hanya selama konversi (satu transaksi, Up dan Down) lalu dinyalakan lagi. Tidak ada rantai hash atau kolom turunan dari `id`, jadi konversi tidak merusak verifikasi apa pun; hash berantai (03-C) masih belum ada.
+
 ---
 
 ## 03-A — Satu penulis audit + jejak yang tak bisa diubah _(Fase P, urutan #3)_
@@ -53,8 +62,8 @@
 ## 03-C — Integritas dan retensi _(Fase F, kebutuhan kepatuhan)_
 
 1. **MIG**
-   - [ ] Hash berantai (`hash_sebelumnya`, `hash`) dan job verifikasi berkala.
-   - [ ] Partisi bulanan (`PARTITION BY RANGE (waktu)`) + job pembuat partisi.
+   - [ ] Hash berantai (`hash_sebelumnya`, `hash`) dan job verifikasi berkala. Rantai dihitung atas `id` BIGINT berurut (bukan `kode`), jadi urutan identity adalah urutan rantai; migrasi konversi lebih dulu menetapkan ID menurut `waktu`.
+   - [ ] Partisi bulanan (`PARTITION BY RANGE (waktu)`) + job pembuat partisi. PK tabel berpartisi harus memuat kolom partisi (`PRIMARY KEY (waktu, id)`), `uq_audit_log_kode` ikut menjadi `UNIQUE (waktu, kode)`, dan rute `:id` perlu `waktu` atau pencarian lintas partisi; putuskan sebelum mulai. BRIN `waktu` tetap dipakai per partisi.
    - [ ] `REVOKE UPDATE, DELETE` dari pengguna DB aplikasi (lihat [19 §7](19-migration-seeder.md)).
 2. **API/Ops**
    - [ ] Retensi: lepas partisi lama ke penyimpanan dingin sesuai kebijakan masa simpan (PDP).

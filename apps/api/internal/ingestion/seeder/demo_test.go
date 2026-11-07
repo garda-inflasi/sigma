@@ -49,7 +49,8 @@ func TestBuatDemo_DeterministikDanBerbentukBenar(t *testing.T) {
 	anomali := 0
 	for _, c := range cuaca {
 		assert.Equal(t, c.Anomali, c.CurahHujanMm >= 50, "anomali = hujan lebat, sama dengan konektor BMKG")
-		assert.Equal(t, domain.IDCuaca(c.KabupatenKode, c.Tanggal, c.Sumber), c.ID)
+		assert.Zero(t, c.ID, "ID BIGINT dibuat basis data; kunci alaminya (kabupaten, tanggal, sumber)")
+		assert.Nil(t, c.Kode, "baris baru tidak punya kode (ID lama)")
 		if c.Anomali {
 			anomali++
 		}
@@ -89,7 +90,7 @@ func TestSeedDemo_TidakMenimpaHasilIngestionNyata(t *testing.T) {
 	// Satu baris harga dan satu baris cuaca digantikan hasil run nyata (eksekusi bukan DEMO).
 	var nyata int64
 	require.NoError(t, db.Raw(`
-		INSERT INTO eksekusi_sumber (sumber_id, pemicu, status, mulai, selesai) VALUES ('SRC-BI', 'CLI', 'SUKSES', now(), now()) RETURNING id`).Scan(&nyata).Error)
+		INSERT INTO eksekusi_sumber (sumber_id, pemicu, status, mulai, selesai) VALUES (?, 'CLI', 'SUKSES', now(), now()) RETURNING id`, sumberHarga).Scan(&nyata).Error)
 	require.NoError(t, db.Exec(`UPDATE harga_eksternal SET harga = 12345, eksekusi_id = ? WHERE (komoditas_kode, kabupaten_kode, tanggal) = (SELECT komoditas_kode, kabupaten_kode, MIN(tanggal) FROM harga_eksternal WHERE komoditas_kode = 'BRS-MED' AND kabupaten_kode = '1171' GROUP BY 1, 2)`, nyata).Error)
 	require.NoError(t, db.Exec(`UPDATE cuaca_harian SET curah_hujan_mm = 1.5, eksekusi_id = ? WHERE kabupaten_kode = '1171' AND tanggal = (SELECT MIN(tanggal) FROM cuaca_harian)`, nyata).Error)
 
@@ -110,11 +111,30 @@ func TestSeedDemo_EksekusiBPSJujurGagalKarenaBelumDikonfigurasi(t *testing.T) {
 	require.NoError(t, err)
 
 	var gagal []domain.EksekusiSumber
-	require.NoError(t, db.Where("sumber_id = 'SRC-BPS'").Find(&gagal).Error)
+	require.NoError(t, db.Where("sumber_id = ?", sumberBPS).Find(&gagal).Error)
 	require.NotEmpty(t, gagal)
 	for _, e := range gagal {
 		assert.Equal(t, domain.StatusGagal, e.Status, "tidak ada klaim ingestion BPS sukses yang belum pernah terjadi")
 		require.NotNil(t, e.Galat)
 		assert.Contains(t, *e.Galat, "belum lengkap")
 	}
+}
+
+// Basis data hasil migrasi 000115 sudah berisi baris cuaca dengan kode (ID lama CUA-...) dan baris demo lama:
+// seeder mengenalinya lewat kunci alami dan tidak menggandakannya.
+func TestSeedDemo_TidakMenggandakanBarisHasilMigrasi(t *testing.T) {
+	db := newDemoDB(t, "ingestion_demo_migrasi")
+	_, err := SeedDemo(t.Context(), db, waktuTetap)
+	require.NoError(t, err)
+	cuaca := hitung(t, db, "cuaca_harian")
+	// Meniru hasil migrasi: baris yang ada kini berkode ID lama.
+	require.NoError(t, db.Exec(`UPDATE cuaca_harian SET kode = 'CUA-' || kabupaten_kode || '-' || to_char(tanggal, 'YYYYMMDD') || '-' || sumber`).Error)
+
+	_, err = SeedDemo(t.Context(), db, waktuTetap)
+	require.NoError(t, err)
+
+	assert.Equal(t, cuaca, hitung(t, db, "cuaca_harian"))
+	var tanpaKode int64
+	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM cuaca_harian WHERE kode IS NULL`).Scan(&tanpaKode).Error)
+	assert.Zero(t, tanpaKode, "baris hasil migrasi tetap memegang kodenya")
 }

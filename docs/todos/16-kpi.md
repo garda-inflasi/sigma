@@ -8,6 +8,12 @@
 - **UI:** [kpi-page.tsx](../../apps/web/src/components/kpi/kpi-page.tsx) di `/kpi` (izin `kpi.lihat`), 4 kelompok KPI sesuai blueprint. Sepenuhnya statis; tidak ada hook query.
 - **Tidak ada:** modul Go, tabel, route. Jangan tertukar dengan `GET /v1/dashboard/operasional/kpi` (kartu angka di dashboard; [08-A](08-dashboard-operasional.md)).
 
+### Kunci primer (000115, ✅)
+
+- `kpi_definisi` tetap **KODE** (`kode` varchar PK; rute `GET /v1/kpi/:kode/riwayat` memakai kode ini, bukan ID). `kpi_nilai` dan `kpi_target` tetap **BIGINT** (BIGSERIAL; ID tidak keluar di respons API).
+- FK: `kpi_kode` → `kpi_definisi` **CASCADE** (tidak berubah); `wilayah_kode` → `kabupaten` **RESTRICT** (dulu tanpa aturan, kini eksplisit) dengan indeks baru `idx_kpi_nilai_wilayah_kode` dan `idx_kpi_target_wilayah_kode`. `wilayah_kode` NULL berarti seluruh provinsi (nilai) atau semua wilayah (target).
+- Keunikan memakai indeks unik ber-ekspresi `COALESCE(wilayah_kode, '')` (`uq_kpi_nilai`, `uq_kpi_target`) agar NULL ikut unik; seeder `reference` memakai `ON CONFLICT` pada ekspresi yang sama. Audit `HITUNG_KPI`/`EKSPOR_DATA` menulis rentang periode atau `laporan` di `entitas_id` (bukan ID baris), sehingga tidak ada rujukan lunak yang perlu dipetakan.
+
 ---
 
 ## 16-A — KPI dari data yang sudah ada *(Fase P, urutan #16)*

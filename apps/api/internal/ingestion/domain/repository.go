@@ -6,6 +6,7 @@ import (
 	"time"
 
 	sumber "github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 var (
@@ -21,8 +22,8 @@ var (
 
 // SampelMentah adalah cuplikan satu payload bronze (payload utuh bisa ratusan KB).
 type SampelMentah struct {
-	ID              int64     `gorm:"column:id"`
-	EksekusiID      int64     `gorm:"column:eksekusi_id"`
+	ID              idx.ID    `gorm:"column:id"`
+	EksekusiID      idx.ID    `gorm:"column:eksekusi_id"`
 	KunciPermintaan string    `gorm:"column:kunci_permintaan"`
 	DiambilPada     time.Time `gorm:"column:diambil_pada"`
 	Ukuran          int       `gorm:"column:ukuran"`
@@ -48,8 +49,9 @@ const BatasSelisihPct = 10.0
 
 // Repository adalah akses data engine ingestion.
 type Repository interface {
-	// Sumber membaca satu baris katalog; ErrSumberTidakAda bila tidak ada.
-	Sumber(ctx context.Context, id string) (*sumber.SumberData, error)
+	// Sumber membaca satu baris katalog menurut UUID atau kode (alias, mis. SRC-BI dari CLI);
+	// ErrSumberTidakAda bila tidak ada.
+	Sumber(ctx context.Context, ref string) (*sumber.SumberData, error)
 	// SumberAktif mengembalikan sumber yang tidak dijeda (bahan penjadwal).
 	SumberAktif(ctx context.Context) ([]sumber.SumberData, error)
 	// Pemetaan memuat pemetaan alias sebuah sumber beserta satuan komoditas master.
@@ -61,7 +63,7 @@ type Repository interface {
 	MulaiEksekusi(ctx context.Context, sumberID, pemicu string, aktorID *string, macetSebelum time.Time) (*EksekusiSumber, error)
 	// SimpanMentah menyimpan payload bronze; payload identik (sumber, checksum)
 	// tidak menggandakan baris dan mengembalikan id baris yang sudah ada.
-	SimpanMentah(ctx context.Context, m DataMentah) (id int64, err error)
+	SimpanMentah(ctx context.Context, m DataMentah) (id idx.ID, err error)
 	// SimpanSilver meng-upsert baris hasil normalisasi (idempoten menurut kunci alami).
 	SimpanSilver(ctx context.Context, h Hasil) error
 	// SelesaikanEksekusi mengisi hasil akhir dan menyegarkan statistik sumber
@@ -70,11 +72,11 @@ type Repository interface {
 
 	// Pipeline menghitung isi lapisan dan mutu data.
 	Pipeline(ctx context.Context) (Pipeline, error)
-	// TerakhirSukses mengembalikan waktu selesai eksekusi SUKSES/SEBAGIAN terakhir per sumber.
+	// TerakhirSukses mengembalikan waktu selesai eksekusi SUKSES/SEBAGIAN terakhir per sumber (kunci: ID UUID).
 	TerakhirSukses(ctx context.Context) (map[string]time.Time, error)
 
-	// Eksekusi membaca riwayat eksekusi sebuah sumber, terbaru lebih dulu.
+	// Eksekusi membaca riwayat eksekusi sebuah sumber (ID UUID), terbaru lebih dulu.
 	Eksekusi(ctx context.Context, sumberID string, limit int) ([]EksekusiSumber, error)
-	// SampelMentah membaca cuplikan payload bronze terbaru sebuah sumber.
+	// SampelMentah membaca cuplikan payload bronze terbaru sebuah sumber (ID UUID).
 	SampelMentah(ctx context.Context, sumberID string, limit int) ([]SampelMentah, error)
 }

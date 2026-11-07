@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -183,8 +182,8 @@ func TestEngine_StockDeclineAndRainfallRules(t *testing.T) {
 	// Stok 10 ton -> 4 ton dalam 5 hari = turun 60% (>= kritis 55).
 
 	for d := range 5 {
-		require.NoError(t, s.db.Exec(`INSERT INTO cuaca_harian (id, kabupaten_kode, tanggal, curah_hujan_mm, suhu_c, kelembapan, anomali, sumber)
-			VALUES (?, '1106', ?, 30, 22, 90, false, 'BMKG')`, fmt.Sprintf("C%d", d), now.AddDate(0, 0, -d).Format(time.DateOnly)).Error)
+		require.NoError(t, s.db.Exec(`INSERT INTO cuaca_harian (kabupaten_kode, tanggal, curah_hujan_mm, suhu_c, kelembapan, anomali, sumber)
+			VALUES ('1106', ?, 30, 22, 90, false, 'BMKG')`, now.AddDate(0, 0, -d).Format(time.DateOnly)).Error)
 	}
 	// 5 x 30 mm = 150 mm dalam 10 hari: antara siaga 140 dan kritis 200.
 

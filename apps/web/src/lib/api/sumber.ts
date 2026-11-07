@@ -6,7 +6,10 @@
 import type { EksekusiSumber, PipelineSumber, SampelSumber, SumberData } from "@/lib/data/types";
 
 export interface SumberDataResponse {
+  /** UUID sumber. */
   id: string;
+  /** Kode tampilan (ID lama, mis. SRC-BI), unik. */
+  kode: string;
   nama: string;
   penyedia: string;
   jenis: string;
@@ -23,7 +26,8 @@ export interface SumberDataResponse {
 }
 
 export interface EksekusiResponse {
-  id: number;
+  /** ID BIGINT ditulis sebagai string desimal. */
+  id: string;
   pemicu: EksekusiSumber["pemicu"];
   status: EksekusiSumber["status"];
   mulai: string;
@@ -54,7 +58,8 @@ export interface PipelineResponse {
 }
 
 export interface SampelResponse {
-  id: number;
+  /** ID BIGINT ditulis sebagai string desimal. */
+  id: string;
   kunci_permintaan: string;
   diambil_pada: string;
   ukuran: number;
@@ -121,6 +126,7 @@ export function toSumberDetail(s: SumberDataResponse): SumberDetailData {
 export function toSumberData(s: SumberDataResponse): SumberData {
   return {
     id: s.id,
+    kode: s.kode,
     nama: s.nama,
     penyedia: s.penyedia,
     jenis: s.jenis === "SCRAPER" ? "SCRAPER" : "API",

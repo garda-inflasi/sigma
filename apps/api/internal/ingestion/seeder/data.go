@@ -4,13 +4,20 @@ import (
 	"sort"
 
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
+	sumberseeder "github.com/garda-inflasi/api/internal/sumber-data/seeder"
 )
 
-// ID sumber (sama dengan katalog sumber-data).
+// Kode sumber (sama dengan katalog sumber-data) dan UUID stabil barisnya, yang dipakai sumber_id.
 const (
-	sumberBI   = "SRC-BI"
-	sumberBMKG = "SRC-BMKG"
-	sumberBPS  = "SRC-BPS"
+	kodeBI   = "SRC-BI"
+	kodeBMKG = "SRC-BMKG"
+	kodeBPS  = "SRC-BPS"
+)
+
+var (
+	sumberBI   = sumberseeder.IDSumber(kodeBI)
+	sumberBMKG = sumberseeder.IDSumber(kodeBMKG)
+	sumberBPS  = sumberseeder.IDSumber(kodeBPS)
 )
 
 // Seluruh alias di bawah ditulis dari pengetahuan publik tentang nama di layanan

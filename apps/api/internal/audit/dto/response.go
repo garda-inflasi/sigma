@@ -5,10 +5,14 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
+// AuditRowResponse: ID adalah BIGINT yang ditulis sebagai string desimal; Kode memuat ID lama (alias rute detail)
+// dan hanya ada pada baris yang dibuat sebelum migrasi 000115 atau baris demo.
 type AuditRowResponse struct {
-	ID            string          `json:"id"`
+	ID            idx.ID          `json:"id"`
+	Kode          *string         `json:"kode,omitempty"`
 	Waktu         time.Time       `json:"waktu"`
 	AktorID       *string         `json:"aktor_id,omitempty"`
 	AktorNama     *string         `json:"aktor_nama,omitempty"`
@@ -43,7 +47,7 @@ func ToAuditPageResponse(page domain.Page) AuditPageResponse {
 
 func toAuditRowResponse(row domain.AuditLog) AuditRowResponse {
 	return AuditRowResponse{
-		ID: row.ID, Waktu: row.Waktu,
+		ID: row.ID, Kode: row.Kode, Waktu: row.Waktu,
 		AktorID: row.AktorID, AktorNama: row.AktorNama, AktorEmail: row.AktorEmail, AktorPeran: row.AktorPeran,
 		Aksi: row.Aksi, Entitas: row.Entitas, EntitasID: row.EntitasID, Hasil: row.Hasil,
 		IP: row.IP, UserAgent: row.UserAgent, CorrelationID: row.CorrelationID,

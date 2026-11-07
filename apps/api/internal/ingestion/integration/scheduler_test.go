@@ -46,10 +46,10 @@ func TestPenjadwal_MelewatiSumberDijedaDanJadwalRusak(t *testing.T) {
 	sekarang := pukul10WIB
 	p := newPenjadwal(s, &sekarang)
 
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE id = ?`, pihps.SumberID).Error)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'DIJEDA' WHERE kode = ?`, pihps.Kode).Error)
 	assert.Zero(t, p.Periksa(t.Context()), "sumber dijeda tidak dijadwalkan")
 
-	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'BELUM_AKTIF', jadwal_cron = 'bukan cron' WHERE id = ?`, pihps.SumberID).Error)
+	require.NoError(t, s.db.Exec(`UPDATE sumber_data SET status = 'BELUM_AKTIF', jadwal_cron = 'bukan cron' WHERE kode = ?`, pihps.Kode).Error)
 	assert.Zero(t, p.Periksa(t.Context()), "jadwal rusak dilewati tanpa menghentikan penjadwal")
 	assert.Zero(t, s.hitung(t, "eksekusi_sumber"))
 }
@@ -60,7 +60,7 @@ func TestPenjadwal_TidakMenumpukBilaMasihBerjalan(t *testing.T) {
 	p := newPenjadwal(s, &sekarang)
 
 	// Run manual sebelumnya belum selesai ketika jadwal tiba.
-	_, err := s.runner.Mulai(t.Context(), pihps.SumberID, domain.PemicuManual, nil)
+	_, err := s.runner.Mulai(t.Context(), pihps.Kode, domain.PemicuManual, nil)
 	require.NoError(t, err)
 
 	assert.Zero(t, p.Periksa(t.Context()))

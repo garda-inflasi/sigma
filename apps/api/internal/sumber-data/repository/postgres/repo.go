@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/garda-inflasi/api/internal/sumber-data/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
 
@@ -19,22 +20,43 @@ func New(db *gorm.DB) *Repository {
 
 func (r *Repository) List(ctx context.Context) ([]domain.SumberData, error) {
 	var items []domain.SumberData
-	if err := r.db.WithContext(ctx).Order("id ASC").Find(&items).Error; err != nil {
+	if err := r.db.WithContext(ctx).Order("kode ASC").Find(&items).Error; err != nil {
 		return nil, fmt.Errorf("list sumber data: %w", err)
 	}
 	return items, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id string) (*domain.SumberData, error) {
+func (r *Repository) Get(ctx context.Context, ref idx.RujukanUUID) (*domain.SumberData, error) {
 	var item domain.SumberData
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&item).Error
+	err := r.db.WithContext(ctx).Where(ref.Kondisi("id", "kode")).First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get sumber data by id: %w", err)
+		return nil, fmt.Errorf("get sumber data: %w", err)
 	}
 	return &item, nil
+}
+
+func (r *Repository) Cari(ctx context.Context, uuids, kodes []string) ([]domain.Ringkas, error) {
+	if len(uuids) == 0 && len(kodes) == 0 {
+		return nil, nil
+	}
+	var rows []domain.Ringkas
+	err := r.db.WithContext(ctx).Raw(`SELECT id::text AS id, kode FROM sumber_data WHERE id IN ? OR kode IN ? ORDER BY kode`, nilaiIn(uuids), nilaiIn(kodes)).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("cari sumber data: %w", err)
+	}
+	return rows, nil
+}
+
+// nilaiIn menjaga IN ? tetap sah untuk daftar kosong: GORM mengembangkan slice kosong menjadi (NULL), yang
+// tidak pernah cocok.
+func nilaiIn(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 // Dilanjutkan, sumber yang pernah berjalan menunggu eksekusi berikutnya (TERTUNDA);
@@ -42,10 +64,10 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*domain.SumberData
 // karena tidak ada eksekusi yang membuktikannya.
 const (
 	sqlJeda = `UPDATE sumber_data SET status = 'DIJEDA'
-		WHERE id IN ? AND status <> 'DIJEDA' RETURNING id`
+		WHERE id IN ? AND status <> 'DIJEDA' RETURNING id::text`
 	sqlLanjutkan = `UPDATE sumber_data
 		SET status = (CASE WHEN terakhir_jalan IS NULL THEN 'BELUM_AKTIF' ELSE 'TERTUNDA' END)::status_sumber
-		WHERE id IN ? AND status = 'DIJEDA' RETURNING id`
+		WHERE id IN ? AND status = 'DIJEDA' RETURNING id::text`
 )
 
 func (r *Repository) BulkAction(ctx context.Context, ids []string, action domain.BulkAction) ([]string, error) {

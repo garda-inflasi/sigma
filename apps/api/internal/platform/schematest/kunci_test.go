@@ -154,22 +154,6 @@ var tabelBelumSelaras = map[string]string{
 	"policy_brief":       "000114",
 	"policy_brief_versi": "000114",
 	"brief_job":          "000114",
-	// 000115 sumber-data, ingestion, eksekutif, siklus, kpi, dashboard, audit
-	"sumber_data":     "000115",
-	"eksekusi_sumber": "000115",
-	"data_mentah":     "000115",
-	"pemetaan_sumber": "000115",
-	"harga_eksternal": "000115",
-	"cuaca_harian":    "000115",
-	"andil_inflasi":   "000115",
-	"inflasi_bulanan": "000115",
-	"neraca_pangan":   "000115",
-	"ruang_fiskal":    "000115",
-	"siklus_ekonomi":  "000115",
-	"target_kpi":      "000115",
-	"kpi_nilai":       "000115",
-	"kpi_target":      "000115",
-	"audit_log":       "000115",
 }
 
 type kolomPK struct {

@@ -169,13 +169,13 @@ func TestHeatmap_MelengkapiSelTanpaDataLapanganDariHargaEksternal(t *testing.T) 
 	// Harga eksternal Simeulue: sepekan di 150.000, lalu naik ke 160.000 kemarin (+6,7%).
 	require.NoError(t, s.db.Exec(`
 		INSERT INTO harga_eksternal (sumber_id, komoditas_kode, kabupaten_kode, tanggal, tipe, harga, satuan)
-		SELECT 'SRC-BI', 'DAG-SPI', '1101', d::date, 'KONSUMEN',
+		SELECT (SELECT id FROM sumber_data WHERE kode = 'SRC-BI'), 'DAG-SPI', '1101', d::date, 'KONSUMEN',
 		       CASE WHEN d::date = (now() AT TIME ZONE 'Asia/Jakarta')::date - 1 THEN 160000 ELSE 150000 END, 'kg'
 		  FROM generate_series((now() AT TIME ZONE 'Asia/Jakarta')::date - 8, (now() AT TIME ZONE 'Asia/Jakarta')::date - 1, interval '1 day') d`).Error)
 	// Sel yang sudah punya data lapangan tidak boleh digantikan oleh harga eksternal.
 	require.NoError(t, s.db.Exec(`
 		INSERT INTO harga_eksternal (sumber_id, komoditas_kode, kabupaten_kode, tanggal, tipe, harga, satuan)
-		SELECT 'SRC-BI', komoditas_kode, kabupaten_kode, (now() AT TIME ZONE 'Asia/Jakarta')::date - 1, 'KONSUMEN', 1000, 'kg'
+		SELECT (SELECT id FROM sumber_data WHERE kode = 'SRC-BI'), komoditas_kode, kabupaten_kode, (now() AT TIME ZONE 'Asia/Jakarta')::date - 1, 'KONSUMEN', 1000, 'kg'
 		  FROM mv_heatmap_harga LIMIT 1`).Error)
 	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
 

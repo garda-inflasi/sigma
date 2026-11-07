@@ -20,8 +20,8 @@ const Interval = 20 * time.Second
 
 // Pelari adalah bagian Runner yang dibutuhkan penjadwal.
 type Pelari interface {
-	Punya(sumberID string) bool
-	Mulai(ctx context.Context, sumberID, pemicu string, aktorID *string) (*engine.Run, error)
+	Punya(kode string) bool
+	Mulai(ctx context.Context, ref, pemicu string, aktorID *string) (*engine.Run, error)
 }
 
 // Penjadwal memulai eksekusi sumber yang jadwalnya jatuh pada menit berjalan.
@@ -60,12 +60,12 @@ func (p *Penjadwal) Periksa(ctx context.Context) int {
 
 	dimulai := 0
 	for _, s := range sumber {
-		if !p.pelari.Punya(s.ID) {
+		if !p.pelari.Punya(s.Kode) {
 			continue
 		}
 		jadwal, err := cron.Parse(s.JadwalCron)
 		if err != nil {
-			p.log.Warn("ingestion: jadwal sumber tidak valid", map[string]interface{}{"sumber": s.ID, "error": err.Error()})
+			p.log.Warn("ingestion: jadwal sumber tidak valid", map[string]interface{}{"sumber": s.Kode, "error": err.Error()})
 			continue
 		}
 		if !jadwal.Cocok(menit) || !p.tandai(s.ID, menit) {
@@ -75,10 +75,10 @@ func (p *Penjadwal) Periksa(ctx context.Context) int {
 		run, err := p.pelari.Mulai(ctx, s.ID, domain.PemicuJadwal, nil)
 		switch {
 		case errors.Is(err, domain.ErrSudahBerjalan), errors.Is(err, domain.ErrDijeda):
-			p.log.Info("ingestion: jadwal dilewati", map[string]interface{}{"sumber": s.ID, "alasan": err.Error()})
+			p.log.Info("ingestion: jadwal dilewati", map[string]interface{}{"sumber": s.Kode, "alasan": err.Error()})
 			continue
 		case err != nil:
-			p.log.Error("ingestion: gagal memulai eksekusi terjadwal", map[string]interface{}{"sumber": s.ID, "error": err.Error()})
+			p.log.Error("ingestion: gagal memulai eksekusi terjadwal", map[string]interface{}{"sumber": s.Kode, "error": err.Error()})
 			continue
 		}
 
@@ -89,7 +89,7 @@ func (p *Penjadwal) Periksa(ctx context.Context) int {
 			runCtx, cancel := context.WithTimeout(ctx, engine.BatasWaktu)
 			defer cancel()
 			if _, err := run.Jalankan(runCtx); err != nil {
-				p.log.Error("ingestion: gagal mencatat eksekusi terjadwal", map[string]interface{}{"sumber": s.ID, "error": err.Error()})
+				p.log.Error("ingestion: gagal mencatat eksekusi terjadwal", map[string]interface{}{"sumber": s.Kode, "error": err.Error()})
 			}
 		}()
 	}

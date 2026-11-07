@@ -2,7 +2,11 @@
 // nilai periodik yang dihitung job dari data yang sudah ada.
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Kelompok KPI (enum kelompok_kpi).
 const (
@@ -67,7 +71,7 @@ func (Definisi) TableName() string { return "kpi_definisi" }
 // Target memetakan tabel kpi_target. WilayahKode nil = berlaku untuk semua wilayah.
 // Baseline kosong sampai ditetapkan pemangku kepentingan.
 type Target struct {
-	ID            int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
 	KpiKode       string    `gorm:"column:kpi_kode"`
 	WilayahKode   *string   `gorm:"column:wilayah_kode"`
 	PeriodeMulai  time.Time `gorm:"column:periode_mulai;type:date"`
@@ -80,7 +84,7 @@ func (Target) TableName() string { return "kpi_target" }
 
 // Nilai memetakan tabel kpi_nilai. Revisi = baris baru dengan Versi lebih besar.
 type Nilai struct {
-	ID           int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID           idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
 	KpiKode      string    `gorm:"column:kpi_kode"`
 	WilayahKode  *string   `gorm:"column:wilayah_kode"`
 	Periode      time.Time `gorm:"column:periode;type:date"`

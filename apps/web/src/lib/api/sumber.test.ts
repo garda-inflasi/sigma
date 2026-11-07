@@ -19,7 +19,8 @@ describe("formatJadwal", () => {
 });
 
 const dasar: SumberDataResponse = {
-  id: "SRC-BI",
+  id: "40745615-f152-32aa-b1e3-f54add179514",
+  kode: "SRC-BI",
   nama: "PIHPS Nasional",
   penyedia: "Bank Indonesia",
   jenis: "API",
@@ -38,7 +39,8 @@ const dasar: SumberDataResponse = {
 describe("toSumberData", () => {
   it("memetakan kolom API ke model UI", () => {
     assert.deepEqual(toSumberData(dasar), {
-      id: "SRC-BI",
+      id: "40745615-f152-32aa-b1e3-f54add179514",
+      kode: "SRC-BI",
       nama: "PIHPS Nasional",
       penyedia: "Bank Indonesia",
       jenis: "API",
@@ -74,7 +76,7 @@ describe("toSumberData", () => {
 
 describe("toEksekusi", () => {
   const dasarEksekusi: EksekusiResponse = {
-    id: 7,
+    id: "7",
     pemicu: "MANUAL",
     status: "SEBAGIAN",
     mulai: "2026-10-15T03:00:00Z",
@@ -114,8 +116,8 @@ describe("toEksekusi", () => {
 
 describe("toSampel", () => {
   it("memetakan cuplikan payload mentah", () => {
-    assert.deepEqual(toSampel({ id: 3, kunci_permintaan: "wilayah=101", diambil_pada: "2026-10-15T03:00:00Z", ukuran: 5231, cuplikan: '{"data":[' }), {
-      id: 3,
+    assert.deepEqual(toSampel({ id: "3", kunci_permintaan: "wilayah=101", diambil_pada: "2026-10-15T03:00:00Z", ukuran: 5231, cuplikan: '{"data":[' }), {
+      id: "3",
       kunci: "wilayah=101",
       diambilPada: "2026-10-15T03:00:00Z",
       ukuran: 5231,

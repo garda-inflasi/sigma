@@ -33,6 +33,15 @@ func TestPemetaan_KunciUnikDanTujuanKonsisten(t *testing.T) {
 	assert.NotEmpty(t, seen)
 }
 
+func TestPemetaan_SumberIDAdalahUUIDStabilDariKode(t *testing.T) {
+	assert.Equal(t, sumberseeder.IDSumber(kodeBI), sumberBI)
+	assert.Equal(t, sumberseeder.IDSumber(kodeBMKG), sumberBMKG)
+	assert.Equal(t, sumberseeder.IDSumber(kodeBPS), sumberBPS)
+	for _, r := range Pemetaan() {
+		assert.Contains(t, []string{sumberBI, sumberBMKG, sumberBPS}, r.SumberID)
+	}
+}
+
 func TestPemetaan_KodeMasterAdaDiMaster(t *testing.T) {
 	komoditas := map[string]bool{}
 	for _, k := range masterseeder.Komoditas() {
@@ -87,8 +96,8 @@ func TestSeedReference_IdempotenDanTidakMenimpaPemetaanOperator(t *testing.T) {
 	assert.EqualValues(t, len(Pemetaan()), n)
 
 	// Operator mengalihkan satu alias dan mengabaikan alias lain.
-	require.NoError(t, db.Exec(`UPDATE pemetaan_sumber SET kode_master = 'BRS-PRM' WHERE sumber_id = 'SRC-BI' AND alias = 'beras kualitas medium i'`).Error)
-	require.NoError(t, db.Exec(`UPDATE pemetaan_sumber SET kode_master = NULL, diabaikan = true WHERE sumber_id = 'SRC-BI' AND alias = 'cabai merah keriting'`).Error)
+	require.NoError(t, db.Exec(`UPDATE pemetaan_sumber SET kode_master = 'BRS-PRM' WHERE sumber_id = ? AND alias = 'beras kualitas medium i'`, sumberBI).Error)
+	require.NoError(t, db.Exec(`UPDATE pemetaan_sumber SET kode_master = NULL, diabaikan = true WHERE sumber_id = ? AND alias = 'cabai merah keriting'`, sumberBI).Error)
 
 	_, err = SeedReference(t.Context(), db)
 	require.NoError(t, err)
@@ -96,9 +105,9 @@ func TestSeedReference_IdempotenDanTidakMenimpaPemetaanOperator(t *testing.T) {
 	require.NoError(t, db.Model(&domain.PemetaanSumber{}).Count(&n).Error)
 	assert.EqualValues(t, len(Pemetaan()), n, "seed ulang tidak menambah baris")
 	var medium domain.PemetaanSumber
-	require.NoError(t, db.First(&medium, "sumber_id = ? AND alias = ?", "SRC-BI", "beras kualitas medium i").Error)
+	require.NoError(t, db.First(&medium, "sumber_id = ? AND alias = ?", sumberBI, "beras kualitas medium i").Error)
 	assert.Equal(t, "BRS-PRM", *medium.KodeMaster, "pemetaan hasil operasi tidak ditimpa")
 	var keriting domain.PemetaanSumber
-	require.NoError(t, db.First(&keriting, "sumber_id = ? AND alias = ?", "SRC-BI", "cabai merah keriting").Error)
+	require.NoError(t, db.First(&keriting, "sumber_id = ? AND alias = ?", sumberBI, "cabai merah keriting").Error)
 	assert.True(t, keriting.Diabaikan)
 }

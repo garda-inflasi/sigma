@@ -19,6 +19,9 @@ type Summary struct {
 	Sumber int
 }
 
+// Kunci idempotensi katalog adalah kode (UNIQUE), bukan id: baris hasil migrasi data lama sudah berkode SRC-...
+// dan ber-UUID yang sama dengan IDSumber.
+//
 // Kolom identitas katalog: satu-satunya yang boleh ditimpa SeedReference, supaya
 // status dan statistik eksekusi hasil operasi tidak hilang.
 var kolomReferensi = []string{"nama", "penyedia", "jenis", "cakupan", "jadwal_cron", "robots_txt_patuh", "atribusi", "url_dasar"}
@@ -31,7 +34,7 @@ var kolomDemo = []string{"status", "terakhir_jalan", "keberhasilan_7h", "latensi
 func SeedReference(ctx context.Context, db *gorm.DB) (Summary, error) {
 	rows := Katalog()
 	err := db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
+		Columns:   []clause.Column{{Name: "kode"}},
 		DoUpdates: clause.AssignmentColumns(kolomReferensi),
 	}).Create(&rows).Error
 	if err != nil {
@@ -46,7 +49,7 @@ func SeedReference(ctx context.Context, db *gorm.DB) (Summary, error) {
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (Summary, error) {
 	rows := BuildDemo(now)
 	err := db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
+		Columns:   []clause.Column{{Name: "kode"}},
 		DoUpdates: clause.AssignmentColumns(kolomDemo),
 	}).Create(&rows).Error
 	if err != nil {
@@ -60,7 +63,7 @@ func Katalog() []domain.SumberData {
 	rows := make([]domain.SumberData, len(katalog))
 	for i, k := range katalog {
 		rows[i] = domain.SumberData{
-			ID: k.ID, Nama: k.Nama, Penyedia: k.Penyedia, Jenis: k.Jenis, Cakupan: k.Cakupan,
+			ID: IDSumber(k.Kode), Kode: k.Kode, Nama: k.Nama, Penyedia: k.Penyedia, Jenis: k.Jenis, Cakupan: k.Cakupan,
 			JadwalCron: k.JadwalCron, Status: domain.StatusBelumAktif, RobotsTxtPatuh: k.RobotsTxtPatuh,
 			Atribusi: k.Atribusi, URLDasar: k.URLDasar, Konfigurasi: k.Konfigurasi,
 		}
@@ -72,7 +75,7 @@ func Katalog() []domain.SumberData {
 func BuildDemo(now time.Time) []domain.SumberData {
 	rows := Katalog()
 	for i := range rows {
-		d := demoKeadaan[rows[i].ID]
+		d := demoKeadaan[rows[i].Kode]
 		terakhir := now.Add(-time.Duration(d.MenitLalu) * time.Minute).UTC()
 		rows[i].Status = d.Status
 		rows[i].TerakhirJalan = &terakhir

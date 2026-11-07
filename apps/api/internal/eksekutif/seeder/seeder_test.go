@@ -65,11 +65,13 @@ func TestBuildFiskal_LastDayOfLastMonth(t *testing.T) {
 	require.Len(t, rows, 4)
 	assert.Equal(t, time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC), rows[0].PerTanggal)
 	var pagu int64
-	ids := map[string]bool{}
+	kode := map[string]bool{}
 	for _, r := range rows {
 		pagu += r.Pagu
-		assert.False(t, ids[r.ID], "id ganda %s", r.ID)
-		ids[r.ID] = true
+		require.NotNil(t, r.Kode, "kode adalah ID lama dan kunci baris seed; ID dibuat basis data")
+		assert.Zero(t, r.ID)
+		assert.False(t, kode[*r.Kode], "kode ganda %s", *r.Kode)
+		kode[*r.Kode] = true
 		assert.LessOrEqual(t, r.Realisasi, r.Pagu)
 		assert.Equal(t, domain.SumberDemo, r.Sumber)
 	}
@@ -124,7 +126,7 @@ func TestSeedDemo_NeverOverwritesOfficialRows(t *testing.T) {
 		WilayahKode: domain.WilayahProvinsi, Periode: periode, IHK: 111, InflasiMtm: 0.5, InflasiYoy: 3.1, InflasiYtd: 2.5, Sumber: domain.SumberBPS,
 	}).Error)
 	require.NoError(t, db.Create(&domain.RuangFiskal{
-		ID: "DJPB-2026-10", Tahun: 2026, Instrumen: "Belanja tidak terduga (BTT)", Pagu: 1, Realisasi: 1,
+		Kode: new("DJPB-2026-10"), Tahun: 2026, Instrumen: "Belanja tidak terduga (BTT)", Pagu: 1, Realisasi: 1,
 		PerTanggal: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC), Sumber: domain.SumberDJPB,
 	}).Error)
 
@@ -136,7 +138,7 @@ func TestSeedDemo_NeverOverwritesOfficialRows(t *testing.T) {
 	assert.Equal(t, domain.SumberBPS, bps.Sumber)
 	assert.InDelta(t, 3.1, bps.InflasiYoy, 1e-9, "angka BPS tidak boleh tertimpa data demo")
 	var resmi domain.RuangFiskal
-	require.NoError(t, db.First(&resmi, "id = ?", "DJPB-2026-10").Error)
+	require.NoError(t, db.First(&resmi, "kode = ?", "DJPB-2026-10").Error)
 	assert.EqualValues(t, 1, resmi.Pagu)
 }
 
@@ -165,4 +167,50 @@ func TestNeracaSurplusIsDerivedByTheDatabase(t *testing.T) {
 	require.NotNil(t, beras.SurplusTon)
 	assert.InDelta(t, 146200-52400, *beras.SurplusTon, 0.05)
 	assert.Nil(t, beras.StokTon, "stok tidak diketahui, bukan 0")
+}
+
+// Seeder mengunci baris agregat dengan kunci alami (UNIQUE), bukan ID identity: jalan ulang memperbarui baris yang
+// ada tanpa mengganti ID-nya dan tanpa menambah baris, termasuk atas baris hasil migrasi 000115.
+func TestSeedDemo_IDIdentityTetapDanKunciAlamiMenjagaKeunikan(t *testing.T) {
+	db := newDB(t, "eksekutif_demo_id_tetap")
+	_, err := SeedDemo(t.Context(), db, waktuTetap)
+	require.NoError(t, err)
+	var sebelum []int64
+	require.NoError(t, db.Raw(`SELECT id FROM inflasi_bulanan ORDER BY periode`).Scan(&sebelum).Error)
+	var fiskalSebelum int64
+	require.NoError(t, db.Raw(`SELECT min(id) FROM ruang_fiskal`).Scan(&fiskalSebelum).Error)
+	require.Len(t, sebelum, 12)
+	assert.Positive(t, sebelum[0])
+
+	_, err = SeedDemo(t.Context(), db, waktuTetap)
+	require.NoError(t, err)
+
+	var sesudah []int64
+	require.NoError(t, db.Raw(`SELECT id FROM inflasi_bulanan ORDER BY periode`).Scan(&sesudah).Error)
+	assert.Equal(t, sebelum, sesudah, "ID tidak berganti oleh upsert")
+	var fiskalSesudah int64
+	require.NoError(t, db.Raw(`SELECT min(id) FROM ruang_fiskal`).Scan(&fiskalSesudah).Error)
+	assert.Equal(t, fiskalSebelum, fiskalSesudah)
+
+	// Kunci alami ganda ditolak basis data.
+	err = db.Exec(`INSERT INTO inflasi_bulanan (wilayah_kode, periode, ihk, inflasi_mtm, inflasi_yoy, inflasi_ytd, sumber)
+		SELECT wilayah_kode, periode, ihk, inflasi_mtm, inflasi_yoy, inflasi_ytd, sumber FROM inflasi_bulanan LIMIT 1`).Error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "uq_inflasi_bulanan_alami")
+}
+
+func TestSeedDemo_BarisFiskalHasilMigrasiTidakDigandakan(t *testing.T) {
+	db := newDB(t, "eksekutif_demo_fiskal_migrasi")
+	_, err := SeedDemo(t.Context(), db, waktuTetap)
+	require.NoError(t, err)
+	// Meniru hasil migrasi: baris yang ada memegang kode ID lama, dan seed berikutnya memakai kode yang sama.
+	var jumlah int64
+	require.NoError(t, db.Raw(`SELECT count(*) FROM ruang_fiskal WHERE kode LIKE 'DEMO-RF-%'`).Scan(&jumlah).Error)
+	assert.EqualValues(t, 4, jumlah)
+
+	_, err = SeedDemo(t.Context(), db, waktuTetap)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Raw(`SELECT count(*) FROM ruang_fiskal`).Scan(&jumlah).Error)
+	assert.EqualValues(t, 4, jumlah)
 }

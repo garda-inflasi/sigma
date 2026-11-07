@@ -9,7 +9,10 @@ import type { EntriLokal } from "@/lib/stores/field-queue-store";
 type VersiServer = NonNullable<EntriLokal["versiServer"]>;
 
 export interface TugasLapanganResponse {
+  /** ID BIGINT sebagai string desimal ("42"). */
   id: string;
+  /** ID lama (mis. TGS-mahasiswa_1-1) bila tugas dari sebelum migrasi 000111; null untuk tugas baru. */
+  kode?: string | null;
   judul: string;
   pasar_id: string;
   pasar_nama: string;
@@ -42,14 +45,19 @@ export function toTugasDetail(t: TugasDetailResponse): TugasDetail {
   return { ...toTugasLapangan(t), rincian: t.rincian_komoditas.map((r) => ({ kode: r.kode, nama: r.nama, terisi: r.terisi })) };
 }
 
-/** Tautan ke form input untuk mengisi tugas; dipakai daftar dan detail agar parameternya selalu sama. */
-export function hrefIsiTugas(t: Pick<TugasLapangan, "id" | "pasarId" | "komoditas" | "tipe">): string {
-  return `/lapangan/input?pasar=${t.pasarId}&komoditas=${t.komoditas.join(",")}&tipe=${t.tipe}&tugas=${t.id}`;
+/**
+ * Tautan ke form input untuk mengisi tugas; dipakai daftar dan detail agar parameternya selalu sama. Parameter
+ * `tugas` hanya label yang dibaca manusia ("Tugas TGS-mahasiswa_1-1: 2/4 komoditas"), jadi memakai kode tampilan bila ada
+ * (`kode ?? id`); server menerima keduanya sebagai rujukan tugas.
+ */
+export function hrefIsiTugas(t: Pick<TugasLapangan, "id" | "kode" | "pasarId" | "komoditas" | "tipe">): string {
+  return `/lapangan/input?pasar=${t.pasarId}&komoditas=${t.komoditas.join(",")}&tipe=${t.tipe}&tugas=${encodeURIComponent(t.kode ?? t.id)}`;
 }
 
 export function toTugasLapangan(t: TugasLapanganResponse): TugasLapangan {
   return {
     id: t.id,
+    ...(t.kode ? { kode: t.kode } : {}),
     judul: t.judul,
     pasarId: t.pasar_id,
     pasarNama: t.pasar_nama,

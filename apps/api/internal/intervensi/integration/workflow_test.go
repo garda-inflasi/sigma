@@ -32,7 +32,7 @@ func (s *suite) hargaNaik(t *testing.T, id, komoditas, pasar string, dasar, kini
 		harga int
 		kapan time.Time
 	}{{dasar, now.Add(-72 * time.Hour)}, {kini, now.Add(-2 * time.Hour)}} {
-		require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+		require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 			VALUES (?, ?, ?, 'KONSUMEN', ?, 'kg', 'DIVALIDASI', ?)`, id+string(rune('a'+i)), komoditas, pasar, row.harga, row.kapan).Error)
 	}
 }
@@ -93,7 +93,7 @@ func TestWorkflow_AlertBecomesAutomaticCardOnce(t *testing.T) {
 	})
 
 	t.Run("alert yang naik ke tingkat minimum memicu kartu", func(t *testing.T) {
-		require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'HBb'`).Error) // +13% = SIAGA
+		require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'HBb'`).Error) // +13% = SIAGA
 		ringkasan, err := ews.Engine.Evaluasi(t.Context())
 		require.NoError(t, err)
 		require.Equal(t, 1, ringkasan.Dinaikkan)
@@ -128,7 +128,7 @@ func TestWorkflow_AlertAlreadyHavingAManualCardGetsNoSecondOne(t *testing.T) {
 
 	// Workflow baru dipasang; alert naik ke SIAGA, tetapi kartunya sudah ada.
 	s.newWorkflow(t, workflow.Config{KartuOtomatisMin: ewsdomain.SeveritySiaga})
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'HBb'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'HBb'`).Error)
 	ringkasan, err := ews.Engine.Evaluasi(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, ringkasan.Dinaikkan)

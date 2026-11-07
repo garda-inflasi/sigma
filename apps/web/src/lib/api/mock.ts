@@ -114,7 +114,9 @@ export function mockEntri(jumlah = 168): EntriHarga[] {
     const dev = outlier ? (rng() > 0.5 ? 1 : -1) * (28 + rng() * 30) : gauss(rng) * 4;
     const harga = Math.round((acuan * (1 + dev / 100)) / 100) * 100;
     return {
-      id: `HRG-${String(26100300 + i)}`,
+      // Bentuk sama dengan API: ID BIGINT (string angka) dan kode tampilan dari ID lama.
+      id: String(1000 + i),
+      kode: `HRG-${String(26100300 + i)}`,
       komoditasKode: kom.kode,
       komoditasNama: kom.nama,
       pasarId: pasar.id,
@@ -364,11 +366,11 @@ export function mockTugas(): TugasLapangan[] {
   const now = Date.now();
   const jam = (h: number) => new Date(now + h * 3_600_000).toISOString();
   return [
-    { id: "TGS-881", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "CBR-RWT", "BWM", "BRS-MED", "TLR", "DAG-AYM"], tenggat: jam(2), status: "BERJALAN", target: 6, terisi: 4, tipe: "KONSUMEN" },
-    { id: "TGS-882", judul: "Verifikasi ulang harga cabai", pasarId: "PSR-1171-02", pasarNama: "Pasar Al-Mahirah Lamdingin", komoditas: ["CBM-KRT", "CBR-RWT"], tenggat: jam(5), status: "BELUM", target: 2, terisi: 0, tipe: "KONSUMEN" },
-    { id: "TGS-883", judul: "Harga produsen kelompok tani", pasarId: "PSR-1108-01", pasarNama: "Pasar Induk Lambaro", komoditas: ["CBM-KRT", "BWM", "TMT", "KTG"], tenggat: jam(26), status: "BELUM", target: 4, terisi: 0, tipe: "PRODUSEN" },
-    { id: "TGS-879", judul: "Survei harga konsumen sore", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["IKN-TGK", "TLR", "MYK", "GLA"], tenggat: jam(-3), status: "TERLAMBAT", target: 4, terisi: 1, tipe: "KONSUMEN" },
-    { id: "TGS-875", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "BWM", "BRS-MED", "TLR"], tenggat: jam(-22), status: "SELESAI", target: 4, terisi: 4, tipe: "KONSUMEN" },
+    { id: "881", kode: "TGS-881", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "CBR-RWT", "BWM", "BRS-MED", "TLR", "DAG-AYM"], tenggat: jam(2), status: "BERJALAN", target: 6, terisi: 4, tipe: "KONSUMEN" },
+    { id: "882", kode: "TGS-882", judul: "Verifikasi ulang harga cabai", pasarId: "PSR-1171-02", pasarNama: "Pasar Al-Mahirah Lamdingin", komoditas: ["CBM-KRT", "CBR-RWT"], tenggat: jam(5), status: "BELUM", target: 2, terisi: 0, tipe: "KONSUMEN" },
+    { id: "883", kode: "TGS-883", judul: "Harga produsen kelompok tani", pasarId: "PSR-1108-01", pasarNama: "Pasar Induk Lambaro", komoditas: ["CBM-KRT", "BWM", "TMT", "KTG"], tenggat: jam(26), status: "BELUM", target: 4, terisi: 0, tipe: "PRODUSEN" },
+    { id: "879", kode: "TGS-879", judul: "Survei harga konsumen sore", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["IKN-TGK", "TLR", "MYK", "GLA"], tenggat: jam(-3), status: "TERLAMBAT", target: 4, terisi: 1, tipe: "KONSUMEN" },
+    { id: "875", kode: "TGS-875", judul: "Survei harga konsumen pagi", pasarId: "PSR-1171-01", pasarNama: "Pasar Peunayong", komoditas: ["CBM-KRT", "BWM", "BRS-MED", "TLR"], tenggat: jam(-22), status: "SELESAI", target: 4, terisi: 4, tipe: "KONSUMEN" },
   ];
 }
 

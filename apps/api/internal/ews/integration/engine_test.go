@@ -52,7 +52,7 @@ func (s *suite) alertMesin(t *testing.T, dedupKey string) []alertMesin {
 
 func (s *suite) entriHarga(t *testing.T, id, komoditas, pasar string, harga int, status string, dicatat time.Time) {
 	t.Helper()
-	require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+	require.NoError(t, s.db.Exec(`INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 		VALUES (?, ?, ?, 'KONSUMEN', ?, 'kg', CAST(? AS status_entri), ?)`, id, komoditas, pasar, harga, status, dicatat).Error)
 }
 
@@ -115,7 +115,7 @@ func TestEngine_RaisesSeverityOnWorseningConditionAndRecordsHistory(t *testing.T
 	require.Len(t, before, 1)
 	assert.Equal(t, "WASPADA", before[0].Severity)
 
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'H2'`).Error) // +13%
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'H2'`).Error) // +13%
 	res := s.evaluasi(t)
 	assert.Equal(t, 1, res.Dinaikkan)
 	assert.Zero(t, res.Dibuat)
@@ -126,7 +126,7 @@ func TestEngine_RaisesSeverityOnWorseningConditionAndRecordsHistory(t *testing.T
 	assert.Equal(t, "SIAGA", after[0].Severity)
 
 	// Membaik kembali tidak menurunkan tingkat alert yang masih aktif.
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 54500 WHERE id = 'H2'`).Error)
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 54500 WHERE kode = 'H2'`).Error)
 	assert.Equal(t, 1, s.evaluasi(t).Dilewati)
 	assert.Equal(t, "SIAGA", s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")[0].Severity)
 

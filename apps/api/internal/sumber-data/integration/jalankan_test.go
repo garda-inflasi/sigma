@@ -250,7 +250,7 @@ func TestPipeline_AkurasiDariSelisihLapanganVsEksternal(t *testing.T) {
 	s.jalankanBersih(t)
 	// Hari ini di Banda Aceh: beras sepakat (selisih 2,9%), cabai tidak (50%).
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada) VALUES
+		INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada) VALUES
 		('EH-PIPE-1', 'BRS-MED', 'PSR-1171-01', 'KONSUMEN', 14400, 'kg', 'DIVALIDASI', now()),
 		('EH-PIPE-2', 'CBM-KRT', 'PSR-1171-01', 'KONSUMEN', 90000, 'kg', 'DIVALIDASI', now())`).Error)
 	require.NoError(t, s.db.Exec(`
@@ -265,6 +265,6 @@ func TestPipeline_AkurasiDariSelisihLapanganVsEksternal(t *testing.T) {
 	assert.InDelta(t, 50.0, *p.Mutu.Akurasi, 0.001)
 	assert.EqualValues(t, 2, p.Gold)
 
-	require.NoError(t, s.db.Exec(`DELETE FROM entri_harga WHERE id IN ('EH-PIPE-1', 'EH-PIPE-2')`).Error)
+	require.NoError(t, s.db.Exec(`DELETE FROM entri_harga WHERE kode IN ('EH-PIPE-1', 'EH-PIPE-2')`).Error)
 	require.NoError(t, refresher.Shared(s.db, logger.NewDefault()).Refresh(t.Context()))
 }

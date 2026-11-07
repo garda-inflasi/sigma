@@ -124,7 +124,7 @@ export function useHargaBulkActions(listKey: QueryKey): BulkAction<EntriHarga>[]
       id: "ekspor", label: "Ekspor CSV", icon: Download, perm: "harga.ekspor",
       run: (rows) =>
         exportCsv(rows, [
-          { header: "ID", value: (r) => r.id }, { header: "Komoditas", value: (r) => r.komoditasNama }, { header: "Tipe", value: (r) => r.tipe },
+          { header: "ID", value: (r) => r.kode ?? r.id }, { header: "Komoditas", value: (r) => r.komoditasNama }, { header: "Tipe", value: (r) => r.tipe },
           { header: "Pasar", value: (r) => r.pasarNama }, { header: "Wilayah", value: (r) => r.wilayah }, { header: "Harga", value: (r) => r.harga },
           { header: "Satuan", value: (r) => r.satuan }, { header: "Deviasi (%)", value: (r) => r.deviasiPct }, { header: "Skor anomali", value: (r) => r.skorAnomali }, { header: "Petugas", value: (r) => r.petugasNama },
           { header: "Dicatat", value: (r) => r.dicatatPada }, { header: "Status", value: (r) => r.status },

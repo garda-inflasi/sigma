@@ -95,11 +95,11 @@ func TestNotifikasi_SeverityBelowMinimumIsNotQueuedUntilItRises(t *testing.T) {
 	require.Equal(t, 1, s.evaluasi(t).Dibuat)
 	assert.Empty(t, s.outbox(t, ""), "WASPADA di bawah tingkat minimum bawaan SIAGA")
 
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE id = 'H2'`).Error) // +13% = SIAGA
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'H2'`).Error) // +13% = SIAGA
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
 	assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH'"), 5, "lima pengguna berperan penindak menerima begitu alert mencapai SIAGA")
 
-	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 60000 WHERE id = 'H2'`).Error) // +20% = KRITIS
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 60000 WHERE kode = 'H2'`).Error) // +20% = KRITIS
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
 	assert.Len(t, s.outbox(t, ""), 5, "yang sudah dinotifikasi tidak dinotifikasi ulang")
 }

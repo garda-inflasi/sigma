@@ -126,13 +126,6 @@ var kategoriPK = map[string]KategoriPK{
 // tabelBelumSelaras: tabel yang masih melanggar invarian sampai migrasi konversinya diterapkan. Hapus entri
 // tabel begitu migrasinya selesai; nilai mencatat migrasi yang bertanggung jawab.
 var tabelBelumSelaras = map[string]string{
-	// 000111 harga, lapangan, master
-	"entri_harga":      "000111",
-	"tugas_lapangan":   "000111",
-	"batas_harga":      "000111",
-	"perubahan_master": "000111",
-	"pasar":            "000111",
-	"kabupaten":        "000111",
 	// 000112 ews, intervensi
 	"aturan_ews":             "000112",
 	"aturan_ews_riwayat":     "000112",

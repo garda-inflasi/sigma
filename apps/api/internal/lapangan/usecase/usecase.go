@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/lapangan/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 )
 
@@ -80,14 +82,15 @@ func (uc *UseCase) ListSaya(ctx context.Context, petugasID string) ([]Tugas, err
 	return uc.tampil(items...), nil
 }
 
-// GetByID mengembalikan satu tugas; tugas milik petugas lain tidak terlihat kecuali pemanggil boleh mengelola.
-func (uc *UseCase) GetByID(ctx context.Context, id string, p Pemanggil) (*Tugas, error) {
-	item, err := uc.repo.GetByID(ctx, id, p.ID, p.Semua)
+// GetByID mengembalikan satu tugas menurut ID BIGINT atau kode lama (TGS-...); tugas milik petugas lain tidak
+// terlihat kecuali pemanggil boleh mengelola.
+func (uc *UseCase) GetByID(ctx context.Context, ref idx.RujukanID, p Pemanggil) (*Tugas, error) {
+	item, err := uc.repo.GetByID(ctx, ref, p.ID, p.Semua)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrNotFound
 		}
-		uc.log.Error("lapangan: get tugas gagal", map[string]interface{}{"id": id, "error": err.Error()})
+		uc.log.Error("lapangan: get tugas gagal", map[string]interface{}{"id": ref.ID.String(), "kode": ref.Kode, "error": err.Error()})
 		return nil, fmt.Errorf("get tugas: %w", err)
 	}
 	return &uc.tampil(*item)[0], nil
@@ -100,14 +103,14 @@ type Detail struct {
 }
 
 // GetDetail seperti GetByID, ditambah nama dan status terisi tiap komoditas tugas.
-func (uc *UseCase) GetDetail(ctx context.Context, id string, p Pemanggil) (*Detail, error) {
-	tugas, err := uc.GetByID(ctx, id, p)
+func (uc *UseCase) GetDetail(ctx context.Context, ref idx.RujukanID, p Pemanggil) (*Detail, error) {
+	tugas, err := uc.GetByID(ctx, ref, p)
 	if err != nil {
 		return nil, err
 	}
 	ada, err := uc.repo.Rincian(ctx, tugas.ID, tugas.Komoditas)
 	if err != nil {
-		uc.log.Error("lapangan: rincian tugas gagal", map[string]interface{}{"id": id, "error": err.Error()})
+		uc.log.Error("lapangan: rincian tugas gagal", map[string]interface{}{"id": tugas.ID.String(), "error": err.Error()})
 		return nil, fmt.Errorf("rincian tugas: %w", err)
 	}
 	byKode := make(map[string]domain.RincianKomoditas, len(ada))
@@ -132,15 +135,16 @@ type HasilBulk struct {
 	Gagal    int
 }
 
-// BulkAction menjalankan aksi massal. tandai_selesai hanya menutup tugas yang
-// targetnya sudah terpenuhi dan dicatat di audit trail; unduh_data_acuan hanya
-// menghitung tugas yang boleh diunduh pemanggil.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi string, p Pemanggil) (HasilBulk, error) {
+// BulkAction menjalankan aksi massal. refs adalah ID BIGINT atau kode lama (TGS-...): antrean dan tampilan
+// yang dibuat sebelum migrasi 000111 masih memegang kode lama sebagai ID, dan tetap dilayani. tandai_selesai hanya
+// menutup tugas yang targetnya sudah terpenuhi dan dicatat di audit trail; unduh_data_acuan hanya menghitung
+// tugas yang boleh diunduh pemanggil. Berhasil dan Gagal dihitung per rujukan.
+func (uc *UseCase) BulkAction(ctx context.Context, refs []idx.RujukanID, aksi string, p Pemanggil) (HasilBulk, error) {
 	action := domain.BulkAction(aksi)
 	if !action.Valid() {
 		return HasilBulk{}, ErrInvalidAction
 	}
-	unik := dedup(ids)
+	unik := dedup(refs)
 	if len(unik) == 0 || len(unik) > MaxBulkIDs {
 		return HasilBulk{}, fmt.Errorf("%w: jumlah id harus 1 sampai %d", ErrValidasi, MaxBulkIDs)
 	}
@@ -150,7 +154,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi string, p 
 		if err != nil {
 			return HasilBulk{}, fmt.Errorf("bulk %s: %w", aksi, err)
 		}
-		return HasilBulk{Berhasil: len(found), Gagal: len(unik) - len(found)}, nil
+		return hitungHasil(unik, found), nil
 	}
 
 	changed, err := uc.repo.TandaiSelesai(ctx, unik, p.ID, p.Semua, uc.now())
@@ -159,29 +163,48 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi string, p 
 		return HasilBulk{}, fmt.Errorf("bulk %s: %w", aksi, err)
 	}
 
-	hasil := HasilBulk{Berhasil: len(changed), Gagal: len(unik) - len(changed)}
+	hasil := hitungHasil(unik, changed)
 	if len(changed) == 0 {
 		return hasil, nil
 	}
+	ids := make([]idx.ID, len(changed))
+	for i, c := range changed {
+		ids[i] = c.ID
+	}
 	if err := uc.audit.Write(ctx, audit.Entry{
 		AktorID: p.ID, Aksi: "TUGAS_" + strings.ToUpper(aksi), Entitas: "tugas_lapangan",
-		EntitasID: fmt.Sprintf("%d tugas", hasil.Berhasil), Hasil: audit.HasilBerhasil,
-		Metadata: map[string]any{"ids": changed, "gagal": hasil.Gagal},
+		EntitasID: fmt.Sprintf("%d tugas", len(changed)), Hasil: audit.HasilBerhasil,
+		Metadata: map[string]any{"ids": ids, "gagal": hasil.Gagal},
 	}); err != nil {
 		uc.log.Warn("lapangan: gagal mencatat audit", map[string]interface{}{"aksi": aksi, "error": err.Error()})
 	}
 	return hasil, nil
 }
 
-func dedup(ids []string) []string {
-	seen := make(map[string]struct{}, len(ids))
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, dup := seen[id]; dup || id == "" {
+// hitungHasil menghitung rujukan yang menemukan baris di antara found (berhasil) dan yang tidak (gagal).
+func hitungHasil(refs []idx.RujukanID, found []domain.TugasRef) HasilBulk {
+	var hasil HasilBulk
+	for _, ref := range refs {
+		cocok := slices.ContainsFunc(found, func(t domain.TugasRef) bool { return t.Cocok(ref) })
+		if cocok {
+			hasil.Berhasil++
+		} else {
+			hasil.Gagal++
+		}
+	}
+	return hasil
+}
+
+// dedup membuang rujukan kosong dan ganda dengan mempertahankan urutan.
+func dedup(refs []idx.RujukanID) []idx.RujukanID {
+	seen := make(map[idx.RujukanID]struct{}, len(refs))
+	out := make([]idx.RujukanID, 0, len(refs))
+	for _, ref := range refs {
+		if _, dup := seen[ref]; dup || (ref.ID == 0 && ref.Kode == "") {
 			continue
 		}
-		seen[id] = struct{}{}
-		out = append(out, id)
+		seen[ref] = struct{}{}
+		out = append(out, ref)
 	}
 	return out
 }

@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 // Status siklus hidup entri harga (enum status_entri).
 const (
@@ -26,9 +30,11 @@ func StatusValid(status string) bool {
 	return false
 }
 
-// EntriHarga memetakan tabel entri_harga.
+// EntriHarga memetakan tabel entri_harga. ID adalah BIGINT identity yang diberi basis data; Kode berisi ID lama
+// (HRG-D00-00-01-K, atau UUID dari aplikasi lama) sebagai kode tampilan dan alias tautan lama, NULL untuk baris baru.
 type EntriHarga struct {
-	ID              string     `gorm:"column:id;primaryKey"`
+	ID              idx.ID     `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode            *string    `gorm:"column:kode"`
 	KomoditasKode   string     `gorm:"column:komoditas_kode"`
 	PasarID         string     `gorm:"column:pasar_id"`
 	Tipe            string     `gorm:"column:tipe"`
@@ -68,8 +74,8 @@ func (EntriHarga) TableName() string {
 
 // TugasEntri menautkan entri harga ke tugas lapangan yang dipenuhinya (tabel tugas_entri).
 type TugasEntri struct {
-	TugasID       string    `gorm:"column:tugas_id;primaryKey"`
-	EntriID       string    `gorm:"column:entri_id;primaryKey"`
+	TugasID       idx.ID    `gorm:"column:tugas_id;primaryKey"`
+	EntriID       idx.ID    `gorm:"column:entri_id;primaryKey"`
 	DitautkanPada time.Time `gorm:"column:ditautkan_pada;default:now()"`
 }
 
@@ -80,7 +86,8 @@ func (TugasEntri) TableName() string {
 // EntriView adalah baris entri_harga beserta nama komoditas, pasar, wilayah,
 // dan petugas, siap ditampilkan di daftar dan detail.
 type EntriView struct {
-	ID              string       `gorm:"column:id"`
+	ID              idx.ID       `gorm:"column:id"`
+	Kode            *string      `gorm:"column:kode"`
 	KomoditasKode   string       `gorm:"column:komoditas_kode"`
 	KomoditasNama   string       `gorm:"column:komoditas_nama"`
 	PasarID         string       `gorm:"column:pasar_id"`

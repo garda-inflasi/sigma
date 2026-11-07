@@ -337,6 +337,7 @@ test.describe("detail sumber data", () => {
 test.describe("detail tugas lapangan", () => {
   type Tugas = {
     id: string;
+    kode?: string | null;
     judul: string;
     pasar_id: string;
     komoditas: string[];
@@ -395,10 +396,32 @@ test.describe("detail tugas lapangan", () => {
     const tautan = dialog.getByRole("link", { name: "Mulai isi" });
     await expect(tautan).toHaveAttribute(
       "href",
-      `/lapangan/input?pasar=${tugas!.pasar_id}&komoditas=${tugas!.komoditas.join(",")}&tipe=${tugas!.tipe}&tugas=${tugas!.id}`,
+      `/lapangan/input?pasar=${tugas!.pasar_id}&komoditas=${tugas!.komoditas.join(",")}&tipe=${tugas!.tipe}&tugas=${tugas!.kode ?? tugas!.id}`,
     );
     await tautan.click();
     await expect(page).toHaveURL(/\/lapangan\/input\?pasar=/);
+  });
+
+  test("API: ID BIGINT berupa string angka, kode lama tetap menjadi alias tautan", async () => {
+    const api = await apiSebagai("mahasiswa");
+    const saya = (await (await api.get("lapangan/tugas/saya")).json())
+      .data as Tugas[];
+    const tugas = saya.find((t) => t.judul === JUDUL);
+    expect(tugas, `tugas "${JUDUL}" ada di seed demo`).toBeTruthy();
+    expect(tugas!.id).toMatch(/^[1-9][0-9]*$/);
+    expect(tugas!.kode, "tugas seed menyimpan ID lama sebagai kode").toMatch(
+      /^TGS-/,
+    );
+
+    const lewatKode = await api.get(`lapangan/tugas/${tugas!.kode}`);
+    expect(lewatKode.status()).toBe(200);
+    expect(((await lewatKode.json()).data as Tugas).id).toBe(tugas!.id);
+    for (const salah of ["0", "-1", "007", "9223372036854775808"]) {
+      expect((await api.get(`lapangan/tugas/${salah}`)).status(), salah).toBe(
+        404,
+      );
+    }
+    await api.dispose();
   });
 
   test("API: tugas petugas lain 404 untuk mahasiswa, terbuka untuk tugas.kelola", async () => {

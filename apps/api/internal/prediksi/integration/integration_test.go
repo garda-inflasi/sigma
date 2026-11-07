@@ -100,7 +100,7 @@ func seedRiwayat(t *testing.T, db *gorm.DB) {
 	}
 	for _, e := range entri {
 		require.NoError(t, db.Exec(`
-			INSERT INTO entri_harga (id, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
+			INSERT INTO entri_harga (kode, komoditas_kode, pasar_id, tipe, harga, satuan, status, dicatat_pada)
 			VALUES (?, 'CBM-KRT', ?, ?::tipe_harga, ?, 'kg', ?::status_entri, ?)`,
 			e.id, e.pasar, e.tipe, e.harga, e.status, dasar.AddDate(0, 0, -e.hariLalu).Add(10*time.Hour)).Error)
 	}

@@ -14,7 +14,8 @@ import {
 } from "./harga";
 
 const respons: EntriHargaResponse = {
-  id: "HRG-D00-00-04-K",
+  id: "1024",
+  kode: "HRG-D00-00-04-K",
   komoditas_kode: "CBM-KRT",
   komoditas_nama: "Cabai merah keriting",
   pasar_id: "PSR-1108-01",
@@ -38,7 +39,8 @@ const respons: EntriHargaResponse = {
 describe("toEntriHarga", () => {
   it("memetakan kolom API ke baris UI dengan label wilayah ringkas", () => {
     assert.deepEqual(toEntriHarga(respons), {
-      id: "HRG-D00-00-04-K",
+      id: "1024",
+      kode: "HRG-D00-00-04-K",
       komoditasKode: "CBM-KRT",
       komoditasNama: "Cabai merah keriting",
       pasarId: "PSR-1108-01",
@@ -58,6 +60,21 @@ describe("toEntriHarga", () => {
       adaFoto: true,
       dalamGeofence: false,
     });
+  });
+
+  it("ID BIGINT tetap string angka dan kode lama dibawa sebagai kode tampilan", () => {
+    const row = toEntriHarga(respons);
+    assert.equal(row.id, "1024");
+    assert.equal(row.kode ?? row.id, "HRG-D00-00-04-K");
+  });
+
+  it("entri baru tanpa kode ditampilkan memakai id", () => {
+    for (const kode of [null, undefined, ""]) {
+      const row = toEntriHarga({ ...respons, id: "32290", kode });
+      assert.equal(row.id, "32290");
+      assert.equal("kode" in row, false, "kunci kode tidak muncul bila kosong");
+      assert.equal(row.kode ?? row.id, "32290");
+    }
   });
 
   it("petugas yang akunnya hilang menjadi string kosong", () => {

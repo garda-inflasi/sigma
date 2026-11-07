@@ -4,16 +4,20 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/harga/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // EntriHargaResponse adalah satu baris daftar entri harga.
 type EntriHargaResponse struct {
-	ID            string `json:"id"`
-	KomoditasKode string `json:"komoditas_kode"`
-	KomoditasNama string `json:"komoditas_nama"`
-	PasarID       string `json:"pasar_id"`
-	PasarNama     string `json:"pasar_nama"`
-	KabupatenKode string `json:"kabupaten_kode"`
+	// ID adalah ID BIGINT dalam string desimal ("123"). Kode berisi ID lama (HRG-D00-00-01-K) bila entri berasal
+	// dari sebelum migrasi 000111, NULL untuk entri baru; tampilkan kode ?? id.
+	ID            idx.ID  `json:"id"`
+	Kode          *string `json:"kode"`
+	KomoditasKode string  `json:"komoditas_kode"`
+	KomoditasNama string  `json:"komoditas_nama"`
+	PasarID       string  `json:"pasar_id"`
+	PasarNama     string  `json:"pasar_nama"`
+	KabupatenKode string  `json:"kabupaten_kode"`
 	// Wilayah adalah nama resmi kabupaten/kota, mis. "KABUPATEN ACEH BESAR".
 	Wilayah       string    `json:"wilayah"`
 	Tipe          string    `json:"tipe"`
@@ -55,7 +59,7 @@ type HargaDetailResponse struct {
 // ToEntriHargaResponse memetakan satu baris view ke respons daftar.
 func ToEntriHargaResponse(e domain.EntriView) EntriHargaResponse {
 	return EntriHargaResponse{
-		ID: e.ID, KomoditasKode: e.KomoditasKode, KomoditasNama: e.KomoditasNama,
+		ID: e.ID, Kode: e.Kode, KomoditasKode: e.KomoditasKode, KomoditasNama: e.KomoditasNama,
 		PasarID: e.PasarID, PasarNama: e.PasarNama, KabupatenKode: e.KabupatenKode, Wilayah: e.KabupatenNama,
 		Tipe: e.Tipe, Harga: e.Harga, Satuan: e.Satuan, Kualitas: e.Kualitas,
 		PetugasID: e.PetugasID, PetugasNama: e.PetugasNama, DicatatPada: e.DicatatPada, Status: e.Status,
@@ -104,7 +108,7 @@ type TrenHargaResponse struct {
 }
 
 type CreateHargaResponse struct {
-	ID     string `json:"id"`
+	ID     idx.ID `json:"id"`
 	Status string `json:"status"`
 }
 
@@ -115,7 +119,7 @@ type BentrokResponse struct {
 
 // VersiServerResponse adalah versi server dari harga yang bentrok.
 type VersiServerResponse struct {
-	ID          string    `json:"id"`
+	ID          idx.ID    `json:"id"`
 	Harga       int       `json:"harga"`
 	DicatatPada time.Time `json:"dicatat_pada"`
 	Petugas     string    `json:"petugas"`
@@ -132,7 +136,7 @@ type BulkHargaResponse struct {
 // RincianBulkResponse menjelaskan satu entri yang dilewati. Sebab: tidak_ditemukan,
 // status_tidak_sesuai, pemisahan_tugas, atau bukan_pemilik.
 type RincianBulkResponse struct {
-	ID    string `json:"id"`
+	ID    idx.ID `json:"id"`
 	Sebab string `json:"sebab"`
 }
 

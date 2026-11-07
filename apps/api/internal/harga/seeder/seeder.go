@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"sort"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/harga/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -91,9 +93,11 @@ const (
 	rentangLapangan  = 8 * time.Hour
 )
 
-// SeedDemo mengisi histori entri harga. Idempoten: id entri ditentukan oleh
-// urutan hari, petugas, dan komoditas, sehingga menjalankannya ulang menyegarkan
-// tanggal relatif terhadap now tanpa menggandakan baris. Hanya untuk demo.
+// SeedDemo mengisi histori entri harga. Idempoten: kode entri (HRG-D<hari>-<petugas>-<komoditas>-<tipe>) ditentukan
+// oleh urutan hari, petugas, dan komoditas, sehingga menjalankannya ulang menyegarkan tanggal relatif terhadap now
+// tanpa menggandakan baris. Kodenya sama dengan ID lama, jadi basis data hasil migrasi 000111 (baris sudah ada
+// dengan kode = ID lama) dan basis data baru memberi hasil yang sama. ID BIGINT diberi basis data; entri baru
+// dimasukkan menurut waktu pencatatan supaya ID menaik menurut waktu, seperti hasil migrasi. Hanya untuk demo.
 //
 // Prasyarat: seeder master.reference dan auth.demo sudah dijalankan.
 func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, error) {
@@ -102,20 +106,33 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 		return DemoSummary{}, err
 	}
 	entri := Build(in, now)
+	sort.SliceStable(entri, func(i, j int) bool {
+		a, b := entri[i], entri[j]
+		if !a.DicatatPada.Equal(b.DicatatPada) {
+			return a.DicatatPada.Before(b.DicatatPada)
+		}
+		return *a.Kode < *b.Kode
+	})
 
-	riwayat := BuildRiwayat(entri)
-
+	var riwayat []domain.RiwayatStatusEntri
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
+			Columns:   []clause.Column{{Name: "kode"}},
 			UpdateAll: true,
 		}).CreateInBatches(&entri, 500).Error
 		if err != nil {
 			return fmt.Errorf("seed entri harga: %w", err)
 		}
 
+		// ID baris yang sudah ada tidak berubah oleh upsert; dibaca menurut kode (bukan menurut urutan RETURNING)
+		// supaya riwayat selalu menunjuk baris yang benar.
+		if err := isiID(tx, entri); err != nil {
+			return err
+		}
+		riwayat = BuildRiwayat(entri)
+
 		// Riwayat entri demo ditulis ulang bersama entrinya supaya waktunya mengikuti now.
-		ids := make([]string, len(entri))
+		ids := make([]idx.ID, len(entri))
 		for i, e := range entri {
 			ids[i] = e.ID
 		}
@@ -136,11 +153,41 @@ func SeedDemo(ctx context.Context, db *gorm.DB, now time.Time) (DemoSummary, err
 	return DemoSummary{Entri: len(entri), Riwayat: len(riwayat)}, nil
 }
 
+// isiID membaca ID BIGINT tiap entri menurut kodenya dan mengisinya ke entri.
+func isiID(tx *gorm.DB, entri []domain.EntriHarga) error {
+	peta := make(map[string]idx.ID, len(entri))
+	for start := 0; start < len(entri); start += hapusBatch {
+		kode := make([]string, 0, hapusBatch)
+		for _, e := range entri[start:min(start+hapusBatch, len(entri))] {
+			kode = append(kode, *e.Kode)
+		}
+		var rows []struct {
+			ID   idx.ID `gorm:"column:id"`
+			Kode string `gorm:"column:kode"`
+		}
+		if err := tx.Raw("SELECT id, kode FROM entri_harga WHERE kode IN ?", kode).Scan(&rows).Error; err != nil {
+			return fmt.Errorf("baca ID entri harga demo: %w", err)
+		}
+		for _, r := range rows {
+			peta[r.Kode] = r.ID
+		}
+	}
+	for i := range entri {
+		id, ada := peta[*entri[i].Kode]
+		if !ada {
+			return fmt.Errorf("entri harga demo %s tidak ditemukan sesudah disimpan", *entri[i].Kode)
+		}
+		entri[i].ID = id
+	}
+	return nil
+}
+
 // hapusBatch membatasi jumlah id per DELETE agar di bawah batas parameter PostgreSQL.
 const hapusBatch = 5000
 
 // BuildRiwayat menurunkan riwayat status dari jejak tiap entri demo: dicatat, divalidasi,
-// dipublikasi, atau ditolak. Entri DRAF hanya tercatat sebagai draf.
+// dipublikasi, atau ditolak. Entri DRAF hanya tercatat sebagai draf. Setiap entri sudah harus punya ID (hasil
+// penyimpanan).
 func BuildRiwayat(entri []domain.EntriHarga) []domain.RiwayatStatusEntri {
 	var out []domain.RiwayatStatusEntri
 	tambah := func(e domain.EntriHarga, dari *string, ke string, oleh *string, waktu time.Time, alasan *string) {
@@ -278,7 +325,7 @@ func buatEntri(rng *rand.Rand, in Input, p Petugas, k Komoditas, tipe string, of
 	petugas := p.ID
 	pedagang := fmt.Sprintf("PDG-%03d", (pi*37+ki*11+offset)%400)
 	e := domain.EntriHarga{
-		ID: id, KomoditasKode: k.Kode, PasarID: p.PasarID, Tipe: tipe, Harga: harga, Satuan: k.Satuan,
+		Kode: &id, KomoditasKode: k.Kode, PasarID: p.PasarID, Tipe: tipe, Harga: harga, Satuan: k.Satuan,
 		Kualitas: pilihKualitas(rng), Sumber: "LAPANGAN", Status: domain.StatusDiajukan,
 		DeviasiPct: math.Round(deviasi*10) / 10, SkorAnomali: math.Round(math.Min(1, math.Abs(deviasi)/40+rng.Float64()*0.05)*100) / 100,
 		Lat: &lat, Lng: &lng, DalamGeofence: !luar, KodePedagang: &pedagang,
@@ -411,7 +458,8 @@ func terapkanJejak(e *domain.EntriHarga, in Input, dicatat, now time.Time, uruta
 // duplikat menyalin entri sebagai pengiriman ulang lima menit kemudian.
 func duplikat(e domain.EntriHarga, now time.Time) domain.EntriHarga {
 	d := e
-	d.ID = e.ID + "-dup"
+	kode := *e.Kode + "-dup"
+	d.Kode = &kode
 	d.Status = domain.StatusDiajukan
 	d.DivalidasiOleh, d.DivalidasiPada, d.DipublikasiOleh, d.DipublikasiPada = nil, nil, nil, nil
 	d.DitolakOleh, d.DitolakPada, d.AlasanPenolakan = nil, nil, nil

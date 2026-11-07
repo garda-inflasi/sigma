@@ -4,12 +4,16 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/lapangan/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // TugasLapanganResponse adalah satu tugas survei. Terisi adalah jumlah komoditas
 // yang sudah tercatat terhadap Target.
 type TugasLapanganResponse struct {
-	ID        string    `json:"id"`
+	// ID adalah ID BIGINT dalam string desimal ("42"). Kode berisi ID lama (TGS-<slug>-<n>) untuk tugas dari sebelum
+	// migrasi 000111, NULL untuk tugas baru; tampilkan kode ?? id.
+	ID        idx.ID    `json:"id"`
+	Kode      *string   `json:"kode"`
 	Judul     string    `json:"judul"`
 	PasarID   string    `json:"pasar_id"`
 	PasarNama string    `json:"pasar_nama"`
@@ -28,7 +32,7 @@ func ToTugasLapanganResponse(t usecase.Tugas) TugasLapanganResponse {
 		komoditas = []string{}
 	}
 	return TugasLapanganResponse{
-		ID: t.ID, Judul: t.Judul, PasarID: t.PasarID, PasarNama: t.PasarNama, Komoditas: komoditas,
+		ID: t.ID, Kode: t.Kode, Judul: t.Judul, PasarID: t.PasarID, PasarNama: t.PasarNama, Komoditas: komoditas,
 		Tenggat: t.Tenggat, Status: t.StatusTampil, Target: t.Target, Terisi: t.JumlahSelesai, Tipe: t.Tipe,
 	}
 }

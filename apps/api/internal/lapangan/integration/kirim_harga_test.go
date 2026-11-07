@@ -204,7 +204,7 @@ func TestKirimHarga_AdvancesTaskProgressOncePerCommodity(t *testing.T) {
 	s := sharedSuite(t)
 	waktu := time.Now().Add(-time.Minute)
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO tugas_lapangan (id, judul, pasar_id, petugas_id, komoditas, tipe, tenggat, status, target, dibuat_pada)
+		INSERT INTO tugas_lapangan (kode, judul, pasar_id, petugas_id, komoditas, tipe, tenggat, status, target, dibuat_pada)
 		VALUES ('TGS-uji-progres', 'Uji progres', 'PSR-1174-01', garda_uuid_stabil('pengguna', 'mahasiswa_9'), '{TMT,KTG}', 'KONSUMEN', ?, 'BELUM', 2, ?)`,
 		time.Now().AddDate(-10, 0, 0), time.Now().AddDate(-11, 0, 0)).Error)
 	kirim := func(kunci, komoditas string) *httptest.ResponseRecorder {
@@ -214,7 +214,7 @@ func TestKirimHarga_AdvancesTaskProgressOncePerCommodity(t *testing.T) {
 	}
 	terisi := func() int {
 		for _, item := range data[[]tugas](t, s.call(t, http.MethodGet, "/v1/lapangan/tugas/saya", "mahasiswa.9@gardainflasi.id", nil)) {
-			if item.ID == "TGS-uji-progres" {
+			if item.Kode != nil && *item.Kode == "TGS-uji-progres" {
 				return item.Terisi
 			}
 		}
@@ -238,7 +238,7 @@ func TestKirimHarga_AdvancesTaskProgressOncePerCommodity(t *testing.T) {
 	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
 	assert.Equal(t, 1, terisi())
 	assert.Equal(t, map[string]bool{"TMT": true, "KTG": false}, rincian(), "rincian mengikuti entri tertaut")
-	assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM tugas_entri WHERE tugas_id = 'TGS-uji-progres' AND entri_id = ?", data[hasilKirim](t, first).ID))
+	assert.EqualValues(t, 1, s.hitung(t, "SELECT count(*) FROM tugas_entri WHERE tugas_id = (SELECT id FROM tugas_lapangan WHERE kode = 'TGS-uji-progres') AND entri_id = ?", data[hasilKirim](t, first).ID))
 
 	require.Equal(t, http.StatusCreated, kirim("progres-2", "TMT").Code)
 	assert.Equal(t, 1, terisi(), "komoditas yang sama tidak menambah progres lagi")

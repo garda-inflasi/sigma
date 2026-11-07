@@ -166,7 +166,7 @@ func TestValidasiOtomatis_QueueCanBeOrderedByScore(t *testing.T) {
 func TestValidasiOtomatis_SeededDetailExposesFlags(t *testing.T) {
 	s := sharedSuite(t)
 	var id string
-	require.NoError(t, s.db.Raw("SELECT id FROM entri_harga WHERE id LIKE 'HRG-D%' AND (flag_validasi->>'outlier')::boolean LIMIT 1").Scan(&id).Error)
+	require.NoError(t, s.db.Raw("SELECT id FROM entri_harga WHERE kode LIKE 'HRG-D%' AND (flag_validasi->>'outlier')::boolean LIMIT 1").Scan(&id).Error)
 	require.NotEmpty(t, id, "histori demo memuat outlier bertanda")
 
 	cek := data[hasilCek](t, s.call(t, http.MethodGet, "/v1/harga/"+id, emailKoordinator, nil))
@@ -192,12 +192,12 @@ func TestBatasHarga_ReferenceSeedCoversEveryActiveCommodity(t *testing.T) {
 
 func TestBatasHarga_ReseedKeepsAdminEdits(t *testing.T) {
 	s := sharedSuite(t)
-	require.NoError(t, s.db.Exec("UPDATE batas_harga SET batas_maks = 99999 WHERE id = 'BH-TLR'").Error)
+	require.NoError(t, s.db.Exec("UPDATE batas_harga SET batas_maks = 99999 WHERE kode = 'BH-TLR'").Error)
 
 	_, err := hargaseeder.SeedReference(t.Context(), s.db)
 	require.NoError(t, err)
 
 	var maks int
-	require.NoError(t, s.db.Raw("SELECT batas_maks FROM batas_harga WHERE id = 'BH-TLR'").Scan(&maks).Error)
+	require.NoError(t, s.db.Raw("SELECT batas_maks FROM batas_harga WHERE kode = 'BH-TLR'").Scan(&maks).Error)
 	assert.Equal(t, 99999, maks)
 }

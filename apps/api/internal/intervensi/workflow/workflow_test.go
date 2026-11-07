@@ -9,6 +9,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	ewsdomain "github.com/garda-inflasi/api/internal/ews/domain"
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,10 +55,10 @@ func service(repo *fakeRepo, cfg Config) (*Service, *audittest.Recorder) {
 }
 
 func alertContoh(jenis, severity string) ewsdomain.Alert {
-	kode := "CBM-KRT"
+	kode, kodeAlert := "CBM-KRT", "EWS-2000"
 	return ewsdomain.Alert{
 		EwsAlert: ewsdomain.EwsAlert{
-			ID: "EWS-2000", Jenis: jenis, Severity: severity, Judul: "Lonjakan harga cabai merah keriting",
+			ID: 12, Kode: &kodeAlert, Jenis: jenis, Severity: severity, Judul: "Lonjakan harga cabai merah keriting",
 			Pesan: "Harga naik 20%.", KomoditasKode: &kode, KabupatenKode: "1171",
 		},
 		KabupatenNama: "KOTA BANDA ACEH",
@@ -82,14 +83,16 @@ func TestSiklusUntukDanPrioritasUntuk(t *testing.T) {
 }
 
 func TestAlertDitulis_CreatesCardForSeriousAlerts(t *testing.T) {
-	repo := &fakeRepo{dibuat: &domain.Intervensi{ID: "INT-1000", Siklus: "TEKANAN", Tahap: "t-ews", Judul: "x", Prioritas: "TINGGI"}}
+	kartuID := idx.UUIDStabil("intervensi", "INT-1000")
+	repo := &fakeRepo{dibuat: &domain.Intervensi{ID: kartuID, Siklus: "TEKANAN", Tahap: "t-ews", Judul: "x", Prioritas: "TINGGI"}}
 	s, rec := service(repo, Config{KartuOtomatisMin: ewsdomain.SeveritySiaga})
 
 	s.AlertDitulis(t.Context(), alertContoh(ewsdomain.JenisLonjakanHarga, ewsdomain.SeverityKritis), ewsdomain.HasilDibuat)
 
 	require.Len(t, repo.kartu, 1)
 	k := repo.kartu[0]
-	assert.Equal(t, "EWS-2000", k.AlertID)
+	assert.Equal(t, idx.ID(12), k.AlertID, "kartu menunjuk alert lewat ID BIGINT")
+	assert.Equal(t, "EWS-2000", k.AlertKode, "kode tampilan dipakai untuk teks riwayat")
 	assert.Equal(t, domain.SiklusTekanan, k.Siklus)
 	assert.Equal(t, "Lonjakan harga cabai merah keriting — Kota Banda Aceh", k.Judul)
 	assert.Equal(t, "Harga naik 20%.", k.Deskripsi)
@@ -103,8 +106,8 @@ func TestAlertDitulis_CreatesCardForSeriousAlerts(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "BUAT_OTOMATIS", entry.Aksi)
 	assert.Empty(t, entry.AktorID, "dibuat sistem")
-	assert.Equal(t, "INT-1000", entry.EntitasID)
-	assert.Equal(t, "EWS-2000", entry.Metadata["ews_alert_id"])
+	assert.Equal(t, kartuID, entry.EntitasID)
+	assert.Equal(t, "12", entry.Metadata["ews_alert_id"])
 }
 
 func TestAlertDitulis_SkipsWhatDoesNotQualify(t *testing.T) {

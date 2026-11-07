@@ -32,6 +32,7 @@ import { useAjukanPersetujuan, useAksiKartu, useAlurPersetujuan, useIntervensi, 
 import { qk } from "@/lib/query/keys";
 import { can, type Permission } from "@/lib/rbac/permissions";
 import { useKanban } from "@/lib/stores/kanban-store";
+import { labelKode } from "@/lib/kode";
 import { KanbanCardView } from "./kanban-card";
 import { KanbanColumn } from "./kanban-column";
 import { KartuDetailSheet } from "./kartu-detail-sheet";
@@ -223,7 +224,7 @@ export function KanbanBoard() {
     {
       id: "ekspor", label: "Ekspor CSV", icon: Download,
       run: (rows) => exportCsv(rows, [
-        { header: "ID", value: (r) => r.id }, { header: "Judul", value: (r) => r.judul }, { header: "Siklus", value: (r) => r.siklus },
+        { header: "ID", value: (r) => labelKode(r) }, { header: "Judul", value: (r) => r.judul }, { header: "Siklus", value: (r) => r.siklus },
         { header: "Tahap", value: (r) => r.tahap }, { header: "Prioritas", value: (r) => r.prioritas }, { header: "Tenggat", value: (r) => r.tenggat },
       ], `intervensi-${siklus}`),
     },

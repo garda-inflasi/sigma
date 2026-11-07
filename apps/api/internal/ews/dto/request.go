@@ -1,5 +1,7 @@
 package dto
 
+import "github.com/garda-inflasi/api/pkg/idx"
+
 // ListEWSRequest adalah filter dan paginasi daftar alert (semua opsional).
 type ListEWSRequest struct {
 	Status        string `form:"status" binding:"omitempty,oneof=BARU DIAKUI DIESKALASI SELESAI"`
@@ -10,10 +12,11 @@ type ListEWSRequest struct {
 	Limit         int    `form:"limit" binding:"omitempty,min=1,max=1000"`
 }
 
-// BulkEWSRequest adalah aksi massal pada alert menurut id.
+// BulkEWSRequest adalah aksi massal pada alert menurut ID BIGINT (string desimal atau angka JSON; bentuk lain,
+// termasuk kode lama EWS-..., ditolak 400).
 type BulkEWSRequest struct {
 	Action string   `json:"action" binding:"required,oneof=akui eskalasi selesai"`
-	IDs    []string `json:"ids" binding:"required,min=1,max=500,dive,required"`
+	IDs    []idx.ID `json:"ids" binding:"required,min=1,max=500,dive,required"`
 }
 
 // UpdateAturanRequest mengubah ambang suatu aturan. Versi adalah versi yang dibaca

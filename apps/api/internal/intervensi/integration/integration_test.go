@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +21,7 @@ import (
 	intervensiseeder "github.com/garda-inflasi/api/internal/intervensi/seeder"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -142,21 +145,44 @@ func data[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 	return res.Data
 }
 
+// kid adalah UUID kartu seed dari kode lamanya (rumus yang sama dengan seeder dan migrasi 000112).
+func kid(kode string) string { return idx.UUIDStabil("intervensi", kode) }
+
+// rujukan menerjemahkan kode kartu seed (INT-n) ke UUID-nya untuk dipakai di URL dan body; ID lain (UUID kartu
+// yang dibuat tes) dikembalikan apa adanya. Tes alias kode memakai kode langsung.
+func rujukan(id string) string {
+	if strings.HasPrefix(id, "INT-") {
+		return kid(id)
+	}
+	return id
+}
+
+// alertID membaca ID BIGINT (desimal) alert menurut kode tampilannya (EWS-n).
+func (s *suite) alertID(t *testing.T, kode string) string {
+	t.Helper()
+	var id string
+	require.NoError(t, s.db.Raw(`SELECT id::text FROM ews_alert WHERE kode = ?`, kode).Scan(&id).Error)
+	require.NotEmpty(t, id, "alert %s tidak ada", kode)
+	return id
+}
+
 type kartuRow struct {
-	ID            string `json:"id"`
-	Siklus        string `json:"siklus"`
-	Tahap         string `json:"tahap"`
-	Urutan        int    `json:"urutan"`
-	Judul         string `json:"judul"`
-	KomoditasKode string `json:"komoditas_kode"`
-	KabupatenKode string `json:"kabupaten_kode"`
-	Prioritas     string `json:"prioritas"`
-	RekomendasiAI bool   `json:"rekomendasi_ai"`
+	ID            string  `json:"id"`
+	Kode          *string `json:"kode"`
+	Siklus        string  `json:"siklus"`
+	Tahap         string  `json:"tahap"`
+	Urutan        int     `json:"urutan"`
+	Judul         string  `json:"judul"`
+	KomoditasKode string  `json:"komoditas_kode"`
+	KabupatenKode string  `json:"kabupaten_kode"`
+	Prioritas     string  `json:"prioritas"`
+	RekomendasiAI bool    `json:"rekomendasi_ai"`
 	Progres       struct {
 		Selesai int `json:"selesai"`
 		Total   int `json:"total"`
 	} `json:"progres"`
 	EwsAlertID      *string `json:"ews_alert_id"`
+	EwsAlertKode    *string `json:"ews_alert_kode"`
 	SelesaiPada     *string `json:"selesai_pada"`
 	Versi           int     `json:"versi"`
 	DieskalasiPada  *string `json:"dieskalasi_pada"`
@@ -173,23 +199,28 @@ func listCards(t *testing.T, s *suite, query string) []kartuRow {
 	return data[[]kartuRow](t, w)
 }
 
-func card(t *testing.T, s *suite, id string) kartuRow {
+// card mencari kartu menurut kode tampilan (INT-n) atau UUID.
+func card(t *testing.T, s *suite, kodeAtauID string) kartuRow {
 	t.Helper()
 	for _, k := range listCards(t, s, "") {
-		if k.ID == id {
+		if k.ID == kodeAtauID || (k.Kode != nil && *k.Kode == kodeAtauID) {
 			return k
 		}
 	}
-	require.FailNow(t, "kartu tidak ada", id)
+	require.FailNow(t, "kartu tidak ada", kodeAtauID)
 	return kartuRow{}
 }
 
-// column mengembalikan id kartu satu tahap menurut urutan API.
+// column mengembalikan kode kartu (UUID bila tanpa kode) satu tahap menurut urutan API.
 func column(t *testing.T, s *suite, tahap string) []string {
 	t.Helper()
 	var ids []string
 	for _, k := range listCards(t, s, "?tahap="+tahap) {
-		ids = append(ids, k.ID)
+		if k.Kode != nil {
+			ids = append(ids, *k.Kode)
+		} else {
+			ids = append(ids, k.ID)
+		}
 	}
 	return ids
 }
@@ -234,8 +265,13 @@ func TestIntervensi_ListReturnsTheSeedShapedForTheBoard(t *testing.T) {
 	assert.Equal(t, "TINGGI", first.Prioritas)
 	assert.True(t, first.RekomendasiAI)
 	assert.Equal(t, 5, first.Progres.Total)
+	assert.Equal(t, kid("INT-301"), first.ID, "ID kartu = UUID stabil dari kode lama")
+	require.NotNil(t, first.Kode)
+	assert.Equal(t, "INT-301", *first.Kode)
 	require.NotNil(t, first.EwsAlertID)
-	assert.Equal(t, "EWS-1000", *first.EwsAlertID)
+	assert.Equal(t, s.alertID(t, "EWS-1000"), *first.EwsAlertID, "alert pemicu dirujuk lewat ID desimal")
+	require.NotNil(t, first.EwsAlertKode)
+	assert.Equal(t, "EWS-1000", *first.EwsAlertKode)
 	require.Len(t, first.PenanggungJawab, 1)
 	assert.Equal(t, uid("manajer_program"), first.PenanggungJawab[0].ID)
 	assert.Equal(t, "Rina Safitri, S.T., M.T.", first.PenanggungJawab[0].Nama)
@@ -295,7 +331,7 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 		return map[string]any{
 			"judul": "Operasi pasar beras Banda Aceh", "deskripsi": "Gelontorkan 20 ton", "siklus": "TEKANAN", "prioritas": "TINGGI",
 			"komoditas_kode": "BRS-MED", "kabupaten_kode": "1171", "tenggat": time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339),
-			"ews_alert_id": "EWS-1008", "penanggung_jawab_ids": []string{uid("manajer_data"), uid("manajer_data"), uid("agregator_data")},
+			"ews_alert_id": s.alertID(t, "EWS-1008"), "penanggung_jawab_ids": []string{uid("manajer_data"), uid("manajer_data"), uid("agregator_data")},
 		}
 	}
 
@@ -303,29 +339,45 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 		w := s.call(t, http.MethodPost, "/v1/intervensi", emailKelola, valid())
 		require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 		created := data[struct {
-			ID    string `json:"id"`
-			Tahap string `json:"tahap"`
+			ID    string  `json:"id"`
+			Kode  *string `json:"kode"`
+			Tahap string  `json:"tahap"`
 		}](t, w)
-		assert.Equal(t, "INT-1000", created.ID)
+		assert.True(t, idx.ValidUUID(created.ID), "ID kartu baru adalah UUID buatan basis data: %s", created.ID)
+		assert.NotEqual(t, kid("INT-1000"), created.ID, "bukan UUID stabil: hanya baris seed dan migrasi yang memakainya")
+		require.NotNil(t, created.Kode)
+		assert.Equal(t, "INT-1000", *created.Kode, "kode tampilan dari sequence, di atas kode seed")
 		assert.Equal(t, "t-ews", created.Tahap)
 
 		k := card(t, s, created.ID)
 		assert.Equal(t, 2, k.Urutan, "setelah INT-301 dan INT-302")
 		assert.Len(t, k.PenanggungJawab, 2, "penanggung jawab ganda dibuang")
 		require.NotNil(t, k.EwsAlertID)
+		assert.Equal(t, s.alertID(t, "EWS-1008"), *k.EwsAlertID)
+		require.NotNil(t, k.EwsAlertKode)
+		assert.Equal(t, "EWS-1008", *k.EwsAlertKode)
 	})
 
 	t.Run("nomor kartu berikutnya menaik", func(t *testing.T) {
 		w := s.call(t, http.MethodPost, "/v1/intervensi", emailKelola, valid())
 		require.Equal(t, http.StatusCreated, w.Code)
-		assert.Equal(t, "INT-1001", data[struct {
-			ID string `json:"id"`
-		}](t, w).ID)
+		assert.Equal(t, "INT-1001", *data[struct {
+			Kode *string `json:"kode"`
+		}](t, w).Kode)
+	})
+
+	t.Run("ews_alert_id sebagai angka JSON diterima", func(t *testing.T) {
+		body := valid()
+		angka, err := strconv.ParseInt(s.alertID(t, "EWS-1008"), 10, 64)
+		require.NoError(t, err)
+		body["ews_alert_id"] = angka
+		w := s.call(t, http.MethodPost, "/v1/intervensi", emailKelola, body)
+		assert.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 	})
 
 	t.Run("rujukan yang tidak ada ditolak", func(t *testing.T) {
 		for field, value := range map[string]any{
-			"komoditas_kode": "TIDAK-ADA", "kabupaten_kode": "9999", "ews_alert_id": "EWS-TIDAK-ADA",
+			"komoditas_kode": "TIDAK-ADA", "kabupaten_kode": "9999", "ews_alert_id": "999999",
 			"penanggung_jawab_ids": []string{"bukan_pengguna"},
 		} {
 			body := valid()
@@ -342,6 +394,15 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 		}
 	})
 
+	t.Run("ews_alert_id harus ID desimal: kode lama dan bentuk salah ditolak 400", func(t *testing.T) {
+		for name, value := range map[string]any{"kode lama": "EWS-1008", "teks": "abc", "nol": "0", "negatif": -5, "desimal": "1.5"} {
+			body := valid()
+			body["ews_alert_id"] = value
+			w := s.call(t, http.MethodPost, "/v1/intervensi", emailKelola, body)
+			assert.Equal(t, http.StatusBadRequest, w.Code, name+": "+w.Body.String())
+		}
+	})
+
 	t.Run("judul berisi spasi saja ditolak", func(t *testing.T) {
 		body := valid()
 		body["judul"] = "   \t "
@@ -352,7 +413,7 @@ func TestIntervensi_CreateAndAudit(t *testing.T) {
 	t.Run("pembuatan tercatat di audit", func(t *testing.T) {
 		var n int64
 		require.NoError(t, s.db.Table("audit_log").Where("entitas = 'intervensi' AND aksi = 'BUAT' AND hasil = 'BERHASIL'").Count(&n).Error)
-		assert.EqualValues(t, 2, n, "hanya dua pembuatan yang berhasil")
+		assert.EqualValues(t, 3, n, "hanya tiga pembuatan yang berhasil")
 	})
 }
 
@@ -361,14 +422,14 @@ func TestIntervensi_MoveEnforcesTahapPermissionsAndKeepsOrder(t *testing.T) {
 	// versiTerkini memakai versi kartu saat ini (1 bila kartu tidak ada) seperti klien yang baru memuat papan.
 	versiTerkini := func(id string) int {
 		for _, k := range listCards(t, s, "") {
-			if k.ID == id {
+			if k.ID == rujukan(id) {
 				return k.Versi
 			}
 		}
 		return 1
 	}
 	move := func(email, id, tahap string, urutan int) *httptest.ResponseRecorder {
-		return s.call(t, http.MethodPatch, "/v1/intervensi/"+id+"/tahap", email, map[string]any{"tahap": tahap, "urutan": urutan, "versi": versiTerkini(id)})
+		return s.call(t, http.MethodPatch, "/v1/intervensi/"+rujukan(id)+"/tahap", email, map[string]any{"tahap": tahap, "urutan": urutan, "versi": versiTerkini(id)})
 	}
 
 	t.Run("pindah antartahap menyisipkan di posisi dan menomori ulang kolom", func(t *testing.T) {
@@ -427,6 +488,27 @@ func TestIntervensi_MoveEnforcesTahapPermissionsAndKeepsOrder(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, move(emailKelola, "INT-301", "t-ews", -1).Code)
 	})
 
+	t.Run("kode lama (INT-n) di URL tetap berlaku sebagai alias; audit memakai UUID", func(t *testing.T) {
+		before := card(t, s, "INT-302")
+		w := s.call(t, http.MethodPatch, "/v1/intervensi/INT-302/tahap", emailKelola, map[string]any{"tahap": before.Tahap, "urutan": 0, "versi": before.Versi})
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, before.Versi+1, card(t, s, "INT-302").Versi, "alias menunjuk kartu yang sama dengan UUID-nya")
+
+		var entitasID string
+		require.NoError(t, s.db.Raw(`SELECT entitas_id FROM audit_log WHERE entitas = 'intervensi' AND aksi = 'PINDAH_TAHAP' AND hasil = 'BERHASIL' ORDER BY waktu DESC LIMIT 1`).Scan(&entitasID).Error)
+		assert.Equal(t, kid("INT-302"), entitasID, "audit mencatat UUID, bukan kode")
+	})
+
+	t.Run("ID salah bentuk atau tidak ada dijawab 404", func(t *testing.T) {
+		for _, bukanID := range []string{"bukan-uuid", "0", "INT-" + strings.Repeat("9", 80), "00000000-0000-0000-0000-000000000000"} {
+			w := s.call(t, http.MethodPatch, "/v1/intervensi/"+bukanID+"/tahap", emailKelola, map[string]any{"tahap": "t-ews", "urutan": 0, "versi": 1})
+			assert.Equal(t, http.StatusNotFound, w.Code, bukanID)
+		}
+		// Rujukan yang bukan UUID dan lebih panjang dari kode (64) dijawab 404 sebelum badan diperiksa.
+		panjang := "/v1/intervensi/INT-" + strings.Repeat("9", 80) + "/tahap"
+		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodPatch, panjang, emailKelola, map[string]any{}).Code)
+	})
+
 	t.Run("pemindahan dan penolakan tercatat di audit", func(t *testing.T) {
 		var rows []struct {
 			Hasil string
@@ -444,7 +526,7 @@ func TestIntervensi_MoveEnforcesTahapPermissionsAndKeepsOrder(t *testing.T) {
 				ditolak++
 			}
 		}
-		assert.Equal(t, 7, berhasil)
+		assert.Equal(t, 8, berhasil)
 		assert.Equal(t, 3, ditolak)
 	})
 }

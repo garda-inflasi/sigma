@@ -103,7 +103,7 @@ func (p *PushPengirim) Kirim(ctx context.Context, m domain.Pesan) error {
 		return err
 	}
 	payload, err := json.Marshal(map[string]string{
-		"title": fmt.Sprintf("EWS %s: %s", m.Severity, m.Judul), "body": m.Isi, "url": m.TautanPath, "tag": m.AlertID,
+		"title": fmt.Sprintf("EWS %s: %s", m.Severity, m.Judul), "body": m.Isi, "url": m.TautanPath, "tag": m.AlertID.String(),
 	})
 	if err != nil {
 		return fmt.Errorf("encode push: %w", err)

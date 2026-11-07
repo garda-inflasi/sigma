@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,7 +111,7 @@ func TestSeedDemo_OpenRequestIsRebuiltWithoutDuplicates(t *testing.T) {
 		DiajukanOleh string
 	}
 	require.NoError(t, db.Raw(`SELECT intervensi_id, status, tahap_tujuan, diajukan_oleh FROM intervensi_persetujuan`).Scan(&p).Error)
-	assert.Equal(t, "INT-304", p.IntervensiID)
+	assert.Equal(t, idx.UUIDStabil("intervensi", "INT-304"), p.IntervensiID)
 	assert.Equal(t, "MENUNGGU", p.Status)
 	assert.Equal(t, "t-fiskal", p.TahapTujuan)
 	assert.Equal(t, uid("manajer_program"), p.DiajukanOleh)
@@ -120,7 +121,7 @@ func TestBuildKartu_TahapSejakFollowsTheWalkToTheCurrentTahap(t *testing.T) {
 	kartu, _ := BuildKartu(seedNow)
 	byID := map[string]domain.Intervensi{}
 	for _, k := range kartu {
-		byID[k.ID] = k
+		byID[*k.Kode] = k
 	}
 	first := byID["INT-301"] // t-ews: tahap pertama
 	assert.Equal(t, first.DibuatPada, first.TahapSejak)

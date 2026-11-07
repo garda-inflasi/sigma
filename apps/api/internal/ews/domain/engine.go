@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Jenis alert (enum jenis_ews).
@@ -60,7 +62,7 @@ type Pengukuran struct {
 
 // NewAlert adalah alert yang hendak ditulis rule engine.
 type NewAlert struct {
-	AturanID      string
+	AturanID      idx.ID
 	Jenis         string
 	Severity      string
 	Judul         string

@@ -10,6 +10,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -63,13 +64,14 @@ func (uc *UseCase) List(ctx context.Context, q domain.ListQuery) ([]domain.Alert
 	return items, total, nil
 }
 
-func (uc *UseCase) GetByID(ctx context.Context, id string) (*domain.Alert, error) {
-	alert, err := uc.repo.GetByID(ctx, id)
+// GetByID mengambil satu alert menurut ID atau kode tampilan lama (EWS-...).
+func (uc *UseCase) GetByID(ctx context.Context, ref idx.RujukanID) (*domain.Alert, error) {
+	alert, err := uc.repo.GetByID(ctx, ref)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		uc.log.Error("ews: ambil alert gagal", map[string]interface{}{"id": id, "error": err.Error()})
+		uc.log.Error("ews: ambil alert gagal", map[string]interface{}{"id": ref.ID, "kode": ref.Kode, "error": err.Error()})
 		return nil, err
 	}
 	return alert, nil
@@ -85,45 +87,46 @@ func (uc *UseCase) ListAturan(ctx context.Context) ([]domain.Aturan, error) {
 	return items, nil
 }
 
-// ListRiwayat mengembalikan perubahan status satu alert, terlama dahulu.
-func (uc *UseCase) ListRiwayat(ctx context.Context, alertID string) ([]domain.Riwayat, error) {
-	if _, err := uc.GetByID(ctx, alertID); err != nil {
+// ListRiwayat mengembalikan perubahan status satu alert (menurut ID atau kode), terlama dahulu.
+func (uc *UseCase) ListRiwayat(ctx context.Context, ref idx.RujukanID) ([]domain.Riwayat, error) {
+	alert, err := uc.GetByID(ctx, ref)
+	if err != nil {
 		return nil, err
 	}
-	items, err := uc.repo.ListRiwayat(ctx, alertID)
+	items, err := uc.repo.ListRiwayat(ctx, alert.ID)
 	if err != nil {
-		uc.log.Error("ews: riwayat alert gagal", map[string]interface{}{"id": alertID, "error": err.Error()})
+		uc.log.Error("ews: riwayat alert gagal", map[string]interface{}{"id": alert.ID, "error": err.Error()})
 		return nil, err
 	}
 	return items, nil
 }
 
-// UpdateAturan mengubah ambang (dan kanal, jendela, peredaman) suatu aturan dengan
-// optimistic locking menurut versi, lalu mencatatnya di audit.
-func (uc *UseCase) UpdateAturan(ctx context.Context, id string, upd domain.AturanUpdate, actorID string) (*domain.Aturan, error) {
+// UpdateAturan mengubah ambang (dan kanal, jendela, peredaman) suatu aturan (menurut ID atau kode ATR-...)
+// dengan optimistic locking menurut versi, lalu mencatatnya di audit dengan ID aturan.
+func (uc *UseCase) UpdateAturan(ctx context.Context, ref idx.RujukanID, upd domain.AturanUpdate, actorID string) (*domain.Aturan, error) {
 	if upd.AmbangWaspada <= 0 || upd.AmbangWaspada >= upd.AmbangSiaga || upd.AmbangSiaga >= upd.AmbangKritis {
 		return nil, ErrAmbangTidakValid
 	}
-	before, err := uc.repo.GetAturan(ctx, id)
+	before, err := uc.repo.GetAturan(ctx, ref)
 	if err != nil {
-		return nil, uc.aturanError(id, err)
+		return nil, uc.aturanError(ref, err)
 	}
-	after, err := uc.repo.UpdateAturan(ctx, id, upd, actorID)
+	after, err := uc.repo.UpdateAturan(ctx, before.ID, upd, actorID)
 	if err != nil {
-		return nil, uc.aturanError(id, err)
+		return nil, uc.aturanError(ref, err)
 	}
 	uc.writeAudit(ctx, audit.Entry{
-		AktorID: actorID, Aksi: "UBAH_AMBANG", Entitas: "aturan_ews", EntitasID: id, Hasil: audit.HasilBerhasil,
+		AktorID: actorID, Aksi: "UBAH_AMBANG", Entitas: "aturan_ews", EntitasID: before.ID.String(), Hasil: audit.HasilBerhasil,
 		Sebelum: ringkasAturan(before), Sesudah: ringkasAturan(after),
 	})
 	return after, nil
 }
 
-func (uc *UseCase) aturanError(id string, err error) error {
+func (uc *UseCase) aturanError(ref idx.RujukanID, err error) error {
 	if errors.Is(err, ErrAturanNotFound) || errors.Is(err, ErrVersiUsang) {
 		return err
 	}
-	uc.log.Error("ews: aturan gagal diproses", map[string]interface{}{"id": id, "error": err.Error()})
+	uc.log.Error("ews: aturan gagal diproses", map[string]interface{}{"id": ref.ID, "kode": ref.Kode, "error": err.Error()})
 	return err
 }
 
@@ -156,7 +159,7 @@ func (uc *UseCase) writeAudit(ctx context.Context, entry audit.Entry) {
 }
 
 // BulkAction menerapkan aksi massal dan mencatatnya di audit trail.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []string, action, actorID string) (BulkResult, error) {
+func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, action, actorID string) (BulkResult, error) {
 	domainAction := domain.BulkAction(action)
 	switch domainAction {
 	case domain.BulkAkui, domain.BulkEskalasi, domain.BulkSelesai:
@@ -184,8 +187,8 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, action, actorID
 }
 
 // unique membuang id ganda dengan tetap menjaga urutan.
-func unique(ids []string) []string {
-	out := make([]string, 0, len(ids))
+func unique(ids []idx.ID) []idx.ID {
+	out := make([]idx.ID, 0, len(ids))
 	for _, id := range ids {
 		if !slices.Contains(out, id) {
 			out = append(out, id)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 )
 
@@ -161,7 +162,7 @@ func (s *Service) kirimSatu(ctx context.Context, p domain.Pesan) (status, galat 
 	if !ok {
 		return domain.NotifDicatat, "adaptor kanal " + p.Kanal + " belum dikonfigurasi; hanya dicatat"
 	}
-	p.TautanPath = "/ews?id=" + p.AlertID
+	p.TautanPath = "/ews?id=" + p.AlertID.String()
 	ctx, cancel := context.WithTimeout(ctx, timeoutPengirim)
 	defer cancel()
 
@@ -179,7 +180,7 @@ func (s *Service) kirimSatu(ctx context.Context, p domain.Pesan) (status, galat 
 
 // Eskalasi mengeskalasi alert BARU yang tidak diakui dalam batas waktu (bila diaktifkan)
 // dan mengembalikan id yang dieskalasi.
-func (s *Service) Eskalasi(ctx context.Context) ([]string, error) {
+func (s *Service) Eskalasi(ctx context.Context) ([]idx.ID, error) {
 	if s.cfg.EskalasiSetelah <= 0 {
 		return nil, nil
 	}
@@ -189,7 +190,7 @@ func (s *Service) Eskalasi(ctx context.Context) ([]string, error) {
 	}
 	for _, id := range ids {
 		err := s.audit.Write(ctx, audit.Entry{
-			Aksi: "ESKALASI_OTOMATIS", Entitas: "ews_alert", EntitasID: id, Hasil: audit.HasilBerhasil,
+			Aksi: "ESKALASI_OTOMATIS", Entitas: "ews_alert", EntitasID: id.String(), Hasil: audit.HasilBerhasil,
 			Metadata: map[string]any{"setelah_menit": int(s.cfg.EskalasiSetelah.Minutes()), "minimum": s.cfg.EskalasiMin},
 		})
 		if err != nil {

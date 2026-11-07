@@ -26,8 +26,12 @@ import {
 } from "./intervensi";
 import { alurMock, riwayatMock, tahapMock } from "./intervensi-mock";
 
+const UUID_301 = "a7c1e4f0-3b2d-3c55-8e41-5d0f6b7a9c10";
+const UUID_304 = "5e9d2b3c-71aa-3f0e-9b64-0c2e8d41f7a3";
+
 const kartu: KartuResponse = {
-  id: "INT-301",
+  id: UUID_301,
+  kode: "INT-301",
   siklus: "TEKANAN",
   tahap: "t-ews",
   judul: "Lonjakan cabai merah Banda Aceh",
@@ -41,7 +45,8 @@ const kartu: KartuResponse = {
   penanggung_jawab: [
     { id: "e810ffa6-9117-330a-aee6-f281fa031dfe", nama: "Rina Safitri, S.T., M.T." },
   ],
-  ews_alert_id: "EWS-1000",
+  ews_alert_id: "12",
+  ews_alert_kode: "EWS-1000",
   dibuat_pada: "2026-10-10T08:00:00Z",
   selesai_pada: null,
   versi: 4,
@@ -51,7 +56,8 @@ const kartu: KartuResponse = {
 describe("toKartu", () => {
   it("memetakan kolom API ke model kanban", () => {
     assert.deepEqual(toKartu(kartu), {
-      id: "INT-301",
+      id: UUID_301,
+      kode: "INT-301",
       siklus: "tekanan",
       tahap: "t-ews",
       judul: "Lonjakan cabai merah Banda Aceh",
@@ -65,7 +71,8 @@ describe("toKartu", () => {
       versi: 4,
       dieskalasi: false,
       deskripsi: "Harga naik 12% sepekan",
-      ewsAlertId: "EWS-1000",
+      ewsAlertId: "12",
+      ewsAlertKode: "EWS-1000",
       dibuatPada: "2026-10-10T08:00:00Z",
       selesaiPada: undefined,
     });
@@ -80,6 +87,19 @@ describe("toKartu", () => {
 
   it("siklus tak dikenal jatuh ke normal", () => {
     assert.equal(toKartu({ ...kartu, siklus: "ACAK" }).siklus, "normal");
+  });
+
+  it("id tetap UUID untuk tautan dan kunci; kode tampilan opsional (null atau tidak ada)", () => {
+    assert.equal(toKartu(kartu).id, UUID_301);
+    assert.equal(toKartu({ ...kartu, kode: null }).kode, undefined);
+    const { kode: _kode, ...tanpaKode } = kartu;
+    assert.equal(toKartu(tanpaKode).kode, undefined);
+  });
+
+  it("kartu tanpa alert pemicu tidak membawa id maupun kode alert", () => {
+    const k = toKartu({ ...kartu, ews_alert_id: null, ews_alert_kode: null });
+    assert.equal(k.ewsAlertId, undefined);
+    assert.equal(k.ewsAlertKode, undefined);
   });
 });
 
@@ -302,7 +322,7 @@ const labelTahap = (kode?: string) =>
   "";
 const riwayat = (r: Partial<RiwayatResponse>) =>
   toRiwayat({
-    id: 1,
+    id: "1",
     aksi: "BUAT",
     dari: null,
     ke: null,
@@ -470,8 +490,8 @@ describe("ringkasHasilKartu", () => {
 });
 
 const permintaan: PersetujuanResponse = {
-  id: 7,
-  intervensi_id: "INT-304",
+  id: "7",
+  intervensi_id: UUID_304,
   kartu_judul: "Kirim cabai Takengon → Banda Aceh",
   kartu_tahap: "t-logistik",
   jenis: "PINDAH_TAHAP",
@@ -508,7 +528,8 @@ const permintaan: PersetujuanResponse = {
 describe("toPersetujuan", () => {
   it("memetakan rantai langkah dan mengosongkan nilai null", () => {
     const p = toPersetujuan(permintaan);
-    assert.equal(p.kartuId, "INT-304");
+    assert.equal(p.id, "7");
+    assert.equal(p.kartuId, UUID_304);
     assert.equal(p.tahapTujuan, "t-fiskal");
     assert.equal(p.langkah[0].keputusan, "SETUJU");
     assert.equal(p.langkah[0].olehNama, "Dr. Muhammad Rizal");

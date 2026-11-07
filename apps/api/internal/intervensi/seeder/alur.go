@@ -7,6 +7,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/intervensi/domain"
 	"github.com/garda-inflasi/api/internal/seedkit"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -77,9 +78,12 @@ func seedAlur(ctx context.Context, db *gorm.DB) (alur, langkah int, err error) {
 // permintaanDemo adalah satu permintaan persetujuan terbuka pada kartu demo: INT-304 (menunggu
 // di Usulan intervensi logistik kilat) diajukan pindah ke Dukungan instrumen belanja.
 const (
-	kartuPermintaanDemo = "INT-304"
-	tahapPermintaanDemo = "t-fiskal"
+	kodeKartuPermintaanDemo = "INT-304"
+	tahapPermintaanDemo     = "t-fiskal"
 )
+
+// kartuPermintaanDemo adalah UUID kartu INT-304.
+var kartuPermintaanDemo = idx.UUIDStabil("intervensi", kodeKartuPermintaanDemo)
 
 // pengajuPermintaanDemo adalah UUID akun manajer_program.
 var pengajuPermintaanDemo = seedkit.IDPengguna("manajer_program")
@@ -89,7 +93,7 @@ func seedPermintaanDemo(tx *gorm.DB, kartuIDs []string, now time.Time) (int, err
 	if err := tx.Where("intervensi_id IN ?", kartuIDs).Delete(&domain.IntervensiPersetujuan{}).Error; err != nil {
 		return 0, fmt.Errorf("reset permintaan persetujuan: %w", err)
 	}
-	var id int64
+	var id idx.ID
 	err := tx.Raw(`
 		INSERT INTO intervensi_persetujuan (intervensi_id, alur_kode, jenis, tahap_tujuan, diajukan_oleh, diajukan_pada, catatan)
 		VALUES (?, 'pindah-tekanan-fiskal', 'PINDAH_TAHAP', ?, ?, ?, 'Rute dan volume sudah siap; mohon dukungan ongkos angkut')

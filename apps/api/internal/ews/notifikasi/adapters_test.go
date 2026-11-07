@@ -132,7 +132,7 @@ func TestPushPengirim_SendsEncryptedPayloadToEveryDevice(t *testing.T) {
 	}}
 	p := NewPushPengirim(store, vapidUji(t))
 
-	err := p.Kirim(t.Context(), domain.Pesan{PenggunaID: "u", AlertID: "EWS-2000", Severity: "KRITIS", Judul: "Lonjakan", Isi: "Naik", TautanPath: "/ews?id=EWS-2000"})
+	err := p.Kirim(t.Context(), domain.Pesan{PenggunaID: "u", AlertID: 12, Severity: "KRITIS", Judul: "Lonjakan", Isi: "Naik", TautanPath: "/ews?id=12"})
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.KanalPush, p.Kanal())

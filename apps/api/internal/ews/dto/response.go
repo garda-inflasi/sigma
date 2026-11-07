@@ -4,11 +4,13 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // AlertResponse adalah satu alert EWS. Wilayah adalah nama kabupaten/kota resmi.
 type AlertResponse struct {
-	ID             string     `json:"id"`
+	ID             idx.ID     `json:"id"`
+	Kode           *string    `json:"kode"`
 	Severity       string     `json:"severity"`
 	Jenis          string     `json:"jenis"`
 	Judul          string     `json:"judul"`
@@ -25,14 +27,16 @@ type AlertResponse struct {
 	DibuatPada     time.Time  `json:"dibuat_pada"`
 	DiakuiOlehID   *string    `json:"diakui_oleh_id"`
 	DiakuiPada     *time.Time `json:"diakui_pada"`
-	AturanID       *string    `json:"aturan_id"`
+	AturanID       *idx.ID    `json:"aturan_id"`
+	AturanKode     *string    `json:"aturan_kode"`
 	DieskalasiPada *time.Time `json:"dieskalasi_pada"`
 	SelesaiPada    *time.Time `json:"selesai_pada"`
 }
 
 // AturanResponse adalah satu aturan ambang EWS.
 type AturanResponse struct {
-	ID            string     `json:"id"`
+	ID            idx.ID     `json:"id"`
+	Kode          *string    `json:"kode"`
 	KomoditasKode *string    `json:"komoditas_kode"`
 	KomoditasNama *string    `json:"komoditas_nama"`
 	KabupatenKode *string    `json:"kabupaten_kode"`
@@ -52,7 +56,7 @@ type AturanResponse struct {
 
 // RiwayatResponse adalah satu perubahan status alert; Oleh kosong berarti sistem.
 type RiwayatResponse struct {
-	ID       string    `json:"id"`
+	ID       idx.ID    `json:"id"`
 	Dari     *string   `json:"dari"`
 	Ke       string    `json:"ke"`
 	OlehID   *string   `json:"oleh_id"`
@@ -80,12 +84,12 @@ type BulkEWSResponse struct {
 
 func ToAlertResponse(a domain.Alert) AlertResponse {
 	return AlertResponse{
-		ID: a.ID, Severity: a.Severity, Jenis: a.Jenis, Judul: a.Judul, Pesan: a.Pesan,
+		ID: a.ID, Kode: a.Kode, Severity: a.Severity, Jenis: a.Jenis, Judul: a.Judul, Pesan: a.Pesan,
 		KomoditasKode: a.KomoditasKode, KomoditasNama: a.KomoditasNama,
 		KabupatenKode: a.KabupatenKode, Wilayah: a.KabupatenNama,
 		Nilai: a.Nilai, SatuanNilai: a.SatuanNilai, SkorDampak: a.SkorDampak,
 		Status: a.Status, Sumber: a.Sumber, DibuatPada: a.DibuatPada,
-		DiakuiOlehID: a.DiakuiOlehID, DiakuiPada: a.DiakuiPada, AturanID: a.AturanID,
+		DiakuiOlehID: a.DiakuiOlehID, DiakuiPada: a.DiakuiPada, AturanID: a.AturanID, AturanKode: a.AturanKode,
 		DieskalasiPada: a.DieskalasiPada, SelesaiPada: a.SelesaiPada,
 	}
 }
@@ -104,7 +108,7 @@ func ToAturanResponse(a domain.Aturan) AturanResponse {
 		kanal = []string{}
 	}
 	return AturanResponse{
-		ID: a.ID, KomoditasKode: a.KomoditasKode, KomoditasNama: a.KomoditasNama, KabupatenKode: a.KabupatenKode, Jenis: a.Jenis,
+		ID: a.ID, Kode: a.Kode, KomoditasKode: a.KomoditasKode, KomoditasNama: a.KomoditasNama, KabupatenKode: a.KabupatenKode, Jenis: a.Jenis,
 		AmbangWaspada: a.AmbangWaspada, AmbangSiaga: a.AmbangSiaga, AmbangKritis: a.AmbangKritis,
 		JendelaHari: a.JendelaHari, CooldownJam: a.CooldownJam, Kanal: kanal, Aktif: a.Aktif, Keterangan: a.Keterangan,
 		Versi: a.Versi, DiubahOlehID: a.DiubahOlehID, DiubahPada: a.DiubahPada,

@@ -31,20 +31,20 @@ func (s *suite) outbox(t *testing.T, where string, args ...any) []baris {
 	return rows
 }
 
-func (s *suite) ubahKanalAturan(t *testing.T, id string, kanal []string) {
+func (s *suite) ubahKanalAturan(t *testing.T, kode string, kanal []string) {
 	t.Helper()
 	list := data[[]aturanRow](t, s.call(t, http.MethodGet, "/v1/ews/aturan", emailLihat, nil))
 	for _, a := range list {
-		if a.ID == id {
+		if a.Kode != nil && *a.Kode == kode {
 			body := bodyAturan(a.Versi, a.AmbangWaspada, a.AmbangSiaga, a.AmbangKritis)
 			body["kanal"] = kanal
 			body["cooldown_jam"] = a.CooldownJam
-			w := s.call(t, http.MethodPut, "/v1/ews/aturan/"+id, emailAtur, body)
+			w := s.call(t, http.MethodPut, "/v1/ews/aturan/"+a.ID, emailAtur, body)
 			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 			return
 		}
 	}
-	t.Fatalf("aturan %s tidak ada", id)
+	t.Fatalf("aturan %s tidak ada", kode)
 }
 
 func (s *suite) lonjakanCabai(t *testing.T) {
@@ -144,7 +144,7 @@ func TestNotifikasi_DispatchDeliversRetriesAndRecordsWithoutAdapter(t *testing.T
 		require.Len(t, email.got, 5)
 		assert.Contains(t, email.got[0].Judul, "Lonjakan harga cabai")
 		assert.Equal(t, "KRITIS", email.got[0].Severity)
-		assert.Equal(t, "/ews?id="+email.got[0].AlertID, email.got[0].TautanPath)
+		assert.Equal(t, "/ews?id="+email.got[0].AlertID.String(), email.got[0].TautanPath, "tautan memakai ID desimal alert")
 
 		assert.Len(t, s.outbox(t, "WHERE kanal = 'EMAIL' AND status = 'TERKIRIM'"), 5)
 		assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH' AND status = 'DICATAT'"), 5)
@@ -223,16 +223,18 @@ func TestNotifikasi_AutoEscalationOfUnacknowledgedAlerts(t *testing.T) {
 	require.NoError(t, err)
 	// Alert demo BARU >= SIAGA yang lebih tua dari 10 menit: EWS-1001 (27m), EWS-1002 (50m), EWS-1003 (73m).
 	// EWS-1000 baru 4 menit; EWS-0902 WASPADA; surplus INFO.
-	assert.Equal(t, []string{"EWS-1001", "EWS-1002", "EWS-1003"}, ids)
+	var kode []string
+	require.NoError(t, s.db.Raw(`SELECT kode FROM ews_alert WHERE id IN ? ORDER BY id`, ids).Scan(&kode).Error)
+	assert.Equal(t, []string{"EWS-1001", "EWS-1002", "EWS-1003"}, kode)
 
 	var rows []struct {
-		ID, Status, Catatan string
-		DieskalasiOlehID    *string
-		Oleh                *string
+		Kode, Status, Catatan string
+		DieskalasiOlehID      *string
+		Oleh                  *string
 	}
-	require.NoError(t, s.db.Raw(`SELECT a.id, a.status, r.catatan, a.dieskalasi_oleh_id, r.oleh
+	require.NoError(t, s.db.Raw(`SELECT a.kode, a.status, r.catatan, a.dieskalasi_oleh_id, r.oleh
 		FROM ews_alert a JOIN ews_riwayat r ON r.alert_id = a.id AND r.ke = 'DIESKALASI'
-		WHERE a.id IN ('EWS-1001','EWS-1002','EWS-1003') ORDER BY a.id`).Scan(&rows).Error)
+		WHERE a.kode IN ('EWS-1001','EWS-1002','EWS-1003') ORDER BY a.id`).Scan(&rows).Error)
 	require.Len(t, rows, 3)
 	for _, r := range rows {
 		assert.Equal(t, "DIESKALASI", r.Status)
@@ -241,12 +243,15 @@ func TestNotifikasi_AutoEscalationOfUnacknowledgedAlerts(t *testing.T) {
 		assert.Nil(t, r.DieskalasiOlehID)
 	}
 	var status string
-	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE id = 'EWS-1000'`).Scan(&status).Error)
+	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE kode = 'EWS-1000'`).Scan(&status).Error)
 	assert.Equal(t, "BARU", status)
 
-	var audited int
-	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM audit_log WHERE aksi = 'ESKALASI_OTOMATIS'`).Scan(&audited).Error)
-	assert.Equal(t, 3, audited)
+	var audited []string
+	require.NoError(t, s.db.Raw(`SELECT entitas_id FROM audit_log WHERE aksi = 'ESKALASI_OTOMATIS' ORDER BY entitas_id::bigint`).Scan(&audited).Error)
+	assert.Len(t, audited, 3)
+	for i, id := range ids {
+		assert.Equal(t, id.String(), audited[i], "audit mencatat ID alert desimal")
+	}
 
 	again, err := svc.Eskalasi(t.Context())
 	require.NoError(t, err)

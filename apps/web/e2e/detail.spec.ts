@@ -3,8 +3,9 @@
  * langganan push (DELETE), sumber data (GET /sumber-data/:id), tugas lapangan (GET /lapangan/tugas/:id),
  * dan pengguna (GET /users/:id).
  *
- * Data uji: satu alert `EWS-E2E-1` dibuat lewat SQL (tidak ada endpoint buat) dan dihapus di akhir
- * (riwayatnya ikut terhapus); status alert seed tidak pernah diubah. Langganan push uji memakai
+ * Data uji: satu alert berkode `EWS-E2E-1` dibuat lewat SQL (tidak ada endpoint buat; `id` BIGINT dibuat
+ * basis data, jadi dibaca kembali lewat `kode`) dan dihapus di akhir (riwayatnya ikut terhapus); status
+ * alert seed tidak pernah diubah. Rute alert menerima ID desimal dan kode lama (`EWS-…`) sebagai alias. Langganan push uji memakai
  * endpoint palsu berpenanda "e2e" dan dihapus lewat API. Tidak ada tes yang menyimpan perubahan
  * pengguna atau menjalankan ingestion.
  */
@@ -21,7 +22,9 @@ import {
 import { idPenggunaSeed } from "./auth-helpers";
 import { cariPengguna } from "./pengguna-helpers";
 
-const ALERT_ID = "EWS-E2E-1";
+const ALERT_KODE = "EWS-E2E-1";
+/** ID desimal alert uji; diisi di beforeAll karena identity dibuat basis data. */
+let alertId = "";
 const ALERT_JUDUL = "E2E uji detail peringatan";
 
 // UUID baris sumber SRC-BPS: garda_uuid_stabil('sumber_data', 'SRC-BPS'), sama untuk basis data yang dimigrasi dan yang di-seed.
@@ -36,26 +39,29 @@ test.describe("detail alert EWS", () => {
 
   test.beforeAll(() => {
     jalankanSql(`
-      DELETE FROM ews_alert WHERE id = '${ALERT_ID}';
-      INSERT INTO ews_alert (id, severity, jenis, judul, pesan, kabupaten_kode, nilai, satuan_nilai, skor_dampak, status, sumber, dibuat_pada)
-      VALUES ('${ALERT_ID}', 'INFO', 'ANOMALI_DATA', '${ALERT_JUDUL}', 'Data uji e2e, dihapus otomatis setelah spec.', '1171', 12.5, '%', 10, 'BARU', 'E2E', now());
-      INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, catatan) VALUES ('${ALERT_ID}', NULL, 'BARU', NULL, 'Dibuat oleh E2E');
+      DELETE FROM ews_alert WHERE kode = '${ALERT_KODE}';
+      INSERT INTO ews_alert (kode, severity, jenis, judul, pesan, kabupaten_kode, nilai, satuan_nilai, skor_dampak, status, sumber, dibuat_pada)
+      VALUES ('${ALERT_KODE}', 'INFO', 'ANOMALI_DATA', '${ALERT_JUDUL}', 'Data uji e2e, dihapus otomatis setelah spec.', '1171', 12.5, '%', 10, 'BARU', 'E2E', now());
+      INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, catatan)
+      SELECT id, NULL, 'BARU', NULL, 'Dibuat oleh E2E' FROM ews_alert WHERE kode = '${ALERT_KODE}';
     `);
+    alertId = jalankanSql(`SELECT id FROM ews_alert WHERE kode = '${ALERT_KODE}';`);
+    expect(alertId).toMatch(/^[1-9][0-9]*$/);
   });
 
   test.afterAll(() => {
-    jalankanSql(`DELETE FROM ews_alert WHERE id = '${ALERT_ID}';`);
+    jalankanSql(`DELETE FROM ews_alert WHERE kode = '${ALERT_KODE}';`);
   });
 
-  test("tautan ?id= membuka detail dengan data segar dan riwayat awal", async ({
+  test("tautan ?id= (ID desimal) membuka detail dengan data segar dan riwayat awal", async ({
     page,
   }) => {
     await masukSebagai(page, "manajerData");
-    const detail = page.waitForResponse(unikPath(`/v1/ews/${ALERT_ID}`));
+    const detail = page.waitForResponse(unikPath(`/v1/ews/${alertId}`));
     const riwayat = page.waitForResponse(
-      unikPath(`/v1/ews/${ALERT_ID}/riwayat`),
+      unikPath(`/v1/ews/${alertId}/riwayat`),
     );
-    await buka(page, `/ews?id=${ALERT_ID}`);
+    await buka(page, `/ews?id=${alertId}`);
     expect((await detail).status()).toBe(200);
     expect((await riwayat).status()).toBe(200);
 
@@ -74,6 +80,23 @@ test.describe("detail alert EWS", () => {
     await expect(timeline).toContainText("Baru");
     await expect(timeline).toContainText("Sistem");
     await expect(timeline).toContainText("Dibuat oleh E2E");
+  });
+
+  test("tautan lama ?id=EWS-… (kode, dari email atau push) tetap membuka detail alert yang sama", async ({
+    page,
+  }) => {
+    await masukSebagai(page, "manajerData");
+    const detail = page.waitForResponse(unikPath(`/v1/ews/${ALERT_KODE}`));
+    await buka(page, `/ews?id=${ALERT_KODE}`);
+    expect((await detail).status()).toBe(200);
+
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("heading", { name: ALERT_JUDUL }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("list", { name: "Riwayat status" }).getByRole("listitem"),
+    ).toHaveCount(1);
   });
 
   test("akui lewat aksi massal menambah riwayat pada detail", async ({
@@ -120,7 +143,7 @@ test.describe("detail alert EWS", () => {
 
     // Pelaku pada timeline sama dengan yang dicatat server.
     const api = await apiSebagai("manajerData");
-    const server = (await (await api.get(`ews/${ALERT_ID}/riwayat`)).json())
+    const server = (await (await api.get(`ews/${alertId}/riwayat`)).json())
       .data as {
       ke: string;
       oleh_nama: string | null;
@@ -138,13 +161,46 @@ test.describe("detail alert EWS", () => {
     const manajer = await apiSebagai("manajerData");
     expect((await manajer.get("ews/TIDAK-ADA")).status()).toBe(404);
     expect((await manajer.get("ews/TIDAK-ADA/riwayat")).status()).toBe(404);
-    expect((await manajer.get(`ews/${ALERT_ID}`)).status()).toBe(200);
+    expect((await manajer.get("ews/999999999999")).status()).toBe(404);
+    expect((await manajer.get("ews/0")).status()).toBe(404);
+    expect((await manajer.get(`ews/${alertId}`)).status()).toBe(200);
     await manajer.dispose();
 
     const mahasiswa = await apiSebagai("mahasiswa");
-    expect((await mahasiswa.get(`ews/${ALERT_ID}`)).status()).toBe(403);
-    expect((await mahasiswa.get(`ews/${ALERT_ID}/riwayat`)).status()).toBe(403);
+    expect((await mahasiswa.get(`ews/${alertId}`)).status()).toBe(403);
+    expect((await mahasiswa.get(`ews/${alertId}/riwayat`)).status()).toBe(403);
     await mahasiswa.dispose();
+  });
+
+  test("API: ID desimal dan kode lama menunjuk alert yang sama; id berupa string desimal dan kode ikut dikirim", async () => {
+    const api = await apiSebagai("manajerData");
+    const lewatId = (await (await api.get(`ews/${alertId}`)).json()).data as {
+      id: string;
+      kode: string | null;
+      judul: string;
+    };
+    const lewatKode = (await (await api.get(`ews/${ALERT_KODE}`)).json())
+      .data as { id: string; kode: string | null };
+    expect(lewatId.id).toBe(alertId);
+    expect(lewatId.kode).toBe(ALERT_KODE);
+    expect(lewatKode.id).toBe(alertId);
+    expect(lewatId.judul).toBe(ALERT_JUDUL);
+
+    const riwayatId = (
+      await (await api.get(`ews/${alertId}/riwayat`)).json()
+    ).data as { id: string }[];
+    const riwayatKode = (
+      await (await api.get(`ews/${ALERT_KODE}/riwayat`)).json()
+    ).data as { id: string }[];
+    expect(riwayatKode.map((r) => r.id)).toEqual(riwayatId.map((r) => r.id));
+    for (const r of riwayatId) expect(r.id).toMatch(/^[1-9][0-9]*$/);
+
+    // Aksi massal menolak ID bentuk lain (kode lama) dengan 400, bukan mengabaikannya diam-diam.
+    const bulk = await api.post("ews/bulk", {
+      data: { action: "akui", ids: [ALERT_KODE] },
+    });
+    expect(bulk.status()).toBe(400);
+    await api.dispose();
   });
 });
 

@@ -37,6 +37,8 @@ export type StatusEws = "BARU" | "DIAKUI" | "DIESKALASI" | "SELESAI";
 
 export interface EwsAlert {
   id: string;
+  /** Kode tampilan (mis. EWS-0901); alias tautan lama. Teks untuk manusia memakai `kode ?? id`. */
+  kode?: string;
   severity: Severity;
   jenis: JenisEws;
   judul: string;
@@ -78,6 +80,8 @@ export type Prioritas = "TINGGI" | "SEDANG" | "RENDAH";
 
 export interface KartuIntervensi {
   id: string;
+  /** Kode tampilan (mis. INT-301); alias URL lama. Teks untuk manusia memakai `kode ?? id`. */
+  kode?: string;
   siklus: Siklus;
   tahap: string;
   judul: string;
@@ -95,6 +99,8 @@ export interface KartuIntervensi {
   /** Rincian untuk lembar detail; tidak ada pada data mock. */
   deskripsi?: string;
   ewsAlertId?: string;
+  /** Kode tampilan alert pemicu (mis. EWS-1000). */
+  ewsAlertKode?: string;
   dibuatPada?: string;
   selesaiPada?: string;
 }

@@ -24,19 +24,22 @@ type ReferenceSummary struct {
 
 // SeedReference menanam satu batas harga awal (berlaku untuk semua kabupaten) per komoditas aktif,
 // diturunkan dari harga acuan master. Aman di produksi dan idempoten: batas yang sudah ada tidak
-// ditimpa, sehingga perubahan oleh admin bertahan.
+// ditimpa, sehingga perubahan oleh admin bertahan. ID BIGINT diberi basis data; kunci idempotensinya kode
+// ('BH-' + kode komoditas, sama dengan ID lama di basis data hasil migrasi 000111) dan kunci alami batas
+// (komoditas, kabupaten, berlaku dari). ON CONFLICT DO NOTHING tanpa target menutup keduanya, sehingga batas
+// yang dibuat admin untuk komoditas yang sama (kode lain) juga tidak ditabrak.
 //
 // Prasyarat: seeder master.reference sudah dijalankan.
 func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 	err := db.WithContext(ctx).Exec(`
-		INSERT INTO batas_harga (id, komoditas_kode, kabupaten_kode, batas_min, batas_maks, berlaku_dari)
+		INSERT INTO batas_harga (kode, komoditas_kode, kabupaten_kode, batas_min, batas_maks, berlaku_dari)
 		SELECT 'BH-' || kode, kode, NULL,
 		       GREATEST(100, round(harga_acuan * CAST(? AS numeric) / 100) * 100)::int,
 		       (round(harga_acuan * CAST(? AS numeric) / 100) * 100)::int,
 		       CAST(? AS date)
 		  FROM komoditas
 		 WHERE status = 'AKTIF'
-		ON CONFLICT (id) DO NOTHING`, batasMinRasio, batasMaksRasio, berlakuDariAwal).Error
+		ON CONFLICT DO NOTHING`, batasMinRasio, batasMaksRasio, berlakuDariAwal).Error
 	if err != nil {
 		return ReferenceSummary{}, fmt.Errorf("seed batas harga: %w", err)
 	}

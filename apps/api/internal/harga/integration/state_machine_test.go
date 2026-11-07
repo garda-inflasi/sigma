@@ -41,12 +41,12 @@ func TestBulk_ReportsReasonPerSkippedEntry(t *testing.T) {
 	validated, own := s.buat(t, emailMahasiswa), s.buat(t, emailKoordinator)
 	require.Equal(t, 1, s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{validated}}).Berhasil)
 
-	got := s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{validated, own, "tidak-ada"}})
+	got := s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{validated, own, "999999999"}})
 
 	assert.Equal(t, hasilBulkRincian{Gagal: 3, Rincian: []rincianBulk{
 		{ID: validated, Sebab: "status_tidak_sesuai"},
 		{ID: own, Sebab: "pemisahan_tugas"},
-		{ID: "tidak-ada", Sebab: "tidak_ditemukan"},
+		{ID: "999999999", Sebab: "tidak_ditemukan"},
 	}}, *got)
 }
 
@@ -170,12 +170,14 @@ func TestSeededHistoryHasRiwayatAndReasons(t *testing.T) {
 	var tanpaRiwayat int64
 	require.NoError(t, s.db.Raw(`
 		SELECT count(*) FROM entri_harga e
-		 WHERE e.id LIKE 'HRG-D%' AND NOT EXISTS (SELECT 1 FROM riwayat_status_entri h WHERE h.entri_id = e.id)`).Scan(&tanpaRiwayat).Error)
+		 WHERE e.kode LIKE 'HRG-D%' AND NOT EXISTS (SELECT 1 FROM riwayat_status_entri h WHERE h.entri_id = e.id)`).Scan(&tanpaRiwayat).Error)
 	assert.Zero(t, tanpaRiwayat)
 
 	var dipublikasi, riwayatPublikasi int64
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM entri_harga WHERE id LIKE 'HRG-D%' AND status = 'DIPUBLIKASI'").Scan(&dipublikasi).Error)
-	require.NoError(t, s.db.Raw("SELECT count(*) FROM riwayat_status_entri WHERE entri_id LIKE 'HRG-D%' AND ke = 'DIPUBLIKASI'").Scan(&riwayatPublikasi).Error)
+	require.NoError(t, s.db.Raw("SELECT count(*) FROM entri_harga WHERE kode LIKE 'HRG-D%' AND status = 'DIPUBLIKASI'").Scan(&dipublikasi).Error)
+	require.NoError(t, s.db.Raw(`
+		SELECT count(*) FROM riwayat_status_entri h JOIN entri_harga e ON e.id = h.entri_id
+		 WHERE e.kode LIKE 'HRG-D%' AND h.ke = 'DIPUBLIKASI'`).Scan(&riwayatPublikasi).Error)
 	assert.Positive(t, dipublikasi)
 	assert.Equal(t, dipublikasi, riwayatPublikasi)
 

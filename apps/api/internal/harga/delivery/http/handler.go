@@ -11,6 +11,7 @@ import (
 	"github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/internal/harga/dto"
 	"github.com/garda-inflasi/api/internal/harga/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,9 @@ import (
 const totalCountHeader = "X-Total-Count"
 
 const dateLayout = "2006-01-02"
+
+// maksKodeEntri adalah panjang kolom kode (varchar(64)): rujukan lebih panjang pasti bukan kode yang ada.
+const maksKodeEntri = 64
 
 type Handler struct {
 	uc *usecase.UseCase
@@ -187,8 +191,15 @@ func (h *Handler) create(c *gin.Context, kunciWajib bool) {
 }
 
 // GET /v1/harga/:id
+//
+// :id adalah ID BIGINT atau kode lama entri (HRG-D00-00-01-K, UUID dari aplikasi lama): tautan lama tetap berlaku.
+// Teks kosong atau lebih dari 64 karakter dijawab 404 tanpa menyentuh basis data.
 func (h *Handler) GetHargaByID(c *gin.Context) {
-	entri, err := h.uc.GetHargaByID(c.Request.Context(), c.Param("id"))
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKodeEntri, "Entri harga tidak ditemukan")
+	if !ok {
+		return
+	}
+	entri, err := h.uc.GetHargaByID(c.Request.Context(), ref)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Entri harga tidak ditemukan")
@@ -203,7 +214,8 @@ func (h *Handler) GetHargaByID(c *gin.Context) {
 // POST /v1/harga/bulk
 //
 // Izin diperiksa per aksi (domain.BulkAction.Izin): publikasi memerlukan harga.publikasi,
-// ajukan harga.input, aksi lain harga.validasi.
+// ajukan harga.input, aksi lain harga.validasi. ids adalah daftar ID BIGINT (string angka atau angka JSON);
+// satu ID yang salah bentuk (mis. kode lama HRG-...) menolak seluruh permintaan dengan 400.
 func (h *Handler) BulkHarga(c *gin.Context) {
 	var req dto.BulkHargaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -216,7 +228,13 @@ func (h *Handler) BulkHarga(c *gin.Context) {
 		return
 	}
 
-	hasil, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Aksi, c.GetString("user_id"), req.Alasan)
+	ids, err := idx.ParseDaftar(req.IDs)
+	if err != nil {
+		response.BadRequest(c, "Validasi gagal: ids "+err.Error())
+		return
+	}
+
+	hasil, err := h.uc.BulkAction(audit.RequestContext(c), ids, req.Aksi, c.GetString("user_id"), req.Alasan)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidAction):
@@ -238,9 +256,14 @@ func (h *Handler) BulkHarga(c *gin.Context) {
 
 // GET /v1/harga/:id/riwayat
 //
-// harga.lihat membuka semua entri; petugas dengan harga.input hanya entrinya sendiri.
+// harga.lihat membuka semua entri; petugas dengan harga.input hanya entrinya sendiri. :id seperti GET /v1/harga/:id
+// (ID BIGINT atau kode lama).
 func (h *Handler) Riwayat(c *gin.Context) {
-	items, err := h.uc.Riwayat(c.Request.Context(), c.Param("id"), c.GetString("user_id"), middleware.HasPermission(c, "harga.lihat"))
+	ref, ok := idx.ParamIDAtauKode(c, "id", maksKodeEntri, "Entri harga tidak ditemukan")
+	if !ok {
+		return
+	}
+	items, err := h.uc.Riwayat(c.Request.Context(), ref, c.GetString("user_id"), middleware.HasPermission(c, "harga.lihat"))
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Entri harga tidak ditemukan")

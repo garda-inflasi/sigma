@@ -2,10 +2,12 @@ package seeder
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/garda-inflasi/api/internal/auth/usecase"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/internal/seedkit"
@@ -52,6 +54,26 @@ func TestAkunDemo_Shape(t *testing.T) {
 	assert.Equal(t, 1, mfa)
 }
 
+// Telepon akun demo: fiktif, deterministik (+62 812-0000-xxxx, xxxx = urutan di daftar), unik, dan sudah dalam
+// bentuk normal E.164 sehingga lolos aturan yang sama dengan PATCH /v1/auth/me.
+func TestAkunDemo_TeleponFiktifDeterministikDanValid(t *testing.T) {
+	akun := BuildDemoAkun()
+
+	telepon := map[string]bool{}
+	for i, a := range akun {
+		require.NotNil(t, a.Telepon, "akun demo %s punya telepon", a.Email)
+		assert.Equal(t, fmt.Sprintf("+628120000%04d", i+1), *a.Telepon, a.Email)
+		normal, err := usecase.NormalisasiTelepon(*a.Telepon)
+		require.NoError(t, err, *a.Telepon)
+		assert.Equal(t, *a.Telepon, normal, "telepon seed sudah dalam bentuk normal")
+		assert.False(t, telepon[*a.Telepon], "telepon ganda: %s", *a.Telepon)
+		telepon[*a.Telepon] = true
+	}
+	assert.Len(t, telepon, 25)
+	assert.Equal(t, "+6281200000001", *akun[0].Telepon, "superadmin")
+	assert.Equal(t, "+6281200000025", *akun[24].Telepon, "user_mfa")
+}
+
 // ID akun demo adalah UUID stabil dari slug lamanya (seedkit.IDPengguna): sama dengan hasil migrasi 000110 atas
 // basis data lama, dan dengan yang dirujuk seeder modul lain. SlugDemo (dasar seedkit.SlugPengguna) harus memuat
 // persis slug akun demo ditambah admin awal.
@@ -83,6 +105,13 @@ func rowCount(t *testing.T, db *gorm.DB, table string) int64 {
 	return n
 }
 
+func rowCountWhere(t *testing.T, db *gorm.DB, table, where string) int64 {
+	t.Helper()
+	var n int64
+	require.NoError(t, db.Table(table).Where(where).Count(&n).Error)
+	return n
+}
+
 func TestSeedDemo_IsIdempotentAndLoginable(t *testing.T) {
 	db := pg.NewDatabase(t, "auth_seed_demo")
 	pgtest.MigrateUp(t, db)
@@ -90,12 +119,22 @@ func TestSeedDemo_IsIdempotentAndLoginable(t *testing.T) {
 
 	first, err := SeedDemo(t.Context(), db)
 	require.NoError(t, err)
-	require.NoError(t, db.Exec("UPDATE pengguna SET nama = 'diubah' WHERE id = garda_uuid_stabil('pengguna', 'superadmin')").Error)
+	require.NoError(t, db.Exec("UPDATE pengguna SET nama = 'diubah', telepon = '+6285712345678' WHERE id = garda_uuid_stabil('pengguna', 'superadmin')").Error)
+	require.NoError(t, db.Exec("UPDATE pengguna SET telepon = NULL WHERE id = garda_uuid_stabil('pengguna', 'user_mfa')").Error)
 	_, err = SeedDemo(t.Context(), db)
 	require.NoError(t, err)
 
 	assert.Equal(t, 25, first.Akun)
 	assert.EqualValues(t, 25, rowCount(t, db, "pengguna"))
+
+	var telepon []string
+	require.NoError(t, db.Raw("SELECT telepon FROM pengguna WHERE telepon IS NOT NULL ORDER BY telepon").Scan(&telepon).Error)
+	assert.Len(t, telepon, 25, "seed ulang tidak menambah baris dan mengembalikan telepon yang diubah atau dihapus")
+	assert.Equal(t, "+6281200000001", telepon[0])
+	assert.Equal(t, "+6281200000025", telepon[24])
+	var superadmin string
+	require.NoError(t, db.Raw("SELECT telepon FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'superadmin')").Scan(&superadmin).Error)
+	assert.Equal(t, "+6281200000001", superadmin)
 
 	var nama, hash string
 	require.NoError(t, db.Raw("SELECT nama, password_hash FROM pengguna WHERE id = garda_uuid_stabil('pengguna', 'superadmin')").Row().Scan(&nama, &hash))
@@ -130,6 +169,7 @@ func TestSeedAdmin(t *testing.T) {
 		assert.True(t, row.WajibGantiPassword)
 		assert.True(t, row.MfaWajib)
 		assert.True(t, crypto.VerifyPassword("Sementara1!", row.PasswordHash))
+		assert.EqualValues(t, 0, rowCountWhere(t, db, "pengguna", "telepon IS NOT NULL"), "lapis admin tidak mengisi telepon")
 	})
 
 	t.Run("password acak dicetak sekali dan memenuhi kebijakan", func(t *testing.T) {

@@ -15,7 +15,8 @@ export const qk = {
     pembanding: () => ["operasional", "pembanding-harga"] as const,
     cuaca: () => ["operasional", "cuaca"] as const,
     marker: () => ["operasional", "marker"] as const,
-    tren: (kode: string, kab: string) => ["operasional", "tren", kode, kab] as const,
+    tren: (kode: string, kab: string) =>
+      ["operasional", "tren", kode, kab] as const,
   },
   eksekutif: {
     ringkasan: () => ["eksekutif", "ringkasan"] as const,
@@ -44,7 +45,14 @@ export const qk = {
     lineage: (id: string) => ["harga", "lineage", id] as const,
     ringkasan: (hari: number) => ["harga", "ringkasan", hari] as const,
   },
-  ews: { all: () => ["ews"] as const, list: () => ["ews", "list"] as const, detail: (id: string) => ["ews", "detail", id] as const, riwayat: (id: string) => ["ews", "riwayat", id] as const, aturan: () => ["ews", "aturan"] as const, preferensi: () => ["ews", "preferensi"] as const },
+  ews: {
+    all: () => ["ews"] as const,
+    list: () => ["ews", "list"] as const,
+    detail: (id: string) => ["ews", "detail", id] as const,
+    riwayat: (id: string) => ["ews", "riwayat", id] as const,
+    aturan: () => ["ews", "aturan"] as const,
+    preferensi: () => ["ews", "preferensi"] as const,
+  },
   intervensi: {
     list: () => ["intervensi", "list"] as const,
     persetujuan: () => ["intervensi", "persetujuan"] as const,
@@ -54,7 +62,8 @@ export const qk = {
   },
   coldStorage: {
     all: () => ["cold-storage"] as const,
-    list: (params: ColdStorageParams) => ["cold-storage", "list", params] as const,
+    list: (params: ColdStorageParams) =>
+      ["cold-storage", "list", params] as const,
     detail: (id: string) => ["cold-storage", "detail", id] as const,
   },
   sumber: {
@@ -64,7 +73,10 @@ export const qk = {
     eksekusi: (id: string) => ["sumber-data", "eksekusi", id] as const,
     sampel: (id: string) => ["sumber-data", "sampel", id] as const,
   },
-  kpi: { list: () => ["kpi", "list"] as const, riwayat: (kode: string) => ["kpi", "riwayat", kode] as const },
+  kpi: {
+    list: () => ["kpi", "list"] as const,
+    riwayat: (kode: string) => ["kpi", "riwayat", kode] as const,
+  },
   pengguna: {
     all: () => ["pengguna"] as const,
     list: (search?: string) => ["pengguna", "list", search ?? ""] as const,
@@ -74,29 +86,45 @@ export const qk = {
   },
   rbac: { katalog: () => ["rbac", "katalog"] as const },
   sesi: { aktif: () => ["sesi", "aktif"] as const },
+  /** Profil sendiri (GET /api/auth/me): data diri dan status MFA; dipakai semua tab /profil. */
+  profil: { saya: () => ["profil", "saya"] as const },
   audit: {
     list: (filter: AuditFilter) => ["audit", "list", filter] as const,
     detail: (id: string) => ["audit", "detail", id] as const,
     integritas: () => ["audit", "integritas"] as const,
   },
-  brief: { list: () => ["policy-brief"] as const, detail: (id: string) => ["policy-brief", "detail", id] as const },
-  tugas: { saya: () => ["tugas", "saya"] as const, detail: (id: string) => ["tugas", "detail", id] as const },
+  brief: {
+    list: () => ["policy-brief"] as const,
+    detail: (id: string) => ["policy-brief", "detail", id] as const,
+  },
+  tugas: {
+    saya: () => ["tugas", "saya"] as const,
+    detail: (id: string) => ["tugas", "detail", id] as const,
+  },
   master: {
     /** Akar seluruh query master; invalidasinya menyegarkan daftar, detail, dan antrean usulan sekaligus. */
     all: () => ["master"] as const,
     komoditas: () => ["master", "komoditas"] as const,
     wilayah: () => ["master", "wilayah"] as const,
     pasar: () => ["master", "pasar"] as const,
-    komoditasDetail: (kode: string) => ["master", "komoditas", "detail", kode] as const,
-    wilayahDetail: (kode: string) => ["master", "wilayah", "detail", kode] as const,
+    komoditasDetail: (kode: string) =>
+      ["master", "komoditas", "detail", kode] as const,
+    wilayahDetail: (kode: string) =>
+      ["master", "wilayah", "detail", kode] as const,
     pasarDetail: (kode: string) => ["master", "pasar", "detail", kode] as const,
-    kecamatan: (params: KecamatanParams) => ["master", "kecamatan", "halaman", params] as const,
-    kecamatanKabupaten: (kabupaten: string) => ["master", "kecamatan", "kabupaten", kabupaten] as const,
-    kecamatanDetail: (kode: string) => ["master", "kecamatan", "detail", kode] as const,
+    kecamatan: (params: KecamatanParams) =>
+      ["master", "kecamatan", "halaman", params] as const,
+    kecamatanKabupaten: (kabupaten: string) =>
+      ["master", "kecamatan", "kabupaten", kabupaten] as const,
+    kecamatanDetail: (kode: string) =>
+      ["master", "kecamatan", "detail", kode] as const,
     satuan: () => ["master", "satuan"] as const,
-    pedagang: (params: PedagangParams) => ["master", "pedagang", params] as const,
-    perubahan: (params: PerubahanParams) => ["master", "perubahan", "daftar", params] as const,
-    perubahanDetail: (id: string) => ["master", "perubahan", "detail", id] as const,
+    pedagang: (params: PedagangParams) =>
+      ["master", "pedagang", params] as const,
+    perubahan: (params: PerubahanParams) =>
+      ["master", "perubahan", "daftar", params] as const,
+    perubahanDetail: (id: string) =>
+      ["master", "perubahan", "detail", id] as const,
     perubahanMenunggu: () => ["master", "perubahan", "menunggu"] as const,
   },
 };

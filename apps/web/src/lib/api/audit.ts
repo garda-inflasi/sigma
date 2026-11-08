@@ -70,9 +70,18 @@ export interface AuditFilter {
  * Filter audit dari kueri URL halaman /audit, mis. tautan "Lihat di audit trail" pada riwayat peran
  * (`/audit?entitas=pengguna&entitas_id=…`). Hanya kunci yang dikenal dan bernilai sah yang diambil; sisanya diabaikan.
  */
-export function filterAuditDariQuery(params: { get(name: string): string | null }): AuditFilter {
+export function filterAuditDariQuery(params: {
+  get(name: string): string | null;
+}): AuditFilter {
   const filter: AuditFilter = {};
-  for (const kunci of ["aktor", "aksi", "entitas", "entitas_id", "correlation_id", "q"] as const) {
+  for (const kunci of [
+    "aktor",
+    "aksi",
+    "entitas",
+    "entitas_id",
+    "correlation_id",
+    "q",
+  ] as const) {
     const nilai = params.get(kunci)?.trim();
     if (nilai) filter[kunci] = nilai.slice(0, 200);
   }
@@ -81,7 +90,8 @@ export function filterAuditDariQuery(params: { get(name: string): string | null 
     if (nilai && /^\d{4}-\d{2}-\d{2}$/.test(nilai)) filter[kunci] = nilai;
   }
   const hasil = params.get("hasil");
-  if (hasil === "BERHASIL" || hasil === "GAGAL" || hasil === "DITOLAK") filter.hasil = hasil;
+  if (hasil === "BERHASIL" || hasil === "GAGAL" || hasil === "DITOLAK")
+    filter.hasil = hasil;
   return filter;
 }
 
@@ -101,6 +111,7 @@ export const AUDIT_AKSI = [
   "RESET_PASSWORD_ADMIN",
   "CREATE_USER",
   "UPDATE_USER",
+  "UPDATE_PROFIL",
   "DELETE_USER",
   "ASSIGN_ROLE",
   "RESET_MFA",
@@ -239,7 +250,11 @@ export interface AuditIntegritasResponse {
 const teks = (v: string | number | null | undefined): string | undefined =>
   v === null || v === undefined || v === "" ? undefined : String(v);
 
-const STATUS_INTEGRITAS: readonly AuditIntegritasStatus[] = ["VALID", "RUSAK", "GAGAL"];
+const STATUS_INTEGRITAS: readonly AuditIntegritasStatus[] = [
+  "VALID",
+  "RUSAK",
+  "GAGAL",
+];
 
 /** AuditVerifikasiResponse (API) → AuditVerifikasi (UI). Status tak dikenal dianggap GAGAL (keadaan rantai tak pasti). */
 function toAuditVerifikasi(v: AuditVerifikasiResponse): AuditVerifikasi {
@@ -291,7 +306,9 @@ function toAuditArsip(a: AuditArsipResponse): AuditArsip {
 }
 
 /** AuditIntegritasResponse (API) → AuditIntegritas (UI). */
-export function toAuditIntegritas(res: AuditIntegritasResponse): AuditIntegritas {
+export function toAuditIntegritas(
+  res: AuditIntegritasResponse,
+): AuditIntegritas {
   return {
     verifikasiTerakhir: res.verifikasi_terakhir
       ? toAuditVerifikasi(res.verifikasi_terakhir)
@@ -342,7 +359,9 @@ export function rentangPartisiAudit(partisi: AuditPartisi[]): {
 
 /** Awal bulan (UTC) dengan selisih `offset` bulan dari `sekarang`. */
 const awalBulan = (sekarang: Date, offset: number) =>
-  new Date(Date.UTC(sekarang.getUTCFullYear(), sekarang.getUTCMonth() + offset, 1));
+  new Date(
+    Date.UTC(sekarang.getUTCFullYear(), sekarang.getUTCMonth() + offset, 1),
+  );
 
 /** Padanan mode mock: VALID, tiga partisi (bulan depan, ini, lalu; terbaru dulu), tanpa arsip. */
 export function mockAuditIntegritas(sekarang = new Date()): AuditIntegritas {

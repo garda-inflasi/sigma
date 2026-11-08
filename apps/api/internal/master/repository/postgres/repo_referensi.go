@@ -55,7 +55,7 @@ func (r *RepoReferensi) ListSatuan(ctx context.Context, q domain.ListQuery) ([]d
 }
 
 func (r *RepoReferensi) ListPedagang(ctx context.Context, f domain.PedagangFilter, q domain.ListQuery) ([]domain.PedagangRef, int64, error) {
-	query := r.db.WithContext(ctx).Table("pedagang AS p").Joins("JOIN pasar ps ON ps.kode = p.pasar_id OR ps.id::text = p.pasar_id")
+	query := r.db.WithContext(ctx).Table("pedagang AS p").Joins("JOIN pasar ps ON ps.kode = p.pasar_id")
 	if f.PasarID != "" {
 		query = query.Where("p.pasar_id = ?", f.PasarID)
 	}

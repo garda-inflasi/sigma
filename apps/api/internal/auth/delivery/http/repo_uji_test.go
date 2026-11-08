@@ -42,6 +42,7 @@ type repoUji struct {
 	daftar     func(q domain.DaftarPenggunaQuery) ([]domain.Pengguna, int64, error)
 	kunciAktif func(hash []string) (map[string]time.Time, error)
 	hapusKunci func(hash string) (*domain.KunciLogin, error)
+	hitungKode func(id string) (int64, error)
 
 	kabupaten     func(kode []string) (map[string]bool, error)
 	emailAda      func(email []string) (map[string]bool, error)
@@ -142,6 +143,13 @@ func (r *repoUji) KunciAktif(_ context.Context, hash []string, _ time.Time) (map
 		return map[string]time.Time{}, nil
 	}
 	return r.kunciAktif(hash)
+}
+
+func (r *repoUji) CountBackupCodes(_ context.Context, id string) (int64, error) {
+	if r.hitungKode == nil {
+		r.tak("CountBackupCodes")
+	}
+	return r.hitungKode(id)
 }
 
 func (r *repoUji) HapusKunci(_ context.Context, hash string) (*domain.KunciLogin, error) {
@@ -301,6 +309,8 @@ func routerPengguna(t *testing.T, repo *repoUji, opts ...func(*usecase.Config)) 
 	r.PUT("/roles/:id/permissions", h.UpdateRolePermissions)
 	r.GET("/permissions", h.ListPermissions)
 	r.POST("/auth/aktivasi", h.AktivasiAkun)
+	r.GET("/auth/me", h.Me)
+	r.PATCH("/auth/me", h.UpdateMe)
 	return r, rec
 }
 

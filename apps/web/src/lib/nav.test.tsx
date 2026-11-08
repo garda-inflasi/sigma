@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NAV_FLAT, activeNav } from "./nav";
+import { NAV_FLAT, activeNav, judulHalaman } from "./nav";
 
 describe("activeNav", () => {
   it("antrean perubahan master menyala sendiri, bukan 'Master data'", () => {
@@ -38,5 +38,32 @@ describe("activeNav", () => {
     assert.equal(activeNav("/data/harga/123")?.href, "/data/harga");
     assert.equal(activeNav("/audit")?.href, "/audit");
     assert.equal(activeNav("/tidak/ada"), undefined);
+  });
+});
+
+describe("judulHalaman", () => {
+  it("halaman dengan item nav memakai labelnya", () => {
+    assert.equal(judulHalaman("/audit"), "Audit trail");
+    assert.equal(judulHalaman("/master/perubahan"), "Antrean perubahan master");
+    assert.equal(judulHalaman("/data/harga/123"), "Validasi harga");
+  });
+
+  it("/profil (dibuka dari menu akun, tanpa item sidebar) berjudul 'Profil saya'", () => {
+    assert.equal(judulHalaman("/profil"), "Profil saya");
+    assert.equal(judulHalaman("/profil/apa-saja"), "Profil saya");
+  });
+
+  it("/profil tidak menjadi item sidebar dan tidak menyalakan item nav mana pun", () => {
+    assert.equal(
+      NAV_FLAT.some((i) => i.href === "/profil"),
+      false,
+    );
+    assert.equal(activeNav("/profil"), undefined);
+  });
+
+  it("path yang hanya mirip /profil dan halaman tak dikenal memakai nama aplikasi", () => {
+    assert.equal(judulHalaman("/profilx"), "Garda Inflasi");
+    assert.equal(judulHalaman("/tidak/ada"), "Garda Inflasi");
+    assert.equal(judulHalaman("/"), "Garda Inflasi");
   });
 });

@@ -21,6 +21,9 @@ type ReferenceSummary struct {
 
 // SeedReference meng-upsert seluruh data referensi menurut kunci masing-masing.
 // Idempoten. Urutan mengikuti kunci asing: satuan, provinsi, kabupaten, kecamatan, pasar, komoditas.
+//
+// Kunci upsert adalah kode (ON CONFLICT (kode)), termasuk pasar sejak 000122. id BIGINT identity pada keenam tabel
+// milik basis data: seeder tidak pernah menulisnya, dan baris yang sudah ada mempertahankan id-nya.
 func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 	provinsi, kabupaten, pasar, komoditas := []domain.Provinsi{ProvinsiAceh}, Kabupaten(), Pasar(), Komoditas()
 	satuan := Satuan()
@@ -46,9 +49,11 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 		if err != nil {
 			return fmt.Errorf("periksa skema master: %w", err)
 		}
-		pasarKey := "id"
-		if adaKodePasar {
-			pasarKey = "kode"
+		// Sebelum 000122 tabel master belum punya kolom id (identity) dan pasar.id berisi kode. Entitas ber-ID membuat
+		// GORM menambahkan RETURNING id, jadi pada skema lama RETURNING diganti kunci tabel dan pasar memakai tipe lama.
+		pasarKey, pasarRows := "kode", any(&pasar)
+		if !adaKodePasar {
+			pasarKey, pasarRows = "id", pasarLamaDari(pasar)
 		}
 		steps := []struct {
 			name    string
@@ -62,7 +67,7 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 			{"provinsi", &provinsi, "kode", []string{"nama"}, false},
 			{"kabupaten", &kabupaten, "kode", []string{"nama", "provinsi_kode", "jenis", "ibukota", "lat", "lng"}, false},
 			{"kecamatan", &kecamatan, "kode", []string{"nama", "kabupaten_kode", "kode_dagri"}, false},
-			{"pasar", &pasar, pasarKey, []string{"nama", "kabupaten_kode", "lat", "lng", "radius_meter"}, versiPasar},
+			{"pasar", pasarRows, pasarKey, []string{"nama", "kabupaten_kode", "lat", "lng", "radius_meter"}, versiPasar},
 			{"komoditas", &komoditas, "kode", []string{"nama", "satuan", "kategori", "harga_acuan", "pilot", "shelf_life_hari"}, versiKomoditas},
 		}
 		for _, step := range steps {
@@ -77,13 +82,11 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 				conflict.Where = clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: step.name + ".versi = 1"}}}
 			}
 			q := tx.Clauses(conflict)
-			if step.name == "pasar" {
-				if !versiPasar {
-					q = q.Omit("kecamatan_kode", "versi") // kolom 000120 belum ada
-				}
-				if !adaKodePasar {
-					q = q.Omit("kode")
-				}
+			if !adaKodePasar {
+				q = q.Clauses(clause.Returning{Columns: []clause.Column{{Name: step.key}}})
+			}
+			if step.name == "pasar" && !versiPasar {
+				q = q.Omit("kecamatan_kode", "versi") // kolom 000120 belum ada
 			}
 			err := q.Create(step.rows).Error
 			if err != nil {
@@ -98,6 +101,33 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 		Satuan: jumlah("satuan", len(satuan)), Provinsi: len(provinsi), Kabupaten: len(kabupaten),
 		Kecamatan: jumlah("kecamatan", len(kecamatan)), Pasar: len(pasar), Komoditas: len(komoditas),
 	}, err
+}
+
+// pasarLama memetakan pasar sebelum 000122: id varchar berisi kode pasar dan belum ada kolom kode.
+type pasarLama struct {
+	ID            string  `gorm:"column:id;primaryKey"`
+	Nama          string  `gorm:"column:nama"`
+	KabupatenKode string  `gorm:"column:kabupaten_kode"`
+	KecamatanKode *string `gorm:"column:kecamatan_kode"`
+	Lat           float64 `gorm:"column:lat"`
+	Lng           float64 `gorm:"column:lng"`
+	RadiusMeter   int     `gorm:"column:radius_meter;default:400"`
+	Aktif         bool    `gorm:"column:aktif;default:true"`
+	Versi         int     `gorm:"column:versi;default:1"`
+}
+
+func (pasarLama) TableName() string { return "pasar" }
+
+// pasarLamaDari mengubah pasar seed ke bentuk skema lama (kode menjadi id).
+func pasarLamaDari(pasar []domain.Pasar) *[]pasarLama {
+	rows := make([]pasarLama, len(pasar))
+	for i, p := range pasar {
+		rows[i] = pasarLama{
+			ID: p.Kode, Nama: p.Nama, KabupatenKode: p.KabupatenKode, KecamatanKode: p.KecamatanKode,
+			Lat: p.Lat, Lng: p.Lng, RadiusMeter: p.RadiusMeter, Aktif: p.Aktif, Versi: p.Versi,
+		}
+	}
+	return &rows
 }
 
 // Kabupaten mengembalikan salinan data kabupaten/kota dengan kode provinsi terisi.

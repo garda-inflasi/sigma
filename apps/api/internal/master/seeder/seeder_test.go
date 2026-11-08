@@ -207,6 +207,64 @@ func rowCount(t *testing.T, db *gorm.DB, table string) int64 {
 	return n
 }
 
+// id BIGINT identity milik basis data (000122): seeder meng-upsert menurut kode dan tidak pernah menulis id, jadi
+// menjalankannya ulang tidak mengganti id baris yang sudah ada.
+func TestSeedReference_TidakMengubahIDSurrogate(t *testing.T) {
+	db := pg.NewDatabase(t, "master_seed_id_stabil")
+	pgtest.MigrateUp(t, db)
+	ids := func() map[string]string {
+		out := map[string]string{}
+		for _, tabel := range []string{"satuan", "provinsi", "kabupaten", "kecamatan", "pasar", "komoditas"} {
+			var v string
+			require.NoError(t, db.Raw(`SELECT string_agg(id::text, ',' ORDER BY kode) FROM `+tabel).Scan(&v).Error)
+			require.NotEmpty(t, v, tabel)
+			out[tabel] = v
+		}
+		return out
+	}
+
+	_, err := SeedReference(t.Context(), db)
+	require.NoError(t, err)
+	awal := ids()
+	_, err = SeedReference(t.Context(), db)
+	require.NoError(t, err)
+
+	assert.Equal(t, awal, ids())
+}
+
+// Seeder dipakai di basis data yang sudah berisi seed sebelum 000122 (tabel master tanpa kolom id, pasar.id berisi
+// kode). Migrasi 000122 mengubah id lama pasar menjadi kode, jadi seed sesudahnya memperbarui baris yang sama dan
+// tidak menggandakannya.
+func TestSeedReference_DiAtasBasisDataHasilMigrasi000122(t *testing.T) {
+	db := pg.NewDatabase(t, "master_seed_pasca_122")
+	migrator := pgtest.Migrator(t, db)
+	require.NoError(t, migrator.UpTo(t.Context(), 121))
+
+	first, err := SeedReference(t.Context(), db)
+	require.NoError(t, err, "skema sebelum 000122")
+	kecamatan, err := Kecamatan()
+	require.NoError(t, err)
+	assert.Equal(t, ReferenceSummary{Satuan: 2, Provinsi: 1, Kabupaten: 23, Kecamatan: len(kecamatan), Pasar: 24, Komoditas: 14}, first)
+	_, err = SeedReference(t.Context(), db)
+	require.NoError(t, err, "skema sebelum 000122, diulang")
+	sebelum := rowCounts(t, db)
+
+	require.NoError(t, migrator.UpTo(t.Context(), 122))
+	var pasarLama int64
+	require.NoError(t, db.Raw(`SELECT count(*) FROM pasar WHERE kode LIKE 'PSR-%'`).Scan(&pasarLama).Error)
+	require.EqualValues(t, 24, pasarLama, "id pasar lama menjadi kode")
+	var idSebelum string
+	require.NoError(t, db.Raw(`SELECT string_agg(id::text, ',' ORDER BY kode) FROM pasar`).Scan(&idSebelum).Error)
+
+	_, err = SeedReference(t.Context(), db)
+	require.NoError(t, err, "skema 000122 di atas data hasil migrasi")
+
+	assert.Equal(t, sebelum, rowCounts(t, db), "tidak ada baris ganda")
+	var idSesudah string
+	require.NoError(t, db.Raw(`SELECT string_agg(id::text, ',' ORDER BY kode) FROM pasar`).Scan(&idSesudah).Error)
+	assert.Equal(t, idSebelum, idSesudah, "id baris hasil migrasi dipertahankan")
+}
+
 func TestSeedReference_DoesNotTouchNonReferenceData(t *testing.T) {
 	db := pg.NewDatabase(t, "master_seed_non_reference")
 	pgtest.MigrateUp(t, db)

@@ -1,14 +1,15 @@
 import { ShieldCheck } from "lucide-react";
+import { PanelMfa } from "@/components/akun/panel-mfa";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { MFA_SETUP_PATH } from "@/lib/auth/mfa";
 import { validateRedirectUrl } from "@/lib/bff/safe-redirect";
-import { MfaPanel } from "./mfa-panel";
 
 export const metadata = { title: "Verifikasi Dua Langkah" };
 
 /**
- * Setup dan pengelolaan MFA. Wajib dilalui akun berperan strategis, manajerial, koordinator, dan admin
- * (saat penegakan MFA menyala); juga dipakai sukarela dari menu akun.
+ * Setup MFA untuk akun berperan strategis, manajerial, koordinator, dan admin (saat penegakan MFA menyala),
+ * yang belum boleh membuka konsol termasuk /profil. Menu akun memakai tab di /profil; panelnya komponen
+ * yang sama (components/akun).
  */
 export default async function MfaPage({
   searchParams,
@@ -27,7 +28,10 @@ export default async function MfaPage({
           Verifikasi dua langkah
         </h1>
 
-        <MfaPanel lanjut={redirect} />
+        <PanelMfa
+          mode={{ jenis: "halaman", lanjut: redirect }}
+          className="mt-6"
+        />
 
         <div className="mt-5 flex gap-2.5 rounded-xl bg-data-50/70 p-3.5 text-xs leading-relaxed text-data-800 dark:bg-data-500/10 dark:text-data-200">
           <ShieldCheck className="mt-px size-4 shrink-0" />

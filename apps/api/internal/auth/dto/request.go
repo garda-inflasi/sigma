@@ -49,6 +49,15 @@ type UpdateUserRequest struct {
 	Status        *string `json:"status" binding:"omitempty,oneof=AKTIF NONAKTIF MENUNGGU"`
 }
 
+// UpdateProfilRequest adalah badan PATCH /v1/auth/me: pemilik akun hanya dapat mengubah nama dan telepon, field lain
+// (email, peran, lapis, lembaga, kabupaten, status, ...) diabaikan. Nil (tidak dikirim atau null) berarti tidak
+// diubah; telepon "" menghapus nomor. Batas max hanya pagar atas masukan mentah: pemangkasan, normalisasi, dan
+// aturan sebenarnya diperiksa usecase.UpdateProfil.
+type UpdateProfilRequest struct {
+	Nama    *string `json:"nama" binding:"omitempty,max=1000"`
+	Telepon *string `json:"telepon" binding:"omitempty,max=100"`
+}
+
 // ListUserRequest adalah kueri GET /v1/users. Filternya (FilterPenggunaRequest) dipakai bersama ekspor CSV.
 type ListUserRequest struct {
 	FilterPenggunaRequest

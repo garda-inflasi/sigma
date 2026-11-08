@@ -92,7 +92,7 @@ func (r *Repository) Riwayat(ctx context.Context, kode, kabupaten string, dari, 
 	var titik []domain.TitikHarga
 	err := r.db.WithContext(ctx).Table("entri_harga AS e").
 		Select("e.dicatat_pada::date AS tanggal, ROUND(AVG(e.harga))::int AS harga").
-		Joins("JOIN pasar ps ON (ps.kode = e.pasar_id OR ps.id::text = e.pasar_id)").
+		Joins("JOIN pasar ps ON ps.kode = e.pasar_id").
 		Where("e.komoditas_kode = ? AND ps.kabupaten_kode = ? AND e.tipe = 'KONSUMEN'", kode, kabupaten).
 		Where("e.status IN ('DIVALIDASI', 'DIPUBLIKASI')").
 		Where("e.dicatat_pada >= ?::date AND e.dicatat_pada < ?::date", dari.Format(tanggalSQL), sampai.Format(tanggalSQL)).
@@ -149,7 +149,7 @@ func (r *Repository) SeriKonsumen(ctx context.Context, kode string, dari time.Ti
 	}
 	err := r.db.WithContext(ctx).Table("entri_harga AS e").
 		Select("ps.kabupaten_kode, e.dicatat_pada::date AS tanggal, ROUND(AVG(e.harga))::int AS harga").
-		Joins("JOIN pasar ps ON (ps.kode = e.pasar_id OR ps.id::text = e.pasar_id)").
+		Joins("JOIN pasar ps ON ps.kode = e.pasar_id").
 		Where("e.komoditas_kode = ? AND e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')", kode).
 		Where("e.dicatat_pada >= ?::date", dari.Format(tanggalSQL)).
 		Group("ps.kabupaten_kode, e.dicatat_pada::date").Order("ps.kabupaten_kode, tanggal").
@@ -228,7 +228,7 @@ func (r *Repository) EvaluasiJatuhTempo(ctx context.Context, hariIni time.Time) 
 		FROM prediksi_harga p
 		JOIN LATERAL (
 			SELECT ROUND(AVG(e.harga))::int AS harga
-			FROM entri_harga e JOIN pasar ps ON (ps.kode = e.pasar_id OR ps.id::text = e.pasar_id)
+			FROM entri_harga e JOIN pasar ps ON ps.kode = e.pasar_id
 			WHERE e.komoditas_kode = p.komoditas_kode AND ps.kabupaten_kode = p.kabupaten_kode
 			  AND e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
 			  AND e.dicatat_pada::date = p.tanggal_target

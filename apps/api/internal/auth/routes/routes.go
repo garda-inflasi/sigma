@@ -107,6 +107,9 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		protected.DELETE("/auth/sessions/:id", handler.RevokeSession)
 		protected.POST("/auth/sessions/revoke-others", handler.RevokeOtherSessions)
 		protected.GET("/auth/me", handler.Me)
+		// Profil mandiri (20-A): pemilik hanya mengubah nama dan telepon. Tidak terbuka bagi sesi yang masih wajib
+		// ganti kata sandi atau setup MFA (lihat middleware.JWTAuth), berbeda dengan GET /auth/me.
+		protected.PATCH("/auth/me", handler.UpdateMe)
 		protected.POST("/auth/change-password", handler.ChangePassword)
 
 		// MFA routes

@@ -4,7 +4,7 @@ Daftar pekerjaan per fitur, disusun dari **audit kode per 5 Nov 2026** (commit `
 
 > **Mulai dari [00-cara-kerja.md](00-cara-kerja.md).** Di sana ada urutan task, definisi satu task, dan Definition of Done.
 
-**Bentuk pekerjaan:** setiap fitur dipecah menjadi *vertical slice* bernama `NN-A`, `NN-B`, … Satu slice menembus semua lapisan dengan urutan tetap **MIG → SEED → API → FE → TES → DoD**: migration dibuat saat slice dikerjakan (nomor diambil saat itu, tidak dipra-rencanakan), lalu seeder, API Go, integrasi frontend, dan verifikasi bahwa halaman web tampil dari database. Slice `-A` = **paritas mock** (Fase P); slice `-B` dan seterusnya = **fitur nyata** (Fase F).
+**Bentuk pekerjaan:** setiap fitur dipecah menjadi _vertical slice_ bernama `NN-A`, `NN-B`, … Satu slice menembus semua lapisan dengan urutan tetap **MIG → SEED → API → FE → TES → DoD**: migration dibuat saat slice dikerjakan (nomor diambil saat itu, tidak dipra-rencanakan), lalu seeder, API Go, integrasi frontend, dan verifikasi bahwa halaman web tampil dari database. Slice `-A` = **paritas mock** (Fase P); slice `-B` dan seterusnya = **fitur nyata** (Fase F).
 
 Setiap berkas fitur berisi: status, apa yang sudah ada, slice berurutan, dan backlog lanjutan.
 
@@ -43,6 +43,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 17  | Alur sistem & data                        | `/alur-sistem`             | ✅  |   n/a   |    n/a    |     n/a      | n/a | [17-alur-sistem.md](17-alur-sistem.md)                     |
 | 18  | Lintas fitur (platform, CI, deploy, docs) | —                          |  —  |    —    |     —     |      —       |  —  | [18-platform-lintas-fitur.md](18-platform-lintas-fitur.md) |
 | 19  | **Migration & seeder (fondasi data)**     | —                          |  —  |    —    |     —     |      —       |  —  | [19-migration-seeder.md](19-migration-seeder.md)           |
+| 20  | Profil terpadu & keamanan akun            | `/profil`                  | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [20-profile.md](20-profile.md)                             |
 
 "Backend ⬜" berarti ada route/CRUD tipis tetapi logika inti (AI, scraping, generator) belum ada. "Backend 🟡" berarti route dan query dasar ada, tetapi aturan bisnis penuh belum. "Skema & seed ⬜" berarti, berdasarkan analisis kode, query modul itu akan gagal pada database hasil migrasi atau tabelnya kosong (detail di §19).
 
@@ -101,6 +102,14 @@ komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemis
   yang berlaku saat itu".
 - **API dan web.** Detail/hapus per kode dengan 409 untuk data yang masih dirujuk. Di web: dialog usulan, antrean
   `/master/perubahan`, serta tab kecamatan, satuan, dan pedagang.
+
+**Profil terpadu (8 Nov 2026, [20](20-profile.md)):** migrasi `000123`.
+
+- **Halaman.** `/profil` di dalam konsol punya empat tab (Edit Profil, Ganti Kata Sandi, Verifikasi 2 Langkah, Perangkat & Sesi Aktif) dengan deep link `?tab=`, ditautkan dari menu akun topbar.
+- **API.** `PATCH /v1/auth/me` mengubah nama dan telepon (E.164) dan tercatat di audit sebagai `UPDATE_PROFIL`. Nama baru langsung tampil di topbar.
+- **Rute lama.** `/keamanan` dialihkan ke tab sesi. `/ganti-password` dan `/mfa` tetap menjadi tujuan alur wajib.
+- **Perbaikan sisa 04-D.** Seeder dan query yang rusak sejak migrasi `000122` diperbaiki: seed demo kembali berhasil, dan `go test ./...` hijau penuh.
+- **Verifikasi.** E2E 346/346, web 1.376 unit + 241 komponen.
 
 "Backend 🟡" di tabel berarti slice Fase F-nya selesai tetapi masih ada keterbatasan di bawah. Yang perlu diketahui:
 

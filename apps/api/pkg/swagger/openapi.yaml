@@ -57,8 +57,8 @@ paths:
         (berlaku 5 menit), yang ditukar dengan kode OTP di `POST /v1/auth/mfa/validate`. Akun yang wajib MFA
         (peran strategis, manajerial, koordinator lapangan, admin, atau bertanda `mfa_wajib`, bila `MFA_ENFORCE`
         menyala; bawaan hanya di produksi) tetapi belum setup menerima sesi dengan `mfa_setup_diwajibkan: true`:
-        semua endpoint selain `/v1/auth/mfa/setup`, `/v1/auth/mfa/verify`, ganti password, keluar, dan profil
-        menjawab 403 dengan kode `MFA_SETUP_REQUIRED`.
+        semua endpoint selain `/v1/auth/mfa/setup`, `/v1/auth/mfa/verify`, ganti password, keluar, dan membaca profil
+        (`GET /v1/auth/me`; mengubahnya dengan `PATCH` ikut ditolak) menjawab 403 dengan kode `MFA_SETUP_REQUIRED`.
 
         **Lockout akun (satu mekanisme).** Kegagalan dihitung per email ternormalisasi (huruf kecil, tanpa spasi tepi),
         bukan per akun, jadi email terdaftar dan tidak terdaftar mendapat jawaban yang sama persis (anti-enumerasi).
@@ -455,6 +455,70 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
         "401":
           description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Memperbarui profil sendiri (nama dan telepon)
+      operationId: authUpdateMe
+      description: |
+        Pemilik akun mengubah nama dan/atau telepon sendiri. Hanya dua field itu yang berlaku: field lain di badan
+        (email, peran, lapis, lembaga, kabupaten_kode, status, dst.) diabaikan dan tidak mengubah apa pun. `nama` atau
+        `telepon` yang tidak dikirim (atau `null`) tidak diubah; `telepon: ""` menghapus nomor (disimpan NULL).
+
+        Nama dipangkas dan harus 3 sampai 100 karakter (dihitung per karakter Unicode, bukan byte). Telepon dinormalkan
+        ke E.164 Indonesia: spasi, `-`, `.`, `(`, dan `)` dibuang; awalan `+62`, `62`, atau `0` menjadi `+62`; awalan
+        lain tidak valid; bagian nasional (sesudah 62) harus 8 sampai 13 digit dengan digit pertama 1 sampai 9
+        (`0812-3456-7890` menjadi `+6281234567890`).
+
+        Nilai yang sama dengan yang tersimpan (sesudah pemangkasan dan normalisasi) dijawab 200 tanpa menulis basis data
+        dan tanpa audit. Perubahan tercatat di audit sebagai `UPDATE_PROFIL` dengan keadaan sebelum dan sesudah (memuat
+        telepon). Access token yang sudah terbit tetap membawa nama lama sampai disegarkan lewat `POST /v1/auth/refresh`.
+
+        Berbeda dengan `GET /v1/auth/me`, endpoint ini tidak terbuka bagi sesi yang masih wajib ganti kata sandi atau
+        wajib setup MFA: keduanya dijawab 403 sampai kewajiban itu selesai.
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfilRequest"
+      responses:
+        "200":
+          description: Profil terbaru, bentuknya sama dengan `GET /v1/auth/me`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "400":
+          description: |
+            Validasi gagal; `message` berbahasa Indonesia dan boleh ditampilkan apa adanya: `Nama minimal 3 karakter`,
+            `Nama maksimal 100 karakter`, `Nomor telepon tidak valid`, `Tidak ada perubahan` (badan tanpa `nama` dan
+            tanpa `telepon`, atau kosong), atau `Validasi gagal: ...` untuk JSON rusak, tipe salah, dan masukan yang
+            jauh melewati batas wajar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Sesi masih wajib ganti kata sandi (`PASSWORD_CHANGE_REQUIRED`) atau setup MFA (`MFA_SETUP_REQUIRED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pengguna tidak ditemukan
           content:
             application/json:
               schema:
@@ -7831,6 +7895,27 @@ components:
             Password baru. Minimal 8 karakter, mengandung huruf besar,
             angka, dan karakter spesial.
 
+    UpdateProfilRequest:
+      type: object
+      description: |
+        Badan `PATCH /v1/auth/me`. Hanya `nama` dan `telepon` yang berlaku; field lain diabaikan. Minimal satu dari
+        keduanya harus ada dan bukan `null`, selain itu 400 `Tidak ada perubahan`.
+      properties:
+        nama:
+          type: string
+          nullable: true
+          description: |
+            Nama lengkap. Dipangkas, lalu harus 3 sampai 100 karakter. Tidak dikirim atau `null` berarti tidak diubah.
+          example: Siti Aminah
+        telepon:
+          type: string
+          nullable: true
+          description: |
+            Telepon/WhatsApp Indonesia: `08...`, `62...`, atau `+62...`, boleh dengan spasi, `-`, `.`, dan kurung. Disimpan
+            sebagai E.164 (`+62` + 8 sampai 13 digit). Tidak dikirim atau `null` berarti tidak diubah; `""` (atau spasi
+            saja) menghapus nomor.
+          example: "0812-3456-7890"
+
     ChangePasswordResponse:
       type: object
       properties:
@@ -8043,6 +8128,12 @@ components:
           type: string
           nullable: true
           example: "1171"
+        telepon:
+          type: string
+          description: |
+            Telepon/WhatsApp pemilik akun dalam E.164 Indonesia (`+62` diikuti 8 sampai 13 digit). Tidak ada bila
+            belum diisi. Diubah pemilik lewat `PATCH /v1/auth/me`.
+          example: "+6281234567890"
         mfa_aktif:
           type: boolean
           example: false
@@ -8065,8 +8156,8 @@ components:
           description: |
             True bila kata sandi akun ditetapkan pihak lain (admin awal, akun baru, reset
             administrator). Selama aktif, semua endpoint selain `/v1/auth/change-password`,
-            `/v1/auth/logout`, dan `/v1/auth/me` menjawab 403 dengan `code`
-            `PASSWORD_CHANGE_REQUIRED`.
+            `/v1/auth/logout`, dan `GET /v1/auth/me` (hanya membaca; `PATCH /v1/auth/me` ikut ditolak) menjawab 403
+            dengan `code` `PASSWORD_CHANGE_REQUIRED`.
           example: false
         terkunci_sampai:
           type: string

@@ -71,6 +71,8 @@ function Isi({
   onClose: () => void;
 }) {
   const { pasar: p, jumlahPedagang } = detail;
+  // Sejak 04-D `id` pasar adalah angka surrogate; usulan, pedagang, dan hapus merujuk kode pasar.
+  const kode = p.kode ?? p.id;
   const bisaAjukan = useCan("master.ajukan");
   const bisaHapus = useCan("master.setujui");
   const [hapus, setHapus] = useState(false);
@@ -78,10 +80,10 @@ function Isi({
   const usulan = usePerubahanHalaman({
     status: "MENUNGGU",
     entitas: "pasar",
-    entitasId: p.id,
+    entitasId: kode,
     limit: 1,
   });
-  const pedagang = usePedagangHalaman({ pasarId: p.id, limit: 50 });
+  const pedagang = usePedagangHalaman({ pasarId: kode, limit: 50 });
   const menunggu = usulan.data?.rows[0];
   const status = STATUS_PASAR[p.aktif ? "AKTIF" : "NONAKTIF"];
   return (
@@ -95,7 +97,7 @@ function Isi({
 
       <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2">
         <DlBaris label="Kode">
-          <span className="num">{p.id}</span>
+          <span className="num">{kode}</span>
         </DlBaris>
         <DlBaris label="Kabupaten/kota">{p.kabupaten}</DlBaris>
         <DlBaris label="Kecamatan">
@@ -188,7 +190,7 @@ function Isi({
 
       <HapusDialog
         entitas="pasar"
-        kode={p.id}
+        kode={kode}
         nama={p.nama}
         open={hapus}
         onOpenChange={setHapus}

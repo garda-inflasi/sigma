@@ -175,7 +175,7 @@ func (r *Repository) AktivitasLapangan(ctx context.Context, awal, akhir time.Tim
 		),
 		entri AS (
 			SELECT p.kabupaten_kode, COUNT(*) AS n
-			  FROM entri_harga e JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
+			  FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
 			 WHERE e.tipe = 'KONSUMEN' AND e.status <> 'DRAF' AND e.dicatat_pada >= ? AND e.dicatat_pada < ?
 			 GROUP BY p.kabupaten_kode
 		),

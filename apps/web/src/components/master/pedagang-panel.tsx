@@ -157,7 +157,7 @@ export function PedagangPanel() {
             value={state.filter.pasar}
             onChange={(v) => setFilter("pasar", v)}
             options={(pasar.data ?? []).map((p) => ({
-              value: p.id,
+              value: p.kode ?? p.id,
               label: p.nama,
             }))}
             disabled={pasar.isLoading}

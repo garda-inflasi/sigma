@@ -320,8 +320,8 @@ func TestSeedDemo_DiAtasBasisDataHasilMigrasi(t *testing.T) {
 	require.NoError(t, db.Exec(`
 		INSERT INTO entri_harga (id, kode, komoditas_kode, pasar_id, tipe, harga, satuan, dicatat_pada)
 		OVERRIDING SYSTEM VALUE
-		SELECT 900001, 'HRG-D00-00-01-K', k.kode, p.id, 'KONSUMEN', 1000, 'kg', now()
-		  FROM komoditas k, pasar p ORDER BY k.kode, p.id LIMIT 1`).Error)
+		SELECT 900001, 'HRG-D00-00-01-K', k.kode, p.kode, 'KONSUMEN', 1000, 'kg', now()
+		  FROM komoditas k, pasar p ORDER BY k.kode, p.kode LIMIT 1`).Error)
 	var awal int64
 	require.NoError(t, db.Raw("SELECT id FROM entri_harga WHERE kode = 'HRG-D00-00-01-K'").Scan(&awal).Error)
 	require.EqualValues(t, 900001, awal)

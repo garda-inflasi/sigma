@@ -14,6 +14,9 @@
  *    sesi: stack harus dinyalakan lewat `make docker/demo/up`, yang menyetelnya tinggi.
  *  - Tes yang memakai jendela toleransi refresh (10 detik) menunggu sungguhan, tanpa mengubah waktu.
  *  - Tes yang sengaja membuat access token hilang mengizinkan 401 sementara sebelum klien memulihkan sesi.
+ *  - Daftar sesi kini tab "Perangkat & Sesi Aktif" di /profil?tab=keamanan (slice 20-B); rute lama /keamanan hanya
+ *    dialihkan ke sana (pengalihannya diperiksa profil.spec.ts). Mencabut satu sesi memakai konfirmasi inline
+ *    ("Konfirmasi cabut"), dan "Keluarkan semua perangkat lain" memakai AlertDialog ("Ya, keluarkan").
  */
 import { randomBytes } from "node:crypto";
 import type { Page } from "@playwright/test";
@@ -224,9 +227,20 @@ function izinkan401(galat: { izinkan(p: RegExp): void }): void {
   galat.izinkan(/Failed to load resource.*status of 401/);
 }
 
-// ── Halaman Keamanan akun ────────────────────────────────────────────────
+// ── Tab Perangkat & Sesi Aktif (/profil?tab=keamanan) ────────────────────
 
-test("Keamanan akun mendaftar sesi aktif dan menandai sesi ini; Cabut mematikan sesi lain seketika", async ({
+/** "Keluarkan semua perangkat lain" membuka dialog konfirmasi; "Ya, keluarkan" menjalankannya. */
+async function keluarkanPerangkatLain(page: Page): Promise<void> {
+  await page
+    .getByRole("button", { name: "Keluarkan semua perangkat lain" })
+    .click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Ya, keluarkan" })
+    .click();
+}
+
+test("Perangkat & Sesi Aktif mendaftar sesi aktif dan menandai sesi ini; Cabut mematikan sesi lain seketika", async ({
   page,
 }) => {
   const u = await penggunaSiap();
@@ -235,20 +249,22 @@ test("Keamanan akun mendaftar sesi aktif dan menandai sesi ini; Cabut mematikan 
   expect(await me(lain.access)).toBe(200);
 
   await tanamCookie(page, ini);
+  // Lewat rute lama: /keamanan dialihkan ke tab sesi di halaman profil.
   await buka(page, "/keamanan");
+  await expect(page).toHaveURL(/\/profil\?tab=keamanan$/);
   await expect(
-    page.getByRole("heading", { name: "Keamanan akun" }),
-  ).toBeVisible();
+    page.getByRole("tab", { name: "Perangkat & Sesi Aktif" }),
+  ).toHaveAttribute("aria-selected", "true");
 
   const butir = page
     .getByRole("list", { name: "Sesi aktif" })
     .getByRole("listitem");
   await expect(butir).toHaveCount(2);
 
-  const sesiIni = butir.filter({ hasText: "Perangkat ini" });
+  const sesiIni = butir.filter({ hasText: "Sesi Ini" });
   await expect(sesiIni).toHaveCount(1);
   await expect(sesiIni).toContainText("Chrome di macOS");
-  await expect(sesiIni).toContainText("IP ");
+  await expect(sesiIni).toContainText(/IP (\d|tidak diketahui)/);
   await expect(
     sesiIni.getByRole("button", { name: /Cabut/ }),
     "sesi yang sedang dipakai tidak bisa dicabut dari daftar",
@@ -259,6 +275,8 @@ test("Keamanan akun mendaftar sesi aktif dan menandai sesi ini; Cabut mematikan 
   await sesiLain
     .getByRole("button", { name: /^Cabut sesi Chrome di Android/ })
     .click();
+  // Konfirmasi inline sebelum sesi benar-benar dicabut.
+  await page.getByRole("button", { name: /Konfirmasi cabut/ }).click();
   await expect(page.getByText("Sesi dicabut", { exact: true })).toBeVisible();
   await expect(butir).toHaveCount(1);
 
@@ -273,7 +291,7 @@ test("Keamanan akun mendaftar sesi aktif dan menandai sesi ini; Cabut mematikan 
   expect(await me(ini.access), "sesi browser tetap hidup").toBe(200);
 });
 
-test("Keluar dari perangkat lain mencabut semua sesi lain dan menyisakan sesi ini", async ({
+test("Keluarkan semua perangkat lain mencabut semua sesi lain dan menyisakan sesi ini", async ({
   page,
 }) => {
   const u = await penggunaSiap();
@@ -282,22 +300,20 @@ test("Keluar dari perangkat lain mencabut semua sesi lain dan menyisakan sesi in
   const b = await masukApi(u.email, u.sandi, UA_IPHONE);
 
   await tanamCookie(page, ini);
-  await buka(page, "/keamanan");
+  await buka(page, "/profil?tab=keamanan");
   const butir = page
     .getByRole("list", { name: "Sesi aktif" })
     .getByRole("listitem");
   await expect(butir).toHaveCount(3);
 
-  await page
-    .getByRole("button", { name: "Keluar dari perangkat lain" })
-    .click();
+  await keluarkanPerangkatLain(page);
   await expect(
     page.getByText("Perangkat lain dikeluarkan", { exact: true }),
   ).toBeVisible();
   await expect(butir).toHaveCount(1);
-  await expect(butir.first()).toContainText("Perangkat ini");
+  await expect(butir.first()).toContainText("Sesi Ini");
   await expect(
-    page.getByRole("button", { name: "Keluar dari perangkat lain" }),
+    page.getByRole("button", { name: "Keluarkan semua perangkat lain" }),
     "tidak ada perangkat lain lagi",
   ).toBeDisabled();
 
@@ -316,7 +332,7 @@ test("Keluar dari semua perangkat mengakhiri semua sesi, termasuk yang ini", asy
   const lain = await masukApi(u.email, u.sandi, UA_ANDROID);
 
   await tanamCookie(page, ini);
-  await buka(page, "/keamanan");
+  await buka(page, "/profil?tab=keamanan");
   await page
     .getByRole("button", { name: "Keluar dari semua perangkat" })
     .click();
@@ -461,7 +477,7 @@ test("garda_access hilang di tengah sesi: aksi data berikutnya pulih senyap tanp
   const lain = await masukApi(u.email, u.sandi, UA_ANDROID);
 
   await tanamCookie(page, ini);
-  await buka(page, "/keamanan");
+  await buka(page, "/profil?tab=keamanan");
   const butir = page
     .getByRole("list", { name: "Sesi aktif" })
     .getByRole("listitem");
@@ -475,21 +491,21 @@ test("garda_access hilang di tengah sesi: aksi data berikutnya pulih senyap tanp
   const refreshBerhasil = page.waitForResponse((r) => {
     const { pathname } = new URL(r.url());
     if (pathname !== "/api/auth/refresh") return false;
-    return r.request().method() === "POST" ? r.status() === 200 : r.status() >= 300 && r.status() < 400;
+    return r.request().method() === "POST"
+      ? r.status() === 200
+      : r.status() >= 300 && r.status() < 400;
   });
   await page.context().clearCookies({ name: "garda_access" });
   expect(await cookieBrowser(page, "garda_access")).toBeUndefined();
 
-  // Aksi mutasi lewat BFF: 401 → POST /api/auth/refresh → diulang dengan cookie baru.
-  await page
-    .getByRole("button", { name: "Keluar dari perangkat lain" })
-    .click();
+  // Aksi mutasi lewat BFF (sesudah konfirmasi di dialog): 401 → POST /api/auth/refresh → diulang dengan cookie baru.
+  await keluarkanPerangkatLain(page);
   await refreshBerhasil;
 
   await expect(
     page.getByText("Perangkat lain dikeluarkan", { exact: true }),
   ).toBeVisible();
-  await expect(page).toHaveURL(/\/keamanan$/);
+  await expect(page).toHaveURL(/\/profil\?tab=keamanan$/);
   expect(
     await cookieBrowser(page, "garda_access"),
     "access token baru terpasang",
@@ -562,8 +578,10 @@ test("dua tab menyegarkan sesi bersamaan dengan cookie yang sama: keduanya berha
   await tanamCookie(page, ini);
   const tab2 = await page.context().newPage();
   try {
-    await buka(page, "/keamanan");
-    await tab2.goto("/keamanan", { waitUntil: "domcontentloaded" });
+    // Halaman auth polos (tanpa cangkang konsol): tidak ada permintaan latar yang akan menerima 401 sesaat sesudah
+    // garda_access dihapus di bawah ini. Isi halamannya tidak dipakai; yang diuji adalah penyegaran bersamaan.
+    await buka(page, "/ganti-password");
+    await tab2.goto("/ganti-password", { waitUntil: "domcontentloaded" });
     await page.context().clearCookies({ name: "garda_access" });
 
     const segarkan = (p: Page) =>

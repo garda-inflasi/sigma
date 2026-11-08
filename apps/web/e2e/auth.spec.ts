@@ -215,8 +215,15 @@ test("kata sandi salah menampilkan galat dan tetap di halaman masuk", async ({
   izinkanHttp(galat, 401, "POST", "/api/auth/login");
   await masukLewatForm(page, uSalah.email, "Salah#Sandi1x");
   // Halaman tidak berpindah atau dimuat ulang; galat tampil di form (dan di toast).
-  await expect(page.getByRole("alert").filter({ hasText: "Email atau password salah" }).first()).toBeVisible();
-  await expect(page.locator("form").getByText("Email atau password salah")).toBeVisible();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Email atau password salah" })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.locator("form").getByText("Email atau password salah"),
+  ).toBeVisible();
   await expect(page).toHaveURL(/\/masuk$/);
   await expect(
     page.getByRole("heading", { name: "Masuk ke Garda Inflasi" }),
@@ -318,7 +325,12 @@ test("pengguna baru wajib ganti kata sandi, lalu masuk dengan kata sandi baru", 
     await expect(
       page.getByRole("heading", { name: "Ganti kata sandi" }),
     ).toBeVisible();
-    // Halaman lain tertutup selama kewajiban belum dipenuhi.
+    // Halaman lain tertutup selama kewajiban belum dipenuhi, termasuk /profil (tab mana pun) dari menu akun.
+    // /profil dibuka lebih dulu: tujuan semula (`lanjut`) terakhir harus tetap /cold-storage, beranda peran ini.
+    await page.goto("/profil", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/ganti-password(\?|$)/);
+    await page.goto("/profil?tab=mfa", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/ganti-password(\?|$)/);
     await page.goto("/cold-storage", { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(/\/ganti-password(\?|$)/);
   });

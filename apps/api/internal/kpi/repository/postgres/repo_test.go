@@ -131,27 +131,27 @@ func TestHitung_KelengkapanHarian(t *testing.T) {
 		// pukul 00.30 WIB (= 30 September 17.30 UTC) ikut hari 1.
 		require.NoError(t, tx.Exec(`
 			INSERT INTO entri_harga (status, pasar_id, komoditas_kode, dicatat_pada)
-			SELECT 'DIVALIDASI', p.id, k.kode, '2026-09-30 17:30+00'
-			  FROM (SELECT id FROM pasar ORDER BY id LIMIT 2) p CROSS JOIN komoditas k WHERE k.pilot`).Error)
+			SELECT 'DIVALIDASI', p.kode, k.kode, '2026-09-30 17:30+00'
+			  FROM (SELECT kode FROM pasar ORDER BY kode LIMIT 2) p CROSS JOIN komoditas k WHERE k.pilot`).Error)
 		require.NoError(t, tx.Exec(`
 			INSERT INTO entri_harga (status, pasar_id, komoditas_kode, dicatat_pada)
-			SELECT 'DIPUBLIKASI', p.id, k.kode, '2026-10-01 05:00+00'
-			  FROM (SELECT id FROM pasar ORDER BY id LIMIT 1) p CROSS JOIN komoditas k WHERE k.pilot`).Error)
+			SELECT 'DIPUBLIKASI', p.kode, k.kode, '2026-10-01 05:00+00'
+			  FROM (SELECT kode FROM pasar ORDER BY kode LIMIT 1) p CROSS JOIN komoditas k WHERE k.pilot`).Error)
 		// Hari 3 (3 Okt): 4 pasar pertama. Hari 2: kosong.
 		require.NoError(t, tx.Exec(`
 			INSERT INTO entri_harga (status, pasar_id, komoditas_kode, dicatat_pada)
-			SELECT 'DIVALIDASI', p.id, k.kode, '2026-10-03 03:00+00'
-			  FROM (SELECT id FROM pasar ORDER BY id LIMIT 4) p CROSS JOIN komoditas k WHERE k.pilot`).Error)
+			SELECT 'DIVALIDASI', p.kode, k.kode, '2026-10-03 03:00+00'
+			  FROM (SELECT kode FROM pasar ORDER BY kode LIMIT 4) p CROSS JOIN komoditas k WHERE k.pilot`).Error)
 		// Tidak boleh dihitung: draf, komoditas non-pilot, dan hari setelah asof (5 Okt).
 		require.NoError(t, tx.Exec(`
 			INSERT INTO entri_harga (status, pasar_id, komoditas_kode, dicatat_pada)
-			SELECT 'DRAF', p.id, k.kode, '2026-10-02 03:00+00' FROM pasar p CROSS JOIN komoditas k WHERE k.pilot`).Error)
+			SELECT 'DRAF', p.kode, k.kode, '2026-10-02 03:00+00' FROM pasar p CROSS JOIN komoditas k WHERE k.pilot`).Error)
 		require.NoError(t, tx.Exec(`
 			INSERT INTO entri_harga (status, pasar_id, komoditas_kode, dicatat_pada)
-			SELECT 'DIVALIDASI', p.id, k.kode, '2026-10-02 03:00+00' FROM pasar p CROSS JOIN komoditas k WHERE NOT k.pilot`).Error)
+			SELECT 'DIVALIDASI', p.kode, k.kode, '2026-10-02 03:00+00' FROM pasar p CROSS JOIN komoditas k WHERE NOT k.pilot`).Error)
 		require.NoError(t, tx.Exec(`
 			INSERT INTO entri_harga (status, pasar_id, komoditas_kode, dicatat_pada)
-			SELECT 'DIVALIDASI', p.id, k.kode, '2026-10-05 03:00+00' FROM pasar p CROSS JOIN komoditas k WHERE k.pilot`).Error)
+			SELECT 'DIVALIDASI', p.kode, k.kode, '2026-10-05 03:00+00' FROM pasar p CROSS JOIN komoditas k WHERE k.pilot`).Error)
 
 		var pilot, pasar int
 		require.NoError(t, tx.Raw(`SELECT COUNT(*) FROM komoditas WHERE pilot`).Scan(&pilot).Error)

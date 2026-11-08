@@ -13,6 +13,9 @@ type PenggunaPatch struct {
 	Lembaga       *string
 	KabupatenKode *string
 	Status        *string
+	// Telepon: pointer ke "" menghapus nomor, yang ditulis sebagai NULL (bukan string kosong); nilai lain sudah
+	// dinormalkan pemanggil (usecase.NormalisasiTelepon).
+	Telepon *string
 }
 
 // Kosong true bila tidak ada kolom yang diubah.
@@ -33,7 +36,18 @@ func (p PenggunaPatch) Kolom() map[string]any {
 	set("lembaga", p.Lembaga)
 	set("kabupaten_kode", p.KabupatenKode)
 	set("status", p.Status)
+	if p.Telepon != nil {
+		kolom["telepon"] = nilJikaKosong(*p.Telepon)
+	}
 	return kolom
+}
+
+// nilJikaKosong memetakan "" ke nil agar nomor yang dihapus ditulis NULL, bukan string kosong.
+func nilJikaKosong(nilai string) any {
+	if nilai == "" {
+		return nil
+	}
+	return nilai
 }
 
 // Terapkan menulis kolom yang diubah ke salinan pengguna di memori (untuk penyimpanan tiruan dan tes).
@@ -59,6 +73,13 @@ func (p PenggunaPatch) Terapkan(u *Pengguna) {
 	}
 	if p.Status != nil {
 		u.Status = *p.Status
+	}
+	if p.Telepon != nil {
+		u.Telepon = nil
+		if *p.Telepon != "" {
+			telepon := *p.Telepon
+			u.Telepon = &telepon
+		}
 	}
 }
 

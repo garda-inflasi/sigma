@@ -41,7 +41,12 @@ const AKUN_PERAN: Record<Role, Akun> = {
   OPS_MAHASISWA: "mahasiswa",
 };
 
-/** Semua halaman aplikasi yang membutuhkan sesi. */
+/**
+ * Semua halaman aplikasi yang membutuhkan sesi. /profil (tab bawaan Edit Profil, yang membaca profil dan
+ * penugasan akun) dan tab sesi terbuka bagi semua peran tanpa izin khusus, jadi tiap peran ikut menguji
+ * bahwa tab-tab itu tidak memanggil API di luar haknya. /keamanan sudah tidak berdiri sendiri: dialihkan ke
+ * /profil?tab=keamanan (pengalihannya diperiksa profil.spec.ts). /mfa dan /ganti-password tetap halaman auth.
+ */
 const HALAMAN = [
   "/eksekutif",
   "/operasional",
@@ -60,7 +65,8 @@ const HALAMAN = [
   "/pengguna",
   "/audit",
   "/alur-sistem",
-  "/keamanan",
+  "/profil",
+  "/profil?tab=keamanan",
   "/mfa",
   "/lapangan/tugas",
   "/lapangan/riwayat",

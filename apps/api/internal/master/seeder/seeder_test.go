@@ -64,7 +64,7 @@ func currentFixture() referenceFixture {
 		f.Kabupaten = append(f.Kabupaten, fixtureKabupaten{k.Kode, k.Nama, k.Jenis, k.Ibukota, k.Lat, k.Lng})
 	}
 	for _, p := range Pasar() {
-		f.Pasar = append(f.Pasar, fixturePasar{p.ID, p.Nama, p.KabupatenKode, p.Lat, p.Lng, p.RadiusMeter})
+		f.Pasar = append(f.Pasar, fixturePasar{p.Kode, p.Nama, p.KabupatenKode, p.Lat, p.Lng, p.RadiusMeter})
 	}
 	for _, k := range Komoditas() {
 		f.Komoditas = append(f.Komoditas, fixtureKomoditas{k.Kode, k.Nama, k.Satuan, k.Kategori, k.HargaAcuan, k.Pilot, k.ShelfLifeHari})
@@ -118,9 +118,9 @@ func TestSeedData_Shape(t *testing.T) {
 		}
 		withMarket, ids := map[string]bool{}, map[string]bool{}
 		for _, p := range pasar {
-			assert.True(t, kode[p.KabupatenKode], "pasar %s merujuk kabupaten %s yang tidak ada", p.ID, p.KabupatenKode)
-			assert.False(t, ids[p.ID], "id pasar ganda %s", p.ID)
-			ids[p.ID] = true
+			assert.True(t, kode[p.KabupatenKode], "pasar %s merujuk kabupaten %s yang tidak ada", p.Kode, p.KabupatenKode)
+			assert.False(t, ids[p.Kode], "id pasar ganda %s", p.Kode)
+			ids[p.Kode] = true
 			withMarket[p.KabupatenKode] = true
 			assert.Positive(t, p.RadiusMeter)
 		}
@@ -164,8 +164,8 @@ func TestSeedReference_IsIdempotentAndKeepsOperationalColumns(t *testing.T) {
 	// awal yang menyimpang dari seed.
 	require.NoError(t, db.Exec(`UPDATE komoditas SET status = 'MENUNGGU_PERSETUJUAN', versi = 3, harga_acuan = 1 WHERE kode = 'BRS-MED'`).Error)
 	require.NoError(t, db.Exec(`UPDATE komoditas SET harga_acuan = 2 WHERE kode = 'BRS-PRM'`).Error)
-	require.NoError(t, db.Exec(`UPDATE pasar SET aktif = false WHERE id = 'PSR-1171-01'`).Error)
-	require.NoError(t, db.Exec(`UPDATE pasar SET nama = 'Pasar disetujui', versi = 2 WHERE id = 'PSR-1171-02'`).Error)
+	require.NoError(t, db.Exec(`UPDATE pasar SET aktif = false WHERE kode = 'PSR-1171-01' OR id::text = 'PSR-1171-01'`).Error)
+	require.NoError(t, db.Exec(`UPDATE pasar SET nama = 'Pasar disetujui', versi = 2 WHERE kode = 'PSR-1171-02' OR id::text = 'PSR-1171-02'`).Error)
 
 	_, err = SeedReference(t.Context(), db)
 	require.NoError(t, err)
@@ -184,10 +184,10 @@ func TestSeedReference_IsIdempotentAndKeepsOperationalColumns(t *testing.T) {
 	require.NoError(t, db.Raw(`SELECT harga_acuan FROM komoditas WHERE kode = 'BRS-PRM'`).Scan(&hargaPrm).Error)
 	assert.Equal(t, 15800, hargaPrm, "baris versi awal dikembalikan ke seed")
 	var namaPasar string
-	require.NoError(t, db.Raw(`SELECT nama FROM pasar WHERE id = 'PSR-1171-02'`).Scan(&namaPasar).Error)
+	require.NoError(t, db.Raw(`SELECT nama FROM pasar WHERE kode = 'PSR-1171-02'`).Scan(&namaPasar).Error)
 	assert.Equal(t, "Pasar disetujui", namaPasar, "pasar yang sudah disetujui (versi > 1) tidak ditimpa seed")
 	var aktif bool
-	require.NoError(t, db.Raw(`SELECT aktif FROM pasar WHERE id = 'PSR-1171-01'`).Scan(&aktif).Error)
+	require.NoError(t, db.Raw(`SELECT aktif FROM pasar WHERE kode = 'PSR-1171-01'`).Scan(&aktif).Error)
 	assert.False(t, aktif, "status aktif pasar tidak ditimpa")
 }
 
@@ -241,7 +241,7 @@ func TestSeedReference_FKMasterRestrictDanSeedTidakMenghapus(t *testing.T) {
 	}
 	tolak(`DELETE FROM provinsi WHERE kode = '11'`)
 	tolak(`DELETE FROM kabupaten WHERE kode = '1171'`)
-	tolak(`DELETE FROM pasar WHERE id = 'PSR-1171-01'`)
+	tolak(`DELETE FROM pasar WHERE kode = 'PSR-1171-01'`)
 	tolak(`DELETE FROM komoditas WHERE kode = 'CBM-KRT'`)
 
 	before := rowCounts(t, db)
@@ -251,9 +251,9 @@ func TestSeedReference_FKMasterRestrictDanSeedTidakMenghapus(t *testing.T) {
 
 	// Pasar tanpa rujukan bisa dihapus; kabupaten baru baru bisa dihapus setelah pasarnya hilang.
 	require.NoError(t, db.Exec(`INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode) VALUES ('1199', 'Uji', 'KOTA', 'U', 5, 97, '11')`).Error)
-	require.NoError(t, db.Exec(`INSERT INTO pasar (id, nama, kabupaten_kode, lat, lng) VALUES ('PSR-1199-01', 'Uji', '1199', 5, 97)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO pasar (kode, nama, kabupaten_kode, lat, lng) VALUES ('PSR-1199-01', 'Uji', '1199', 5, 97)`).Error)
 	tolak(`DELETE FROM kabupaten WHERE kode = '1199'`)
-	require.NoError(t, db.Exec(`DELETE FROM pasar WHERE id = 'PSR-1199-01'`).Error)
+	require.NoError(t, db.Exec(`DELETE FROM pasar WHERE kode = 'PSR-1199-01'`).Error)
 	require.NoError(t, db.Exec(`DELETE FROM kabupaten WHERE kode = '1199'`).Error)
 }
 

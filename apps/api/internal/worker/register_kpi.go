@@ -1,4 +1,4 @@
-package main
+package worker
 
 import (
 	"context"
@@ -39,7 +39,7 @@ func init() {
 			Interval:   interval,
 			Timeout:    5 * time.Minute,
 			RunOnStart: true,
-			// Setara `cmd/kpi -bulan N`: idempoten, nilai sama tidak ditulis ulang.
+			// Setara `gardactl kpi hitung -bulan N`: idempoten, nilai sama tidak ditulis ulang.
 			Run: func(ctx context.Context) error {
 				now := time.Now()
 				lap, err := uc.Hitung(ctx, now.AddDate(0, -(bulan-1), 0), now, now)

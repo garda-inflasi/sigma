@@ -179,7 +179,7 @@ func (h *HandlerReferensi) GetPasar(c *gin.Context) {
 		return
 	}
 	res := dto.ToPasarDetail(item)
-	if res.PerubahanMenunggu, err = h.usulanMenunggu(c, domain.EntitasPasar, res.ID); err != nil {
+	if res.PerubahanMenunggu, err = h.usulanMenunggu(c, domain.EntitasPasar, res.Kode); err != nil {
 		response.InternalError(c, "Gagal mengambil usulan pasar")
 		return
 	}

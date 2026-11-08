@@ -1,13 +1,4 @@
-// Perintah impor-kecamatan mengambil kecamatan 23 kabupaten/kota Aceh dari API bridging wilayah BPS dan menulis
-// internal/master/seeder/kecamatan_aceh.csv, yang ditanam seeder master.reference. Jalankan lewat
-//
-//	make db/impor/kecamatan
-//
-// atau `go run ./cmd/impor-kecamatan [-out berkas.csv] [-periode 2024_1.2022]` dari apps/api. Berkas CSV dihasilkan,
-// bukan ditulis tangan; sumber, lisensi, dan cara menyegarkannya: internal/master/seeder/SUMBER.md.
-//
-// Permintaan dibuat berurutan dengan jeda, batas waktu, dan satu kali ulang, supaya tidak membebani server BPS.
-package main
+package gardactl
 
 import (
 	"bytes"
@@ -17,11 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
@@ -36,19 +25,15 @@ const (
 	bawaanPeriode = "2024_1.2022"
 	bawaanOut     = "internal/master/seeder/kecamatan_aceh.csv"
 	userAgent     = "garda-inflasi-impor-kecamatan/1.0"
-	// maksBadan membatasi ukuran jawaban; jawaban sebuah kabupaten hanya beberapa KB.
-	maksBadan = 4 << 20
+	maksBadan     = 4 << 20
 )
 
-// konfig adalah pengaturan satu kali jalan.
 type konfig struct {
 	out, base, periode string
 	timeout, jeda      time.Duration
-	// sekarang memberi tanggal pengambilan (bisa diganti tes).
-	sekarang func() time.Time
+	sekarang           func() time.Time
 }
 
-// wilayahBPS adalah satu elemen jawaban getwilayah.
 type wilayahBPS struct {
 	KodeBPS   string `json:"kode_bps"`
 	NamaBPS   string `json:"nama_bps"`
@@ -56,26 +41,34 @@ type wilayahBPS struct {
 	NamaDagri string `json:"nama_dagri"`
 }
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
-		log.Fatalf("impor-kecamatan: %v", err)
+func runMaster(ctx context.Context, args []string, opts Options) error {
+	if len(args) == 0 {
+		return errors.New("sub-perintah master wajib: impor-kecamatan")
+	}
+
+	switch args[0] {
+	case "impor-kecamatan":
+		return runImporKecamatan(ctx, args[1:], opts)
+	default:
+		return fmt.Errorf("sub-perintah master %q tidak dikenal (tersedia: impor-kecamatan)", args[0])
 	}
 }
 
-func run(ctx context.Context, args []string, out io.Writer) error {
-	cfg := konfig{sekarang: time.Now}
-	fs := flag.NewFlagSet("impor-kecamatan", flag.ContinueOnError)
+func runImporKecamatan(ctx context.Context, args []string, opts Options) error {
+	cfg := konfig{sekarang: opts.now}
+	fs := flag.NewFlagSet("master impor-kecamatan", flag.ContinueOnError)
 	fs.StringVar(&cfg.out, "out", bawaanOut, "berkas CSV keluaran")
 	fs.StringVar(&cfg.base, "base", bawaanBase, "URL getwilayah BPS")
 	fs.StringVar(&cfg.periode, "periode", bawaanPeriode, "periode_merge BPS")
 	fs.DurationVar(&cfg.timeout, "timeout", 30*time.Second, "batas waktu tiap permintaan")
 	fs.DurationVar(&cfg.jeda, "jeda", time.Second, "jeda antarpermintaan")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
-	return impor(ctx, cfg, &http.Client{}, out)
+	return impor(ctx, cfg, opts.httpClient(), opts.out())
 }
 
 func impor(ctx context.Context, cfg konfig, client *http.Client, out io.Writer) error {
@@ -115,8 +108,6 @@ func impor(ctx context.Context, cfg konfig, client *http.Client, out io.Writer) 
 	return nil
 }
 
-// susunCSV menghasilkan isi berkas lalu membacanya kembali dengan pembaca seeder, sehingga berkas yang tidak
-// akan diterima seeder tidak pernah ditulis.
 func susunCSV(meta seeder.MetaKecamatan, rows []domain.Kecamatan) ([]byte, error) {
 	if err := seeder.ValidasiKecamatan(rows, seeder.KodeKabupaten()); err != nil {
 		return nil, err
@@ -135,7 +126,6 @@ func polaURL(base, periode string) string {
 	return base + "?level=kecamatan&parent=<kode kabupaten>&periode_merge=" + periode
 }
 
-// ambilKecamatan meminta kecamatan satu kabupaten; satu kali ulang bila gagal.
 func ambilKecamatan(ctx context.Context, client *http.Client, cfg konfig, parent string) ([]wilayahBPS, error) {
 	items, err := ambilSekali(ctx, client, cfg, parent)
 	if err == nil || ctx.Err() != nil {
@@ -186,8 +176,6 @@ func ambilSekali(ctx context.Context, client *http.Client, cfg konfig, parent st
 	return items, nil
 }
 
-// ubahKecamatan memetakan jawaban BPS satu kabupaten ke baris kecamatan. Nama dari nama_dagri bila ada, selain itu
-// nama_bps berhuruf kapital diubah ke huruf judul. Kabupaten tanpa kecamatan dianggap kesalahan sumber.
 func ubahKecamatan(kabupaten string, items []wilayahBPS) ([]domain.Kecamatan, error) {
 	if len(items) == 0 {
 		return nil, errors.New("BPS tidak mengembalikan kecamatan")
@@ -214,8 +202,6 @@ func rapikanSpasi(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// hurufJudul mengubah "KUTA ALAM" menjadi "Kuta Alam": huruf pertama tiap kata (dipisah spasi, '-', '/', '.',
-// atau '(') kapital, sisanya kecil.
 func hurufJudul(s string) string {
 	awal := true
 	var b strings.Builder
@@ -244,7 +230,6 @@ func tidur(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// tulisAtomik menulis ke berkas sementara lalu menggantinya, supaya kegagalan di tengah tidak merusak CSV lama.
 func tulisAtomik(path string, isi []byte) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".kecamatan-*.csv")

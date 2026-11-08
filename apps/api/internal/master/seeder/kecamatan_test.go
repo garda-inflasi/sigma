@@ -166,14 +166,14 @@ func TestSeedReference_KecamatanIdempotenDanTerisiLengkap(t *testing.T) {
 	assert.Equal(t, "117103", *row.KodeDagri)
 
 	// Kecamatan yang dirujuk pasar tidak bisa dihapus (FK RESTRICT) dan seed tetap berjalan di atasnya.
-	require.NoError(t, db.Exec(`UPDATE pasar SET kecamatan_kode = '1171030' WHERE id = 'PSR-1171-01'`).Error)
+	require.NoError(t, db.Exec(`UPDATE pasar SET kecamatan_kode = '1171030' WHERE kode = 'PSR-1171-01'`).Error)
 	err = db.Exec(`DELETE FROM kecamatan WHERE kode = '1171030'`).Error
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "23503")
 	_, err = SeedReference(t.Context(), db)
 	require.NoError(t, err)
 	var kec *string
-	require.NoError(t, db.Raw(`SELECT kecamatan_kode FROM pasar WHERE id = 'PSR-1171-01'`).Scan(&kec).Error)
+	require.NoError(t, db.Raw(`SELECT kecamatan_kode FROM pasar WHERE kode = 'PSR-1171-01'`).Scan(&kec).Error)
 	require.NotNil(t, kec, "seed tidak menimpa kecamatan_kode pasar")
 	assert.Equal(t, "1171030", *kec)
 }

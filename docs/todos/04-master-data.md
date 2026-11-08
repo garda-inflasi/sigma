@@ -52,7 +52,7 @@
      - **Pendaftaran:** `PKKode` di `kategoriPK`; baris di [SKEMA-DATABASE](../SKEMA-DATABASE.md).
 2. **SEED**
    - [x] Impor kecamatan se-Aceh dari BPS lewat skrip (catat sumber dan lisensi), bukan ditulis tangan.
-     - **Skrip:** `cmd/impor-kecamatan` (`make db/impor/kecamatan`) mengambil API bridging wilayah BPS (`sig.bps.go.id`, `periode_merge=2024_1.2022`) per kabupaten dan memvalidasinya.
+     - **Skrip:** `gardactl master impor-kecamatan` (`make db/impor/kecamatan`) mengambil API bridging wilayah BPS (`sig.bps.go.id`, `periode_merge=2024_1.2022`) per kabupaten dan memvalidasinya.
      - **Hasil:** `internal/master/seeder/kecamatan_aceh.csv`, 290 kecamatan untuk 23 kabupaten/kota, dengan kepala sumber, tanggal ambil, dan atribusi. Sumber dan syarat penggunaan BPS dicatat di `seeder/SUMBER.md`. Beberapa `nama_dagri` tampak salah ketik di sumber dan dibiarkan apa adanya (dicatat di SUMBER.md).
      - **Seeder `master.reference`:** meng-upsert `satuan` lalu `kecamatan` (sesudah kabupaten). Toleran skema lama, karena tes migrasi bertahap menjalankannya sebelum 000120/000121.
      - **Seeder demo `master.demo`:** mengisi `pedagang` dari pasangan (pasar, kode pedagang) entri harga demo.
@@ -132,3 +132,31 @@ Migrasi `000111_pk_harga_lapangan_master.sql`; kontrak lengkap di [SKEMA-DATABAS
   - **Pengisian:** append-only, ditulis pemicu setiap isi komoditas berubah, dengan `berlaku_dari` dan `perubahan_id` usulan yang menghasilkannya.
   - **API:** `GET /v1/master/komoditas/:kode/versi?pada=` mengembalikan definisi yang berlaku pada waktu itu. Tanggal dibaca sebagai akhir hari WIB; harga yang lebih tua dari riwayat memakai versi paling awal.
 - [x] Paginasi dan pencarian sisi server untuk data besar: `GET /v1/master/kecamatan?kabupaten_kode=&q=&page=&limit=` (urut `kode`, `X-Total-Count`), begitu pula pedagang; dipakai tab web tanpa memuat semua baris.
+
+---
+
+## 04-D — Standardisasi Kunci Primer Master Data & Penataan Kolom (000122)
+
+**Tujuan:** Menerapkan kunci primer surrogate terpadu dengan auto-increment (`id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`) untuk keenam tabel master data (`provinsi`, `satuan`, `kabupaten`, `kecamatan`, `komoditas`, `pasar`), serta menata ulang posisi kolom fisik tabel:
+- Kolom `id` (PK) di sisi paling kiri.
+- Kolom atribut utama bisnis (`kode`, `nama`, foreign keys, kategori, harga) di tengah.
+- Kolom atribut sekunder / opsional (`lat`, `lng`, `radius_meter`, `aktif`, `versi`, `pilot`, `shelf_life_hari`, `kode_dagri`) di sisi kanan.
+
+1. **MIG (000122_04d_pk_master_data.sql)**:
+   - [x] Menambahkan kolom `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY` pada tabel `provinsi`, `satuan`, `kabupaten`, `kecamatan`, `komoditas`, dan `pasar`.
+   - [x] Mengubah kolom `pasar.id` lama (berisi teks kode seperti `PSR-1171-01`) menjadi `pasar.kode varchar(255) UNIQUE NOT NULL`.
+   - [x] Memastikan seluruh foreign key relasi anak (`entri_harga`, `pedagang`, `tugas_lapangan`, dll.) merujuk ke kode unik master data dengan aturan `ON DELETE RESTRICT` (atau `CASCADE` untuk `komoditas_versi`, `wilayah_geometri`, `jarak_antar_wilayah`).
+   - [x] Menyusun ulang struktur dan urutan kolom fisik sesuai spesifikasi arsitektur data.
+   - [x] Membangun ulang seluruh dependent views: `agregat_harga_harian`, `mv_heatmap_harga`, `gold_harga_harian`, `mv_kpi_operasional`, dan view `wilayah`.
+
+2. **ENTITAS & DTO**:
+   - [x] Menambahkan field `ID idx.ID` pada entity Go `Provinsi`, `Satuan`, `Kabupaten`, `Kecamatan`, `Komoditas`, `Pasar`.
+   - [x] DTO `MasterKomoditasRowResponse`, `MasterWilayahRowResponse`, `MasterPasarRowResponse`, `KecamatanRowResponse`, dan `SatuanRowResponse` kini menyediakan `id` (numeric ID) dan `kode` (string code).
+
+3. **QUERY & REPOSITORI**:
+   - [x] Repositori referensi master data mendukung pencarian ganda (dual lookup) baik menggunakan numeric surrogate `id` maupun string natural `kode`: `id::text = ? OR kode = ?`.
+   - [x] Operasi update dan delete mendukung surrogate id maupun natural kode.
+
+4. **SEEDER & SQL SEEDS**:
+   - [x] Seeder `master.reference` dan demo dioptimasi untuk meng-upsert menggunakan `kode` (`ON CONFLICT (kode) DO NOTHING / DO UPDATE`).
+   - [x] Menyediakan berkas SQL statis mandiri `db/seeds/01_master_reference.sql`.

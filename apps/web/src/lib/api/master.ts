@@ -20,6 +20,7 @@ import {
 } from "./master-perubahan";
 
 export interface MasterKomoditasResponse {
+  id?: string;
   kode: string;
   nama: string;
   kategori: string;
@@ -32,6 +33,7 @@ export interface MasterKomoditasResponse {
 }
 
 export interface MasterWilayahResponse {
+  id?: string;
   kode: string;
   nama: string;
   jenis: string;
@@ -43,6 +45,7 @@ export interface MasterWilayahResponse {
 
 export interface MasterPasarResponse {
   id: string;
+  kode?: string;
   nama: string;
   kabupaten_kode: string;
   lat: number;
@@ -67,7 +70,7 @@ export function toMasterKomoditasRow(
   k: MasterKomoditasResponse,
 ): MasterKomoditasRow {
   return {
-    id: k.kode,
+    id: k.id ?? k.kode,
     kode: k.kode,
     nama: k.nama,
     kategori: k.kategori,
@@ -82,7 +85,7 @@ export function toMasterKomoditasRow(
 
 export function toMasterWilayahRow(w: MasterWilayahResponse): MasterWilayahRow {
   return {
-    id: w.kode,
+    id: w.id ?? w.kode,
     kode: w.kode,
     nama: formatWilayah(w.nama),
     ibukota: w.ibukota,
@@ -98,6 +101,7 @@ export function toMasterPasarRow(
 ): MasterPasarRow {
   return {
     id: p.id,
+    kode: p.kode ?? p.id,
     nama: p.nama,
     kabupaten: namaKabupaten.get(p.kabupaten_kode) ?? p.kabupaten_kode,
     kabupatenKode: p.kabupaten_kode,

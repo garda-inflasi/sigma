@@ -40,7 +40,7 @@ func (r *Repository) ListPasar(ctx context.Context, kabupatenKode string, q doma
 		query = query.Where("kabupaten_kode = ?", kabupatenKode)
 	}
 	var items []domain.Pasar
-	total, err := r.list(query, q, "id", []string{"id", "nama"}, &items)
+	total, err := r.list(query, q, "id", []string{"kode", "nama"}, &items)
 	if err != nil {
 		return items, total, err
 	}

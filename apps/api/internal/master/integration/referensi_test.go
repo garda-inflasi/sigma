@@ -17,6 +17,7 @@ import (
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/migrate"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -109,7 +110,7 @@ func (s *suite) buatKomoditas(t *testing.T, kode string) {
 
 func (s *suite) buatPasar(t *testing.T, id string) {
 	t.Helper()
-	s.exec(t, `INSERT INTO pasar (id, nama, kabupaten_kode, lat, lng) VALUES (?, ?, '1171', 5.55, 95.32)`, id, "Pasar "+id)
+	s.exec(t, `INSERT INTO pasar (kode, nama, kabupaten_kode, lat, lng) VALUES (?, ?, '1171', 5.55, 95.32)`, id, "Pasar "+id)
 }
 
 func (s *suite) entriUntuk(t *testing.T, komoditas, pasar, pedagang string) {
@@ -595,7 +596,8 @@ func TestReferensi_VersiKomoditasPadaWaktu(t *testing.T) {
 }
 
 type pasarRow struct {
-	ID            string  `json:"id"`
+	ID            idx.ID  `json:"id"`
+	Kode          string  `json:"kode"`
 	Nama          string  `json:"nama"`
 	KabupatenKode string  `json:"kabupaten_kode"`
 	KecamatanKode *string `json:"kecamatan_kode"`
@@ -605,7 +607,7 @@ type pasarRow struct {
 
 func TestReferensi_WilayahDanPasarDetail(t *testing.T) {
 	s := refSuite(t)
-	s.exec(t, `UPDATE pasar SET kecamatan_kode = '1171030' WHERE id = 'PSR-1171-01'`) // Kuta Alam
+	s.exec(t, `UPDATE pasar SET kecamatan_kode = '1171030' WHERE kode = 'PSR-1171-01'`) // Kuta Alam
 
 	t.Run("wilayah menyertakan cacah kecamatan dan pasar", func(t *testing.T) {
 		w := s.call(t, http.MethodGet, "/v1/master/wilayah/1171", emailLihat, nil)
@@ -645,7 +647,8 @@ func TestReferensi_WilayahDanPasarDetail(t *testing.T) {
 			KabupatenNama  string `json:"kabupaten_nama"`
 			JumlahPedagang int64  `json:"jumlah_pedagang"`
 		}](t, w)
-		assert.Equal(t, "PSR-1171-01", d.ID)
+		assert.Positive(t, d.ID.Int64())
+		assert.Equal(t, "PSR-1171-01", d.Kode)
 		assert.Equal(t, "Pasar Peunayong", d.Nama)
 		assert.Equal(t, "KOTA BANDA ACEH", d.KabupatenNama)
 		require.NotNil(t, d.KecamatanKode)
@@ -681,8 +684,8 @@ func TestReferensi_WilayahDanPasarDetail(t *testing.T) {
 		got := rows[pasarRow](t, s.call(t, http.MethodGet, "/v1/master/pasar?kabupaten_kode=1171&limit=500", emailLihat, nil))
 		byID := map[string]pasarRow{}
 		for _, p := range got {
-			byID[p.ID] = p
-			assert.Equal(t, 1, p.Versi, p.ID)
+			byID[p.Kode] = p
+			assert.Equal(t, 1, p.Versi, p.Kode)
 		}
 		peunayong := byID["PSR-1171-01"]
 		require.NotNil(t, peunayong.KecamatanKode)
@@ -716,7 +719,7 @@ func TestReferensi_Hapus(t *testing.T) {
 			}
 		}
 		assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM komoditas WHERE kode = 'UJI-IZIN'`), "403 tidak menghapus")
-		assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE id = 'PSR-1171-90'`), "403 tidak menghapus")
+		assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE kode = 'PSR-1171-90'`), "403 tidak menghapus")
 		assert.Zero(t, s.hitungAudit(t, "komoditas", "UJI-IZIN"))
 	})
 
@@ -787,7 +790,7 @@ func TestReferensi_Hapus(t *testing.T) {
 		s.buatPasar(t, "PSR-1171-91")
 		w := s.call(t, http.MethodDelete, "/v1/master/pasar/PSR-1171-91", emailFMIPA, nil)
 		require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
-		assert.Zero(t, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE id = 'PSR-1171-91'`))
+		assert.Zero(t, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE kode = 'PSR-1171-91'`))
 		assert.EqualValues(t, 1, s.hitungAudit(t, "pasar", "PSR-1171-91"))
 		var nama string
 		require.NoError(t, s.db.Raw(`SELECT sebelum->>'nama' FROM audit_log WHERE aksi = 'HAPUS_MASTER' AND entitas = 'pasar' AND entitas_id = 'PSR-1171-91'`).Scan(&nama).Error)
@@ -808,7 +811,7 @@ func TestReferensi_Hapus(t *testing.T) {
 			require.Equal(t, http.StatusConflict, w.Code, id+": "+w.Body.String())
 			assert.Equal(t, "MASTER_DIRUJUK", kodeEnvelope(t, w))
 			assert.Contains(t, pesanEnvelope(t, w), "nonaktifkan pasar (aktif = false)")
-			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE id = ?`, id))
+			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE kode = ?`, id))
 			assert.Zero(t, s.hitungAudit(t, "pasar", id))
 		}
 	})
@@ -819,7 +822,7 @@ func TestReferensi_Hapus(t *testing.T) {
 		w := s.call(t, http.MethodDelete, "/v1/master/pasar/PSR-1171-94", emailSetujui, nil)
 		require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
 		assert.Equal(t, "MASTER_ADA_USULAN", kodeEnvelope(t, w))
-		assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE id = 'PSR-1171-94'`))
+		assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE kode = 'PSR-1171-94'`))
 		// Usulan komoditas dengan kode yang sama tidak menghalangi pasar (entitas dibedakan).
 		s.buatPasar(t, "PSR-1171-95")
 		s.usulanMenunggu(t, "komoditas", "PSR-1171-95")
@@ -845,7 +848,7 @@ func TestReferensi_Hapus(t *testing.T) {
 			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM komoditas WHERE kode = ?`, k.Kode), k.Kode)
 		}
 		for _, p := range masterseeder.Pasar() {
-			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE id = ?`, p.ID), p.ID)
+			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE kode = ?`, p.Kode), p.Kode)
 		}
 	})
 }

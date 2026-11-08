@@ -8,7 +8,8 @@ import (
 
 // Provinsi memetakan tabel provinsi.
 type Provinsi struct {
-	Kode string `gorm:"column:kode;primaryKey"`
+	ID   idx.ID `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode string `gorm:"column:kode"`
 	Nama string `gorm:"column:nama"`
 }
 
@@ -16,9 +17,10 @@ func (Provinsi) TableName() string {
 	return "provinsi"
 }
 
-// Satuan memetakan tabel satuan (katalog satuan komoditas, PK kode).
+// Satuan memetakan tabel satuan (katalog satuan komoditas).
 type Satuan struct {
-	Kode string `gorm:"column:kode;primaryKey"`
+	ID   idx.ID `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode string `gorm:"column:kode"`
 	Nama string `gorm:"column:nama"`
 }
 
@@ -28,15 +30,16 @@ func (Satuan) TableName() string {
 
 // Komoditas memetakan tabel komoditas.
 type Komoditas struct {
-	Kode          string `gorm:"column:kode;primaryKey"`
+	ID            idx.ID `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          string `gorm:"column:kode"`
 	Nama          string `gorm:"column:nama"`
-	Kategori      string `gorm:"column:kategori"`
 	Satuan        string `gorm:"column:satuan"`
+	Kategori      string `gorm:"column:kategori"`
 	HargaAcuan    int    `gorm:"column:harga_acuan"`
+	Status        string `gorm:"column:status;default:AKTIF"`
+	Versi         int    `gorm:"column:versi;default:1"`
 	Pilot         bool   `gorm:"column:pilot;default:false"`
 	ShelfLifeHari int    `gorm:"column:shelf_life_hari"`
-	Versi         int    `gorm:"column:versi;default:1"`
-	Status        string `gorm:"column:status;default:AKTIF"`
 }
 
 func (Komoditas) TableName() string {
@@ -45,13 +48,14 @@ func (Komoditas) TableName() string {
 
 // Kabupaten adalah kabupaten/kota pada master wilayah (kode BPS).
 type Kabupaten struct {
-	Kode         string  `gorm:"column:kode;primaryKey"`
+	ID           idx.ID  `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode         string  `gorm:"column:kode"`
 	Nama         string  `gorm:"column:nama"`
+	ProvinsiKode string  `gorm:"column:provinsi_kode"`
 	Jenis        string  `gorm:"column:jenis"`
 	Ibukota      string  `gorm:"column:ibukota"`
 	Lat          float64 `gorm:"column:lat"`
 	Lng          float64 `gorm:"column:lng"`
-	ProvinsiKode string  `gorm:"column:provinsi_kode"`
 }
 
 func (Kabupaten) TableName() string {
@@ -60,7 +64,8 @@ func (Kabupaten) TableName() string {
 
 // Kecamatan memetakan tabel kecamatan (kode BPS 7 digit; diimpor dari BPS, lihat seeder/SUMBER.md).
 type Kecamatan struct {
-	Kode          string  `gorm:"column:kode;primaryKey"`
+	ID            idx.ID  `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          string  `gorm:"column:kode"`
 	Nama          string  `gorm:"column:nama"`
 	KabupatenKode string  `gorm:"column:kabupaten_kode"`
 	KodeDagri     *string `gorm:"column:kode_dagri"`
@@ -73,7 +78,8 @@ func (Kecamatan) TableName() string {
 // Pasar adalah pasar pada master data, dengan geofence untuk entri lapangan. KecamatanKode opsional;
 // Versi naik setiap usulan perubahan pasar disetujui.
 type Pasar struct {
-	ID            string  `gorm:"column:id;primaryKey"`
+	ID            idx.ID  `gorm:"column:id;primaryKey;autoIncrement"`
+	Kode          string  `gorm:"column:kode"`
 	Nama          string  `gorm:"column:nama"`
 	KabupatenKode string  `gorm:"column:kabupaten_kode"`
 	KecamatanKode *string `gorm:"column:kecamatan_kode"`

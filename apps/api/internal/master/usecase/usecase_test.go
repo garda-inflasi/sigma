@@ -7,6 +7,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/master/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -100,14 +101,15 @@ func TestListWilayah_Empty(t *testing.T) {
 func TestListPasar_Success(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
-	expected := []domain.Pasar{{ID: "P1", Nama: "Pasar Induk", KabupatenKode: "1171", Aktif: true}}
+	expected := []domain.Pasar{{ID: 1, Kode: "P1", Nama: "Pasar Induk", KabupatenKode: "1171", Aktif: true}}
 	repo.On("ListPasar", mock.Anything, "1171", domain.ListQuery{}).Return(expected, int64(1), nil)
 
 	result, _, err := uc.ListPasar(context.Background(), "1171", domain.ListQuery{})
 
 	require.NoError(t, err)
 	assert.Len(t, result, 1)
-	assert.Equal(t, "P1", result[0].ID)
+	assert.Equal(t, idx.ID(1), result[0].ID)
+	assert.Equal(t, "P1", result[0].Kode)
 	repo.AssertExpectations(t)
 }
 

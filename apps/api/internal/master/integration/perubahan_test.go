@@ -319,7 +319,7 @@ func TestPerubahan_PasarDenganKecamatan(t *testing.T) {
 		RadiusMeter   int
 		Versi         int
 	}
-	require.NoError(t, s.db.Raw(`SELECT kecamatan_kode, radius_meter, versi FROM pasar WHERE id = ?`, pasar).Scan(&p).Error)
+	require.NoError(t, s.db.Raw(`SELECT kecamatan_kode, radius_meter, versi FROM pasar WHERE kode = ?`, pasar).Scan(&p).Error)
 	require.NotNil(t, p.KecamatanKode)
 	assert.Equal(t, "1171020", *p.KecamatanKode)
 	assert.Equal(t, 550, p.RadiusMeter)
@@ -339,7 +339,7 @@ func TestPerubahan_PasarDenganKecamatan(t *testing.T) {
 		Aktif       bool
 		Lat         float64
 	}
-	require.NoError(t, s.db.Raw(`SELECT nama, radius_meter, aktif, lat FROM pasar WHERE id = 'PSR-1171-99'`).Scan(&baru).Error)
+	require.NoError(t, s.db.Raw(`SELECT nama, radius_meter, aktif, lat FROM pasar WHERE kode = 'PSR-1171-99'`).Scan(&baru).Error)
 	assert.Equal(t, "Pasar Uji", baru.Nama)
 	assert.Equal(t, 400, baru.RadiusMeter)
 	assert.True(t, baru.Aktif)

@@ -22,7 +22,7 @@ func tabelEntitas(entitas string) (tabel, kunci string, err error) {
 	case domain.EntitasKomoditas:
 		return "komoditas", "kode", nil
 	case domain.EntitasPasar:
-		return "pasar", "id", nil
+		return "pasar", "kode", nil
 	}
 	return "", "", fmt.Errorf("%w: entitas %q tidak didukung", domain.ErrValidasi, entitas)
 }
@@ -386,8 +386,8 @@ func (r *Repository) ArsipkanKomoditas(ctx context.Context, kode, aktorID string
 const viewPerubahan = `
 	SELECT p.*,
 	       COALESCE(CASE p.entitas
-	                  WHEN 'komoditas' THEN (SELECT k.nama FROM komoditas k WHERE k.kode = p.entitas_id)
-	                  WHEN 'pasar' THEN (SELECT s.nama FROM pasar s WHERE s.id = p.entitas_id)
+	                  WHEN 'komoditas' THEN (SELECT k.nama FROM komoditas k WHERE k.kode = p.entitas_id OR k.id::text = p.entitas_id)
+	                  WHEN 'pasar' THEN (SELECT s.nama FROM pasar s WHERE s.kode = p.entitas_id OR s.id::text = p.entitas_id)
 	                END, p.perubahan->>'nama') AS entitas_nama,
 	       ua.nama AS diajukan_nama, us.nama AS disetujui_nama, ut.nama AS ditolak_nama
 	  FROM perubahan_master p

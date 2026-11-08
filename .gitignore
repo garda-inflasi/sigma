@@ -8,6 +8,7 @@ Thumbs.db
 /apps/api/worker
 /apps/api/seed
 /apps/api/migrate
+/apps/api/bin/
 *.exe
 *.exe~
 *.dll

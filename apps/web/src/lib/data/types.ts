@@ -502,6 +502,7 @@ export interface MasterWilayahRow {
 
 export interface MasterPasarRow {
   id: string;
+  kode?: string;
   nama: string;
   /** Label kabupaten/kota pemilik pasar. */
   kabupaten: string;

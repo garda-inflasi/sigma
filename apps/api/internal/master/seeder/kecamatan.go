@@ -18,7 +18,7 @@ import (
 	"github.com/garda-inflasi/api/internal/master/domain"
 )
 
-// kecamatan_aceh.csv dihasilkan skrip cmd/impor-kecamatan (make db/impor/kecamatan) dari API bridging wilayah BPS;
+// kecamatan_aceh.csv dihasilkan skrip gardactl master impor-kecamatan (make db/impor/kecamatan) dari API bridging wilayah BPS;
 // jangan disunting tangan. Sumber, lisensi, dan cara menyegarkannya ada di SUMBER.md.
 //
 //go:embed kecamatan_aceh.csv
@@ -137,7 +137,7 @@ func TulisKecamatanCSV(w io.Writer, meta MetaKecamatan, rows []domain.Kecamatan)
 		kunciPeriode + ": " + meta.PeriodeMerge,
 		kunciDiambil + ": " + meta.Diambil,
 		kunciJumlah + ": " + strconv.Itoa(len(sorted)),
-		"Dibuat oleh: make db/impor/kecamatan (apps/api/cmd/impor-kecamatan). Jangan disunting tangan; lihat SUMBER.md.",
+		"Dibuat oleh: make db/impor/kecamatan (gardactl master impor-kecamatan). Jangan disunting tangan; lihat SUMBER.md.",
 	} {
 		if _, err := bw.WriteString("# " + line + "\n"); err != nil {
 			return err

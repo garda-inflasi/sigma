@@ -47,7 +47,13 @@ var kategoriPK = map[string]KategoriPK{
 	"sumber_data":  PKUUID,
 	"cold_storage": PKUUID,
 
-	// BIGINT: transaksional, time-series, log, operasional.
+	// BIGINT: transaksional, time-series, log, operasional, master data (000122).
+	"provinsi":               PKBigint,
+	"kabupaten":              PKBigint,
+	"kecamatan":              PKBigint,
+	"satuan":                 PKBigint,
+	"komoditas":              PKBigint,
+	"pasar":                  PKBigint,
 	"entri_harga":            PKBigint,
 	"riwayat_status_entri":   PKBigint,
 	"entri_harga_versi":      PKBigint,
@@ -101,13 +107,7 @@ var kategoriPK = map[string]KategoriPK{
 	"mfa_kode_cadangan":      PKBigint,
 	"undangan_pengguna":      PKBigint,
 
-	// KODE: referensi nasional (kode BPS), master berkode, dan konfigurasi berkode.
-	"provinsi":         PKKode,
-	"kabupaten":        PKKode,
-	"komoditas":        PKKode,
-	"pasar":            PKKode,
-	"kecamatan":        PKKode, // kode BPS 7 digit (000120)
-	"satuan":           PKKode, // katalog satuan komoditas (000121)
+	// KODE: konfigurasi berkode dan referensi berkode tanpa surrogate.
 	"wilayah_geometri": PKKode, // 1:1 dengan kabupaten: PK sekaligus FK ke kabupaten.kode
 	"permissions":      PKKode,
 	"roles":            PKKode,

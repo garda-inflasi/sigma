@@ -1,4 +1,4 @@
-package main
+package seed
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ func env(vars map[string]string) func(string) string {
 
 func TestRun_RejectsBadArguments(t *testing.T) {
 	for _, args := range [][]string{nil, {"reference", "test"}, {"test"}} {
-		err := run(args, env(nil), &bytes.Buffer{})
+		err := Run(args, env(nil), &bytes.Buffer{})
 		require.Error(t, err, "%v", args)
 		assert.Contains(t, err.Error(), "pemakaian: seed reference|admin|demo|all")
 	}
@@ -24,13 +24,13 @@ func TestRun_RejectsBadArguments(t *testing.T) {
 func TestRun_DemoIsRefusedInProductionBeforeConnecting(t *testing.T) {
 	// DATABASE_URL sengaja kosong: penolakan harus terjadi sebelum koneksi dicoba.
 	for _, arg := range []string{"demo", "all"} {
-		err := run([]string{arg}, env(map[string]string{"APP_ENV": "production"}), &bytes.Buffer{})
+		err := Run([]string{arg}, env(map[string]string{"APP_ENV": "production"}), &bytes.Buffer{})
 		require.ErrorIs(t, err, seedkit.ErrDemoInProduction, arg)
 	}
 }
 
 func TestRun_NeedsDatabaseURL(t *testing.T) {
-	err := run([]string{"reference"}, env(nil), &bytes.Buffer{})
+	err := Run([]string{"reference"}, env(nil), &bytes.Buffer{})
 	assert.ErrorContains(t, err, "DATABASE_URL")
 }
 

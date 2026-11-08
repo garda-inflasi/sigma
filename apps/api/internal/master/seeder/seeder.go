@@ -32,17 +32,23 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 
 	ditulis := map[string]int{}
 	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Seeder juga dijalankan tes migrasi pada skema lama (sebelum 000120/000121): tabel satuan dan kecamatan
-		// serta kolom pasar.versi/kecamatan_kode baru dipakai bila sudah ada.
-		var adaSatuan, adaKecamatan, versiPasar, versiKomoditas bool
+		// Seeder juga dijalankan tes migrasi pada skema lama (sebelum 000120/000121/000122): tabel satuan dan kecamatan
+		// serta kolom pasar.versi/kecamatan_kode/kode baru dipakai bila sudah ada.
+		var adaSatuan, adaKecamatan, versiPasar, versiKomoditas, adaKodePasar bool
 		err := tx.Raw(`SELECT to_regclass('public.satuan') IS NOT NULL, to_regclass('public.kecamatan') IS NOT NULL,
 		       EXISTS (SELECT 1 FROM information_schema.columns
 		                WHERE table_schema = 'public' AND table_name = 'pasar' AND column_name = 'versi'),
 		       EXISTS (SELECT 1 FROM information_schema.columns
-		                WHERE table_schema = 'public' AND table_name = 'komoditas' AND column_name = 'versi')`).
-			Row().Scan(&adaSatuan, &adaKecamatan, &versiPasar, &versiKomoditas)
+		                WHERE table_schema = 'public' AND table_name = 'komoditas' AND column_name = 'versi'),
+		       EXISTS (SELECT 1 FROM information_schema.columns
+		                WHERE table_schema = 'public' AND table_name = 'pasar' AND column_name = 'kode')`).
+			Row().Scan(&adaSatuan, &adaKecamatan, &versiPasar, &versiKomoditas, &adaKodePasar)
 		if err != nil {
 			return fmt.Errorf("periksa skema master: %w", err)
+		}
+		pasarKey := "id"
+		if adaKodePasar {
+			pasarKey = "kode"
 		}
 		steps := []struct {
 			name    string
@@ -54,9 +60,9 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 		}{
 			{"satuan", &satuan, "kode", []string{"nama"}, false},
 			{"provinsi", &provinsi, "kode", []string{"nama"}, false},
-			{"kabupaten", &kabupaten, "kode", []string{"nama", "jenis", "ibukota", "lat", "lng", "provinsi_kode"}, false},
+			{"kabupaten", &kabupaten, "kode", []string{"nama", "provinsi_kode", "jenis", "ibukota", "lat", "lng"}, false},
 			{"kecamatan", &kecamatan, "kode", []string{"nama", "kabupaten_kode", "kode_dagri"}, false},
-			{"pasar", &pasar, "id", []string{"nama", "kabupaten_kode", "lat", "lng", "radius_meter"}, versiPasar},
+			{"pasar", &pasar, pasarKey, []string{"nama", "kabupaten_kode", "lat", "lng", "radius_meter"}, versiPasar},
 			{"komoditas", &komoditas, "kode", []string{"nama", "satuan", "kategori", "harga_acuan", "pilot", "shelf_life_hari"}, versiKomoditas},
 		}
 		for _, step := range steps {
@@ -71,8 +77,13 @@ func SeedReference(ctx context.Context, db *gorm.DB) (ReferenceSummary, error) {
 				conflict.Where = clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: step.name + ".versi = 1"}}}
 			}
 			q := tx.Clauses(conflict)
-			if step.name == "pasar" && !versiPasar {
-				q = q.Omit("kecamatan_kode", "versi") // kolom 000120 belum ada
+			if step.name == "pasar" {
+				if !versiPasar {
+					q = q.Omit("kecamatan_kode", "versi") // kolom 000120 belum ada
+				}
+				if !adaKodePasar {
+					q = q.Omit("kode")
+				}
 			}
 			err := q.Create(step.rows).Error
 			if err != nil {

@@ -1,8 +1,12 @@
 package dto
 
-import "github.com/garda-inflasi/api/internal/master/domain"
+import (
+	"github.com/garda-inflasi/api/internal/master/domain"
+	"github.com/garda-inflasi/api/pkg/idx"
+)
 
 type MasterKomoditasRowResponse struct {
+	ID            idx.ID `json:"id"`
 	Kode          string `json:"kode"`
 	Nama          string `json:"nama"`
 	Kategori      string `json:"kategori"`
@@ -15,6 +19,7 @@ type MasterKomoditasRowResponse struct {
 }
 
 type MasterWilayahRowResponse struct {
+	ID           idx.ID  `json:"id"`
 	Kode         string  `json:"kode"`
 	Nama         string  `json:"nama"`
 	Jenis        string  `json:"jenis"`
@@ -27,7 +32,8 @@ type MasterWilayahRowResponse struct {
 // MasterPasarRowResponse: kecamatan_kode dan kecamatan_nama null bila pasar belum dikaitkan dengan kecamatan;
 // versi naik setiap usulan perubahan pasar disetujui.
 type MasterPasarRowResponse struct {
-	ID            string  `json:"id"`
+	ID            idx.ID  `json:"id"`
+	Kode          string  `json:"kode"`
 	Nama          string  `json:"nama"`
 	KabupatenKode string  `json:"kabupaten_kode"`
 	KecamatanKode *string `json:"kecamatan_kode"`
@@ -68,7 +74,7 @@ func ToKomoditasRows(items []domain.Komoditas) []MasterKomoditasRowResponse {
 	rows := make([]MasterKomoditasRowResponse, len(items))
 	for i, k := range items {
 		rows[i] = MasterKomoditasRowResponse{
-			Kode: k.Kode, Nama: k.Nama, Kategori: k.Kategori, Satuan: k.Satuan, HargaAcuan: k.HargaAcuan,
+			ID: k.ID, Kode: k.Kode, Nama: k.Nama, Kategori: k.Kategori, Satuan: k.Satuan, HargaAcuan: k.HargaAcuan,
 			Pilot: k.Pilot, ShelfLifeHari: k.ShelfLifeHari, Versi: k.Versi, Status: k.Status,
 		}
 	}
@@ -80,7 +86,7 @@ func ToWilayahRows(items []domain.Kabupaten) []MasterWilayahRowResponse {
 	rows := make([]MasterWilayahRowResponse, len(items))
 	for i, k := range items {
 		rows[i] = MasterWilayahRowResponse{
-			Kode: k.Kode, Nama: k.Nama, Jenis: k.Jenis, Ibukota: k.Ibukota, Lat: k.Lat, Lng: k.Lng, ProvinsiKode: k.ProvinsiKode,
+			ID: k.ID, Kode: k.Kode, Nama: k.Nama, Jenis: k.Jenis, Ibukota: k.Ibukota, Lat: k.Lat, Lng: k.Lng, ProvinsiKode: k.ProvinsiKode,
 		}
 	}
 	return rows
@@ -91,7 +97,7 @@ func ToPasarRows(items []domain.Pasar) []MasterPasarRowResponse {
 	rows := make([]MasterPasarRowResponse, len(items))
 	for i, p := range items {
 		rows[i] = MasterPasarRowResponse{
-			ID: p.ID, Nama: p.Nama, KabupatenKode: p.KabupatenKode, KecamatanKode: p.KecamatanKode, KecamatanNama: p.KecamatanNama,
+			ID: p.ID, Kode: p.Kode, Nama: p.Nama, KabupatenKode: p.KabupatenKode, KecamatanKode: p.KecamatanKode, KecamatanNama: p.KecamatanNama,
 			Lat: p.Lat, Lng: p.Lng, RadiusMeter: p.RadiusMeter, Aktif: p.Aktif, Versi: p.Versi,
 		}
 	}

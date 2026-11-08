@@ -18,6 +18,7 @@ import (
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
 	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -182,18 +183,20 @@ func TestMaster_ListsContainTheWholeSeed(t *testing.T) {
 
 	t.Run("pasar menurut kabupaten", func(t *testing.T) {
 		got := rows[struct {
-			ID            string `json:"id"`
+			ID            idx.ID `json:"id"`
+			Kode          string `json:"kode"`
 			KabupatenKode string `json:"kabupaten_kode"`
 			RadiusMeter   int    `json:"radius_meter"`
 		}](t, s.call(t, http.MethodGet, "/v1/master/pasar?kabupaten_kode=1171", emailLihat, nil))
-		var ids []string
+		var kodes []string
 		for _, p := range got {
 			assert.Equal(t, "1171", p.KabupatenKode)
 			assert.Positive(t, p.RadiusMeter)
-			ids = append(ids, p.ID)
+			assert.Positive(t, p.ID.Int64())
+			kodes = append(kodes, p.Kode)
 		}
-		assert.Contains(t, ids, "PSR-1171-01")
-		assert.Contains(t, ids, "PSR-1171-02")
+		assert.Contains(t, kodes, "PSR-1171-01")
+		assert.Contains(t, kodes, "PSR-1171-02")
 	})
 }
 

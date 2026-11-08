@@ -17,18 +17,18 @@ Kecamatan se-Aceh (kode BPS 7 digit) untuk tabel `kecamatan`, ditanam seeder `ma
   diklaim di sini. Pencantuman sumber berlaku: tampilkan "Sumber: BPS" di mana data kecamatan ditayangkan.
 - **Nama dari `nama_dagri`:** sebagian kecil nama Kemendagri tampak salah ketik atau singkatan di sumbernya
   (mis. `1105161` "Indra Makmu", `1111080` "T. Jambo Aye", `1114040` "Kota Kualasinpang"). Berkas tidak disunting tangan;
-  koreksi dilakukan di sumber, atau ubah aturan nama di `cmd/impor-kecamatan` (mis. pakai `nama_bps`).
+  koreksi dilakukan di sumber, atau ubah aturan nama di `cmd/gardactl master impor-kecamatan` (mis. pakai `nama_bps`).
 
 ### Menyegarkan
 
 ```
 make db/impor/kecamatan      # perlu internet; berurutan, jeda 1 detik, satu kali ulang, User-Agent generik
 git diff apps/api/internal/master/seeder/kecamatan_aceh.csv
-cd apps/api && go test ./internal/master/seeder/ ./cmd/impor-kecamatan/
+cd apps/api && go test ./internal/master/seeder/ ./cmd/gardactl/
 make db/seed/reference       # upsert menurut kode; baris yang tidak lagi ada di BPS tidak dihapus
 ```
 
 Skrip memeriksa tujuh digit, awalan sama dengan kabupaten, tanpa kode ganda, nama tidak kosong, dan setiap
 kabupaten/kota punya kecamatan; berkas lama tidak berubah bila ada yang gagal. Ganti periode lewat
-`go run ./cmd/impor-kecamatan -periode <periode_merge>`. Berkas hasil di-commit bersama tinjauan diff-nya
+`go run ./cmd/gardactl master impor-kecamatan -periode <periode_merge>`. Berkas hasil di-commit bersama tinjauan diff-nya
 (pemekaran atau perubahan nama kecamatan tampak di sana).

@@ -37,12 +37,12 @@ func (r *RepoReferensi) ListKecamatan(ctx context.Context, kabupatenKode string,
 	return items, total, err
 }
 
-const selectKecamatan = "k.kode, k.nama, k.kabupaten_kode, kab.nama AS kabupaten_nama, k.kode_dagri"
+const selectKecamatan = "k.id, k.kode, k.nama, k.kabupaten_kode, kab.nama AS kabupaten_nama, k.kode_dagri"
 
 func (r *RepoReferensi) GetKecamatan(ctx context.Context, kode string) (domain.KecamatanRef, error) {
 	var row domain.KecamatanRef
 	err := r.db.WithContext(ctx).Table("kecamatan AS k").Joins("JOIN kabupaten kab ON kab.kode = k.kabupaten_kode").
-		Select(selectKecamatan).Where("k.kode = ?", kode).Take(&row).Error
+		Select(selectKecamatan).Where("k.id::text = ? OR k.kode = ?", kode, kode).Take(&row).Error
 	return row, tidakDitemukan(err, "kecamatan "+kode)
 }
 
@@ -50,12 +50,12 @@ func (r *RepoReferensi) ListSatuan(ctx context.Context, q domain.ListQuery) ([]d
 	query := r.db.WithContext(ctx).Table("satuan AS s")
 	var items []domain.SatuanRef
 	total, err := daftar(query, q, []string{"s.kode", "s.nama"},
-		"s.kode, s.nama, (SELECT count(*) FROM komoditas k WHERE k.satuan = s.kode) AS jumlah_komoditas", "s.kode ASC", &items)
+		"s.id, s.kode, s.nama, (SELECT count(*) FROM komoditas k WHERE k.satuan = s.kode) AS jumlah_komoditas", "s.kode ASC", &items)
 	return items, total, err
 }
 
 func (r *RepoReferensi) ListPedagang(ctx context.Context, f domain.PedagangFilter, q domain.ListQuery) ([]domain.PedagangRef, int64, error) {
-	query := r.db.WithContext(ctx).Table("pedagang AS p").Joins("JOIN pasar ps ON ps.id = p.pasar_id")
+	query := r.db.WithContext(ctx).Table("pedagang AS p").Joins("JOIN pasar ps ON ps.kode = p.pasar_id OR ps.id::text = p.pasar_id")
 	if f.PasarID != "" {
 		query = query.Where("p.pasar_id = ?", f.PasarID)
 	}
@@ -73,7 +73,7 @@ func (r *RepoReferensi) ListPedagang(ctx context.Context, f domain.PedagangFilte
 
 func (r *RepoReferensi) GetKomoditas(ctx context.Context, kode string) (domain.Komoditas, error) {
 	var k domain.Komoditas
-	err := r.db.WithContext(ctx).Where("kode = ?", kode).Take(&k).Error
+	err := r.db.WithContext(ctx).Where("id::text = ? OR kode = ?", kode, kode).Take(&k).Error
 	return k, tidakDitemukan(err, "komoditas "+kode)
 }
 
@@ -85,9 +85,9 @@ func (r *RepoReferensi) RiwayatVersiKomoditas(ctx context.Context, kode string) 
 		SELECT id, versi, nama, kategori, satuan, harga_acuan, shelf_life_hari, pilot, berlaku_dari,
 		       LAG(berlaku_dari) OVER w AS berlaku_sampai, perubahan_id
 		  FROM komoditas_versi
-		 WHERE komoditas_kode = ?
+		 WHERE komoditas_kode = (SELECT kode FROM komoditas WHERE id::text = ? OR kode = ? LIMIT 1)
 		WINDOW w AS (ORDER BY berlaku_dari DESC, id DESC)
-		 ORDER BY berlaku_dari DESC, id DESC`, kode).Scan(&rows).Error
+		 ORDER BY berlaku_dari DESC, id DESC`, kode, kode).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("riwayat versi komoditas %s: %w", kode, err)
 	}
@@ -97,12 +97,12 @@ func (r *RepoReferensi) RiwayatVersiKomoditas(ctx context.Context, kode string) 
 func (r *RepoReferensi) GetWilayah(ctx context.Context, kode string) (domain.WilayahDetail, error) {
 	var d domain.WilayahDetail
 	db := r.db.WithContext(ctx)
-	if err := tidakDitemukan(db.Where("kode = ?", kode).Take(&d.Kabupaten).Error, "wilayah "+kode); err != nil {
+	if err := tidakDitemukan(db.Where("id::text = ? OR kode = ?", kode, kode).Take(&d.Kabupaten).Error, "wilayah "+kode); err != nil {
 		return domain.WilayahDetail{}, err
 	}
 	err := db.Raw(`
 		SELECT (SELECT count(*) FROM kecamatan WHERE kabupaten_kode = ?) AS jumlah_kecamatan,
-		       (SELECT count(*) FROM pasar WHERE kabupaten_kode = ?) AS jumlah_pasar`, kode, kode).
+		       (SELECT count(*) FROM pasar WHERE kabupaten_kode = ?) AS jumlah_pasar`, d.Kabupaten.Kode, d.Kabupaten.Kode).
 		Row().Scan(&d.JumlahKecamatan, &d.JumlahPasar)
 	if err != nil {
 		return domain.WilayahDetail{}, fmt.Errorf("cacah wilayah %s: %w", kode, err)
@@ -113,14 +113,14 @@ func (r *RepoReferensi) GetWilayah(ctx context.Context, kode string) (domain.Wil
 func (r *RepoReferensi) GetPasar(ctx context.Context, kode string) (domain.PasarDetail, error) {
 	var d domain.PasarDetail
 	db := r.db.WithContext(ctx)
-	if err := tidakDitemukan(db.Where("id = ?", kode).Take(&d.Pasar).Error, "pasar "+kode); err != nil {
+	if err := tidakDitemukan(db.Where("id::text = ? OR kode = ?", kode, kode).Take(&d.Pasar).Error, "pasar "+kode); err != nil {
 		return domain.PasarDetail{}, err
 	}
 	err := db.Raw(`
 		SELECT (SELECT nama FROM kabupaten WHERE kode = ?) AS kabupaten_nama,
 		       (SELECT nama FROM kecamatan WHERE kode = ?) AS kecamatan_nama,
 		       (SELECT count(*) FROM pedagang WHERE pasar_id = ?) AS jumlah_pedagang`,
-		d.Pasar.KabupatenKode, d.Pasar.KecamatanKode, d.Pasar.ID).
+		d.Pasar.KabupatenKode, d.Pasar.KecamatanKode, d.Pasar.Kode).
 		Row().Scan(&d.KabupatenNama, &d.Pasar.KecamatanNama, &d.JumlahPedagang)
 	if err != nil {
 		return domain.PasarDetail{}, fmt.Errorf("detail pasar %s: %w", kode, err)
@@ -132,14 +132,14 @@ func (r *RepoReferensi) HapusKomoditas(ctx context.Context, kode string) (domain
 	var row domain.Komoditas
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Baris dikunci agar salinan untuk audit sama dengan yang dihapus.
-		if err := tidakDitemukan(tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("kode = ?", kode).Take(&row).Error, "komoditas "+kode); err != nil {
+		if err := tidakDitemukan(tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id::text = ? OR kode = ?", kode, kode).Take(&row).Error, "komoditas "+kode); err != nil {
 			return err
 		}
-		if err := pastikanTanpaUsulan(tx, domain.EntitasKomoditas, kode); err != nil {
+		if err := pastikanTanpaUsulan(tx, domain.EntitasKomoditas, row.Kode); err != nil {
 			return err
 		}
 		// komoditas_versi ikut terhapus lewat ON DELETE CASCADE.
-		return tx.Where("kode = ?", kode).Delete(&domain.Komoditas{}).Error
+		return tx.Where("id = ?", row.ID).Delete(&domain.Komoditas{}).Error
 	})
 	return row, terjemahkanHapus(err, "komoditas "+kode)
 }
@@ -147,13 +147,13 @@ func (r *RepoReferensi) HapusKomoditas(ctx context.Context, kode string) (domain
 func (r *RepoReferensi) HapusPasar(ctx context.Context, kode string) (domain.Pasar, error) {
 	var row domain.Pasar
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tidakDitemukan(tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", kode).Take(&row).Error, "pasar "+kode); err != nil {
+		if err := tidakDitemukan(tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id::text = ? OR kode = ?", kode, kode).Take(&row).Error, "pasar "+kode); err != nil {
 			return err
 		}
-		if err := pastikanTanpaUsulan(tx, domain.EntitasPasar, kode); err != nil {
+		if err := pastikanTanpaUsulan(tx, domain.EntitasPasar, row.Kode); err != nil {
 			return err
 		}
-		return tx.Where("id = ?", kode).Delete(&domain.Pasar{}).Error
+		return tx.Where("id = ?", row.ID).Delete(&domain.Pasar{}).Error
 	})
 	return row, terjemahkanHapus(err, "pasar "+kode)
 }

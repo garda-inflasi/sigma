@@ -28,6 +28,7 @@ type VersiKomoditasRequest struct {
 
 // KecamatanRowResponse adalah satu kecamatan. kode_dagri hilang bila tidak ada.
 type KecamatanRowResponse struct {
+	ID            idx.ID  `json:"id"`
 	Kode          string  `json:"kode"`
 	Nama          string  `json:"nama"`
 	KabupatenKode string  `json:"kabupaten_kode"`
@@ -37,6 +38,7 @@ type KecamatanRowResponse struct {
 
 // SatuanRowResponse adalah satu satuan beserta jumlah komoditas yang memakainya.
 type SatuanRowResponse struct {
+	ID              idx.ID `json:"id"`
 	Kode            string `json:"kode"`
 	Nama            string `json:"nama"`
 	JumlahKomoditas int64  `json:"jumlah_komoditas"`
@@ -96,7 +98,7 @@ type PasarDetailResponse struct {
 }
 
 func ToKecamatanRow(k domain.KecamatanRef) KecamatanRowResponse {
-	return KecamatanRowResponse{Kode: k.Kode, Nama: k.Nama, KabupatenKode: k.KabupatenKode, KabupatenNama: k.KabupatenNama, KodeDagri: k.KodeDagri}
+	return KecamatanRowResponse{ID: k.ID, Kode: k.Kode, Nama: k.Nama, KabupatenKode: k.KabupatenKode, KabupatenNama: k.KabupatenNama, KodeDagri: k.KodeDagri}
 }
 
 func ToKecamatanRows(items []domain.KecamatanRef) []KecamatanRowResponse {
@@ -110,7 +112,7 @@ func ToKecamatanRows(items []domain.KecamatanRef) []KecamatanRowResponse {
 func ToSatuanRows(items []domain.SatuanRef) []SatuanRowResponse {
 	rows := make([]SatuanRowResponse, len(items))
 	for i, s := range items {
-		rows[i] = SatuanRowResponse{Kode: s.Kode, Nama: s.Nama, JumlahKomoditas: s.JumlahKomoditas}
+		rows[i] = SatuanRowResponse{ID: s.ID, Kode: s.Kode, Nama: s.Nama, JumlahKomoditas: s.JumlahKomoditas}
 	}
 	return rows
 }

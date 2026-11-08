@@ -11,8 +11,7 @@ Konfigurasi lewat env (lihat `env.example` di akar repo). Alur lokal ada di [REA
 | `cmd/migrate up\|down\|version`        | migrasi goose dari `MIGRATIONS_DIR` (bawaan `db/migrations`) |
 | `cmd/seed reference\|admin\|demo\|all` | seeder; `demo` ditolak bila `APP_ENV=production`             |
 | `cmd/worker [list\|run <job>]`        | job berkala di luar API (refresh dashboard, KPI); lihat §6   |
-| `cmd/kpi [-bulan N]`                   | hitung KPI sekali jalan (CLI); `cmd/worker` menjadwalkannya  |
-| `cmd/ingest <sumber>`                  | jalankan ingestion satu sumber sekali (mis. `SRC-BI`); juga `daftar`, `pemetaan`, `konfigurasi` |
+| `cmd/gardactl <ingest\|kpi\|master>`   | CLI utilitas terpadu: ingestion, kalkulasi KPI, impor BPS    |
 
 ## Menambah modul
 
@@ -24,10 +23,10 @@ dan, bila ada paket integrasi baru, variabel `INTEGRATION_PACKAGES` di Makefile.
 Kunci modul = nama direktori di `internal/` (mis. `harga`, `policy-brief`). Di nama berkas,
 tanda hubung menjadi garis bawah (`policy_brief`).
 
-### 1. Seeder (`cmd/seed/register_<modul>.go`)
+### 1. Seeder (`cmd/seed/register.go`)
 
 Isi seeder ada di `internal/<modul>/seeder/` (fungsi biasa, tanpa mengimpor `seedkit`).
-Berkas register mendaftarkannya dengan `init()`:
+Daftarkan ke dalam `cmd/seed/register.go`:
 
 ```go
 func init() {
@@ -166,8 +165,8 @@ Gold adalah materialized view `gold_harga_harian` (ikut `refresher.Views`).
 - Tes konektor memakai fixture di `connector/<sumber>/testdata`; `ingestiontest.Fetcher` menyuntikkan
   respons ke engine sehingga tidak ada tes yang memanggil internet.
 - Pemetaan alias sumber ke kode master ada di `pemetaan_sumber` (seeder `ingestion.reference`, insert-only;
-  ubah lewat `cmd/ingest pemetaan`). Baris yang tidak terpetakan dilaporkan di `eksekusi_sumber.ringkasan`.
-- Parameter permintaan per sumber ada di `sumber_data.konfigurasi` (`cmd/ingest konfigurasi`); kunci API
+  ubah lewat `cmd/gardactl ingest pemetaan`). Baris yang tidak terpetakan dilaporkan di `eksekusi_sumber.ringkasan`.
+- Parameter permintaan per sumber ada di `sumber_data.konfigurasi` (`cmd/gardactl ingest konfigurasi`); kunci API
   dibaca dari lingkungan (`BPS_API_KEY`), tidak disimpan di basis data.
 - Konektor yang tersedia: `SRC-BI` (PIHPS), `SRC-BMKG`, `SRC-BPS` (butuh `BPS_API_KEY` dan id variabel di
   konfigurasi). Ketiganya belum diverifikasi terhadap layanan nyata; parser defensif dan dikunci fixture.

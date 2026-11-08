@@ -1,17 +1,4 @@
-// Perintah ingest menjalankan dan mengonfigurasi ingestion sumber data eksternal.
-//
-//	ingest [jalankan] <sumber>                          jalankan satu sumber sekali (mis. SRC-BI)
-//	ingest daftar                                       daftar sumber beserta konektornya
-//	ingest pemetaan <sumber> <KOMODITAS|WILAYAH> <alias> <kode|->
-//	                                                    petakan alias sumber ke kode master ("-" = abaikan alias)
-//	ingest konfigurasi <sumber> <json>                  ganti konfigurasi permintaan sumber (objek JSON)
-//
-// <sumber> adalah kode sumber (sumber_data.kode, mis. SRC-BI) atau UUID-nya. Konfigurasi dan konektor merujuk
-// sumber lewat kode; baris riwayat, pemetaan, dan audit memakai UUID.
-//
-// Satu eksekusi tercatat di eksekusi_sumber dan tampil di halaman /sumber-data.
-// Perintah keluar dengan kode non-nol bila eksekusi berstatus GAGAL.
-package main
+package gardactl
 
 import (
 	"context"
@@ -19,12 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"os/signal"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
@@ -34,31 +18,28 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/repository/postgres"
 	sumberrepo "github.com/garda-inflasi/api/internal/sumber-data/repository/postgres"
 	"github.com/garda-inflasi/api/pkg/logger"
-	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if err := run(ctx, os.Args[1:], os.Getenv, os.Stdout, nil); err != nil {
-		log.Fatalf("ingest: %v", err)
-	}
-}
-
-// run menjalankan satu perintah. fetcher nil memakai Fetcher HTTP nyata; tes menyuntikkan fixture.
-func run(ctx context.Context, args []string, getenv func(string) string, out io.Writer, fetcher domain.Fetcher) error {
+func runIngest(ctx context.Context, args []string, opts Options) error {
 	if len(args) == 0 {
 		return errors.New("perintah wajib: ingest <sumber> | daftar | pemetaan | konfigurasi")
 	}
-	dsn := getenv("DATABASE_URL")
-	if dsn == "" {
-		return errors.New("DATABASE_URL wajib diisi")
+	if args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
+		fmt.Fprintln(opts.out(), `gardactl ingest - Kelola dan jalankan ingestion sumber data eksternal
+
+Pemakaian:
+  gardactl ingest [jalankan] <sumber>                          jalankan satu sumber sekali (mis. SRC-BI)
+  gardactl ingest daftar                                       daftar sumber beserta status konektornya
+  gardactl ingest pemetaan <sumber> <KOMODITAS|WILAYAH> <alias> <kode|->
+                                                               petakan alias sumber ke kode master ("-" = abaikan alias)
+  gardactl ingest konfigurasi <sumber> <json>                  ganti konfigurasi permintaan sumber (objek JSON)`)
+		return nil
 	}
-	db, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Warn)})
+
+	db, err := connectDB(opts.getenv)
 	if err != nil {
-		return fmt.Errorf("hubungkan basis data: %w", err)
+		return err
 	}
 	if sqlDB, err := db.DB(); err == nil {
 		defer sqlDB.Close()
@@ -66,18 +47,18 @@ func run(ctx context.Context, args []string, getenv func(string) string, out io.
 
 	switch args[0] {
 	case "daftar":
-		return daftar(ctx, db, out, fetcher)
+		return ingestDaftar(ctx, db, opts.out(), opts.Fetcher)
 	case "pemetaan":
-		return pemetaan(ctx, db, args[1:], out)
+		return ingestPemetaan(ctx, db, args[1:], opts.out(), opts.getenv)
 	case "konfigurasi":
-		return konfigurasi(ctx, db, args[1:], out)
+		return ingestKonfigurasi(ctx, db, args[1:], opts.out(), opts.getenv)
 	case "jalankan":
 		args = args[1:]
 	}
 	if len(args) != 1 {
 		return errors.New("jalankan: sebutkan tepat satu sumber (kode atau UUID), mis. ingest SRC-BI")
 	}
-	return jalankan(ctx, db, args[0], out, fetcher)
+	return ingestJalankan(ctx, db, args[0], opts.out(), opts.Fetcher, opts.getenv)
 }
 
 func newRunner(db *gorm.DB, fetcher domain.Fetcher) *engine.Runner {
@@ -85,11 +66,10 @@ func newRunner(db *gorm.DB, fetcher domain.Fetcher) *engine.Runner {
 	if fetcher == nil {
 		fetcher = ingestion.NewFetcher()
 	}
-	// Proses CLI berumur pendek: agregat disegarkan sinkron sesudah run, bukan lewat goroutine.
 	return engine.New(postgres.New(db), fetcher, log, ingestion.Konektor()...)
 }
 
-func jalankan(ctx context.Context, db *gorm.DB, ref string, out io.Writer, fetcher domain.Fetcher) error {
+func ingestJalankan(ctx context.Context, db *gorm.DB, ref string, out io.Writer, fetcher domain.Fetcher, getenv func(string) string) error {
 	runner := newRunner(db, fetcher)
 	s, err := postgres.New(db).Sumber(ctx, ref)
 	if err != nil {
@@ -111,7 +91,7 @@ func jalankan(ctx context.Context, db *gorm.DB, ref string, out io.Writer, fetch
 	if e.Galat != nil {
 		fmt.Fprintf(out, "galat: %s\n", *e.Galat)
 	}
-	catatAudit(ctx, db, "JALANKAN_SUMBER", s.ID, map[string]any{"kode": s.Kode, "eksekusi_id": e.ID, "status": e.Status})
+	catatAudit(ctx, db, "JALANKAN_SUMBER", s.ID, map[string]any{"kode": s.Kode, "eksekusi_id": e.ID, "status": e.Status}, getenv)
 
 	if e.BarisDiambil > 0 {
 		if err := refresher.Shared(db, logger.NewDefault()).Refresh(ctx); err != nil {
@@ -124,7 +104,7 @@ func jalankan(ctx context.Context, db *gorm.DB, ref string, out io.Writer, fetch
 	return nil
 }
 
-func daftar(ctx context.Context, db *gorm.DB, out io.Writer, fetcher domain.Fetcher) error {
+func ingestDaftar(ctx context.Context, db *gorm.DB, out io.Writer, fetcher domain.Fetcher) error {
 	runner := newRunner(db, fetcher)
 	items, err := sumberrepo.New(db).List(ctx)
 	if err != nil {
@@ -140,7 +120,7 @@ func daftar(ctx context.Context, db *gorm.DB, out io.Writer, fetcher domain.Fetc
 	return nil
 }
 
-func pemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer) error {
+func ingestPemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer, getenv func(string) string) error {
 	if len(args) != 4 {
 		return errors.New("pemetaan: ingest pemetaan <sumber> <KOMODITAS|WILAYAH> <alias> <kode|->")
 	}
@@ -172,19 +152,18 @@ func pemetaan(ctx context.Context, db *gorm.DB, args []string, out io.Writer) er
 
 	err = db.WithContext(ctx).Exec(`
 		INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master, diabaikan, catatan)
-		VALUES (?, ?, ?, ?, ?, 'diatur lewat cmd/ingest')
+		VALUES (?, ?, ?, ?, ?, 'diatur lewat gardactl ingest')
 		ON CONFLICT (sumber_id, jenis, alias) DO UPDATE
 		   SET kode_master = EXCLUDED.kode_master, diabaikan = EXCLUDED.diabaikan, catatan = EXCLUDED.catatan`,
 		row.SumberID, row.Jenis, row.Alias, row.KodeMaster, row.Diabaikan).Error
 	if err != nil {
 		return fmt.Errorf("simpan pemetaan: %w", err)
 	}
-	catatAudit(ctx, db, "UBAH_PEMETAAN_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "jenis": jenis, "alias": alias, "kode": kode})
+	catatAudit(ctx, db, "UBAH_PEMETAAN_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "jenis": jenis, "alias": alias, "kode": kode}, getenv)
 	fmt.Fprintf(out, "pemetaan %s %s %q -> %s\n", s.Kode, jenis, alias, kode)
 	return nil
 }
 
-// kodeMasterAda memeriksa bahwa kode tujuan pemetaan ada di master.
 func kodeMasterAda(ctx context.Context, db *gorm.DB, jenis, kode string) (bool, error) {
 	query := `SELECT EXISTS (SELECT 1 FROM komoditas WHERE kode = ?)`
 	args := []any{kode}
@@ -199,7 +178,7 @@ func kodeMasterAda(ctx context.Context, db *gorm.DB, jenis, kode string) (bool, 
 	return ada, nil
 }
 
-func konfigurasi(ctx context.Context, db *gorm.DB, args []string, out io.Writer) error {
+func ingestKonfigurasi(ctx context.Context, db *gorm.DB, args []string, out io.Writer, getenv func(string) string) error {
 	if len(args) != 2 {
 		return errors.New("konfigurasi: ingest konfigurasi <sumber> <json>")
 	}
@@ -214,7 +193,7 @@ func konfigurasi(ctx context.Context, db *gorm.DB, args []string, out io.Writer)
 	if err := db.WithContext(ctx).Exec(`UPDATE sumber_data SET konfigurasi = ?::jsonb WHERE id = ?`, args[1], s.ID).Error; err != nil {
 		return fmt.Errorf("simpan konfigurasi: %w", err)
 	}
-	catatAudit(ctx, db, "UBAH_KONFIGURASI_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "kunci": sortedKeys(objek)})
+	catatAudit(ctx, db, "UBAH_KONFIGURASI_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "kunci": sortedKeys(objek)}, getenv)
 	fmt.Fprintf(out, "konfigurasi %s diperbarui (%d kunci)\n", s.Kode, len(objek))
 	return nil
 }
@@ -228,17 +207,19 @@ func sortedKeys(m map[string]json.RawMessage) []string {
 	return keys
 }
 
-// catatAudit mencatat aksi operator CLI (tanpa aktor terautentikasi) atas sumber ber-ID (UUID) itu. Kegagalan
-// hanya dilaporkan ke stderr karena aksinya sudah terjadi.
-func catatAudit(ctx context.Context, db *gorm.DB, aksi, sumberID string, metadata map[string]any) {
-	metadata["lewat"] = "cmd/ingest"
-	if operator := os.Getenv("USER"); operator != "" {
+func catatAudit(ctx context.Context, db *gorm.DB, aksi, sumberID string, metadata map[string]any, getenv func(string) string) {
+	metadata["lewat"] = "gardactl ingest"
+	if getenv != nil {
+		if operator := getenv("USER"); operator != "" {
+			metadata["operator"] = operator
+		}
+	} else if operator := os.Getenv("USER"); operator != "" {
 		metadata["operator"] = operator
 	}
 	err := audit.NewWriter(db).Write(ctx, audit.Entry{
 		Aksi: aksi, Entitas: "sumber_data", EntitasID: sumberID, Hasil: audit.HasilBerhasil, Metadata: metadata,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ingest: gagal mencatat audit: %v\n", err)
+		fmt.Fprintf(os.Stderr, "gardactl ingest: gagal mencatat audit: %v\n", err)
 	}
 }

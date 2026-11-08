@@ -15,7 +15,7 @@
 
 - **`sumber_data.id` kini UUID** (`garda_uuid_stabil('sumber_data', id_lama)` = `idx.UUIDStabil("sumber_data", kode)`); ID lama (`SRC-BI`, …) disimpan di `kode` (UNIQUE, NOT NULL) dan tetap menjadi kode tampilan. Bila kelak sumber baru dibuat lewat form, `kode` isian itu UNIQUE dan bentrok dijawab 409.
 - **Rute `:id`** (`GET /v1/sumber-data/:id`, `/:id/eksekusi`, `/:id/sampel`, `POST /:id/jalankan`) memakai `idx.ParamUUIDAtauKode` (maks 64 karakter): UUID, atau kode sebagai alias sehingga tautan lama seperti `/v1/sumber-data/SRC-BPS` tetap berlaku. Teks yang bukan UUID dibaca sebagai kode; kode yang tidak ada atau terlalu panjang dijawab **404**, tidak pernah 500. `POST /v1/sumber-data/bulk` menerima UUID maupun kode di `ids` (maks 64 karakter per entri; entri yang tidak ada dihitung `gagal`; dua ejaan sumber yang sama dihitung satu). Respons memuat `id` (UUID) dan `kode`; audit `JALANKAN_SUMBER` mencatat UUID di `entitas_id` dan kode di metadata.
-- **Konektor, CLI, dan seeder merujuk sumber lewat kode.** `Konektor.Kode()` (bukan ID) mengenali konektor; `cmd/ingest` menerima kode atau UUID; engine membaca baris sumber lewat kode/UUID lalu memakai UUID untuk riwayat. Seeder memakai `sumberseeder.IDSumber(kode)` dan `ON CONFLICT (kode)`; pemetaan seed memakai UUID yang sama, jadi basis data hasil migrasi dan basis data baru tidak berbeda.
+- **Konektor, CLI, dan seeder merujuk sumber lewat kode.** `Konektor.Kode()` (bukan ID) mengenali konektor; `gardactl ingest` menerima kode atau UUID; engine membaca baris sumber lewat kode/UUID lalu memakai UUID untuk riwayat. Seeder memakai `sumberseeder.IDSumber(kode)` dan `ON CONFLICT (kode)`; pemetaan seed memakai UUID yang sama, jadi basis data hasil migrasi dan basis data baru tidak berbeda.
 - **Turunan:** `eksekusi_sumber` (BIGSERIAL tetap) dan `data_mentah` (BIGSERIAL tetap) memakai `sumber_id` uuid → **CASCADE**; `data_mentah.eksekusi_id` → CASCADE; `pemetaan_sumber` (KOMPOSIT `(sumber_id, jenis, alias)`) → CASCADE. `harga_eksternal` kini **BIGINT `id`** dengan `UNIQUE (sumber_id, komoditas_kode, kabupaten_kode, tanggal, tipe)` (target upsert ingestion) dan `sumber_id` → **RESTRICT** (bukti asal data: sumber yang punya harga dinonaktifkan lewat jeda, bukan dihapus); `komoditas_kode`/`kabupaten_kode` RESTRICT; `data_mentah_id`/`eksekusi_id` **SET NULL**. `cuaca_harian` kini **BIGINT** (ID `CUA-…` aplikasi dihapus; `kode` = ID lama) dengan UNIQUE `(kabupaten_kode, tanggal, sumber)` sebagai target upsert; `eksekusi_id`/`data_mentah_id` SET NULL.
 - **Indeks:** BRIN `data_mentah(diambil_pada)` dan `harga_eksternal(tanggal)`; B-tree untuk setiap FK (`harga_eksternal`: `kabupaten_kode`, `data_mentah_id`, `eksekusi_id`; `cuaca_harian`: `eksekusi_id`, `data_mentah_id`, `tanggal`); materialized view `gold_harga_harian` tidak berubah (tidak membaca PK atau `sumber_id`).
 
@@ -51,7 +51,7 @@
    - [ ] ~~`kredensial_sumber` terenkripsi~~: **tidak dibuat**; kunci API dibaca dari lingkungan (`BPS_API_KEY`), tidak disimpan di DB.
 2. **SEED**: `ingestion.reference` memetakan alias komoditas PIHPS → kode master (insert-only agar pemetaan operator tidak tertimpa).
 3. **API/Worker**
-   - [x] Engine (`internal/ingestion`): `cmd/ingest`, penjadwal opsional di `cmd/api` (`INGEST_SCHEDULER=on`), retry backoff, rate limiting per host, circuit breaker, kegagalan tercatat per run.
+   - [x] Engine (`internal/ingestion`): `gardactl ingest`, penjadwal opsional di `cmd/api` (`INGEST_SCHEDULER=on`), retry backoff, rate limiting per host, circuit breaker, kegagalan tercatat per run.
    - [x] Konektor PIHPS (**belum terverifikasi terhadap endpoint nyata**); kepatuhan robots.txt; atribusi tetap di katalog.
    - [x] Jeda/lanjutkan berefek nyata (penjadwal dan run manual menolak sumber dijeda); `POST /v1/sumber-data/:id/jalankan` (`sumber.kelola`, diaudit) menggantikan "jalankan" di bulk.
    - [ ] Klien Bapanas (scraper) belum ada.
@@ -70,7 +70,7 @@
    - [x] BMKG (prakiraan 3-jaman diringkas per hari; hari parsial ditolak dan dilaporkan), BPS (IHK/inflasi dan andil; baris resmi menggantikan baris contoh `DEMO` dan tidak menimpa sumber resmi lain). **Keduanya belum terverifikasi terhadap endpoint nyata.**
    - [x] Validasi silang lapangan vs eksternal (kolom `selisih_pct` di gold, ukuran `akurasi`).
    - [ ] OpenWeather, BI (selain PIHPS), DJPb, Bapanas/scraper: belum ada konektor.
-   - [ ] Id variabel BPS dan id wilayah PIHPS tidak diketahui; operator mengisinya lewat `cmd/ingest konfigurasi|pemetaan`. Titik pantau BMKG (adm4) di seed adalah tebakan pola kode, belum terverifikasi.
+   - [ ] Id variabel BPS dan id wilayah PIHPS tidak diketahui; operator mengisinya lewat `gardactl ingest konfigurasi|pemetaan`. Titik pantau BMKG (adm4) di seed adalah tebakan pola kode, belum terverifikasi.
 3. **FE**: kartu pipeline dan mutu data di `/sumber-data` dari `GET /v1/sumber-data/pipeline` (kelengkapan, akurasi, ketepatan waktu, konsistensi dihitung dari eksekusi nyata; `—` bila belum ada).
 4. **TES**: parser BMKG/BPS dengan fixture, ingestion idempoten, gold, mutu, seeder demo tidak menimpa data nyata.
 5. Data historis harga/cuaca masuk lewat job impor/backfill, **bukan** seeder. Data lineage per record ([03-C](03-audit.md)); alert saat sumber gagal berulang ke [EWS](10-ews.md): belum.

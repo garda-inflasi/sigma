@@ -25,6 +25,7 @@ const AksiHapusMaster = "HAPUS_MASTER"
 
 // KecamatanRef adalah kecamatan beserta nama kabupaten/kota induknya.
 type KecamatanRef struct {
+	ID            idx.ID  `gorm:"column:id"`
 	Kode          string  `gorm:"column:kode"`
 	Nama          string  `gorm:"column:nama"`
 	KabupatenKode string  `gorm:"column:kabupaten_kode"`
@@ -34,6 +35,7 @@ type KecamatanRef struct {
 
 // SatuanRef adalah satuan beserta jumlah komoditas yang memakainya (semua status).
 type SatuanRef struct {
+	ID              idx.ID `gorm:"column:id"`
 	Kode            string `gorm:"column:kode"`
 	Nama            string `gorm:"column:nama"`
 	JumlahKomoditas int64  `gorm:"column:jumlah_komoditas"`

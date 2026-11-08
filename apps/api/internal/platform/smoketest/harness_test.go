@@ -72,6 +72,9 @@ func removeSeedBinary() {
 	}
 }
 
+// maksBarisKeluaran membatasi panjang satu baris keluaran seed yang ditampilkan di pesan tes.
+const maksBarisKeluaran = 2000
+
 // runSeed menjalankan cmd/seed terhadap basis data dbName dan mengembalikan
 // keluaran gabungannya.
 func runSeed(t *testing.T, dbName, appEnv, tier string) (string, error) {
@@ -79,7 +82,20 @@ func runSeed(t *testing.T, dbName, appEnv, tier string) (string, error) {
 	cmd := exec.Command(seedBinary(t), tier)
 	cmd.Env = append(os.Environ(), "DATABASE_URL="+pg.DSN(dbName), "APP_ENV="+appEnv)
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return ringkasKeluaran(string(out)), err
+}
+
+// ringkasKeluaran memotong baris yang sangat panjang. Saat INSERT massal gagal, GORM mencetak SQL beserta seluruh
+// nilainya dalam satu baris ratusan KB; testify tidak sanggup menampilkan pesan dengan baris di atas 64 KB ("token
+// too long"), sehingga penyebab galat seed hilang dari laporan tes.
+func ringkasKeluaran(out string) string {
+	baris := strings.Split(out, "\n")
+	for i, b := range baris {
+		if len(b) > maksBarisKeluaran {
+			baris[i] = b[:maksBarisKeluaran] + "... [dipotong]"
+		}
+	}
+	return strings.Join(baris, "\n")
 }
 
 // seedAll menjalankan lapis reference lalu demo sebagai pengembang lokal.

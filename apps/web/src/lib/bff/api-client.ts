@@ -5,8 +5,16 @@
 
 import "server-only";
 
-import type { BulkColdStorageWire, ColdStorageWire, DetailFasilitasWire } from "@/lib/api/cold-storage";
-import { toQueryString, type ColdStorageBulkAction, type ColdStorageParams } from "@/lib/api/cold-storage-query";
+import type {
+  BulkColdStorageWire,
+  ColdStorageWire,
+  DetailFasilitasWire,
+} from "@/lib/api/cold-storage";
+import {
+  toQueryString,
+  type ColdStorageBulkAction,
+  type ColdStorageParams,
+} from "@/lib/api/cold-storage-query";
 import type { UndanganWire } from "@/lib/api/pengguna-undangan";
 import type { ImporWire } from "@/lib/pengguna/impor";
 import type { UndangPenggunaInput } from "@/lib/pengguna/undang";
@@ -33,7 +41,7 @@ export class BffApiError extends Error {
     message: string,
     public code?: string,
     /** Sisa waktu tunggu dalam detik (kunci akun), dari `data.sisa_detik` atau header Retry-After. */
-    public detik?: number
+    public detik?: number,
   ) {
     super(message);
   }
@@ -66,7 +74,7 @@ export async function headerKlien(): Promise<Record<string, string>> {
  */
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
 
@@ -98,7 +106,7 @@ export async function apiFetch<T>(
       res.status,
       errorBody?.message || `Backend error (${res.status})`,
       errorBody?.code,
-      detik
+      detik,
     );
   }
 
@@ -110,7 +118,11 @@ export async function apiFetch<T>(
   // Unwrap Go API response: { code, message, data: T } → T
   const body: ApiResponse<T> = await res.json();
   if (body.code !== "200" && body.code !== "201") {
-    throw new BffApiError(res.status, body.message || "Unknown error", body.code);
+    throw new BffApiError(
+      res.status,
+      body.message || "Unknown error",
+      body.code,
+    );
   }
   return body.data;
 }
@@ -136,7 +148,9 @@ export interface LoginResponse {
 }
 
 /** Sesi penuh hasil login atau validasi MFA. */
-export type SessionResponse = Required<Pick<LoginResponse, "access_token" | "refresh_token" | "user">> &
+export type SessionResponse = Required<
+  Pick<LoginResponse, "access_token" | "refresh_token" | "user">
+> &
   Pick<LoginResponse, "mfa_setup_diwajibkan">;
 
 export interface MfaSetupResponse {
@@ -195,6 +209,8 @@ export interface UserResponse {
   status: string;
   terakhir_masuk?: string;
   dibuat_pada: string;
+  /** Nomor telepon E.164 ("+62…"); tidak ada selama belum diisi. */
+  telepon?: string;
   /** Selama true, API menjawab 403 PASSWORD_CHANGE_REQUIRED selain untuk ganti kata sandi, keluar, dan profil. */
   wajib_ganti_password: boolean;
   /** Hanya pada GET /auth/me: akun wajib MFA tetapi belum aktif (403 MFA_SETUP_REQUIRED selain endpoint setup). */
@@ -205,6 +221,24 @@ export interface UserResponse {
   kode_cadangan_tersisa?: number;
   /** Hanya pada daftar/detail pengguna: akhir kunci login (lockout) selama akun terkunci. */
   terkunci_sampai?: string;
+}
+
+/**
+ * Profil sendiri (GET dan PATCH /auth/me): `UserResponse` beserta keadaan MFA, yang pada endpoint ini selalu
+ * dikirim (`kode_cadangan_tersisa` hanya untuk akun ber-MFA).
+ */
+export type MeUserResponse = UserResponse & {
+  mfa_setup_diwajibkan: boolean;
+  mfa_wajib: boolean;
+};
+
+/**
+ * Isian PATCH /auth/me. Field yang tidak dikirim tidak diubah; `telepon: ""` menghapus nomor. Field lain
+ * (email, peran, lapis, lembaga, kabupaten, status) tidak dapat diubah lewat endpoint ini.
+ */
+export interface UpdateProfilRequest {
+  nama?: string;
+  telepon?: string;
 }
 
 export interface ChangePasswordRequest {
@@ -244,7 +278,16 @@ export interface ListUsersParams {
 }
 
 /** Parameter kueri daftar pengguna yang diteruskan BFF ke API; yang lain dibuang. */
-export const PARAM_DAFTAR_PENGGUNA = ["search", "peran", "status", "lapis", "mfa", "terkunci", "sort", "arah"] as const;
+export const PARAM_DAFTAR_PENGGUNA = [
+  "search",
+  "peran",
+  "status",
+  "lapis",
+  "mfa",
+  "terkunci",
+  "sort",
+  "arah",
+] as const;
 
 export interface ListUsersResponse {
   items: UserResponse[];
@@ -346,17 +389,24 @@ export const authApi = {
     }),
 
   me: (accessToken: string) =>
-    apiFetch<UserResponse>("/auth/me", {
+    apiFetch<MeUserResponse>("/auth/me", {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
     }),
 
-  changePassword: (
-    accessToken: string,
-    data: ChangePasswordRequest
-  ) =>
+  /** Mengubah nama dan/atau telepon milik sendiri; jawabannya berbentuk sama dengan `me`. */
+  updateMe: (accessToken: string, data: UpdateProfilRequest) =>
+    apiFetch<MeUserResponse>("/auth/me", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(data),
+    }),
+
+  changePassword: (accessToken: string, data: ChangePasswordRequest) =>
     apiFetch<ChangePasswordResponse>("/auth/change-password", {
       method: "POST",
       headers: {
@@ -474,7 +524,7 @@ export const userApi = {
       {
         method: "POST",
         headers: bearer(accessToken),
-      }
+      },
     ),
 
   resetPassword: (accessToken: string, id: string, newPassword: string) =>
@@ -484,18 +534,19 @@ export const userApi = {
         method: "POST",
         headers: bearer(accessToken),
         body: JSON.stringify({ new_password: newPassword }),
-      }
+      },
     ),
 
   /** Reset MFA seorang pengguna oleh admin (izin pengguna.kelola): MFA mati dan semua sesinya berakhir. */
   resetMfa: (accessToken: string, id: string) =>
-    apiFetch<{ id: string; mfa_aktif_sebelumnya: boolean; sesi_dicabut: number }>(
-      `/users/${encodeURIComponent(id)}/reset-mfa`,
-      {
-        method: "POST",
-        headers: bearer(accessToken),
-      }
-    ),
+    apiFetch<{
+      id: string;
+      mfa_aktif_sebelumnya: boolean;
+      sesi_dicabut: number;
+    }>(`/users/${encodeURIComponent(id)}/reset-mfa`, {
+      method: "POST",
+      headers: bearer(accessToken),
+    }),
 
   /** Riwayat perubahan peran seorang pengguna dari audit trail (izin pengguna.kelola). */
   riwayatPeran: (accessToken: string, id: string) =>
@@ -511,7 +562,7 @@ export const userApi = {
       {
         method: "POST",
         headers: bearer(accessToken),
-      }
+      },
     ),
 
   assignRole: (accessToken: string, id: string, peran: string) =>
@@ -570,7 +621,11 @@ export const userApi = {
   ekspor: async (accessToken: string, query: string): Promise<Response> => {
     const res = await fetch(`${API_BASE}/users/ekspor${query}`, {
       method: "GET",
-      headers: { Accept: "text/csv", ...(await headerKlien()), ...bearer(accessToken) },
+      headers: {
+        Accept: "text/csv",
+        ...(await headerKlien()),
+        ...bearer(accessToken),
+      },
     });
     if (!res.ok) {
       let errorBody: ApiErrorResponse | undefined;
@@ -579,7 +634,11 @@ export const userApi = {
       } catch {
         // badan bukan JSON
       }
-      throw new BffApiError(res.status, errorBody?.message || `Backend error (${res.status})`, errorBody?.code);
+      throw new BffApiError(
+        res.status,
+        errorBody?.message || `Backend error (${res.status})`,
+        errorBody?.code,
+      );
     }
     return res;
   },
@@ -596,21 +655,31 @@ export const coldStorageApi = {
   /** GET /v1/cold-storage — kartu fasilitas, satu halaman stok, dan ringkasan. */
   list: (accessToken: string, params: ColdStorageParams = {}) => {
     const query = toQueryString(params);
-    return apiFetch<ColdStorageWire>(`/cold-storage${query ? `?${query}` : ""}`, {
-      method: "GET",
-      headers: bearer(accessToken),
-    });
+    return apiFetch<ColdStorageWire>(
+      `/cold-storage${query ? `?${query}` : ""}`,
+      {
+        method: "GET",
+        headers: bearer(accessToken),
+      },
+    );
   },
 
   /** GET /v1/cold-storage/fasilitas/:id — riwayat suhu, lot, dan transaksi satu fasilitas. */
   detail: (accessToken: string, id: string) =>
-    apiFetch<DetailFasilitasWire>(`/cold-storage/fasilitas/${encodeURIComponent(id)}`, {
-      method: "GET",
-      headers: bearer(accessToken),
-    }),
+    apiFetch<DetailFasilitasWire>(
+      `/cold-storage/fasilitas/${encodeURIComponent(id)}`,
+      {
+        method: "GET",
+        headers: bearer(accessToken),
+      },
+    ),
 
   /** PATCH /v1/cold-storage/fasilitas/:id — kapasitas, batas alarm suhu, atau status. */
-  ubahFasilitas: (accessToken: string, id: string, body: Record<string, unknown>) =>
+  ubahFasilitas: (
+    accessToken: string,
+    id: string,
+    body: Record<string, unknown>,
+  ) =>
     apiFetch<unknown>(`/cold-storage/fasilitas/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: bearer(accessToken),

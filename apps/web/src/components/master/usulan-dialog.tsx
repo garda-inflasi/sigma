@@ -378,7 +378,7 @@ function FormPasar({
         bodyUsulan({
           entitas: "pasar",
           jenis: awal ? "UBAH" : "TAMBAH",
-          entitasId: awal ? awal.id : n.id,
+          entitasId: awal ? (awal.kode ?? awal.id) : n.id,
           perubahan: perubahanPasar(n, awal),
           alasan: n.alasan,
         }),

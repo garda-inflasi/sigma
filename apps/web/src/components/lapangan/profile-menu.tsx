@@ -1,6 +1,15 @@
 "use client";
 
-import { ChevronDown, LayoutDashboard, LogOut, MonitorSmartphone, Moon, Sun, UserCog } from "lucide-react";
+import {
+  ChevronDown,
+  LayoutDashboard,
+  LogOut,
+  MonitorSmartphone,
+  Moon,
+  Sun,
+  UserCog,
+  UserRound,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -19,10 +28,21 @@ import { inisialNama } from "@/lib/nama";
 import { keluarDariSesi } from "@/lib/auth/logout-client";
 import { useSession } from "@/lib/auth/session-context";
 import { DEV_ROLE_COOKIE } from "@/lib/auth/resolve";
-import { LAPIS_META, ROLES, ROLE_IDS, type Lapis, type Role } from "@/lib/rbac/roles";
+import { hrefTabProfil } from "@/lib/profil/tab";
+import {
+  LAPIS_META,
+  ROLES,
+  ROLE_IDS,
+  type Lapis,
+  type Role,
+} from "@/lib/rbac/roles";
 
 /** Menu profil untuk halaman lapangan — di-dynamic import dengan ssr:false agar tidak memicu hydration mismatch. */
-export default function ProfileMenu({ user }: { user: ReturnType<typeof useSession> }) {
+export default function ProfileMenu({
+  user,
+}: {
+  user: ReturnType<typeof useSession>;
+}) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -67,8 +87,12 @@ export default function ProfileMenu({ user }: { user: ReturnType<typeof useSessi
       <DropdownMenuContent align="end" className="w-64 rounded-xl p-1.5">
         <DropdownMenuLabel>
           <p className="font-medium">{user.nama}</p>
-          <p className="text-xs font-normal text-muted-foreground">{ROLES[user.role].label}</p>
-          <p className="text-xs font-normal text-muted-foreground">{user.lembaga}</p>
+          <p className="text-xs font-normal text-muted-foreground">
+            {ROLES[user.role].label}
+          </p>
+          <p className="text-xs font-normal text-muted-foreground">
+            {user.lembaga}
+          </p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
@@ -83,17 +107,30 @@ export default function ProfileMenu({ user }: { user: ReturnType<typeof useSessi
           onSelect={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
           className="rounded-md"
         >
-          {resolvedTheme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+          {resolvedTheme === "dark" ? (
+            <Sun className="size-4" />
+          ) : (
+            <Moon className="size-4" />
+          )}
           {resolvedTheme === "dark" ? "Mode terang" : "Mode gelap"}
         </DropdownMenuItem>
 
         <DropdownMenuItem asChild className="rounded-md">
-          <Link href="/keamanan">
-            <MonitorSmartphone className="size-4" /> Keamanan akun
+          <Link href={hrefTabProfil("profil")}>
+            <UserRound className="size-4" /> Profil Saya
           </Link>
         </DropdownMenuItem>
 
-        <DropdownMenuItem onSelect={() => void keluarDariSesi()} className="rounded-md">
+        <DropdownMenuItem asChild className="rounded-md">
+          <Link href={hrefTabProfil("keamanan")}>
+            <MonitorSmartphone className="size-4" /> Perangkat & Sesi Aktif
+          </Link>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onSelect={() => void keluarDariSesi()}
+          className="rounded-md"
+        >
           <LogOut className="size-4" /> Keluar
         </DropdownMenuItem>
 
@@ -112,10 +149,16 @@ export default function ProfileMenu({ user }: { user: ReturnType<typeof useSessi
                     {LAPIS_META[l].label}
                   </DropdownMenuLabel>
                   {roles.map((r) => (
-                    <DropdownMenuRadioItem key={r} value={r} className="rounded-lg">
+                    <DropdownMenuRadioItem
+                      key={r}
+                      value={r}
+                      className="rounded-lg"
+                    >
                       <div>
                         <p className="text-sm">{ROLES[r].label}</p>
-                        <p className="text-xs text-muted-foreground">{ROLES[r].lembaga}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ROLES[r].lembaga}
+                        </p>
                       </div>
                     </DropdownMenuRadioItem>
                   ))}

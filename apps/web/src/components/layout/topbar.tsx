@@ -1,13 +1,30 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { Bell, KeyRound, LogOut, Menu, MonitorSmartphone, Moon, Search, ShieldCheck, Sun } from "lucide-react";
+import {
+  Bell,
+  KeyRound,
+  LogOut,
+  Menu,
+  MonitorSmartphone,
+  Moon,
+  Search,
+  ShieldCheck,
+  Sun,
+  UserRound,
+  type LucideIcon,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { inisialNama } from "@/lib/nama";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -19,7 +36,12 @@ import { useSession } from "@/lib/auth/session-context";
 import { siklusMeta, toneClass } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
 import { popIn } from "@/lib/motion/presets";
-import { NAV_FLAT, activeNav } from "@/lib/nav";
+import { judulHalaman } from "@/lib/nav";
+import {
+  LABEL_TAB_PROFIL,
+  hrefTabProfil,
+  type TabProfil,
+} from "@/lib/profil/tab";
 import { useSiklusAktif } from "@/lib/query/hooks";
 import { can } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
@@ -36,6 +58,36 @@ function useToday() {
   return d;
 }
 
+interface ItemMenuProfil {
+  tab: TabProfil;
+  label: string;
+  ikon: LucideIcon;
+}
+
+/** Tautan menu akun ke tab /profil, berurutan: profil lebih dulu, lalu tiga bagian keamanan. */
+const MENU_PROFIL: readonly ItemMenuProfil[] = [
+  { tab: "profil", label: "Profil Saya", ikon: UserRound },
+  {
+    tab: "ganti-password",
+    label: LABEL_TAB_PROFIL["ganti-password"],
+    ikon: KeyRound,
+  },
+  { tab: "mfa", label: LABEL_TAB_PROFIL.mfa, ikon: ShieldCheck },
+  {
+    tab: "keamanan",
+    label: LABEL_TAB_PROFIL.keamanan,
+    ikon: MonitorSmartphone,
+  },
+];
+
+/**
+ * Item menu akun yang tampil. Mode demo (tanpa API) tidak punya BFF auth, jadi hanya "Profil Saya" (data sesi,
+ * hanya-baca) yang tersedia; tiga bagian keamanan disembunyikan.
+ */
+export function itemMenuProfil(modeMock: boolean): readonly ItemMenuProfil[] {
+  return modeMock ? MENU_PROFIL.filter((m) => m.tab === "profil") : MENU_PROFIL;
+}
+
 export function Topbar() {
   const pathname = usePathname();
   const user = useSession();
@@ -48,21 +100,31 @@ export function Topbar() {
   const stream = useEwsStore((s) => s.status);
   const { data: siklus } = useSiklusAktif(can(user, "dashboard.operasional"));
   const { resolvedTheme, setTheme } = useTheme();
-  const title = activeNav(pathname, NAV_FLAT)?.label ?? "Garda Inflasi";
+  const title = judulHalaman(pathname);
   const meta = siklus ? siklusMeta[siklus.siklus] : null;
 
   return (
     <header className="sticky top-3 z-20 mx-3 lg:mx-1 lg:mr-3">
       <div className="glass flex h-16 items-center gap-3 rounded-xl px-3 sm:px-4">
-        <button type="button" onClick={() => setMobileOpen(true)} className="grid size-9 place-items-center rounded-xl hover:bg-secondary lg:hidden" aria-label="Buka navigasi">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="grid size-9 place-items-center rounded-xl hover:bg-secondary lg:hidden"
+          aria-label="Buka navigasi"
+        >
           <Menu className="size-5" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-[15px] font-semibold text-navy-900 dark:text-white">{title}</p>
-          <p className="hidden truncate text-xs text-muted-foreground sm:block">{today}</p>
+          <p className="truncate font-display text-[15px] font-semibold text-navy-900 dark:text-white">
+            {title}
+          </p>
+          <p className="hidden truncate text-xs text-muted-foreground sm:block">
+            {today}
+          </p>
         </div>
 
-        <button type="button"
+        <button
+          type="button"
           onClick={() => setCommandOpen(true)}
           className="glass-subtle hidden h-9 w-64 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-shadow hover:shadow-ambient-sm md:flex"
         >
@@ -72,60 +134,115 @@ export function Topbar() {
         </button>
 
         {meta && (
-          <Link href={can(user, "intervensi.lihat") ? `/intervensi?siklus=${siklus!.siklus}` : "#"} className={cn("hidden h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium sm:inline-flex", toneClass[meta.tone].soft, toneClass[meta.tone].text)}>
-            <PulseRing tone={meta.tone} rings={1} active={siklus!.siklus === "tekanan"} />
+          <Link
+            href={
+              can(user, "intervensi.lihat")
+                ? `/intervensi?siklus=${siklus!.siklus}`
+                : "#"
+            }
+            className={cn(
+              "hidden h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium sm:inline-flex",
+              toneClass[meta.tone].soft,
+              toneClass[meta.tone].text,
+            )}
+          >
+            <PulseRing
+              tone={meta.tone}
+              rings={1}
+              active={siklus!.siklus === "tekanan"}
+            />
             {meta.label}
           </Link>
         )}
 
-        {MODE_MOCK && <span className="hidden rounded-md border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground 2xl:inline">Data demo</span>}
+        {MODE_MOCK && (
+          <span className="hidden rounded-md border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground 2xl:inline">
+            Data demo
+          </span>
+        )}
         <RoleSwitcher />
 
         {can(user, "ews.lihat") && (
-          <Link href="/ews" onClick={bacaSemua} className="relative grid size-9 place-items-center rounded-xl hover:bg-secondary" aria-label={`Peringatan dini, ${unread} belum dibaca`}>
+          <Link
+            href="/ews"
+            onClick={bacaSemua}
+            className="relative grid size-9 place-items-center rounded-xl hover:bg-secondary"
+            aria-label={`Peringatan dini, ${unread} belum dibaca`}
+          >
             <Bell className="size-[18px]" />
             <AnimatePresence>
               {unread > 0 && (
-                <motion.span variants={popIn} initial="hidden" animate="show" exit="exit" className="absolute top-1 right-1">
+                <motion.span
+                  variants={popIn}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                  className="absolute top-1 right-1"
+                >
                   <PulseRing tone="defisit" rings={1}>
-                    <span className="num relative grid h-4 min-w-4 place-items-center rounded-full bg-defisit px-1 text-[10px] font-semibold text-white">{unread}</span>
+                    <span className="num relative grid h-4 min-w-4 place-items-center rounded-full bg-defisit px-1 text-[10px] font-semibold text-white">
+                      {unread}
+                    </span>
                   </PulseRing>
                 </motion.span>
               )}
             </AnimatePresence>
-            <span className={cn("absolute bottom-1.5 left-1.5 size-1.5 rounded-full", stream === "terputus" ? "bg-mist-400" : "animate-live bg-normal")} title={`Aliran EWS: ${stream}`} />
+            <span
+              className={cn(
+                "absolute bottom-1.5 left-1.5 size-1.5 rounded-full",
+                stream === "terputus"
+                  ? "bg-mist-400"
+                  : "animate-live bg-normal",
+              )}
+              title={`Aliran EWS: ${stream}`}
+            />
           </Link>
         )}
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="grid size-9 place-items-center rounded-xl bg-navy-800 text-xs font-semibold text-white dark:bg-data-600" aria-label="Menu akun">
+          <DropdownMenuTrigger
+            className="grid size-9 place-items-center rounded-xl bg-navy-800 text-xs font-semibold text-white dark:bg-data-600"
+            aria-label="Menu akun"
+          >
             {inisialNama(user.nama)}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64 rounded-xl p-1.5">
             <DropdownMenuLabel>
               <p className="font-medium">{user.nama}</p>
-              <p className="text-xs font-normal text-muted-foreground">{ROLES[user.role].label}</p>
-              <p className="text-xs font-normal text-muted-foreground">{user.lembaga}</p>
+              <p className="text-xs font-normal text-muted-foreground">
+                {ROLES[user.role].label}
+              </p>
+              <p className="text-xs font-normal text-muted-foreground">
+                {user.lembaga}
+              </p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} className="rounded-md">
-              {resolvedTheme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            {itemMenuProfil(MODE_MOCK).map(({ tab, label, ikon: Ikon }) => (
+              <DropdownMenuItem key={tab} asChild className="rounded-md">
+                <Link href={hrefTabProfil(tab)}>
+                  <Ikon className="size-4" /> {label}
+                </Link>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() =>
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }
+              className="rounded-md"
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun className="size-4" />
+              ) : (
+                <Moon className="size-4" />
+              )}
               {resolvedTheme === "dark" ? "Mode terang" : "Mode gelap"}
             </DropdownMenuItem>
-            {!MODE_MOCK && (
-              <>
-                <DropdownMenuItem asChild className="rounded-md">
-                  <Link href="/ganti-password"><KeyRound className="size-4" /> Ganti kata sandi</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild className="rounded-md">
-                  <Link href="/mfa"><ShieldCheck className="size-4" /> Verifikasi dua langkah</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild className="rounded-md">
-                  <Link href="/keamanan"><MonitorSmartphone className="size-4" /> Keamanan akun</Link>
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuItem onSelect={() => void keluarDariSesi()} className="rounded-md">
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => void keluarDariSesi()}
+              className="rounded-md"
+            >
               <LogOut className="size-4" /> Keluar
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -133,11 +250,18 @@ export function Topbar() {
       </div>
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="glass-strong flex w-[300px] flex-col gap-0 border-0 p-0">
+        <SheetContent
+          side="left"
+          className="glass-strong flex w-[300px] flex-col gap-0 border-0 p-0"
+        >
           <SheetTitle className="flex h-[72px] items-center gap-3 px-5">
-            <BrandMark /> <span className="font-display font-bold">Garda Inflasi</span>
+            <BrandMark />{" "}
+            <span className="font-display font-bold">Garda Inflasi</span>
           </SheetTitle>
-          <NavList layoutId="mobile-nav-active" onNavigate={() => setMobileOpen(false)} />
+          <NavList
+            layoutId="mobile-nav-active"
+            onNavigate={() => setMobileOpen(false)}
+          />
         </SheetContent>
       </Sheet>
     </header>

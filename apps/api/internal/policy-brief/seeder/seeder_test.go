@@ -124,6 +124,9 @@ func TestSeedDemo_UUIDStabilSamaDenganMigrasiDanTidakDigandakanDiDBHasilMigrasi(
 	require.NoError(t, migrator.UpTo(t.Context(), 113))
 	_, err := masterseeder.SeedReference(t.Context(), db)
 	require.NoError(t, err)
+	// Seeder akun demo menulis pengguna.telepon (000123, slice 20-A), kolom yang belum ada pada skema 113; tes ini
+	// berhenti di 000114, jadi kolomnya ditambahkan di sini supaya seeder akun tetap bisa dipakai pada skema lama.
+	require.NoError(t, db.Exec(`ALTER TABLE pengguna ADD COLUMN telepon varchar(20)`).Error)
 	_, err = authseeder.SeedDemo(t.Context(), db)
 	require.NoError(t, err)
 

@@ -41,7 +41,8 @@ type Komoditas struct {
 	HargaAcuan int    `gorm:"column:harga_acuan"`
 }
 
-// Petugas adalah petugas lapangan beserta pasar utama di kabupatennya.
+// Petugas adalah petugas lapangan beserta pasar utama di kabupatennya. PasarID berisi kode pasar (pasar.kode),
+// nilai yang dirujuk entri_harga.pasar_id.
 type Petugas struct {
 	ID            string  `gorm:"column:id"`
 	KabupatenKode string  `gorm:"column:kabupaten_kode"`
@@ -221,12 +222,14 @@ func loadInput(ctx context.Context, db *gorm.DB) (Input, error) {
 	if err := tx.Raw(`SELECT kode, satuan, harga_acuan FROM komoditas WHERE status = 'AKTIF' ORDER BY kode`).Scan(&in.Komoditas).Error; err != nil {
 		return in, fmt.Errorf("baca komoditas: %w", err)
 	}
+	// entri_harga.pasar_id merujuk pasar.kode (FK, 000122), bukan pasar.id (BIGINT identity); pasar utama dipilih
+	// menurut kode supaya tetap sama dengan yang dipilih seeder lapangan.
 	err := tx.Raw(`
-		SELECT u.id, u.kabupaten_kode, p.id AS pasar_id, p.lat AS pasar_lat, p.lng AS pasar_lng, p.radius_meter
+		SELECT u.id, u.kabupaten_kode, p.kode AS pasar_id, p.lat AS pasar_lat, p.lng AS pasar_lng, p.radius_meter
 		  FROM pengguna u
 		  JOIN LATERAL (
-		       SELECT id, lat, lng, radius_meter FROM pasar
-		        WHERE kabupaten_kode = u.kabupaten_kode AND aktif ORDER BY id LIMIT 1
+		       SELECT kode, lat, lng, radius_meter FROM pasar
+		        WHERE kabupaten_kode = u.kabupaten_kode AND aktif ORDER BY kode LIMIT 1
 		  ) p ON true
 		 WHERE u.peran = 'OPS_MAHASISWA' AND u.status = 'AKTIF'
 		 ORDER BY u.kabupaten_kode, u.id`).Scan(&in.Petugas).Error

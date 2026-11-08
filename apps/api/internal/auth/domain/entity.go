@@ -14,7 +14,10 @@ type Pengguna struct {
 	Lapis         string  `gorm:"column:lapis"`
 	Lembaga       string  `gorm:"column:lembaga"`
 	KabupatenKode *string `gorm:"column:kabupaten_kode"`
-	MfaAktif      bool    `gorm:"column:mfa_aktif;default:false"`
+	// Telepon adalah telepon/WhatsApp pemilik dalam E.164 Indonesia ("+62..."), hasil normalisasi
+	// usecase.NormalisasiTelepon; nil bila belum diisi (kolom NULL, tidak pernah string kosong).
+	Telepon  *string `gorm:"column:telepon"`
+	MfaAktif bool    `gorm:"column:mfa_aktif;default:false"`
 	// MfaSecret adalah rahasia TOTP bersegel AES ("v1:<base64>", lihat crypto.Keyring); nil bila MFA belum disiapkan.
 	// Selama MfaAktif false, isinya rahasia setup yang belum diverifikasi.
 	MfaSecret *string `gorm:"column:mfa_secret"`

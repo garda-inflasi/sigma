@@ -1,3 +1,4 @@
+
 # 05 — Sumber data & akuisisi (API, scraping, pipeline)
 
 **Prioritas:** P0/P1 (PRD §1.3–1.4) · **Status:** UI ✅ · Backend 🟡 (kerangka ingestion + konektor PIHPS, BMKG, BPS selesai; belum diverifikasi ke layanan nyata) · Terhubung ✅ · Skema & seed ✅ · Tes ✅

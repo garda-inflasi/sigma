@@ -44,3 +44,37 @@ func TestPenggunaPatch_TerapkanHanyaMengubahKolomPatchDanMenyalinKodeKabupaten(t
 		assert.Equal(t, "1171", *u.KabupatenKode)
 	}
 }
+
+func TestPenggunaPatch_TeleponDiisiLaluDihapusSebagaiNULL(t *testing.T) {
+	isi := PenggunaPatch{Telepon: str("+6281234567890")}
+	assert.False(t, isi.Kosong())
+	assert.Equal(t, map[string]any{"telepon": "+6281234567890"}, isi.Kolom())
+
+	// "" berarti hapus nomor: kolom ditulis NULL (nil), bukan string kosong, dan patch tidak dianggap kosong.
+	hapus := PenggunaPatch{Telepon: str("")}
+	assert.False(t, hapus.Kosong())
+	kolom := hapus.Kolom()
+	nilai, ada := kolom["telepon"]
+	assert.True(t, ada, "kolom telepon harus ikut ditulis")
+	assert.Nil(t, nilai, "hapus nomor menulis NULL")
+	assert.Len(t, kolom, 1)
+}
+
+func TestPenggunaPatch_TerapkanTeleponMenyalinNilaiDanMenghapusBilaKosong(t *testing.T) {
+	lama := "+6281200000001"
+	u := &Pengguna{Nama: "N", Telepon: &lama}
+
+	nomor := "+6285712345678"
+	PenggunaPatch{Telepon: &nomor}.Terapkan(u)
+	nomor = "+6280000000000" // mengubah sumber tidak boleh mengubah hasil
+	if assert.NotNil(t, u.Telepon) {
+		assert.Equal(t, "+6285712345678", *u.Telepon)
+	}
+	assert.Equal(t, "+6281200000001", lama, "nilai lama pemanggil tidak ikut berubah")
+
+	PenggunaPatch{Telepon: str("")}.Terapkan(u)
+	assert.Nil(t, u.Telepon, "hapus nomor mengembalikan nil, bukan pointer ke string kosong")
+
+	PenggunaPatch{Nama: str("Lain")}.Terapkan(u)
+	assert.Nil(t, u.Telepon, "patch tanpa telepon tidak menyentuhnya")
+}

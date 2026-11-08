@@ -12,7 +12,7 @@ import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared
 import { SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { after, afterEach } from "node:test";
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { SessionProvider } from "@/lib/auth/session-context";
 import type { SessionUser } from "@/lib/auth/resolve";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,7 +23,10 @@ import type { Permission } from "@/lib/rbac/permissions";
 MotionGlobalConfig.skipAnimations = true;
 
 // RTL hanya membersihkan otomatis bila ada `afterEach` global (jest/vitest); di node:test dipasang manual.
+// Toast Sonner hidup di store global dan lolos dari `cleanup`: tanpa dismiss, toast tes sebelumnya ikut tampil
+// (atau menahan timer) di tes berikutnya.
 afterEach(() => {
+  toast.dismiss();
   cleanup();
   document.body.innerHTML = "";
 });

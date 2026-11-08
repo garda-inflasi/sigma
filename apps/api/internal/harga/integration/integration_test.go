@@ -375,6 +375,18 @@ func TestCreate(t *testing.T) {
 	})
 }
 
+// pasar_id adalah kode pasar (FK ke pasar.kode, 000122). ID surrogate numerik bukan rujukan sah: ditolak 400 pada
+// validasi, bukan lolos lalu gagal di FK saat INSERT (500).
+func TestCreate_PasarIDSurrogateDitolak(t *testing.T) {
+	s := sharedSuite(t)
+	var id string
+	require.NoError(t, s.db.Raw("SELECT id::text FROM pasar WHERE kode = 'PSR-1171-01'").Scan(&id).Error)
+
+	w := s.call(t, http.MethodPost, "/v1/harga", emailMahasiswa, map[string]any{"komoditas_kode": "BWM", "pasar_id": id, "tipe": "KONSUMEN", "harga": 43500})
+
+	assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+}
+
 // buat mencatat entri baru oleh email dan mengembalikan id-nya.
 func (s *suite) buat(t *testing.T, email string) string {
 	t.Helper()

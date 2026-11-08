@@ -126,3 +126,43 @@ func TestJWTAuth_RejectsMFAChallengeToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code, "token tantangan MFA bukan kredensial sesi")
 }
+
+// Profil sendiri terbuka bagi sesi terbatas hanya untuk dibaca: PATCH /v1/auth/me (20-A) menunggu kewajiban selesai.
+func TestJWTAuth_SesiTerbatas_ProfilSendiriHanyaDapatDibaca(t *testing.T) {
+	tokenMgr := token.NewManager("test-secret-key-32-chars!!")
+	router := passwordChangeRouter(tokenMgr)
+
+	cases := []struct {
+		name     string
+		opsi     []token.ClaimOption
+		method   string
+		want     int
+		wantCode string
+	}{
+		{"wajib ganti sandi: GET dibaca", []token.ClaimOption{token.WithPasswordChangeRequired(true)}, http.MethodGet, http.StatusOK, ""},
+		{"wajib ganti sandi: PATCH ditolak", []token.ClaimOption{token.WithPasswordChangeRequired(true)}, http.MethodPatch, http.StatusForbidden, PasswordChangeRequiredCode},
+		{"wajib setup MFA: GET dibaca", []token.ClaimOption{token.WithMFASetupRequired(true)}, http.MethodGet, http.StatusOK, ""},
+		{"wajib setup MFA: PATCH ditolak", []token.ClaimOption{token.WithMFASetupRequired(true)}, http.MethodPatch, http.StatusForbidden, MFASetupRequiredCode},
+		{"sesi biasa: PATCH boleh", nil, http.MethodPatch, http.StatusOK, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokenStr, err := tokenMgr.CreateAccessToken(uid("user-1"), "OPS_MAHASISWA", []string{"harga.lihat"}, tc.opsi...)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(tc.method, "/v1/auth/me", nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.want, w.Code)
+			if tc.wantCode != "" {
+				var body struct {
+					Code string `json:"code"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+				assert.Equal(t, tc.wantCode, body.Code)
+			}
+		})
+	}
+}

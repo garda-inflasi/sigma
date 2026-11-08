@@ -12,7 +12,8 @@
 @theme static {
   /* Tipografi: Inter (UI), Plus Jakarta Sans (heading), JetBrains Mono (angka) */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-display:
+    var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
 
   /* Skala tipe — rasio 1.25, dipadatkan untuk dashboard */
@@ -89,13 +90,20 @@
 
   /* Bayangan ambient bernuansa navy (bukan abu-abu generik) */
   --shadow-ambient-xs: 0 1px 2px rgb(19 35 74 / 0.05);
-  --shadow-ambient-sm: 0 2px 8px -2px rgb(19 35 74 / 0.07), 0 1px 2px rgb(19 35 74 / 0.04);
-  --shadow-ambient: 0 14px 34px -14px rgb(19 35 74 / 0.14), 0 2px 6px -2px rgb(19 35 74 / 0.05);
-  --shadow-ambient-lg: 0 30px 70px -28px rgb(19 35 74 / 0.26), 0 8px 18px -10px rgb(19 35 74 / 0.1);
-  --shadow-lift: 0 24px 48px -20px rgb(19 35 74 / 0.28), 0 6px 12px -6px rgb(19 35 74 / 0.08);
-  --shadow-glow-data: 0 0 0 1px rgb(20 166 158 / 0.25), 0 10px 28px -10px rgb(20 166 158 / 0.5);
-  --shadow-glow-defisit: 0 0 0 1px rgb(244 63 94 / 0.25), 0 10px 28px -10px rgb(244 63 94 / 0.5);
-  --shadow-glow-waspada: 0 0 0 1px rgb(245 158 11 / 0.25), 0 10px 28px -10px rgb(245 158 11 / 0.45);
+  --shadow-ambient-sm:
+    0 2px 8px -2px rgb(19 35 74 / 0.07), 0 1px 2px rgb(19 35 74 / 0.04);
+  --shadow-ambient:
+    0 14px 34px -14px rgb(19 35 74 / 0.14), 0 2px 6px -2px rgb(19 35 74 / 0.05);
+  --shadow-ambient-lg:
+    0 30px 70px -28px rgb(19 35 74 / 0.26), 0 8px 18px -10px rgb(19 35 74 / 0.1);
+  --shadow-lift:
+    0 24px 48px -20px rgb(19 35 74 / 0.28), 0 6px 12px -6px rgb(19 35 74 / 0.08);
+  --shadow-glow-data:
+    0 0 0 1px rgb(20 166 158 / 0.25), 0 10px 28px -10px rgb(20 166 158 / 0.5);
+  --shadow-glow-defisit:
+    0 0 0 1px rgb(244 63 94 / 0.25), 0 10px 28px -10px rgb(244 63 94 / 0.5);
+  --shadow-glow-waspada:
+    0 0 0 1px rgb(245 158 11 / 0.25), 0 10px 28px -10px rgb(245 158 11 / 0.45);
 
   /* Easing */
   --ease-garda: cubic-bezier(0.22, 1, 0.36, 1);
@@ -108,14 +116,27 @@
   --animate-aurora: aurora 22s ease-in-out infinite alternate;
 }
 
-@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
 @keyframes live {
-  0% { box-shadow: 0 0 0 0 rgb(16 185 129 / 0.55); }
-  70%, 100% { box-shadow: 0 0 0 7px rgb(16 185 129 / 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 0.55);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px rgb(16 185 129 / 0);
+  }
 }
 @keyframes aurora {
-  0% { transform: translate3d(-6%, -4%, 0) scale(1); }
-  100% { transform: translate3d(6%, 5%, 0) scale(1.08); }
+  0% {
+    transform: translate3d(-6%, -4%, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(6%, 5%, 0) scale(1.08);
+  }
 }
 
 /* ── 2. Token semantik shadcn/ui ── */
@@ -247,11 +268,15 @@
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   backdrop-filter: blur(24px) saturate(1.5);
   border: 1px solid rgb(255 255 255 / 0.7);
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.75), var(--shadow-ambient);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.75),
+    var(--shadow-ambient);
   @variant dark {
     background-color: rgb(16 28 58 / 0.55);
     border-color: rgb(255 255 255 / 0.08);
-    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 20px 44px -22px rgb(0 0 0 / 0.6);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 20px 44px -22px rgb(0 0 0 / 0.6);
   }
 }
 @utility glass-strong {
@@ -259,7 +284,9 @@
   -webkit-backdrop-filter: blur(28px) saturate(1.6);
   backdrop-filter: blur(28px) saturate(1.6);
   border: 1px solid rgb(255 255 255 / 0.85);
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.9), var(--shadow-ambient-lg);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.9),
+    var(--shadow-ambient-lg);
   @variant dark {
     background-color: rgb(14 26 58 / 0.82);
     border-color: rgb(255 255 255 / 0.1);
@@ -273,6 +300,14 @@
   @variant dark {
     background-color: rgb(255 255 255 / 0.03);
     border-color: rgb(255 255 255 / 0.06);
+  }
+}
+/* Gulir tanpa bilah gulir yang terlihat (pil tab mobile); tetap bisa digulir dengan sentuhan dan keyboard */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 /* Semua angka memakai JetBrains Mono dengan digit tabular */
@@ -290,12 +325,24 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.7), transparent);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.7),
+      transparent
+    );
     animation: var(--animate-shimmer);
   }
   @variant dark {
     background-color: rgb(255 255 255 / 0.06);
-    &::after { background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent); }
+    &::after {
+      background-image: linear-gradient(
+        90deg,
+        transparent,
+        rgb(255 255 255 / 0.08),
+        transparent
+      );
+    }
   }
 }
 @utility scrollbar-thin {
@@ -308,20 +355,36 @@
 
 /* ── 5. Base ── */
 @layer base {
-  * { @apply border-border outline-ring/60; }
-  html { -webkit-tap-highlight-color: transparent; }
+  * {
+    @apply border-border outline-ring/60;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss03";
     text-rendering: optimizeLegibility;
   }
-  h1, h2, h3, h4 { @apply font-display text-balance; }
-  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-  ::selection { background: rgb(20 166 158 / 0.22); }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display text-balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: rgb(20 166 158 / 0.22);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

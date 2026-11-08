@@ -118,18 +118,13 @@ func (h *Handler) Me(c *gin.Context) {
 		response.NotFound(c, "Pengguna tidak ditemukan")
 		return
 	}
-	status, err := h.uc.MFAStatus(c.Request.Context(), user)
+	me, err := h.meResponse(c.Request.Context(), user)
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil status MFA")
 		return
 	}
 
-	response.Success(c, dto.MeUserResponse{
-		UserResponse:        dto.ToUserResponse(user),
-		MfaSetupDiwajibkan:  status.SetupDiwajibkan,
-		MfaWajib:            status.Wajib,
-		KodeCadanganTersisa: status.KodeCadanganTersisa,
-	})
+	response.Success(c, me)
 }
 
 // POST /v1/auth/change-password

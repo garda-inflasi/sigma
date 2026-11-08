@@ -117,7 +117,7 @@ Migrasi `000111_pk_harga_lapangan_master.sql`; kontrak lengkap di [SKEMA-DATABAS
 - **KODE (tetap, kode unik sebagai PK)**: `provinsi(kode varchar(2))`, `kabupaten(kode varchar(4))` (kode BPS), `komoditas(kode)`, `pasar(id varchar)` (mis. `PSR-1171-01`; kolom bernama `id` tetapi isinya kode), dan tabel `kecamatan(kode varchar(7))` yang direncanakan. Kode adalah identitasnya dan dipakai langsung sebagai nilai FK serta di URL; tidak ada surrogate key.
 - **FK ke master semuanya `ON DELETE RESTRICT` dan terindeks**: `kabupaten.provinsi_kode` → `provinsi`, `pasar.kabupaten_kode` → `kabupaten` (`idx_pasar_kabupaten`), `kecamatan.kabupaten_kode` → `kabupaten` (direncanakan), `entri_harga.pasar_id` dan `tugas_lapangan.pasar_id` → `pasar`, `entri_harga.komoditas_kode` dan `batas_harga.komoditas_kode` → `komoditas`, `batas_harga.kabupaten_kode` → `kabupaten` (`idx_batas_harga_kabupaten_kode`).
 - **BIGINT**: `perubahan_master.id` (antrean persetujuan, `kode` = ID lama) dan `batas_harga.id` (`kode` = `BH-<komoditas>`; kunci alami `uq_batas_harga_berlaku` tetap menjaga satu batas per komoditas, kabupaten, dan tanggal berlaku). Detailnya di tugas 04-B dan [06](06-harga-validasi.md).
-- **Seeder** `master.reference` meng-upsert menurut kode (`ON CONFLICT (kode)` untuk provinsi, kabupaten, komoditas; `(id)` untuk pasar, yang memang kodenya) dan tidak pernah menghapus, jadi aman terhadap FK `RESTRICT`.
+- **Seeder** `master.reference` meng-upsert menurut kode (`ON CONFLICT (kode)` untuk provinsi, kabupaten, komoditas, dan pasar sejak 04-D; sebelum 000122 pasar memakai `(id)`, yang saat itu berisi kodenya) dan tidak pernah menghapus, jadi aman terhadap FK `RESTRICT`.
 
 ---
 
@@ -159,4 +159,5 @@ Migrasi `000111_pk_harga_lapangan_master.sql`; kontrak lengkap di [SKEMA-DATABAS
 
 4. **SEEDER & SQL SEEDS**:
    - [x] Seeder `master.reference` dan demo dioptimasi untuk meng-upsert menggunakan `kode` (`ON CONFLICT (kode) DO NOTHING / DO UPDATE`).
+   - [x] Susulan (8 Nov 2026, bersama [20](20-profile.md)): seeder `harga.demo`/`lapangan.demo` memakai `pasar.kode` (kolom anak `pasar_id` berisi kode, bukan id surrogate); join `p.kode = e.pasar_id` tanpa `OR p.id::text`; web memakai kode pasar untuk usulan, pedagang, dan hapus. `cmd/seed reference demo` kembali berhasil dan idempoten; `go test ./...` hijau.
    - [x] Menyediakan berkas SQL statis mandiri `db/seeds/01_master_reference.sql`.

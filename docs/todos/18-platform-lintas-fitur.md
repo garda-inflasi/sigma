@@ -45,6 +45,9 @@ Keputusan arsitektur yang masih terbuka:
 - [x] Manajemen rahasia: `.env` tidak boleh berisi rahasia produksi; pakai secret manager atau berkas rahasia pada server. `.env` lokal ter-ignore dengan benar. Penolakan start pada rahasia bawaan/lemah (API, worker, remote-deploy) selesai; secret manager belum.
 - [ ] Pemindaian dependensi (`govulncheck`, `pnpm audit`) dan SAST di CI.
 - [ ] Kepatuhan UU PDP dan SPBE: inventaris data pribadi (pengguna, petugas, lokasi GPS), dasar pemrosesan, masa simpan, hak subjek data.
+  - `pengguna.telepon` (20-A, migrasi `000123`): telepon/WhatsApp pemilik akun, diubah hanya oleh pemiliknya lewat `PATCH /v1/auth/me`.
+    - **Tampil di:** profil sendiri dan respons pengguna untuk pemegang `pengguna.kelola`. Tidak masuk JWT dan tidak masuk ekspor CSV.
+    - **Tercatat di:** snapshot `audit_log` (`UPDATE_PROFIL` dan audit pengguna lain). Audit itu append-only, jadi nilainya tidak bisa dihapus kemudian; samarkan di `userSnapshot` bila kebijakan PDP menuntutnya.
 - [x] Backup, restore yang pernah diuji, dan rencana pemulihan bencana (RPO/RTO tertulis). Selesai sebagian: `scripts/backup` + [DEPLOYMENT.md §10](../DEPLOYMENT.md) (RPO harian, RTO terukur 1 detik pada data demo). Pemulihan bencana lintas-VM belum.
 - [x] Tinjauan header keamanan, CSP, dan CORS pada konfigurasi produksi. Ditinjau: lihat [DEPLOYMENT.md §12b](../DEPLOYMENT.md); CSP halaman Next.js masih terbuka.
 

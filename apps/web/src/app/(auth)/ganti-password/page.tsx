@@ -1,14 +1,14 @@
-import { ShieldCheck } from "lucide-react";
+import { FormGantiSandi } from "@/components/akun/form-ganti-sandi";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { PASSWORD_CHANGE_PATH } from "@/lib/auth/password-change";
 import { validateRedirectUrl } from "@/lib/bff/safe-redirect";
-import { GantiPasswordForm } from "./ganti-password-form";
 
 export const metadata = { title: "Ganti Kata Sandi" };
 
 /**
  * Ganti kata sandi. Wajib dilalui akun yang kata sandinya ditetapkan pihak lain
- * (admin awal, akun baru, reset oleh administrator); juga dipakai sukarela dari menu akun.
+ * (admin awal, akun baru, reset oleh administrator), yang belum boleh membuka konsol termasuk /profil.
+ * Menu akun memakai tab di /profil; formnya komponen yang sama (components/akun).
  */
 export default async function GantiPasswordPage({
   searchParams,
@@ -32,13 +32,8 @@ export default async function GantiPasswordPage({
           hanya Anda ketahui sebelum melanjutkan.
         </p>
 
-        <GantiPasswordForm redirect={redirect} />
-
-        <div className="mt-5 flex gap-2.5 rounded-xl bg-data-50/70 p-3.5 text-xs leading-relaxed text-data-800 dark:bg-data-500/10 dark:text-data-200">
-          <ShieldCheck className="mt-px size-4 shrink-0" />
-          <p>
-            Setelah kata sandi diganti, sesi di perangkat lain akan diakhiri.
-          </p>
+        <div className="mt-6">
+          <FormGantiSandi mode={{ jenis: "halaman", lanjut: redirect }} />
         </div>
       </div>
     </main>

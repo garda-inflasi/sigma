@@ -20,7 +20,7 @@ type DemoSummary struct {
 	Tugas int
 }
 
-// Petugas adalah akun lapangan beserta pasar utama di kabupatennya.
+// Petugas adalah akun lapangan beserta pasar utama di kabupatennya. PasarID berisi kode pasar (pasar.kode).
 type Petugas struct {
 	ID        string `gorm:"column:id"`
 	PasarID   string `gorm:"column:pasar_id"`
@@ -82,12 +82,13 @@ func loadInput(ctx context.Context, db *gorm.DB) (Input, error) {
 	var in Input
 	tx := db.WithContext(ctx)
 
+	// tugas_lapangan.pasar_id merujuk pasar.kode (FK, 000122); pasar utama dipilih menurut kode, sama dengan seeder harga.
 	err := tx.Raw(`
-		SELECT u.id, COALESCE(p.kode, p.id::text) AS pasar_id, p.nama AS pasar_nama
+		SELECT u.id, p.kode AS pasar_id, p.nama AS pasar_nama
 		  FROM pengguna u
 		  JOIN LATERAL (
-		       SELECT id, kode, nama FROM pasar
-		        WHERE kabupaten_kode = u.kabupaten_kode AND aktif ORDER BY id LIMIT 1
+		       SELECT kode, nama FROM pasar
+		        WHERE kabupaten_kode = u.kabupaten_kode AND aktif ORDER BY kode LIMIT 1
 		  ) p ON true
 		 WHERE u.peran IN ('OPS_KOORDINATOR', 'OPS_AGREGATOR', 'OPS_MAHASISWA') AND u.status = 'AKTIF'
 		 ORDER BY u.id`).Scan(&in.Petugas).Error

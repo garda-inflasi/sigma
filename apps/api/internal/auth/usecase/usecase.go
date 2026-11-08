@@ -812,7 +812,7 @@ func metadataSesiGagal(revokeErr error) map[string]any {
 func userSnapshot(u *domain.Pengguna) map[string]any {
 	return map[string]any{
 		"nama": u.Nama, "email": u.Email, "peran": u.Peran, "lapis": u.Lapis,
-		"lembaga": u.Lembaga, "kabupaten_kode": u.KabupatenKode, "status": u.Status,
+		"lembaga": u.Lembaga, "kabupaten_kode": u.KabupatenKode, "telepon": u.Telepon, "status": u.Status,
 	}
 }
 

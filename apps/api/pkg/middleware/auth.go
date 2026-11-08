@@ -127,14 +127,14 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			c.Set(tokenExpiryKey, claims.ExpiresAt.Time)
 		}
 
-		if claims.PasswordChangeRequired && !passwordChangeExempt[c.FullPath()] {
+		if claims.PasswordChangeRequired && !terbukaBagiSesiTerbatas(c, passwordChangeExempt) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"code":    PasswordChangeRequiredCode,
 				"message": "Anda harus mengganti kata sandi sebelum melanjutkan",
 			})
 			return
 		}
-		if claims.MFASetupRequired && !mfaSetupExempt[c.FullPath()] {
+		if claims.MFASetupRequired && !terbukaBagiSesiTerbatas(c, mfaSetupExempt) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"code":    MFASetupRequiredCode,
 				"message": "Anda harus mengaktifkan autentikasi dua langkah (MFA) sebelum melanjutkan",
@@ -157,7 +157,7 @@ const PermissionsChangedMessage = "Izin akun berubah, sesi perlu disegarkan"
 const PasswordChangeRequiredCode = "PASSWORD_CHANGE_REQUIRED"
 
 // passwordChangeExempt adalah satu-satunya rute yang terbuka bagi akun yang wajib
-// mengganti kata sandi: mengganti, keluar, dan membaca profil sendiri.
+// mengganti kata sandi: mengganti, keluar, dan membaca (bukan mengubah) profil sendiri.
 var passwordChangeExempt = map[string]bool{
 	"/v1/auth/change-password": true,
 	"/v1/auth/logout":          true,
@@ -168,13 +168,28 @@ var passwordChangeExempt = map[string]bool{
 const MFASetupRequiredCode = "MFA_SETUP_REQUIRED"
 
 // mfaSetupExempt adalah satu-satunya rute yang terbuka bagi akun yang wajib setup MFA: memulai dan
-// memverifikasi setup, mengganti kata sandi (bila juga diwajibkan), keluar, dan membaca profil sendiri.
+// memverifikasi setup, mengganti kata sandi (bila juga diwajibkan), keluar, dan membaca (bukan mengubah) profil sendiri.
 var mfaSetupExempt = map[string]bool{
 	"/v1/auth/mfa/setup":       true,
 	"/v1/auth/mfa/verify":      true,
 	"/v1/auth/change-password": true,
 	"/v1/auth/logout":          true,
 	"/v1/auth/me":              true,
+}
+
+// profilSendiriPath adalah profil pemilik akun. Sesi terbatas (wajib ganti kata sandi atau setup MFA) hanya boleh
+// MEMBACA-nya (GET) untuk mengetahui keadaan akun; mengubahnya (PATCH, 20-A) menunggu sampai kewajiban itu selesai,
+// karena sesi terbatas hanya boleh menuntaskan kewajibannya, bukan mengubah data akun.
+const profilSendiriPath = "/v1/auth/me"
+
+// terbukaBagiSesiTerbatas melaporkan apakah request ini boleh lewat dengan token yang masih terbatas: rute harus ada
+// di daftar terbuka, dan untuk profil sendiri hanya metode GET.
+func terbukaBagiSesiTerbatas(c *gin.Context, terbuka map[string]bool) bool {
+	jalur := c.FullPath()
+	if !terbuka[jalur] {
+		return false
+	}
+	return jalur != profilSendiriPath || c.Request.Method == http.MethodGet
 }
 
 // bearerToken extracts the token from an `Authorization: Bearer <token>` header.

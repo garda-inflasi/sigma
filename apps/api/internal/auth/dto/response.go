@@ -55,6 +55,7 @@ type UserResponse struct {
 	Lapis         string     `json:"lapis"`
 	Lembaga       string     `json:"lembaga"`
 	KabupatenKode *string    `json:"kabupaten_kode,omitempty"`
+	Telepon       *string    `json:"telepon,omitempty"` // E.164 Indonesia (+6281234567890); tidak ada bila belum diisi
 	MfaAktif      bool       `json:"mfa_aktif"`
 	Status        string     `json:"status"`
 	TerakhirMasuk *time.Time `json:"terakhir_masuk,omitempty"`
@@ -117,6 +118,7 @@ func ToUserResponse(u *domain.Pengguna) UserResponse {
 		Lapis:         u.Lapis,
 		Lembaga:       u.Lembaga,
 		KabupatenKode: u.KabupatenKode,
+		Telepon:       u.Telepon,
 		MfaAktif:      u.MfaAktif,
 		Status:        u.Status,
 		TerakhirMasuk: u.TerakhirMasuk,

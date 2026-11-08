@@ -340,6 +340,33 @@ describe("UsulanDialog pasar", () => {
     });
   });
 
+  it("ubah: entitas_id memakai kode pasar, bukan id surrogate angka (04-D)", async () => {
+    pasangApi();
+    const { user } = tampilkan({
+      entitas: "pasar",
+      awal: { ...pasar, id: "7", kode: "PSR-1171-01" },
+    });
+    await screen.findByRole("dialog");
+    await waitFor(() =>
+      assert.match(
+        screen.getByRole("combobox", { name: "Kecamatan" }).textContent ?? "",
+        /Kuta Alam/,
+      ),
+    );
+    await user.click(screen.getByRole("combobox", { name: "Kecamatan" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Tanpa kecamatan" }),
+    );
+    await user.type(screen.getByLabelText("Alasan pengajuan"), "Uji kode");
+    await kirim(user);
+
+    await waitFor(() => assert.equal(kirimanPost().length, 1));
+    assert.equal(
+      (kirimanPost()[0].body as { entitas_id: string }).entitas_id,
+      "PSR-1171-01",
+    );
+  });
+
   it("ubah: lintang di luar rentang ditolak di klien", async () => {
     pasangApi();
     const { user } = tampilkan({ entitas: "pasar", awal: pasar });

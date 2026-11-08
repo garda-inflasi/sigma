@@ -5,7 +5,7 @@
 
 ## Yang sudah ada
 
-- **UI:** [ganti-password](<../../apps/web/src/app/(auth)/ganti-password/ganti-password-form.tsx>) (wajib saat `wajib_ganti_password`), [masuk](<../../apps/web/src/app/(auth)/masuk/masuk-form.tsx>) (email + kata sandi, ditambah "Masuk dengan Google" bila SSO dikonfigurasi: lihat 01-G), [lupa-password](<../../apps/web/src/app/(auth)/lupa-password/lupa-password-form.tsx>), halaman [akses-ditolak](../../apps/web/src/app/akses-ditolak/page.tsx).
+- **UI:** [ganti-password](<../../apps/web/src/app/(auth)/ganti-password/page.tsx>) (wajib saat `wajib_ganti_password`; form bersama [form-ganti-sandi.tsx](../../apps/web/src/components/akun/form-ganti-sandi.tsx), juga dipakai tab `/profil`, lihat [20](20-profile.md)), [masuk](<../../apps/web/src/app/(auth)/masuk/masuk-form.tsx>) (email + kata sandi, ditambah "Masuk dengan Google" bila SSO dikonfigurasi: lihat 01-G), [lupa-password](<../../apps/web/src/app/(auth)/lupa-password/lupa-password-form.tsx>), halaman [akses-ditolak](../../apps/web/src/app/akses-ditolak/page.tsx).
 - **BFF Next.js** (`app/api/auth/*`): login, logout, refresh, me, change-password, forgot-password, reset-password. Cookie `garda_access`/`garda_refresh`, CSRF, rate limit, redirect aman di `lib/bff/*`.
 - **Middleware edge** ([middleware.ts](../../apps/web/src/middleware.ts)): proteksi rute, refresh token otomatis, header keamanan, RBAC tingkat rute.
 - **API Go:** `POST /v1/auth/{login,refresh,forgot-password,reset-password,logout,change-password}`, `GET /v1/auth/me`, MFA `/v1/auth/mfa/{setup,verify,validate,disable}`.

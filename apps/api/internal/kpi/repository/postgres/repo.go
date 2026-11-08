@@ -159,7 +159,7 @@ var penghitung = map[string]string{
 			SELECT (e.dicatat_pada AT TIME ZONE 'Asia/Jakarta')::date AS tgl,
 			       COUNT(DISTINCT (e.pasar_id, e.komoditas_kode)) AS n
 			  FROM entri_harga e
-			  JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id) AND p.aktif
+			  JOIN pasar p ON p.kode = e.pasar_id AND p.aktif
 			  JOIN komoditas k ON k.kode = e.komoditas_kode AND k.pilot
 			 WHERE e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
 			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
@@ -236,7 +236,7 @@ var penghitung = map[string]string{
 	domain.QMapeHarga: `
 		WITH aktual AS (
 			SELECT (e.dicatat_pada AT TIME ZONE 'Asia/Jakarta')::date AS tgl, p.kabupaten_kode, e.komoditas_kode, AVG(e.harga) AS harga
-			  FROM entri_harga e JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
+			  FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
 			 WHERE e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
 			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
 			 GROUP BY 1, 2, 3
@@ -253,7 +253,7 @@ var penghitung = map[string]string{
 	domain.QVolatilitasHarga: `
 		SELECT AVG(100.0 * sd / NULLIF(rata, 0)) AS nilai FROM (
 			SELECT STDDEV_SAMP(e.harga) AS sd, AVG(e.harga) AS rata
-			  FROM entri_harga e JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
+			  FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
 			 WHERE e.tipe = 'PRODUSEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
 			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
 			 GROUP BY e.komoditas_kode, p.kabupaten_kode
@@ -264,7 +264,7 @@ var penghitung = map[string]string{
 	domain.QMarginHarga: `
 		WITH rata AS (
 			SELECT e.komoditas_kode, p.kabupaten_kode, e.tipe, AVG(e.harga) AS harga
-			  FROM entri_harga e JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
+			  FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
 			 WHERE e.tipe IN ('PRODUSEN', 'KONSUMEN') AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
 			   AND e.dicatat_pada >= @mulai AND e.dicatat_pada < @akhir
 			 GROUP BY 1, 2, 3

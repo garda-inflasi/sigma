@@ -33,41 +33,43 @@ type akunDemo struct {
 	KabupatenKode                          string // kode BPS; kosong = tanpa wilayah
 	Status                                 string
 	MFA                                    bool
+	// Telepon fiktif E.164 dalam rentang +62 812-0000-xxxx (xxxx = urutan akun di daftar, mulai 0001).
+	Telepon string
 }
 
 // Kode kabupaten mengikuti master.reference (BPS): 1171 Banda Aceh, 1108 Aceh Besar,
 // 1107 Aceh Barat, 1109 Pidie, 1106 Aceh Tengah, 1105 Aceh Timur, 1104 Aceh Tenggara,
 // 1103 Aceh Selatan, 1174 Lhokseumawe, 1173 Langsa.
 var akunDemoSeeds = []akunDemo{
-	{ID: "superadmin", Nama: "Super Admin", Email: "superadmin@gardainflasi.id", Peran: "ADMIN_SISTEM", Lapis: "SISTEM", Lembaga: "BPPSDMP"},
+	{ID: "superadmin", Nama: "Super Admin", Email: "superadmin@gardainflasi.id", Peran: "ADMIN_SISTEM", Lapis: "SISTEM", Lembaga: "BPPSDMP", Telepon: "+6281200000001"},
 
-	{ID: "strategis_fmipa", Nama: "Prof. Dr.rer.nat. Ilham Maulana, S.Si.", Email: "strategis.fmipa@gardainflasi.id", Peran: "STRATEGIS_FMIPA", Lapis: "STRATEGIS", Lembaga: "FMIPA USK"},
-	{ID: "strategis_bi", Nama: "Dr. Muhammad Rizal", Email: "strategis.bi@gardainflasi.id", Peran: "STRATEGIS_BI", Lapis: "STRATEGIS", Lembaga: "Bank Indonesia"},
-	{ID: "strategis_bps", Nama: "Ir. Cut Putri, M.Ec.Dev", Email: "strategis.bps@gardainflasi.id", Peran: "STRATEGIS_BPS", Lapis: "STRATEGIS", Lembaga: "BPS Aceh"},
-	{ID: "strategis_djpb", Nama: "Drs. Syahrul, M.M.", Email: "strategis.djpb@gardainflasi.id", Peran: "STRATEGIS_DJPB", Lapis: "STRATEGIS", Lembaga: "DJPb Aceh"},
+	{ID: "strategis_fmipa", Nama: "Prof. Dr.rer.nat. Ilham Maulana, S.Si.", Email: "strategis.fmipa@gardainflasi.id", Peran: "STRATEGIS_FMIPA", Lapis: "STRATEGIS", Lembaga: "FMIPA USK", Telepon: "+6281200000002"},
+	{ID: "strategis_bi", Nama: "Dr. Muhammad Rizal", Email: "strategis.bi@gardainflasi.id", Peran: "STRATEGIS_BI", Lapis: "STRATEGIS", Lembaga: "Bank Indonesia", Telepon: "+6281200000003"},
+	{ID: "strategis_bps", Nama: "Ir. Cut Putri, M.Ec.Dev", Email: "strategis.bps@gardainflasi.id", Peran: "STRATEGIS_BPS", Lapis: "STRATEGIS", Lembaga: "BPS Aceh", Telepon: "+6281200000004"},
+	{ID: "strategis_djpb", Nama: "Drs. Syahrul, M.M.", Email: "strategis.djpb@gardainflasi.id", Peran: "STRATEGIS_DJPB", Lapis: "STRATEGIS", Lembaga: "DJPb Aceh", Telepon: "+6281200000005"},
 
-	{ID: "manajer_program", Nama: "Rina Safitri, S.T., M.T.", Email: "manajer.program@gardainflasi.id", Peran: "MANAJER_PROGRAM", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP"},
-	{ID: "manajer_data", Nama: "Bambang Wijaya, S.Kom., M.Cs.", Email: "manajer.data@gardainflasi.id", Peran: "MANAJER_DATA", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP"},
-	{ID: "manajer_kebijakan", Nama: "Dr. Nurul Aini, S.E., M.E.", Email: "manajer.kebijakan@gardainflasi.id", Peran: "MANAJER_KEBIJAKAN", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP"},
-	{ID: "manajer_pembiayaan", Nama: "Fauzan, S.E., M.Si.", Email: "manajer.pembiayaan@gardainflasi.id", Peran: "MANAJER_PEMBIAYAAN", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP"},
-	{ID: "manajer_risiko", Nama: "Dian Permata, S.Si., M.M.", Email: "manajer.risiko@gardainflasi.id", Peran: "MANAJER_RISIKO", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP"},
-	{ID: "manajer_mutu", Nama: "Hendra Gunawan, S.T., M.T.", Email: "manajer.mutu@gardainflasi.id", Peran: "MANAJER_MUTU", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP"},
+	{ID: "manajer_program", Nama: "Rina Safitri, S.T., M.T.", Email: "manajer.program@gardainflasi.id", Peran: "MANAJER_PROGRAM", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP", Telepon: "+6281200000006"},
+	{ID: "manajer_data", Nama: "Bambang Wijaya, S.Kom., M.Cs.", Email: "manajer.data@gardainflasi.id", Peran: "MANAJER_DATA", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP", Telepon: "+6281200000007"},
+	{ID: "manajer_kebijakan", Nama: "Dr. Nurul Aini, S.E., M.E.", Email: "manajer.kebijakan@gardainflasi.id", Peran: "MANAJER_KEBIJAKAN", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP", Telepon: "+6281200000008"},
+	{ID: "manajer_pembiayaan", Nama: "Fauzan, S.E., M.Si.", Email: "manajer.pembiayaan@gardainflasi.id", Peran: "MANAJER_PEMBIAYAAN", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP", Telepon: "+6281200000009"},
+	{ID: "manajer_risiko", Nama: "Dian Permata, S.Si., M.M.", Email: "manajer.risiko@gardainflasi.id", Peran: "MANAJER_RISIKO", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP", Telepon: "+6281200000010"},
+	{ID: "manajer_mutu", Nama: "Hendra Gunawan, S.T., M.T.", Email: "manajer.mutu@gardainflasi.id", Peran: "MANAJER_MUTU", Lapis: "MANAJERIAL", Lembaga: "BPPSDMP", Telepon: "+6281200000011"},
 
-	{ID: "koordinator_lapangan", Nama: "Zulkifli, S.P.", Email: "koordinator.lapangan@gardainflasi.id", Peran: "OPS_KOORDINATOR", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP", KabupatenKode: "1171"},
-	{ID: "agregator_data", Nama: "Maya Sari, S.Stat.", Email: "agregator.data@gardainflasi.id", Peran: "OPS_AGREGATOR", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP", KabupatenKode: "1171"},
-	{ID: "mahasiswa_1", Nama: "Aulia Rahman", Email: "mahasiswa.1@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1171"},
-	{ID: "mahasiswa_2", Nama: "Cut Nanda", Email: "mahasiswa.2@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1108"},
-	{ID: "mahasiswa_3", Nama: "Teuku Irfan", Email: "mahasiswa.3@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1107"},
-	{ID: "mahasiswa_4", Nama: "Siti Rahmah", Email: "mahasiswa.4@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1109"},
-	{ID: "mahasiswa_5", Nama: "Muhammad Rizki", Email: "mahasiswa.5@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1106"},
-	{ID: "mahasiswa_6", Nama: "Nurul Fajri", Email: "mahasiswa.6@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1105"},
-	{ID: "mahasiswa_7", Nama: "Rahmat Hidayat", Email: "mahasiswa.7@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1104"},
-	{ID: "mahasiswa_8", Nama: "Dewi Sartika", Email: "mahasiswa.8@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1103"},
-	{ID: "mahasiswa_9", Nama: "Rizky Pratama", Email: "mahasiswa.9@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1174"},
-	{ID: "mahasiswa_10", Nama: "Fitriani", Email: "mahasiswa.10@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1173"},
+	{ID: "koordinator_lapangan", Nama: "Zulkifli, S.P.", Email: "koordinator.lapangan@gardainflasi.id", Peran: "OPS_KOORDINATOR", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP", KabupatenKode: "1171", Telepon: "+6281200000012"},
+	{ID: "agregator_data", Nama: "Maya Sari, S.Stat.", Email: "agregator.data@gardainflasi.id", Peran: "OPS_AGREGATOR", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP", KabupatenKode: "1171", Telepon: "+6281200000013"},
+	{ID: "mahasiswa_1", Nama: "Aulia Rahman", Email: "mahasiswa.1@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1171", Telepon: "+6281200000014"},
+	{ID: "mahasiswa_2", Nama: "Cut Nanda", Email: "mahasiswa.2@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1108", Telepon: "+6281200000015"},
+	{ID: "mahasiswa_3", Nama: "Teuku Irfan", Email: "mahasiswa.3@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1107", Telepon: "+6281200000016"},
+	{ID: "mahasiswa_4", Nama: "Siti Rahmah", Email: "mahasiswa.4@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1109", Telepon: "+6281200000017"},
+	{ID: "mahasiswa_5", Nama: "Muhammad Rizki", Email: "mahasiswa.5@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1106", Telepon: "+6281200000018"},
+	{ID: "mahasiswa_6", Nama: "Nurul Fajri", Email: "mahasiswa.6@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1105", Telepon: "+6281200000019"},
+	{ID: "mahasiswa_7", Nama: "Rahmat Hidayat", Email: "mahasiswa.7@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1104", Telepon: "+6281200000020"},
+	{ID: "mahasiswa_8", Nama: "Dewi Sartika", Email: "mahasiswa.8@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1103", Telepon: "+6281200000021"},
+	{ID: "mahasiswa_9", Nama: "Rizky Pratama", Email: "mahasiswa.9@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1174", Telepon: "+6281200000022"},
+	{ID: "mahasiswa_10", Nama: "Fitriani", Email: "mahasiswa.10@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", KabupatenKode: "1173", Telepon: "+6281200000023"},
 
-	{ID: "user_nonaktif", Nama: "User Nonaktif", Email: "nonaktif@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", Status: "NONAKTIF"},
-	{ID: "user_mfa", Nama: "User MFA", Email: "mfa@gardainflasi.id", Peran: "OPS_KOORDINATOR", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP", MFA: true},
+	{ID: "user_nonaktif", Nama: "User Nonaktif", Email: "nonaktif@gardainflasi.id", Peran: "OPS_MAHASISWA", Lapis: "OPERASIONAL", Lembaga: "FMIPA USK", Status: "NONAKTIF", Telepon: "+6281200000024"},
+	{ID: "user_mfa", Nama: "User MFA", Email: "mfa@gardainflasi.id", Peran: "OPS_KOORDINATOR", Lapis: "OPERASIONAL", Lembaga: "BPPSDMP", MFA: true, Telepon: "+6281200000025"},
 }
 
 // Rahasia MFA akun demo user_mfa; hanya untuk pengembangan dan sengaja dikenal publik (tersimpan
@@ -109,7 +111,7 @@ func SeedDemo(ctx context.Context, db *gorm.DB) (DemoSummary, error) {
 			Columns: []clause.Column{{Name: "email"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"nama", "email", "password_hash", "peran", "lapis", "lembaga", "kabupaten_kode", "status",
-				"mfa_aktif", "mfa_secret", "mfa_langkah_terakhir", "wajib_ganti_password",
+				"mfa_aktif", "mfa_secret", "mfa_langkah_terakhir", "wajib_ganti_password", "telepon",
 			}),
 		}).Create(&akun).Error
 		if err != nil {
@@ -152,6 +154,10 @@ func BuildDemoAkun() []domain.Pengguna {
 		if a.KabupatenKode != "" {
 			kode := a.KabupatenKode
 			p.KabupatenKode = &kode
+		}
+		if a.Telepon != "" {
+			telepon := a.Telepon
+			p.Telepon = &telepon
 		}
 		p.MfaAktif = a.MFA
 		out[i] = p

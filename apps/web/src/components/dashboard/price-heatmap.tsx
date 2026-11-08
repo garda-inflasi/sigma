@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 const LEGENDA = [-10, -5, 0, 5, 9, 14].map((v) => heatTone(v));
 
 /** Heatmap Δ% harga konsumen (komoditas × wilayah) vs rata-rata 7 hari. */
-export function PriceHeatmap() {
+export function PriceHeatmap({ className }: { className?: string } = {}) {
   const { data, isLoading } = useHeatmap();
   const router = useRouter();
   const [mode, setMode] = useState<"semua" | "pilot">("semua");
@@ -29,7 +29,7 @@ export function PriceHeatmap() {
   const kab = data?.kabupaten ?? [];
 
   return (
-    <section className="glass rounded-xl p-5 sm:p-6">
+    <section className={cn("glass flex flex-col rounded-xl p-5 sm:p-6", className)}>
       <PanelTitle
         title="Peta panas harga"
         description="Perubahan harga konsumen terhadap rata-rata 7 hari"
@@ -38,8 +38,8 @@ export function PriceHeatmap() {
       <p className="mt-4 min-h-5 text-sm" aria-live="polite">
         {hover ? (
           <>
-            <span className="font-medium">{komoditasByKode[hover.komoditasKode].nama}</span> di {kabupatenByKode[hover.kabupatenKode].nama}:{" "}
-            <span className="num">{formatRupiah(hover.harga)}</span>/{komoditasByKode[hover.komoditasKode].satuan},{" "}
+            <span className="font-medium">{komoditasByKode[hover.komoditasKode]?.nama ?? hover.komoditasKode}</span> di {kabupatenByKode[hover.kabupatenKode]?.nama ?? hover.kabupatenKode}:{" "}
+            <span className="num">{formatRupiah(hover.harga)}</span>/{komoditasByKode[hover.komoditasKode]?.satuan ?? "kg"},{" "}
             <span className="num font-semibold" style={{ color: heatTone(hover.delta).ink }}>{formatPersen(hover.delta, { signed: true })}</span>
             {hover.sumber === "EKSTERNAL" && <span className="text-muted-foreground"> (harga eksternal, belum ada data lapangan)</span>}
           </>

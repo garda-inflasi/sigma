@@ -23,7 +23,7 @@ const viewColumns = `t.id, t.kode, t.judul, t.pasar_id, p.nama AS pasar_nama, t.
 
 func (r *Repository) tugasView(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx).Table("tugas_lapangan AS t").
-		Joins("JOIN pasar p ON p.id = t.pasar_id").
+		Joins("JOIN pasar p ON (p.kode = t.pasar_id OR p.id::text = t.pasar_id)").
 		Select(viewColumns)
 }
 
@@ -134,14 +134,14 @@ func (r *Repository) Acuan(ctx context.Context, sejak time.Time, minSampel int) 
 	if err := tx.Raw(`SELECT kode, nama, satuan, harga_acuan FROM komoditas WHERE status = 'AKTIF' ORDER BY kode`).Scan(&data.Komoditas).Error; err != nil {
 		return data, fmt.Errorf("baca komoditas acuan: %w", err)
 	}
-	if err := tx.Raw(`SELECT id, nama, kabupaten_kode, lat, lng, radius_meter FROM pasar WHERE aktif ORDER BY id`).Scan(&data.Pasar).Error; err != nil {
+	if err := tx.Raw(`SELECT COALESCE(kode, id::text) AS id, nama, kabupaten_kode, lat, lng, radius_meter FROM pasar WHERE aktif ORDER BY id`).Scan(&data.Pasar).Error; err != nil {
 		return data, fmt.Errorf("baca pasar acuan: %w", err)
 	}
 	err := tx.Raw(`
 		SELECT e.komoditas_kode, p.kabupaten_kode, e.tipe::text AS tipe,
 		       percentile_cont(0.5) WITHIN GROUP (ORDER BY e.harga) AS median, COUNT(*) AS sampel
 		  FROM entri_harga e
-		  JOIN pasar p ON p.id = e.pasar_id
+		  JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
 		 WHERE e.status IN ('DIVALIDASI', 'DIPUBLIKASI') AND e.dicatat_pada >= ?
 		 GROUP BY e.komoditas_kode, p.kabupaten_kode, e.tipe
 		HAVING COUNT(*) >= ?

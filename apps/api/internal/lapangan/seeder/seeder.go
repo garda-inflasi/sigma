@@ -83,10 +83,10 @@ func loadInput(ctx context.Context, db *gorm.DB) (Input, error) {
 	tx := db.WithContext(ctx)
 
 	err := tx.Raw(`
-		SELECT u.id, p.id AS pasar_id, p.nama AS pasar_nama
+		SELECT u.id, COALESCE(p.kode, p.id::text) AS pasar_id, p.nama AS pasar_nama
 		  FROM pengguna u
 		  JOIN LATERAL (
-		       SELECT id, nama FROM pasar
+		       SELECT id, kode, nama FROM pasar
 		        WHERE kabupaten_kode = u.kabupaten_kode AND aktif ORDER BY id LIMIT 1
 		  ) p ON true
 		 WHERE u.peran IN ('OPS_KOORDINATOR', 'OPS_AGREGATOR', 'OPS_MAHASISWA') AND u.status = 'AKTIF'

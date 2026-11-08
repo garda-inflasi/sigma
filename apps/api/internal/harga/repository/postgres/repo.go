@@ -36,7 +36,7 @@ const viewColumns = `
 func (r *Repository) entriView(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx).Table("entri_harga AS e").
 		Joins("JOIN komoditas k ON k.kode = e.komoditas_kode").
-		Joins("JOIN pasar p ON p.id = e.pasar_id").
+		Joins("JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)").
 		Joins("JOIN kabupaten kb ON kb.kode = p.kabupaten_kode").
 		Joins("LEFT JOIN pengguna u ON u.id = e.petugas_id")
 }
@@ -146,7 +146,7 @@ func (r *Repository) Tren(ctx context.Context, komoditasKode, kabupatenKode stri
 			AVG(e.harga) FILTER (WHERE e.tipe = 'PRODUSEN') AS produsen,
 			AVG(e.harga) FILTER (WHERE e.tipe = 'KONSUMEN') AS konsumen
 		FROM entri_harga e
-		JOIN pasar p ON p.id = e.pasar_id
+		JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
 		WHERE e.komoditas_kode = ?
 		  AND p.kabupaten_kode = ?
 		  AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
@@ -175,7 +175,7 @@ func (r *Repository) SatuanKomoditas(ctx context.Context, komoditasKode, pasarID
 	if err := r.db.WithContext(ctx).Raw(`
 		SELECT k.satuan FROM komoditas k
 		 WHERE k.kode = ? AND k.status = 'AKTIF'
-		   AND EXISTS (SELECT 1 FROM pasar p WHERE p.id = ? AND p.aktif)`, komoditasKode, pasarID).Scan(&satuan).Error; err != nil {
+		   AND EXISTS (SELECT 1 FROM pasar p WHERE (p.kode = ? OR p.id::text = ?) AND p.aktif)`, komoditasKode, pasarID, pasarID).Scan(&satuan).Error; err != nil {
 		return "", fmt.Errorf("cari komoditas dan pasar: %w", err)
 	}
 	if len(satuan) == 0 {
@@ -531,7 +531,7 @@ func (r *Repository) KonteksValidasi(ctx context.Context, entri *domain.EntriHar
 	err := tx.Raw(`
 		SELECT p.lat, p.lng, p.radius_meter, p.kabupaten_kode, k.harga_acuan
 		  FROM pasar p, komoditas k
-		 WHERE p.id = ? AND k.kode = ?`, entri.PasarID, entri.KomoditasKode).Scan(&pasar).Error
+		 WHERE (p.kode = ? OR p.id::text = ?) AND k.kode = ?`, entri.PasarID, entri.PasarID, entri.KomoditasKode).Scan(&pasar).Error
 	if err != nil {
 		return k, fmt.Errorf("baca pasar dan komoditas: %w", err)
 	}
@@ -559,7 +559,7 @@ func (r *Repository) KonteksValidasi(ctx context.Context, entri *domain.EntriHar
 	err = tx.Raw(`
 		SELECT e.harga
 		  FROM entri_harga e
-		  JOIN pasar p ON p.id = e.pasar_id
+		  JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
 		 WHERE e.komoditas_kode = @komoditas AND e.tipe = @tipe AND p.kabupaten_kode = @kabupaten
 		   AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
 		   AND e.dicatat_pada BETWEEN @dari AND @sampai

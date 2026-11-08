@@ -44,7 +44,7 @@ func (u ukuranRow) pengukuran() domain.Pengukuran {
 const lonjakanSQL = `
 WITH kini AS (
 	SELECT e.komoditas_kode, p.kabupaten_kode, AVG(e.harga) AS rata
-	  FROM entri_harga e JOIN pasar p ON p.id = e.pasar_id
+	  FROM entri_harga e JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
 	 WHERE e.status IN ('DIVALIDASI', 'DIPUBLIKASI') AND e.tipe = 'KONSUMEN'
 	   AND e.dicatat_pada > @kini_dari AND e.dicatat_pada <= @sampai
 	   AND (CAST(@komoditas AS text) IS NULL OR e.komoditas_kode = CAST(@komoditas AS text))
@@ -52,7 +52,7 @@ WITH kini AS (
 	 GROUP BY e.komoditas_kode, p.kabupaten_kode
 ), dasar AS (
 	SELECT e.komoditas_kode, p.kabupaten_kode, AVG(e.harga) AS rata
-	  FROM entri_harga e JOIN pasar p ON p.id = e.pasar_id
+	  FROM entri_harga e JOIN pasar p ON (p.kode = e.pasar_id OR p.id::text = e.pasar_id)
 	 WHERE e.status IN ('DIVALIDASI', 'DIPUBLIKASI') AND e.tipe = 'KONSUMEN'
 	   AND e.dicatat_pada > @dasar_dari AND e.dicatat_pada <= @kini_dari
 	   AND (CAST(@komoditas AS text) IS NULL OR e.komoditas_kode = CAST(@komoditas AS text))

@@ -97,3 +97,27 @@ func TestBuildDemoAkun(t *testing.T) {
 	assert.Contains(t, slugs, "user_nonaktif")
 	assert.Contains(t, slugs, "user_mfa")
 }
+
+func TestResolveSeedFiles(t *testing.T) {
+	dir, err := LocateSeedsDir()
+	require.NoError(t, err)
+
+	paths, err := resolveSeedFiles(dir, []string{"demo/14_eksekutif_data.sql", "reference/01_master.sql"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		filepath.Join(dir, "demo", "14_eksekutif_data.sql"),
+		filepath.Join(dir, "reference", "01_master.sql"),
+	}, paths, "urutan mengikuti argumen")
+
+	for _, buruk := range [][]string{
+		nil,
+		{"demo/tidak_ada.sql"},
+		{"../db/seeds/demo/01_auth_users.sql"},
+		{"/etc/passwd.sql"},
+		{"demo"},
+		{"demo/01_auth_users.sql", "README.md"},
+	} {
+		_, err := resolveSeedFiles(dir, buruk)
+		assert.Error(t, err, "%v", buruk)
+	}
+}

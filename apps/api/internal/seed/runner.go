@@ -75,8 +75,8 @@ type AdminSummary struct {
 
 var rawDemoSeeds = []struct {
 	slug, nama, email, peran, lapis, lembaga, kabupatenKode, status string
-	mfa                                                            bool
-	telepon                                                        string
+	mfa                                                             bool
+	telepon                                                         string
 }{
 	{slug: "superadmin", nama: "Super Admin", email: "superadmin@gardainflasi.id", peran: "ADMIN_SISTEM", lapis: "SISTEM", lembaga: "BPPSDMP", telepon: "+6281200000001"},
 	{slug: "strategis_fmipa", nama: "Prof. Dr.rer.nat. Ilham Maulana, S.Si.", email: "strategis.fmipa@gardainflasi.id", peran: "STRATEGIS_FMIPA", lapis: "STRATEGIS", lembaga: "FMIPA USK", telepon: "+6281200000002"},
@@ -263,6 +263,52 @@ func SeedDemo(ctx context.Context, db *gorm.DB) error {
 		return err
 	}
 	return ExecuteTier(ctx, db, "demo", seedsDir, nil)
+}
+
+// SeedFiles mengeksekusi berkas seed tertentu, berurutan sesuai argumen. Setiap nama relatif terhadap folder seeds
+// dan memuat tiernya, mis. SeedFiles(ctx, db, "demo/01_auth_users.sql", "demo/14_eksekutif_data.sql").
+//
+// Dipakai tes integrasi yang hanya membutuhkan data satu atau beberapa modul: SeedDemo menjalankan seluruh tier
+// sehingga tes melihat data demo semua modul. Nama yang keluar dari folder seeds, bukan .sql, atau tidak ada adalah
+// galat; tidak ada berkas yang dijalankan sebelum semua nama tervalidasi.
+func SeedFiles(ctx context.Context, db *gorm.DB, files ...string) error {
+	seedsDir, err := LocateSeedsDir()
+	if err != nil {
+		return err
+	}
+	paths, err := resolveSeedFiles(seedsDir, files)
+	if err != nil {
+		return err
+	}
+	for _, p := range paths {
+		if err := ExecuteSQLFile(ctx, db, p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveSeedFiles memvalidasi nama berkas SeedFiles dan mengubahnya menjadi path absolut di bawah seedsDir.
+func resolveSeedFiles(seedsDir string, files []string) ([]string, error) {
+	if len(files) == 0 {
+		return nil, errors.New("SeedFiles: tidak ada berkas")
+	}
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		rel := filepath.Clean(filepath.FromSlash(f))
+		if filepath.IsAbs(rel) || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+			return nil, fmt.Errorf("SeedFiles: %q harus relatif terhadap folder seeds", f)
+		}
+		if filepath.Ext(rel) != ".sql" {
+			return nil, fmt.Errorf("SeedFiles: %q bukan berkas .sql", f)
+		}
+		p := filepath.Join(seedsDir, rel)
+		if stat, err := os.Stat(p); err != nil || stat.IsDir() {
+			return nil, fmt.Errorf("SeedFiles: berkas %q tidak ditemukan di %s", f, seedsDir)
+		}
+		paths = append(paths, p)
+	}
+	return paths, nil
 }
 
 // SeedAll menjalankan seluruh seeder (reference, admin, demo).

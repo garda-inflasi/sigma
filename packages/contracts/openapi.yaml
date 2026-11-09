@@ -8133,6 +8133,11 @@ components:
           description: |
             Telepon/WhatsApp pemilik akun dalam E.164 Indonesia (`+62` diikuti 8 sampai 13 digit). Tidak ada bila
             belum diisi. Diubah pemilik lewat `PATCH /v1/auth/me`.
+
+            Utuh hanya untuk pemilik akun (login, MFA, SSO, `GET` dan `PATCH /v1/auth/me`). Pada respons untuk pihak
+            lain (daftar, detail, ubah, ganti peran, dan undangan oleh admin) nomor disamarkan (UU PDP): tiga karakter
+            pertama dan tiga terakhir dipertahankan, sisanya `*`, mis. `+62********890`. Admin hanya dapat mengganti
+            atau menghapusnya lewat `PATCH /v1/users/{id}`, tidak pernah membacanya utuh.
           example: "+6281234567890"
         mfa_aktif:
           type: boolean
@@ -8240,6 +8245,14 @@ components:
         kabupaten_kode:
           type: string
           example: "1171"
+        telepon:
+          type: string
+          description: |
+            Tulis-saja: admin mengganti atau menghapus nomor, tidak pernah membaca nomor lama utuh. Tidak dikirim atau
+            `null` tidak mengubah; `""` menghapus nomor (disimpan NULL); selain itu dinormalkan ke E.164 Indonesia
+            (galat 400 `Nomor telepon tidak valid` bila tidak dapat dinormalkan). Nomor yang sama dengan yang
+            tersimpan tidak ditulis. Perubahan dicatat di audit dengan nomor tersamar dan penanda `telepon_diubah`.
+          example: "0812-3456-7890"
         status:
           type: string
           enum: [AKTIF, NONAKTIF, MENUNGGU]

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
+	"github.com/garda-inflasi/api/pkg/pii"
 )
 
 // ── Auth Responses ────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ type UserResponse struct {
 	Lapis         string     `json:"lapis"`
 	Lembaga       string     `json:"lembaga"`
 	KabupatenKode *string    `json:"kabupaten_kode,omitempty"`
-	Telepon       *string    `json:"telepon,omitempty"` // E.164 Indonesia (+6281234567890); tidak ada bila belum diisi
+	Telepon       *string    `json:"telepon,omitempty"` // E.164 (+6281234567890) utuh hanya untuk pemilik akun; untuk pihak lain tersamar (+62********890)
 	MfaAktif      bool       `json:"mfa_aktif"`
 	Status        string     `json:"status"`
 	TerakhirMasuk *time.Time `json:"terakhir_masuk,omitempty"`
@@ -105,7 +106,9 @@ type PermissionResponse struct {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-// ToUserResponse maps a domain user onto its API representation.
+// ToUserResponse memetakan pengguna untuk PEMILIKNYA sendiri (login, validasi MFA, SSO, GET dan PATCH /v1/auth/me):
+// telepon tampil utuh. Respons untuk pihak lain (daftar, detail, ubah, ganti peran, dan undangan oleh admin) wajib
+// memakai ToUserResponseTersamar.
 func ToUserResponse(u *domain.Pengguna) UserResponse {
 	if u == nil {
 		return UserResponse{}
@@ -128,11 +131,27 @@ func ToUserResponse(u *domain.Pengguna) UserResponse {
 	}
 }
 
-// ToUserResponses maps a slice of domain users onto API representations.
-func ToUserResponses(users []domain.Pengguna) []UserResponse {
+// ToUserResponseTersamar memetakan pengguna untuk pihak selain pemiliknya (UU PDP): nomor telepon disamarkan
+// (pii.TeleponTersamar), jadi admin yang mengelola akun tidak pernah membaca nomor utuh. Ia hanya dapat mengganti
+// atau menghapusnya (PATCH /v1/users/:id). Nomor yang tidak ada tetap tidak ada.
+func ToUserResponseTersamar(u *domain.Pengguna) UserResponse {
+	r := ToUserResponse(u)
+	if r.Telepon != nil {
+		if tersamar := pii.TeleponTersamar(*r.Telepon); tersamar != "" {
+			r.Telepon = &tersamar
+		} else {
+			r.Telepon = nil
+		}
+	}
+	return r
+}
+
+// ToUserResponsesTersamar memetakan daftar pengguna untuk pihak lain (ToUserResponseTersamar). Tidak ada padanan
+// untuk pemilik: seorang pemilik hanya melihat dirinya sendiri.
+func ToUserResponsesTersamar(users []domain.Pengguna) []UserResponse {
 	items := make([]UserResponse, len(users))
 	for i := range users {
-		items[i] = ToUserResponse(&users[i])
+		items[i] = ToUserResponseTersamar(&users[i])
 	}
 	return items
 }

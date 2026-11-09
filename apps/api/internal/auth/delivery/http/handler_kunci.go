@@ -52,9 +52,10 @@ func (h *Handler) BukaKunci(c *gin.Context) {
 	response.Success(c, dto.BukaKunciResponse{ID: id, TerkunciSebelumnya: res.TerkunciSebelumnya})
 }
 
-// penggunaDenganKunci memetakan pengguna ke DTO beserta akhir kunci login (terkunci_sampai) bagi yang sedang terkunci.
+// penggunaDenganKunci memetakan pengguna ke DTO untuk admin (daftar dan detail; telepon tersamar) beserta akhir
+// kunci login (terkunci_sampai) bagi yang sedang terkunci.
 func (h *Handler) penggunaDenganKunci(c *gin.Context, users []domain.Pengguna) ([]dto.UserResponse, error) {
-	items := dto.ToUserResponses(users)
+	items := dto.ToUserResponsesTersamar(users)
 	terkunci, err := h.uc.KunciPengguna(c.Request.Context(), users)
 	if err != nil {
 		return nil, err

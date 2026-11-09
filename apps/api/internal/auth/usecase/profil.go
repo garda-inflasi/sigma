@@ -102,7 +102,8 @@ func teleponBerubah(tersimpan *string, baru string) bool {
 
 // UpdateProfil mengubah nama dan/atau telepon pemilik akun. Hanya kolom yang benar-benar berbeda dari yang tersimpan
 // yang ditulis (PatchUser); permintaan yang tidak mengubah apa pun tidak menulis basis data dan tidak diaudit, dan
-// mengembalikan pengguna apa adanya. Perubahan dicatat sebagai UPDATE_PROFIL dengan keadaan sebelum dan sesudah.
+// mengembalikan pengguna apa adanya. Perubahan dicatat sebagai UPDATE_PROFIL dengan keadaan sebelum dan sesudah
+// (telepon tersamar) serta metadata telepon_diubah bila nomor berganti.
 func (uc *UseCase) UpdateProfil(ctx context.Context, userID string, patch ProfilPatch) (*domain.Pengguna, error) {
 	if patch.Nama == nil && patch.Telepon == nil {
 		return nil, ErrTidakAdaPerubahan
@@ -148,6 +149,7 @@ func (uc *UseCase) UpdateProfil(ctx context.Context, userID string, patch Profil
 	uc.writeAudit(ctx, audit.Entry{
 		AktorID: userID, Aksi: "UPDATE_PROFIL", Entitas: "pengguna", EntitasID: userID,
 		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
+		Metadata: metadataPerubahanAkun(sebelum, sesudah, nil),
 	})
 	return sesudah, nil
 }

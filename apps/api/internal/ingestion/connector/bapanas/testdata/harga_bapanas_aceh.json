@@ -1,0 +1,53 @@
+{
+  "status": "success",
+  "data": [
+    {
+      "nama_komoditas": "Beras Medium",
+      "nama_kabupaten": "Kota Banda Aceh",
+      "kabupaten_id": "1171",
+      "tanggal": "2025-10-05",
+      "harga": "14.500",
+      "satuan": "kg"
+    },
+    {
+      "nama_komoditas": "Cabai Merah Keriting",
+      "nama_kabupaten": "Kota Banda Aceh",
+      "kabupaten_id": "1171",
+      "tanggal": "2025-10-05",
+      "harga": "42.000",
+      "satuan": "kg"
+    },
+    {
+      "nama_komoditas": "Bawang Merah",
+      "nama_kabupaten": "Kota Lhokseumawe",
+      "kabupaten_id": "1174",
+      "tanggal": "2025-10-05",
+      "harga": "35000",
+      "satuan": "kg"
+    },
+    {
+      "nama_komoditas": "Komoditas Tidak Dikenal",
+      "nama_kabupaten": "Kota Banda Aceh",
+      "kabupaten_id": "1171",
+      "tanggal": "2025-10-05",
+      "harga": "10000",
+      "satuan": "kg"
+    },
+    {
+      "nama_komoditas": "Beras Premium",
+      "nama_kabupaten": "Kabupaten Diabaikan",
+      "kabupaten_id": "9999",
+      "tanggal": "2025-10-05",
+      "harga": "16.000",
+      "satuan": "kg"
+    },
+    {
+      "nama_komoditas": "Minyak Goreng Curah",
+      "nama_kabupaten": "Kota Banda Aceh",
+      "kabupaten_id": "1171",
+      "tanggal": "2025-10-05",
+      "harga": "-",
+      "satuan": "liter"
+    }
+  ]
+}

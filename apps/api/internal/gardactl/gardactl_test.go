@@ -13,11 +13,9 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ingestion/ingestiontest"
-	ingestionseeder "github.com/garda-inflasi/api/internal/ingestion/seeder"
-	"github.com/garda-inflasi/api/internal/master/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
+	"github.com/garda-inflasi/api/internal/master"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	sumberseeder "github.com/garda-inflasi/api/internal/sumber-data/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -121,13 +119,7 @@ func siapkanDBIngest(t *testing.T, name string) (*gorm.DB, func(args ...string) 
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	for _, err := range []error{
-		func() error { _, err := masterseeder.SeedReference(t.Context(), db); return err }(),
-		func() error { _, err := sumberseeder.SeedReference(t.Context(), db); return err }(),
-		func() error { _, err := ingestionseeder.SeedReference(t.Context(), db); return err }(),
-	} {
-		require.NoError(t, err)
-	}
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 	grid, err := os.ReadFile("../ingestion/connector/pihps/testdata/grid_kota.json")
 	require.NoError(t, err)
 	fetcher := &ingestiontest.Fetcher{Respons: map[string][]byte{"wilayah=101": grid}}
@@ -325,7 +317,7 @@ func TestImpor_MenulisCSVYangDiterimaSeeder(t *testing.T) {
 
 	raw, err := os.ReadFile(cfg.out)
 	require.NoError(t, err)
-	meta, rows, err := seeder.BacaKecamatanCSV(bytes.NewReader(raw), seeder.KodeKabupaten())
+	meta, rows, err := master.BacaKecamatanCSV(bytes.NewReader(raw), master.KodeKabupaten())
 	require.NoError(t, err)
 	assert.Len(t, rows, 23)
 	assert.Equal(t, 23, meta.Jumlah)

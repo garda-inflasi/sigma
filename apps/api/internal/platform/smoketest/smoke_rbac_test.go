@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +54,7 @@ func rolePermissionsFromContract(t *testing.T) map[string][]string {
 // demoEmailByRole mengambil satu akun demo aktif untuk tiap peran.
 func demoEmailByRole() map[string]string {
 	out := map[string]string{}
-	for _, akun := range authseeder.BuildDemoAkun() {
+	for _, akun := range seed.BuildDemoAkun() {
 		if _, taken := out[akun.Peran]; !taken && akun.Status != "NONAKTIF" && !akun.MfaAktif {
 			out[akun.Peran] = akun.Email
 		}

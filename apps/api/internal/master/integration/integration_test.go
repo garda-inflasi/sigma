@@ -14,10 +14,10 @@ import (
 	"testing"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	"github.com/garda-inflasi/api/internal/master"
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -63,10 +63,8 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "master_shared")
 		pgtest.MigrateUp(t, db)
-		_, err := masterseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = authseeder.SeedDemo(t.Context(), db)
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
@@ -100,7 +98,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -155,7 +153,7 @@ func TestMaster_ListsContainTheWholeSeed(t *testing.T) {
 		for _, k := range got {
 			byKode[k.Kode] = k
 		}
-		for _, want := range masterseeder.Komoditas() {
+		for _, want := range master.Komoditas() {
 			row, ok := byKode[want.Kode]
 			require.True(t, ok, "komoditas %s tidak dikembalikan", want.Kode)
 			assert.Equal(t, want.Nama, row.Nama)
@@ -176,7 +174,7 @@ func TestMaster_ListsContainTheWholeSeed(t *testing.T) {
 		for _, k := range got {
 			kode[k.Kode] = true
 		}
-		for _, want := range masterseeder.Kabupaten() {
+		for _, want := range master.Kabupaten() {
 			assert.True(t, kode[want.Kode], "wilayah %s tidak dikembalikan", want.Kode)
 		}
 	})

@@ -15,12 +15,9 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	ewsseeder "github.com/garda-inflasi/api/internal/ews/seeder"
 	intervensiRoutes "github.com/garda-inflasi/api/internal/intervensi/routes"
-	intervensiseeder "github.com/garda-inflasi/api/internal/intervensi/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -71,18 +68,8 @@ func newSuite(t *testing.T, name string) *suite {
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	ctx := t.Context()
-	_, err := masterseeder.SeedReference(ctx, db)
-	require.NoError(t, err)
-	_, err = authseeder.SeedDemo(ctx, db)
-	require.NoError(t, err)
-	_, err = ewsseeder.SeedReference(ctx, db)
-	require.NoError(t, err)
-	_, err = ewsseeder.SeedDemo(ctx, db, seedNow)
-	require.NoError(t, err)
-	_, err = intervensiseeder.SeedReference(ctx, db)
-	require.NoError(t, err)
-	_, err = intervensiseeder.SeedDemo(ctx, db, seedNow)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(ctx, db))
+	require.NoError(t, seed.SeedDemo(ctx, db))
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 	router := gin.New()
@@ -120,7 +107,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

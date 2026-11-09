@@ -19,17 +19,11 @@ import (
 
 	auditdomain "github.com/garda-inflasi/api/internal/audit/domain"
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	eksekutifseeder "github.com/garda-inflasi/api/internal/eksekutif/seeder"
-	ewsseeder "github.com/garda-inflasi/api/internal/ews/seeder"
-	hargaseeder "github.com/garda-inflasi/api/internal/harga/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 	"github.com/garda-inflasi/api/internal/policy-brief/generator"
 	briefRoutes "github.com/garda-inflasi/api/internal/policy-brief/routes"
-	briefseeder "github.com/garda-inflasi/api/internal/policy-brief/seeder"
-	prediksiseeder "github.com/garda-inflasi/api/internal/prediksi/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -87,19 +81,8 @@ func sharedSuite(t *testing.T) *suite {
 		db := pg.CreateDatabase(t, "brief_shared")
 		pgtest.MigrateUp(t, db)
 		ctx := t.Context()
-		for _, langkah := range []func() error{
-			func() error { _, err := masterseeder.SeedReference(ctx, db); return err },
-			func() error { _, err := authseeder.SeedDemo(ctx, db); return err },
-			func() error { _, err := eksekutifseeder.SeedReference(ctx, db); return err },
-			func() error { _, err := ewsseeder.SeedReference(ctx, db); return err },
-			func() error { _, err := ewsseeder.SeedDemo(ctx, db, fixedNow); return err },
-			func() error { _, err := eksekutifseeder.SeedDemo(ctx, db, fixedNow); return err },
-			func() error { _, err := hargaseeder.SeedDemo(ctx, db, fixedNow); return err },
-			func() error { _, err := prediksiseeder.SeedDemo(ctx, db, fixedNow); return err },
-			func() error { _, err := briefseeder.SeedDemo(ctx, db, fixedNow); return err },
-		} {
-			require.NoError(t, langkah())
-		}
+		require.NoError(t, seed.SeedReference(ctx, db))
+		require.NoError(t, seed.SeedDemo(ctx, db))
 		shared = newSuite(db, nil)
 	})
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
@@ -130,7 +113,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

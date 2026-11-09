@@ -12,11 +12,11 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	"github.com/garda-inflasi/api/internal/master"
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/migrate"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -41,10 +41,8 @@ func refSuite(t *testing.T) *suite {
 	refOnce.Do(func() {
 		db := pg.CreateDatabase(t, refDBName)
 		pgtest.MigrateUp(t, db)
-		_, err := masterseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = authseeder.SeedDemo(t.Context(), db)
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 		refShared = bangunSuite(db)
 	})
 	require.NotNil(t, refShared, "suite referensi gagal dibuat")
@@ -163,7 +161,7 @@ type kecamatanRow struct {
 
 func TestReferensi_Kecamatan(t *testing.T) {
 	s := refSuite(t)
-	seed, err := masterseeder.Kecamatan()
+	seed, err := master.Kecamatan()
 	require.NoError(t, err)
 	const path = "/v1/master/kecamatan"
 
@@ -291,8 +289,8 @@ func TestReferensi_Satuan(t *testing.T) {
 		Nama            string `json:"nama"`
 		JumlahKomoditas int64  `json:"jumlah_komoditas"`
 	}](t, w)
-	assert.Equal(t, strconv.Itoa(len(masterseeder.Satuan())), w.Header().Get("X-Total-Count"))
-	require.Len(t, got, len(masterseeder.Satuan()))
+	assert.Equal(t, strconv.Itoa(len(master.Satuan())), w.Header().Get("X-Total-Count"))
+	require.Len(t, got, len(master.Satuan()))
 	byKode := map[string]int64{}
 	for _, row := range got {
 		byKode[row.Kode] = row.JumlahKomoditas
@@ -844,10 +842,10 @@ func TestReferensi_Hapus(t *testing.T) {
 	})
 
 	t.Run("seed tetap utuh sesudah semua penghapusan", func(t *testing.T) {
-		for _, k := range masterseeder.Komoditas() {
+		for _, k := range master.Komoditas() {
 			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM komoditas WHERE kode = ?`, k.Kode), k.Kode)
 		}
-		for _, p := range masterseeder.Pasar() {
+		for _, p := range master.Pasar() {
 			assert.EqualValues(t, 1, s.hitung(t, `SELECT COUNT(*) FROM pasar WHERE kode = ?`, p.Kode), p.Kode)
 		}
 	})

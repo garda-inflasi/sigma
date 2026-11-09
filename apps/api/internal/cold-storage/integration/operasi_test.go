@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Fakta seed yang dipakai uji (internal/cold-storage/seeder): kapasitas dan
+// Fakta seed yang dipakai uji (db/seeds): kapasitas dan
 // stok awal CS-01 400/347 ton, CS-02 300/240, CS-03 250/193, CS-04 150/33
 // (PERAWATAN), CS-05 120/0 (RENCANA).
 
@@ -76,8 +76,7 @@ func TestMigration000100_KeepsFacilitiesAndLotsOnDown(t *testing.T) {
 	db := pg.NewDatabase(t, "mig_000100")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 100))
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 	execSQL(t, db, `
 		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
 		VALUES ('CS-M', 'Fasilitas M', '1171', 5.5, 95.3, 100, 4, 'OPERASIONAL');

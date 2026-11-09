@@ -10,11 +10,9 @@ import (
 	"testing"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	spasialRoutes "github.com/garda-inflasi/api/internal/spasial/routes"
-	spasialseeder "github.com/garda-inflasi/api/internal/spasial/seeder"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -64,12 +62,8 @@ func writableSuite(t *testing.T, name string) (*suite, *gorm.DB) {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = authseeder.SeedDemo(t.Context(), db)
-	require.NoError(t, err)
-	_, err = spasialseeder.SeedDemo(t.Context(), db, seedNow)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedDemo(t.Context(), db))
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 	router := gin.New()

@@ -1,0 +1,38 @@
+-- GARDA INFLASI - Registri Model Prediksi Harga
+
+-- =====================================================================
+-- Tabel: model_registry (28 baris)
+-- =====================================================================
+INSERT INTO model_registry (id, kode, nama, versi, komoditas_kode, algorithm, status, mape, drift, dilatih_pada, metrics, feature_importance, sumber, catatan) OVERRIDING SYSTEM VALUE VALUES
+  (1, 'MDL-BRS-MED-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'BRS-MED', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 2.2, 0, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (2, 'MDL-BRS-PRM-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'BRS-PRM', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 2.2, 0.03, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (3, 'MDL-BWM-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'BWM', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 5.3, 0.12, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (4, 'MDL-BWP-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'BWP', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 3.3, 0, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (5, 'MDL-CBM-KRT-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'CBM-KRT', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 7.6, 0.06, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (6, 'MDL-CBR-RWT-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'CBR-RWT', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 8.3, 0.09, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (7, 'MDL-DAG-AYM-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'DAG-AYM', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 3.7, 0.06, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (8, 'MDL-DAG-SPI-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'DAG-SPI', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 2, 0.09, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (9, 'MDL-GLA-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'GLA', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 2, 0.03, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (10, 'MDL-IKN-TGK-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'IKN-TGK', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 5.8, 0.12, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (11, 'MDL-KTG-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'KTG', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 4.2, 0.06, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (12, 'MDL-MYK-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'MYK', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 2, 0, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (13, 'MDL-TLR-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'TLR', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 2.9, 0.03, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (14, 'MDL-TMT-v2.3.1', 'Ensemble LightGBM + SARIMAX', 'v2.3.1', 'TMT', 'Ensemble LightGBM + SARIMAX', 'PRODUKSI', 6.9, 0.09, '2026-11-02T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (15, 'MDL-BRS-MED-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'BRS-MED', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 2, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (16, 'MDL-BRS-PRM-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'BRS-PRM', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 2, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (17, 'MDL-BWM-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'BWM', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 4.9, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (18, 'MDL-BWP-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'BWP', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 3.1, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (19, 'MDL-CBM-KRT-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'CBM-KRT', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 7.1, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (20, 'MDL-CBR-RWT-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'CBR-RWT', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 7.7, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (21, 'MDL-DAG-AYM-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'DAG-AYM', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 3.4, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (22, 'MDL-DAG-SPI-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'DAG-SPI', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 1.9, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (23, 'MDL-GLA-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'GLA', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 1.9, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (24, 'MDL-IKN-TGK-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'IKN-TGK', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 5.4, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (25, 'MDL-KTG-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'KTG', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 3.9, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (26, 'MDL-MYK-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'MYK', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 1.9, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (27, 'MDL-TLR-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'TLR', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 2.7, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.'),
+  (28, 'MDL-TMT-v2.4.0-rc1', 'Ensemble LightGBM + SARIMAX', 'v2.4.0-rc1', 'TMT', 'Ensemble LightGBM + SARIMAX', 'KANDIDAT', 6.4, 0, '2026-11-08T00:00:00+00:00', '{}'::jsonb, '[]'::jsonb, 'DEMO', 'Data contoh seeder, bukan keluaran model sungguhan.')
+ON CONFLICT (id) DO NOTHING;
+
+SELECT setval(pg_get_serial_sequence('model_registry', 'id'), COALESCE((SELECT max(id) FROM model_registry), 1));
+

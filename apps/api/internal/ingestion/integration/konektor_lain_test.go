@@ -1,17 +1,22 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
+	"github.com/garda-inflasi/api/internal/ingestion"
+	"github.com/garda-inflasi/api/internal/ingestion/connector/bapanas"
 	"github.com/garda-inflasi/api/internal/ingestion/connector/bmkg"
 	"github.com/garda-inflasi/api/internal/ingestion/connector/bps"
+	"github.com/garda-inflasi/api/internal/ingestion/connector/openweather"
 	"github.com/garda-inflasi/api/internal/ingestion/connector/pihps"
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
+	sumber "github.com/garda-inflasi/api/internal/sumber-data/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
@@ -19,13 +24,22 @@ import (
 )
 
 func (s *setup) konektor() []domain.Konektor {
-	return []domain.Konektor{pihps.New(), bmkg.New(), bps.New("kunci-uji")}
+	return []domain.Konektor{
+		pihps.New(),
+		bmkg.New(),
+		bps.New("kunci-uji"),
+		openweather.New("kunci-owm"),
+		bapanas.New(),
+	}
 }
 
-// runnerSemua adalah Runner dengan ketiga konektor di atas Fetcher fixture yang sama.
+// runnerSemua adalah Runner dengan kelima konektor di atas Fetcher fixture yang sama.
 func (s *setup) runnerSemua() *engine.Runner {
 	r := engine.New(s.repo, s.fetcher, logger.NewDefault(), s.konektor()...)
 	r.Sekarang = func() time.Time { return time.Date(2025, 10, 5, 3, 0, 0, 0, time.UTC) }
+	r.PadaEksekusiSelesai = func(ctx context.Context, e *domain.EksekusiSumber, sd *sumber.SumberData) {
+		ingestion.PeriksaAlertKegagalan(ctx, s.db, logger.NewDefault(), e, sd)
+	}
 	return r
 }
 
@@ -209,4 +223,86 @@ func TestGold_MembandingkanHargaLapanganDenganEksternal(t *testing.T) {
 	assert.Nil(t, hanyaEksternal.HargaLapangan)
 	assert.NotNil(t, hanyaEksternal.HargaEksternal)
 	assert.Nil(t, hanyaEksternal.SelisihPct)
+}
+
+func TestOpenWeather_CuacaHarian(t *testing.T) {
+	s := newSetup(t, "ingest_owm")
+	require.NoError(t, s.db.Exec(`DELETE FROM pemetaan_sumber WHERE sumber_id = (SELECT id FROM sumber_data WHERE kode = 'SRC-OWM') AND alias <> 'banda aceh'`).Error)
+	grid := fixture(t, "openweather/testdata/cuaca_banda_aceh.json")
+	s.fetcher.Respons["wilayah=banda aceh"] = grid
+	r := s.runnerSemua()
+
+	e := s.jalankanSumber(t, r, openweather.Kode)
+	assert.Equal(t, domain.StatusSukses, e.Status)
+	assert.Equal(t, 1, e.BarisDiambil)
+
+	var cuaca struct {
+		KabupatenKode string
+		SuhuC         float64
+		CurahHujanMm  float64
+		Sumber        string
+	}
+	require.NoError(t, s.db.Raw(`SELECT kabupaten_kode, suhu_c, curah_hujan_mm, sumber FROM cuaca_harian WHERE sumber = 'OpenWeather'`).Scan(&cuaca).Error)
+	assert.Equal(t, "1171", cuaca.KabupatenKode)
+	assert.Equal(t, 28.5, cuaca.SuhuC)
+	assert.Equal(t, 15.5, cuaca.CurahHujanMm)
+	assert.Equal(t, "OpenWeather", cuaca.Sumber)
+}
+
+func TestBapanas_HargaEksternal(t *testing.T) {
+	s := newSetup(t, "ingest_bapanas")
+	grid := fixture(t, "bapanas/testdata/harga_bapanas_aceh.json")
+	s.fetcher.Respons["provinsi=11"] = grid
+	r := s.runnerSemua()
+
+	e := s.jalankanSumber(t, r, bapanas.Kode)
+	assert.Equal(t, domain.StatusSukses, e.Status)
+	assert.GreaterOrEqual(t, e.BarisDiambil, 1)
+
+	var cnt int64
+	require.NoError(t, s.db.Raw(`SELECT count(*) FROM harga_eksternal WHERE sumber_id = (SELECT id FROM sumber_data WHERE kode = 'SRC-BAPANAS')`).Scan(&cnt).Error)
+	assert.GreaterOrEqual(t, cnt, int64(1))
+}
+
+func TestIngestion_AlertEWSKegagalanBerulang(t *testing.T) {
+	s := newSetup(t, "ingest_ews_alert")
+	require.NoError(t, s.db.Exec(`DELETE FROM ews_alert WHERE dedup_key = 'ingestion:sumber:SRC-BI'`).Error)
+
+	r := s.runnerSemua()
+	// Buat 3 kali gagal berturut-turut
+	s.fetcher.Galat = map[string]error{"wilayah=101": fmt.Errorf("layanan mati")}
+
+	for i := 0; i < 3; i++ {
+		run, err := r.Mulai(t.Context(), pihps.Kode, domain.PemicuCLI, nil)
+		require.NoError(t, err)
+		e, _ := run.Jalankan(t.Context())
+		require.Equal(t, domain.StatusGagal, e.Status)
+	}
+
+	// Pastikan alert ews ANOMALI_DATA dibuat
+	var alert struct {
+		ID       idx.ID
+		Severity string
+		Jenis    string
+		Status   string
+		DedupKey string
+	}
+	err := s.db.Raw(`SELECT id, severity, jenis, status, dedup_key FROM ews_alert WHERE dedup_key = 'ingestion:sumber:SRC-BI' AND status = 'BARU'`).Scan(&alert).Error
+	require.NoError(t, err)
+	assert.Equal(t, "WASPADA", alert.Severity)
+	assert.Equal(t, "ANOMALI_DATA", alert.Jenis)
+	assert.Equal(t, "BARU", alert.Status)
+
+	// Jalankan sekali sukses, pastikan alert otomatis diselesaikan (SELESAI)
+	s.fetcher.Galat = nil
+	s.fetcher.Respons["wilayah=101"] = fixture(t, "pihps/testdata/grid_kota.json")
+	run, err := r.Mulai(t.Context(), pihps.Kode, domain.PemicuCLI, nil)
+	require.NoError(t, err)
+	e, err := run.Jalankan(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, domain.StatusSukses, e.Status)
+
+	var status string
+	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE id = ?`, alert.ID).Scan(&status).Error)
+	assert.Equal(t, "SELESAI", status)
 }

@@ -17,10 +17,9 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
 	"github.com/garda-inflasi/api/internal/ingestion/ingestiontest"
 	"github.com/garda-inflasi/api/internal/ingestion/repository/postgres"
-	ingestionseeder "github.com/garda-inflasi/api/internal/ingestion/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	sumberseeder "github.com/garda-inflasi/api/internal/sumber-data/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
+	sumberdomain "github.com/garda-inflasi/api/internal/sumber-data/domain"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +29,7 @@ import (
 var pg *pgtest.Server
 
 // idBI adalah UUID baris sumber_data PIHPS (garda_uuid_stabil dari kode SRC-BI), sama dengan hasil seeder.
-var idBI = sumberseeder.IDSumber(pihps.Kode)
+var idBI = sumberdomain.IDSumber(pihps.Kode)
 
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Main(m, &pg))
@@ -58,13 +57,7 @@ func newSetup(t *testing.T, name string) *setup {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	for _, seed := range []func() error{
-		func() error { _, err := masterseeder.SeedReference(t.Context(), db); return err },
-		func() error { _, err := sumberseeder.SeedReference(t.Context(), db); return err },
-		func() error { _, err := ingestionseeder.SeedReference(t.Context(), db); return err },
-	} {
-		require.NoError(t, seed())
-	}
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 	require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE kode = ?`, pihps.Kode).Error)
 	require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '101', '1171')`, idBI).Error)
 

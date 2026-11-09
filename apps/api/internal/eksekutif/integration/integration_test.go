@@ -13,11 +13,9 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	eksekutifRoutes "github.com/garda-inflasi/api/internal/eksekutif/routes"
-	eksekutifseeder "github.com/garda-inflasi/api/internal/eksekutif/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -66,15 +64,9 @@ func seeded(t *testing.T, name string, demo bool) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = authseeder.SeedDemo(t.Context(), db)
-	require.NoError(t, err)
-	_, err = eksekutifseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 	if demo {
-		_, err = eksekutifseeder.SeedDemo(t.Context(), db, time.Now())
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 	}
 	return &suite{db: db, router: newRouter(t, db), tokens: map[string]string{}}
 }
@@ -102,7 +94,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -302,8 +294,7 @@ func TestEksekutif_DemoSeedNeverOverwritesOfficialRows(t *testing.T) {
 	require.NoError(t, s.db.Exec(`
 		INSERT INTO inflasi_bulanan (wilayah_kode, periode, ihk, inflasi_mtm, inflasi_yoy, inflasi_ytd, sumber) VALUES ('11', ?, 110, 0.1, 3.1, 1.0, 'BPS')`, bulanLalu).Error)
 
-	_, err := eksekutifseeder.SeedDemo(t.Context(), s.db, time.Now())
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedDemo(t.Context(), s.db))
 
 	var yoy float64
 	var sumber string

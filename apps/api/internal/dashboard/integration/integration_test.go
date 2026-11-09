@@ -13,15 +13,10 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	coldseeder "github.com/garda-inflasi/api/internal/cold-storage/seeder"
 	dashboardRoutes "github.com/garda-inflasi/api/internal/dashboard/routes"
-	dashboardseeder "github.com/garda-inflasi/api/internal/dashboard/seeder"
 	hargaRoutes "github.com/garda-inflasi/api/internal/harga/routes"
-	hargaseeder "github.com/garda-inflasi/api/internal/harga/seeder"
-	lapanganseeder "github.com/garda-inflasi/api/internal/lapangan/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	siklusRoutes "github.com/garda-inflasi/api/internal/siklus/routes"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -54,30 +49,14 @@ type suite struct {
 	tokens map[string]string
 }
 
-// newSuite menyiapkan basis data berisi master dan akun demo; seed true menambah data harga, cold storage, tugas, dan dashboard.
-func newSuite(t *testing.T, name string, seed bool) *suite {
+// newSuite menyiapkan basis data berisi master dan akun demo; withSeed true menambah data demo.
+func newSuite(t *testing.T, name string, withSeed bool) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = authseeder.SeedDemo(t.Context(), db)
-	require.NoError(t, err)
-	if seed {
-		now := time.Now()
-		ctx := t.Context()
-		_, err = hargaseeder.SeedDemo(ctx, db, now)
-		require.NoError(t, err)
-		_, err = coldseeder.SeedReference(ctx, db)
-		require.NoError(t, err)
-		_, err = coldseeder.SeedDemo(ctx, db, now)
-		require.NoError(t, err)
-		_, err = lapanganseeder.SeedDemo(ctx, db, now)
-		require.NoError(t, err)
-		_, err = dashboardseeder.SeedReference(ctx, db)
-		require.NoError(t, err)
-		_, err = dashboardseeder.SeedDemo(ctx, db, now)
-		require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	if withSeed {
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 	}
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
@@ -123,7 +102,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

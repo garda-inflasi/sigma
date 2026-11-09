@@ -10,12 +10,10 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/internal/prediksi/mlclient"
 	prediksiRoutes "github.com/garda-inflasi/api/internal/prediksi/routes"
-	prediksiseeder "github.com/garda-inflasi/api/internal/prediksi/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -35,12 +33,8 @@ func newMLSuite(t *testing.T, name string, ml mlclient.Client) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = authseeder.SeedDemo(t.Context(), db)
-	require.NoError(t, err)
-	_, err = prediksiseeder.SeedDemo(t.Context(), db, fixedNow)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedDemo(t.Context(), db))
 	seedRiwayat90(t, db)
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()

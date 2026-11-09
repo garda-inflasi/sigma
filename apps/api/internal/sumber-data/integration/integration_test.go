@@ -12,19 +12,16 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	"github.com/garda-inflasi/api/internal/ingestion/connector/pihps"
 	"github.com/garda-inflasi/api/internal/ingestion/engine"
 	"github.com/garda-inflasi/api/internal/ingestion/ingestiontest"
 	ingestrepo "github.com/garda-inflasi/api/internal/ingestion/repository/postgres"
-	ingestionseeder "github.com/garda-inflasi/api/internal/ingestion/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
+	"github.com/garda-inflasi/api/internal/sumber-data/domain"
 	sumberRoutes "github.com/garda-inflasi/api/internal/sumber-data/routes"
-	sumberseeder "github.com/garda-inflasi/api/internal/sumber-data/seeder"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
@@ -46,7 +43,7 @@ const (
 var pg *pgtest.Server
 
 // sid memberi UUID sumber seed dari kodenya (sama dengan hasil migrasi data lama).
-func sid(kode string) string { return sumberseeder.IDSumber(kode) }
+func sid(kode string) string { return domain.IDSumber(kode) }
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -70,16 +67,8 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "sumber_shared")
 		pgtest.MigrateUp(t, db)
-		_, err := masterseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = authseeder.SeedDemo(t.Context(), db)
-		require.NoError(t, err)
-
-		// Ingestion memakai fixture PIHPS, bukan internet: SRC-BI punya konfigurasi dan satu wilayah (regency 101).
-		_, err = sumberseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = ingestionseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 		require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE kode = 'SRC-BI'`).Error)
 		require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '101', '1171')`, sid("SRC-BI")).Error)
 		grid, err := os.ReadFile("../../ingestion/connector/pihps/testdata/grid_kota.json")
@@ -101,10 +90,8 @@ func sharedSuite(t *testing.T) *suite {
 // reset mengembalikan katalog ke keadaan demo agar tiap tes mulai dari data yang sama.
 func (s *suite) reset(t *testing.T) {
 	t.Helper()
-	_, err := sumberseeder.SeedReference(t.Context(), s.db)
-	require.NoError(t, err)
-	_, err = sumberseeder.SeedDemo(t.Context(), s.db, time.Now())
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), s.db))
+	require.NoError(t, seed.SeedDemo(t.Context(), s.db))
 }
 
 func (s *suite) call(t *testing.T, method, path, email string, body any) *httptest.ResponseRecorder {
@@ -128,7 +115,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

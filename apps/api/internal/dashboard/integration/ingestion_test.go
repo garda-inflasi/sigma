@@ -8,8 +8,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
-	ingestionseeder "github.com/garda-inflasi/api/internal/ingestion/seeder"
-	sumberseeder "github.com/garda-inflasi/api/internal/sumber-data/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,10 +24,8 @@ func ingestionSuite(t *testing.T) *suite {
 	t.Helper()
 	onceIngestion.Do(func() {
 		s := newSuite(t, "dashboard_ingestion", true)
-		_, err := sumberseeder.SeedReference(t.Context(), s.db)
-		require.NoError(t, err)
-		_, err = ingestionseeder.SeedDemo(t.Context(), s.db, time.Now())
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), s.db))
+		require.NoError(t, seed.SeedDemo(t.Context(), s.db))
 		sharedIngestion = s
 	})
 	require.NotNil(t, sharedIngestion, "suite ingestion gagal dibuat")
@@ -135,8 +132,7 @@ func TestOperasionalHasilIngestion_KosongBukanGalat(t *testing.T) {
 
 func TestHeatmap_MelengkapiSelTanpaDataLapanganDariHargaEksternal(t *testing.T) {
 	s := newSuite(t, "dashboard_heatmap_eksternal", true)
-	_, err := sumberseeder.SeedReference(t.Context(), s.db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), s.db))
 
 	type sel struct {
 		KomoditasKode string  `json:"komoditas_kode"`

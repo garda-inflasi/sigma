@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"testing"
 
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestSeed_ProductionReferenceAndAdminLeavesNoDefaultPasswordAccount(t *testi
 	require.Len(t, accounts, 1)
 	assert.Equal(t, "admin@gardainflasi.id", accounts[0].Email)
 	assert.True(t, accounts[0].WajibGantiPassword)
-	assert.False(t, crypto.VerifyPassword(authseeder.DemoPassword, accounts[0].PasswordHash))
+	assert.False(t, crypto.VerifyPassword(seed.DemoPassword, accounts[0].PasswordHash))
 
 	counts := rowCounts(t, db)
 	assert.NotZero(t, counts["kabupaten"], "data referensi terpasang")

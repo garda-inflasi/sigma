@@ -67,8 +67,13 @@ const (
 	BulkLanjutkan BulkAction = "lanjutkan"
 )
 
+// RuangUUID adalah ruang nama UUID stabil sumber_data (migrasi 000115: garda_uuid_stabil('sumber_data', kode)).
+const RuangUUID = "sumber_data"
+
+// IDSumber mengembalikan UUID stabil baris sumber dari kodenya, mis. IDSumber("SRC-BI").
+func IDSumber(kode string) string { return idx.UUIDStabil(RuangUUID, kode) }
+
 // Rujukan membaca teks (UUID atau kode) menjadi rujukan sumber: UUID kanonik dicari pada id, selain itu pada kode.
-// Dipakai CLI dan engine ingestion yang menerima sumber lewat kode konfigurasi.
 func Rujukan(teks string) idx.RujukanUUID {
 	if id, ok := idx.NormalUUID(teks); ok {
 		return idx.RujukanUUID{ID: id}

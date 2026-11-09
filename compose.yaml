@@ -85,6 +85,7 @@ services:
       disable: true
     environment:
       <<: *database-env
+      SEEDS_DIR: "/seeds"
       APP_ENV: "${APP_ENV:-development}"
       # Akun demo ber-MFA disegel dengan kunci yang sama dengan api.
       AES_KEY: "${AES_KEY:-0123456789abcdef0123456789abcdef}"

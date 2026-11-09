@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	ewsseeder "github.com/garda-inflasi/api/internal/ews/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -355,8 +355,7 @@ func TestAturan_UpdateThresholds(t *testing.T) {
 	})
 
 	t.Run("seed reference tidak menimpa aturan yang sudah diubah", func(t *testing.T) {
-		_, err := ewsseeder.SeedReference(t.Context(), s.db)
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), s.db))
 		list := data[[]aturanRow](t, s.call(t, http.MethodGet, "/v1/ews/aturan", emailLihat, nil))
 		for _, a := range list {
 			switch *a.Kode {

@@ -15,11 +15,10 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
+	"github.com/garda-inflasi/api/internal/master"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	prediksiRoutes "github.com/garda-inflasi/api/internal/prediksi/routes"
-	prediksiseeder "github.com/garda-inflasi/api/internal/prediksi/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -62,12 +61,8 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "prediksi_shared")
 		pgtest.MigrateUp(t, db)
-		_, err := masterseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = authseeder.SeedDemo(t.Context(), db)
-		require.NoError(t, err)
-		_, err = prediksiseeder.SeedDemo(t.Context(), db, fixedNow)
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 		seedRiwayat(t, db)
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
@@ -122,7 +117,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -212,7 +207,7 @@ func TestPrediksi_ListCoversEveryCommodityWithConsistentIntervals(t *testing.T) 
 
 	got := decode[[]ringkasanRow](t, s.call(t, "/v1/prediksi", emailBerhak))
 
-	require.Len(t, got, len(masterseeder.Komoditas()))
+	require.Len(t, got, len(master.Komoditas()))
 	byKode := map[string]ringkasanRow{}
 	for _, r := range got {
 		byKode[r.KomoditasKode] = r
@@ -378,7 +373,7 @@ func TestPrediksi_RegistryListsModelsWithStatus(t *testing.T) {
 		Sumber        string  `json:"sumber"`
 	}](t, s.call(t, "/v1/prediksi/registri", emailBerhak))
 
-	require.Len(t, got, 2*len(masterseeder.Komoditas()))
+	require.Len(t, got, 2*len(master.Komoditas()))
 	status := map[string]int{}
 	for _, m := range got {
 		status[m.Status]++

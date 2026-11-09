@@ -28,7 +28,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 2   | Pengguna, peran, RBAC                     | `/pengguna`                | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [02-pengguna-rbac.md](02-pengguna-rbac.md)                 |
 | 3   | Audit trail                               | `/audit`                   | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [03-audit.md](03-audit.md)                                 |
 | 4   | Master data                               | `/master/[entitas]`        | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [04-master-data.md](04-master-data.md)                     |
-| 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
+| 5   | Sumber data & API                         | `/sumber-data`             | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [05-sumber-data.md](05-sumber-data.md)                     |
 | 6   | Validasi harga                            | `/data/harga`              | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [06-harga-validasi.md](06-harga-validasi.md)               |
 | 7   | Aplikasi lapangan (PWA)                   | `/lapangan/*`              | ✅  |   🟡    |    ✅     |      ✅      | ✅  | [07-lapangan-pwa.md](07-lapangan-pwa.md)                   |
 | 8   | Dashboard operasional                     | `/operasional`             | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [08-dashboard-operasional.md](08-dashboard-operasional.md) |

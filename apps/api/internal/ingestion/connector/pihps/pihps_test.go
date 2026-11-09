@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/ingestion/domain"
-	"github.com/garda-inflasi/api/internal/ingestion/seeder"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +29,7 @@ func fixture(t *testing.T, nama string) []byte {
 // masukan memakai pemetaan referensi seeder ditambah satu wilayah uji (regency_id 101 = 1171).
 func masukan(t *testing.T, konf string) domain.Masukan {
 	t.Helper()
-	rows := seeder.Pemetaan()
+	rows := domain.SemuaPemetaan()
 	rows = append(rows, domain.PemetaanSumber{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "101", KodeMaster: new("1171")})
 	satuan := map[string]string{
 		"BRS-MED": "kg", "BRS-PRM": "kg", "CBM-KRT": "kg", "CBR-RWT": "kg", "BWM": "kg", "BWP": "kg",

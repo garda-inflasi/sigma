@@ -39,12 +39,17 @@ Kerjakan seluruh Fase P dulu. Alasannya: setiap fitur Fase F membutuhkan tabel, 
 - [ ] Bila bentrok nomor (dua cabang), renumber saat merge.
 - [ ] Aturan lengkap (pola tabel besar, `ALTER TYPE`, lint) ada di [19 §3](19-migration-seeder.md).
 
-**Seeder**
+**Seeder (Direct SQL Pattern: `db/seeds/`)**
 
-- [ ] Letakkan di `apps/api/internal/<modul>/seeder/` (pola `cold-storage`), daftarkan ke registry seeder (task F0-4) dengan **lapis** (`reference` | `demo` | `admin`) dan **dependensi**.
-- [ ] Idempoten (upsert) dan deterministik (PRNG seed tetap; tanggal relatif `now`).
-- [ ] Bentuk dan jumlah data demo meniru `lib/api/mock.ts` supaya UI tampil sama. Tambahkan tes yang membandingkan jumlah/ID kunci.
-- [ ] Lapis `demo` menolak berjalan bila `APP_ENV=production`.
+- [ ] **SQL-First & Terpusat:** Seluruh data benih (seed) dikelola sebagai berkas SQL deklaratif murni (`.sql`) di dalam folder `db/seeds/`. **Dilarang keras** membuat paket Go seeder di dalam domain `apps/api/internal/<modul>/seeder/` agar lapisan domain internal tetap murni dan ukuran biner optimal.
+- [ ] **Organisasi Berdasarkan Tingkatan (Tier):**
+  - `db/seeds/reference/` (Tier 1): Data referensi master & sistem (master wilayah, komoditas, peran/izin RBAC, katalog sumber data, ambang batas EWS, definisi KPI). Aman dieksekusi di lingkungan produksi.
+  - `db/seeds/admin/` (Tier 2): Bootstrap akun superadmin awal (menggunakan hash bcrypt atau masukan aman).
+  - `db/seeds/demo/` (Tier 3): Data simulasi & mock parity (akun demo, entri harga harian 30 hari, alert EWS, kartu intervensi, logistik spasial, dll.). **Ditolak keras** dieksekusi bila `APP_ENV=production`.
+- [ ] **Penamaan & Urutan Eksekusi:** Berkas SQL diberi prefiks angka dua digit (mis. `01_master.sql`, `02_kecamatan.sql`, dst.) untuk menjamin dependensi Foreign Key terpenuhi secara deterministik.
+- [ ] **Idempoten:** Setiap pernyataan SQL wajib aman dijalankan berulang kali tanpa memicu duplikasi baris atau galat *unique constraint*. Gunakan `INSERT INTO ... ON CONFLICT (...) DO NOTHING;` atau `DO UPDATE SET ...`.
+- [ ] **Tanggal Dinamis:** Untuk data demo berbasis waktu, gunakan ekspresi SQL dinamis seperti `CURRENT_DATE - INTERVAL 'N days'` agar data selalu mutakhir saat dieksekusi kapan saja.
+- [ ] **CLI Runner:** Dijalankan via `cmd/seed` (`go run ./cmd/seed reference|admin|demo|all`) atau target Makefile: `make db/seed/reference`, `make db/seed/admin`, `make db/seed/demo`. Di Docker/kontainer, lokasi `db/seeds/` dioperasikan via variabel lingkungan `SEEDS_DIR=/seeds`.
 
 ## 4. Definition of Done (berlaku untuk setiap task)
 
@@ -95,7 +100,7 @@ Selaraskan bentuk respons di satu tempat (mapper `toXxxRow` seperti `toAuditRow`
 | **F0-1** | Dev proxy: Next `rewrites` `/api/v1/:path*` → Go agar `make dev/web` + `make dev/api` jalan tanpa Caddy; target Makefile `db/seed/reference`, `db/seed/demo`, `db/seed/admin`; README akar berisi alur lokal | tidak | [18](18-platform-lintas-fitur.md)                      |
 | **F0-2** | Seragamkan domain email akun demo; 4 tes cold-storage hijau                                                                                                                                                  | tidak | [13](13-cold-storage.md), [19](19-migration-seeder.md) |
 | **F0-3** | **Tes kontrak skema** (entity ↔ migrasi) dengan daftar `belumSelaras` berisi semua modul yang kini tidak cocok; ganti `splitGoose` dengan library goose                                                      | tidak | [19](19-migration-seeder.md)                           |
-| **F0-4** | **Seeder kit:** registry + lapis + dependensi + guard `APP_ENV`; `cmd/seed reference\|demo\|admin`; pindahkan seeder cold-storage ke registry                                                                | tidak | [19](19-migration-seeder.md)                           |
+| **F0-4** | **Seeder runner SQL-First:** eksekusi direktori `db/seeds/{reference,admin,demo}`, guard `APP_ENV=production`, `cmd/seed reference\|demo\|admin\|all` | tidak | [19](19-migration-seeder.md)                           |
 | **F0-5** | Tes asap: setelah reference+demo, tiap endpoint GET utama web mengembalikan data (daftar modul bertambah seiring slice)                                                                                      | tidak | [19](19-migration-seeder.md)                           |
 | **F0-6** | Migrasi nyata saat deploy (service/image `migrate`, gagal keras) — **gerbang produksi**                                                                                                                      | tidak | [19](19-migration-seeder.md)                           |
 | **F0-7** | Proteksi CSRF/Origin di Go untuk request ber-cookie; perbaiki cookie `Secure` (kode sekarang `isDev = true` permanen)                                                                                        | tidak | [18](18-platform-lintas-fitur.md)                      |

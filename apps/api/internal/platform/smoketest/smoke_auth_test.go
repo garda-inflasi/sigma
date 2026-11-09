@@ -8,7 +8,7 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/garda-inflasi/api/pkg/totp"
 	"github.com/stretchr/testify/assert"
@@ -70,7 +70,7 @@ func (s *stack) loginDemo(t *testing.T, email string) (int, hasilLogin) {
 func TestSmoke_AllDemoAccountsCanLogIn(t *testing.T) {
 	s := shared(t)
 
-	for _, akun := range authseeder.BuildDemoAkun() {
+	for _, akun := range seed.BuildDemoAkun() {
 		t.Run(akun.ID, func(t *testing.T) {
 			code, data := s.loginDemo(t, akun.Email)
 
@@ -83,7 +83,7 @@ func TestSmoke_AllDemoAccountsCanLogIn(t *testing.T) {
 			if akun.MfaAktif {
 				require.True(t, data.MFARequired, "akun ber-MFA ditantang kode OTP")
 				assert.Empty(t, data.AccessToken)
-				otp, err := totp.GenerateTOTP(authseeder.DemoMFASecret, time.Now())
+				otp, err := totp.GenerateTOTP(seed.DemoMFASecret, time.Now())
 				require.NoError(t, err)
 				w := s.do(t, http.MethodPost, "/v1/auth/mfa/validate", "", map[string]string{"mfa_token": data.MFAToken, "code": otp})
 				require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -107,7 +107,7 @@ func TestSmoke_MFAEnforcementLeavesDemoLoginsUsableForSetup(t *testing.T) {
 	s := newRouterStack(shared(t).db, authRoutes.Options{UseCaseConfig: authRoutes.ConfigFromEnv(os.Getenv)})
 
 	var wajib, bebas int
-	for _, akun := range authseeder.BuildDemoAkun() {
+	for _, akun := range seed.BuildDemoAkun() {
 		if akun.Status == "NONAKTIF" || akun.MfaAktif {
 			continue
 		}

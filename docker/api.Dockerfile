@@ -40,9 +40,11 @@ COPY --from=builder /app/bin/migrate ./migrate
 COPY --from=builder /app/bin/seed ./seed
 COPY --from=builder /app/bin/worker ./worker
 COPY --from=builder /app/bin/gardactl ./gardactl
-# Migrations ship inside the image so deploy never depends on files on the VM.
+# Migrations and SQL seeds ship inside the image so deploy never depends on files on the VM.
 COPY db/migrations /migrations
 ENV MIGRATIONS_DIR=/migrations
+COPY db/seeds /seeds
+ENV SEEDS_DIR=/seeds
 
 # Direktori arsip audit (volume audit_arsip) harus bisa ditulis worker yang berjalan sebagai appuser.
 RUN mkdir -p /app/arsip/audit && chown -R appuser:appgroup /app/arsip

@@ -1728,9 +1728,9 @@ grada-inflasi/
 │   ├── ui/                    #   Storybook (design system soft & smooth)
 │   └── config/                #   eslint/prettier/tailwind/tsconfig bersama
 ├── db/                        # SINGLE SOURCE OF TRUTH database
-│   ├── migrations/            #   Goose: 000001_roles.sql … 000012_permissions_timestamps.sql
+│   ├── migrations/            #   Goose: 000001_roles.sql … 000123_pengguna_telepon.sql
 │   ├── queries/               #   sqlc → repository/postgres
-│   └── seed/legacy/           #   data lama RS (anonim) untuk go-live
+│   └── seeds/                 #   Direct SQL seeds: reference/, admin/, demo/ (CLI: cmd/seed)
 ├── docker/                    # api.Dockerfile · web.Dockerfile · postgres/init.sql
 ├── scripts/                   # gen-module.sh · build.sh · e2e-up.sh
 ├── docs/                      # PRD-RME.md · dev-cycle-rme.md · PROGRESS.md · prompts.md

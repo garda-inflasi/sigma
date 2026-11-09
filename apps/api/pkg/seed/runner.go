@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garda-inflasi/api/internal/seedkit"
 	"github.com/garda-inflasi/api/pkg/crypto"
+	"github.com/garda-inflasi/api/pkg/seedkit"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

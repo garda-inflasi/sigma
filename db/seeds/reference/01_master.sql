@@ -2,11 +2,11 @@
 -- Idempoten: aman dieksekusi berulang kali via psql maupun runner.
 
 -- =====================================================================
--- Tabel: satuan (4 baris)
+-- Tabel: satuan (2 baris)
+-- Katalog satuan hanya kg dan liter, sama dengan seeder master lama; setiap satuan komoditas di bawah wajib ada di sini
+-- (FK komoditas.satuan).
 -- =====================================================================
 INSERT INTO satuan (kode, nama) VALUES
-  ('Kg', 'Kg'),
-  ('Liter', 'Liter'),
   ('kg', 'Kilogram'),
   ('liter', 'Liter')
 ON CONFLICT (kode) DO NOTHING;
@@ -48,7 +48,7 @@ INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode) VALU
 ON CONFLICT (kode) DO NOTHING;
 
 -- =====================================================================
--- Tabel: komoditas (32 baris)
+-- Tabel: komoditas (14 baris)
 -- =====================================================================
 INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, pilot, shelf_life_hari) VALUES
   ('BRS-MED', 'Beras medium', 'kg', 'Pangan pokok', 13900, TRUE, 180),
@@ -64,29 +64,11 @@ INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, pilot, shelf_l
   ('KTG', 'Kentang', 'kg', 'Hortikultura', 16000, FALSE, 75),
   ('MYK', 'Minyak goreng curah', 'liter', 'Pangan olahan', 17500, FALSE, 365),
   ('TLR', 'Telur ayam ras', 'kg', 'Peternakan', 29500, FALSE, 30),
-  ('TMT', 'Tomat', 'kg', 'Hortikultura', 12000, FALSE, 14),
-  ('bawang_merah', 'Bawang Merah', 'Kg', 'Hortikultura', 35000, TRUE, 14),
-  ('bawang_putih', 'Bawang Putih', 'Kg', 'Hortikultura', 32000, TRUE, 30),
-  ('beras_medium', 'Beras Medium', 'Kg', 'Pangan Pokok', 13900, TRUE, 180),
-  ('beras_premium', 'Beras Premium', 'Kg', 'Pangan Pokok', 15900, TRUE, 180),
-  ('cabai_merah_keriting', 'Cabai Merah Keriting', 'Kg', 'Hortikultura', 48000, TRUE, 7),
-  ('cabai_rawit_merah', 'Cabai Rawit Merah', 'Kg', 'Hortikultura', 55000, TRUE, 7),
-  ('daging_ayam', 'Daging Ayam', 'Kg', 'Protein', 35000, TRUE, 3),
-  ('daging_sapi', 'Daging Sapi', 'Kg', 'Protein', 130000, TRUE, 3),
-  ('gula_pasir', 'Gula Pasir', 'Kg', 'Pangan Pokok', 16000, TRUE, 365),
-  ('ikan_kembung', 'Ikan Kembung', 'Kg', 'Protein', 35000, FALSE, 2),
-  ('ikan_tongkol', 'Ikan Tongkol', 'Kg', 'Protein', 32000, FALSE, 2),
-  ('jagung', 'Jagung', 'Kg', 'Pangan Pokok', 8000, FALSE, 30),
-  ('kedelai', 'Kedelai', 'Kg', 'Pangan Pokok', 14000, FALSE, 180),
-  ('kentang', 'Kentang', 'Kg', 'Hortikultura', 16000, FALSE, 75),
-  ('minyak_goreng', 'Minyak Goreng', 'Liter', 'Pangan Pokok', 18000, TRUE, 365),
-  ('telur_ayam', 'Telur Ayam', 'Kg', 'Protein', 28000, TRUE, 14),
-  ('tepung_terigu', 'Tepung Terigu', 'Kg', 'Pangan Pokok', 12000, FALSE, 180),
-  ('tomat', 'Tomat', 'Kg', 'Hortikultura', 12000, FALSE, 14)
+  ('TMT', 'Tomat', 'kg', 'Hortikultura', 12000, FALSE, 14)
 ON CONFLICT (kode) DO NOTHING;
 
 -- =====================================================================
--- Tabel: pasar (48 baris)
+-- Tabel: pasar (24 baris)
 -- =====================================================================
 INSERT INTO pasar (kode, nama, kabupaten_kode, lat, lng, radius_meter, aktif) VALUES
   ('PSR-1101-01', 'Pasar Sinabang', '1101', 2.48, 96.38, 400, TRUE),
@@ -112,30 +94,6 @@ INSERT INTO pasar (kode, nama, kabupaten_kode, lat, lng, radius_meter, aktif) VA
   ('PSR-1172-01', 'Pasar Tradisional Sabang', '1172', 5.89, 95.32, 400, TRUE),
   ('PSR-1173-01', 'Pasar Kota Langsa', '1173', 4.47, 97.968, 450, TRUE),
   ('PSR-1174-01', 'Pasar Inpres Lhokseumawe', '1174', 5.179, 97.146, 450, TRUE),
-  ('PSR-1175-01', 'Pasar Tradisional Subulussalam', '1175', 2.64, 98, 400, TRUE),
-  ('pasar_aceh', 'Pasar Aceh', '1171', 5.55, 95.32, 400, TRUE),
-  ('pasar_bina_usaha_meulaboh', 'Pasar Bina Usaha Meulaboh', '1105', 4.14, 96.13, 400, TRUE),
-  ('pasar_inpres_lhokseumawe', 'Pasar Inpres Lhokseumawe', '1173', 5.18, 97.14, 400, TRUE),
-  ('pasar_lamnyong', 'Pasar Lamnyong', '1171', 5.54, 95.35, 400, TRUE),
-  ('pasar_tradisional_bireuen', 'Pasar Tradisional Bireuen', '1111', 5.2, 96.7, 400, TRUE),
-  ('pasar_tradisional_blangkejeren', 'Pasar Tradisional Blangkejeren', '1113', 3.97, 97.35, 400, TRUE),
-  ('pasar_tradisional_blangpidie', 'Pasar Tradisional Blangpidie', '1112', 3.78, 96.8, 400, TRUE),
-  ('pasar_tradisional_calang', 'Pasar Tradisional Calang', '1114', 4.82, 95.63, 400, TRUE),
-  ('pasar_tradisional_idi', 'Pasar Tradisional Idi', '1103', 4.62, 97.95, 400, TRUE),
-  ('pasar_tradisional_jantho', 'Pasar Tradisional Jantho', '1106', 5.37, 95.53, 400, TRUE),
-  ('pasar_tradisional_karang_baru', 'Pasar Tradisional Karang Baru', '1116', 4.24, 97.96, 400, TRUE),
-  ('pasar_tradisional_kutacane', 'Pasar Tradisional Kutacane', '1102', 3.5, 97.82, 400, TRUE),
-  ('pasar_tradisional_langsa', 'Pasar Tradisional Langsa', '1174', 4.47, 97.97, 400, TRUE),
-  ('pasar_tradisional_lhoksukon', 'Pasar Tradisional Lhoksukon', '1108', 5, 97.24, 400, TRUE),
-  ('pasar_tradisional_meureudu', 'Pasar Tradisional Meureudu', '1118', 5.2, 96.25, 400, TRUE),
-  ('pasar_tradisional_redelong', 'Pasar Tradisional Redelong', '1117', 4.73, 96.86, 400, TRUE),
-  ('pasar_tradisional_sabang', 'Pasar Tradisional Sabang', '1172', 5.89, 95.32, 400, TRUE),
-  ('pasar_tradisional_sigli', 'Pasar Tradisional Sigli', '1107', 5.24, 95.96, 400, TRUE),
-  ('pasar_tradisional_sinabang', 'Pasar Tradisional Sinabang', '1109', 2.62, 96.09, 400, TRUE),
-  ('pasar_tradisional_singkil', 'Pasar Tradisional Singkil', '1110', 2.28, 97.8, 400, TRUE),
-  ('pasar_tradisional_subulussalam', 'Pasar Tradisional Subulussalam', '1175', 2.64, 98, 400, TRUE),
-  ('pasar_tradisional_suka_makmue', 'Pasar Tradisional Suka Makmue', '1115', 4.17, 96.52, 400, TRUE),
-  ('pasar_tradisional_takengon', 'Pasar Tradisional Takengon', '1104', 4.52, 96.85, 400, TRUE),
-  ('pasar_tradisional_tapaktuan', 'Pasar Tradisional Tapaktuan', '1101', 3.26, 97.35, 400, TRUE)
+  ('PSR-1175-01', 'Pasar Tradisional Subulussalam', '1175', 2.64, 98, 400, TRUE)
 ON CONFLICT (kode) DO NOTHING;
 

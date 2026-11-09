@@ -15,7 +15,7 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/ingestiontest"
 	"github.com/garda-inflasi/api/internal/master"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -120,7 +120,7 @@ func siapkanDBIngest(t *testing.T, name string) (*gorm.DB, func(args ...string) 
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
-	grid, err := os.ReadFile("../ingestion/connector/pihps/testdata/grid_kota.json")
+	grid, err := os.ReadFile("../../internal/ingestion/connector/pihps/testdata/grid_kota.json")
 	require.NoError(t, err)
 	fetcher := &ingestiontest.Fetcher{Respons: map[string][]byte{"wilayah=101": grid}}
 

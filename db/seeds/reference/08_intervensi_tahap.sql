@@ -1,4 +1,13 @@
 -- GARDA INFLASI - Tahapan & Alur Persetujuan Intervensi
+--
+-- Setara dengan SeedReference seeder Go lama (internal/intervensi/seeder): definisi tahap tiga siklus (alur Layer 4,
+-- PRD §4.1; sama dengan SIKLUS_TAHAP di apps/web/src/lib/data/siklus.ts dan packages/contracts/intervensi-tahap.json,
+-- dijaga tes intervensi/integration/seed_test.go) dan alur persetujuan awal. Aman dijalankan di produksi.
+--
+-- * Tahap adalah definisi milik kode (tidak ada endpoint yang menulisnya): dijalankan ulang, definisi di basis data
+--   mengikuti berkas ini. Urutan tahap = urutan kemunculan per siklus (mulai 1); SLA adalah angka awal.
+-- * Alur persetujuan dan langkahnya hanya ditambahkan bila belum ada; yang sudah ada tidak disentuh, supaya perubahan
+--   lewat basis data (langkah, status aktif) bertahan di antara deploy.
 
 -- =====================================================================
 -- Tabel: tahap_intervensi_def (16 baris)
@@ -20,7 +29,12 @@ INSERT INTO tahap_intervensi_def (siklus, kode_tahap, urutan, label, petunjuk, i
   ('SURPLUS', 's-olahan', 3, 'Rekomendasi pengolahan turunan', 'Uji mutu oleh Unit Mutu & Pascapanen', 'intervensi.kelola', 7),
   ('SURPLUS', 's-ekspansi', 4, 'Ekspansi ke pembeli antardaerah', 'Pencocokan pembeli & logistik', 'intervensi.kelola', 7),
   ('SURPLUS', 's-selesai', 5, 'Selesai', 'Surplus terserap', 'intervensi.setujui', NULL)
-ON CONFLICT (siklus, kode_tahap) DO NOTHING;
+ON CONFLICT (siklus, kode_tahap) DO UPDATE SET
+  urutan = EXCLUDED.urutan,
+  label = EXCLUDED.label,
+  petunjuk = EXCLUDED.petunjuk,
+  izin_dibutuhkan = EXCLUDED.izin_dibutuhkan,
+  sla_hari = EXCLUDED.sla_hari;
 
 -- =====================================================================
 -- Tabel: alur_persetujuan (5 baris)

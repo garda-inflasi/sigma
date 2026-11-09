@@ -1,119 +1,222 @@
--- GARDA INFLASI - Rekaman Realisasi KPI Bulanan Demo
+-- GARDA INFLASI - Rekaman Realisasi KPI Bulanan (Demo)
+--
+-- Setara dengan seeder Go lama kpi.SeedDemo(now): TIDAK ADA angka tulis tangan. Berkas ini menghitung nilai tiap KPI
+-- yang punya penghitung otomatis (kpi_definisi.sumber_query) dari data yang SUDAH ADA di basis data (entri harga,
+-- cold storage dan buku besar stok, intervensi, prediksi) untuk 12 bulan yang berakhir di bulan berjalan, memakai
+-- rumus yang sama dengan penghitung Go (kpi/repository/postgres/repo.go, map `penghitung`):
+--   * bulan berjalan menurut UTC, (now() AT TIME ZONE 'UTC'), bukan CURRENT_DATE/zona sesi: sesi aplikasi/tes
+--     (TimeZone=Asia/Jakarta) dan sesi cmd/seed (zona bawaan server) berbeda; UTC sama dengan time.Now() pada container;
+--   * batas bulan menurut WIB; @mulai/@akhir = j.mulai/j.akhir (akhir eksklusif); @asof = j.asof = min(akhir, sekarang);
+--   * hasil NULL = tanpa dasar data: tidak ada baris (menunggu data), bukan nol;
+--   * nilai dibulatkan 4 desimal; nilai sama (selisih < 5e-5) tidak ditulis ulang, nilai berbeda menjadi versi
+--     baru (revisi, versi lama tetap ada) seperti SimpanNilai. Berkas ini idempoten.
+-- Karena itu hasilnya mengikuti data yang di-seed: hanya cold storage -> hanya KPI logistik; tanpa data sumber tidak
+-- ada baris sama sekali. Jalankan setelah berkas demo sumber (harga, intervensi, prediksi, cold storage) dan
+-- reference/13_kpi_definisi.sql. Paritas dengan penghitung Go dijaga tes integrasi KPI (job Go tidak boleh
+-- menemukan selisih pada data hasil seed).
 
 -- =====================================================================
--- Tabel: kpi_nilai (111 baris)
+-- Tabel: kpi_nilai (dihitung; wilayah_kode NULL = seluruh provinsi)
 -- =====================================================================
-INSERT INTO kpi_nilai (id, kpi_kode, wilayah_kode, periode, versi, nilai, dihitung_pada) OVERRIDING SYSTEM VALUE VALUES
-  (1, 'LOG-UTILISASI-CS', NULL, '2026-10-01', 1, 72.3368, '2026-11-06T09:19:38.871325+00:00'),
-  (2, 'LOG-RISIKO-FOODLOSS', NULL, '2026-10-01', 1, 42.5019, '2026-11-06T09:19:38.871325+00:00'),
-  (3, 'LOG-VOLUME-AGREGASI', NULL, '2026-10-01', 1, 460.6, '2026-11-06T09:19:38.871325+00:00'),
-  (4, 'LOG-UTILISASI-CS', NULL, '2026-11-01', 1, 82.1053, '2026-11-06T09:19:38.871325+00:00'),
-  (5, 'LOG-RISIKO-FOODLOSS', NULL, '2026-11-01', 1, 40.3268, '2026-11-06T09:19:38.871325+00:00'),
-  (6, 'LOG-VOLUME-AGREGASI', NULL, '2026-11-01', 1, 92.8, '2026-11-06T09:19:38.871325+00:00'),
-  (7, 'LOG-UTILISASI-CS', NULL, '2026-07-01', 1, 11.2421, '2026-11-06T09:19:38.72247+00:00'),
-  (8, 'LOG-RISIKO-FOODLOSS', NULL, '2026-07-01', 1, 75.5646, '2026-11-06T09:19:38.72247+00:00'),
-  (9, 'LOG-VOLUME-AGREGASI', NULL, '2026-07-01', 1, 106.8, '2026-11-06T09:19:38.72247+00:00'),
-  (10, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-08-01', 1, 98.2412, '2026-11-06T09:19:38.72247+00:00'),
-  (11, 'DATA-KETEPATAN', NULL, '2026-08-01', 1, 91.4976, '2026-11-06T09:19:38.72247+00:00'),
-  (12, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-08-01', 1, 14.3097, '2026-11-06T09:19:38.72247+00:00'),
-  (13, 'LOG-UTILISASI-CS', NULL, '2026-08-01', 1, 16.8, '2026-11-06T09:19:38.72247+00:00'),
-  (14, 'LOG-RISIKO-FOODLOSS', NULL, '2026-08-01', 1, 63.1372, '2026-11-06T09:19:38.72247+00:00'),
-  (15, 'LOG-VOLUME-AGREGASI', NULL, '2026-08-01', 1, 52.8, '2026-11-06T09:19:38.72247+00:00'),
-  (16, 'EKO-VOLATILITAS', NULL, '2026-08-01', 1, 1.936, '2026-11-06T09:19:38.72247+00:00'),
-  (17, 'EKO-MARGIN', NULL, '2026-08-01', 1, 27.8983, '2026-11-06T09:19:38.72247+00:00'),
-  (18, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-09-01', 1, 99.5, '2026-11-06T09:19:38.72247+00:00'),
-  (19, 'DATA-KETEPATAN', NULL, '2026-09-01', 1, 91.1296, '2026-11-06T09:19:38.72247+00:00'),
-  (20, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-09-01', 1, 19.2857, '2026-11-06T09:19:38.72247+00:00'),
-  (21, 'LOG-UTILISASI-CS', NULL, '2026-09-01', 1, 27.3263, '2026-11-06T09:19:38.72247+00:00'),
-  (22, 'LOG-RISIKO-FOODLOSS', NULL, '2026-09-01', 1, 54.3544, '2026-11-06T09:19:38.72247+00:00'),
-  (23, 'LOG-VOLUME-AGREGASI', NULL, '2026-09-01', 1, 100.0, '2026-11-06T09:19:38.72247+00:00'),
-  (24, 'EKO-VOLATILITAS', NULL, '2026-09-01', 1, 2.0966, '2026-11-06T09:19:38.72247+00:00'),
-  (25, 'EKO-MARGIN', NULL, '2026-09-01', 1, 28.0102, '2026-11-06T09:19:38.72247+00:00'),
-  (26, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-10-01', 1, 99.25, '2026-11-06T09:19:38.72247+00:00'),
-  (27, 'DATA-KETEPATAN', NULL, '2026-10-01', 1, 91.5502, '2026-11-06T09:19:38.72247+00:00'),
-  (28, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-10-01', 1, 19.35, '2026-11-06T09:19:38.72247+00:00'),
-  (29, 'EKO-VOLATILITAS', NULL, '2026-10-01', 1, 3.7438, '2026-11-06T09:19:38.72247+00:00'),
-  (30, 'EKO-MARGIN', NULL, '2026-10-01', 1, 27.9565, '2026-11-06T09:19:38.72247+00:00'),
-  (31, 'TL-REKOMENDASI-AI', NULL, '2026-10-01', 1, 0.0, '2026-11-06T09:19:38.72247+00:00'),
-  (32, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-11-01', 1, 76.0766, '2026-11-06T09:19:38.72247+00:00'),
-  (33, 'DATA-KETEPATAN', NULL, '2026-11-01', 1, 89.3921, '2026-11-06T09:19:38.72247+00:00'),
-  (34, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 1, 14.8562, '2026-11-06T09:19:38.72247+00:00'),
-  (35, 'EKO-VOLATILITAS', NULL, '2026-11-01', 1, 4.0658, '2026-11-06T09:19:38.72247+00:00'),
-  (36, 'EKO-MARGIN', NULL, '2026-11-01', 1, 28.3367, '2026-11-06T09:19:38.72247+00:00'),
-  (37, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 2, 12.7338, '2026-11-06T21:05:16.309119+00:00'),
-  (38, 'LOG-UTILISASI-CS', NULL, '2026-10-01', 2, 69.2421, '2026-11-07T03:22:00.468632+00:00'),
-  (39, 'LOG-RISIKO-FOODLOSS', NULL, '2026-10-01', 2, 42.6935, '2026-11-07T03:22:00.468632+00:00'),
-  (40, 'LOG-VOLUME-AGREGASI', NULL, '2026-10-01', 2, 431.2, '2026-11-07T03:22:00.468632+00:00'),
-  (41, 'LOG-VOLUME-AGREGASI', NULL, '2026-11-01', 2, 122.2, '2026-11-07T03:22:00.468632+00:00'),
-  (42, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-08-01', 2, 97.733, '2026-11-07T03:22:00.400555+00:00'),
-  (43, 'DATA-KETEPATAN', NULL, '2026-08-01', 2, 91.553, '2026-11-07T03:22:00.400555+00:00'),
-  (44, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-08-01', 2, 13.6905, '2026-11-07T03:22:00.400555+00:00'),
-  (45, 'EKO-VOLATILITAS', NULL, '2026-08-01', 2, 1.9331, '2026-11-07T03:22:00.400555+00:00'),
-  (46, 'EKO-MARGIN', NULL, '2026-08-01', 2, 27.8869, '2026-11-07T03:22:00.400555+00:00'),
-  (47, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-09-01', 2, 99.75, '2026-11-07T03:22:00.400555+00:00'),
-  (48, 'DATA-KETEPATAN', NULL, '2026-09-01', 2, 91.0463, '2026-11-07T03:22:00.400555+00:00'),
-  (49, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-09-01', 2, 19.2758, '2026-11-07T03:22:00.400555+00:00'),
-  (50, 'EKO-VOLATILITAS', NULL, '2026-09-01', 2, 2.0979, '2026-11-07T03:22:00.400555+00:00'),
-  (51, 'EKO-MARGIN', NULL, '2026-09-01', 2, 28.0293, '2026-11-07T03:22:00.400555+00:00'),
-  (52, 'DATA-KETEPATAN', NULL, '2026-10-01', 2, 91.4964, '2026-11-07T03:22:00.400555+00:00'),
-  (53, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-10-01', 2, 19.326, '2026-11-07T03:22:00.400555+00:00'),
-  (54, 'EKO-VOLATILITAS', NULL, '2026-10-01', 2, 3.5115, '2026-11-07T03:22:00.400555+00:00'),
-  (55, 'EKO-MARGIN', NULL, '2026-10-01', 2, 27.9597, '2026-11-07T03:22:00.400555+00:00'),
-  (56, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-11-01', 2, 79.8319, '2026-11-07T03:22:00.400555+00:00'),
-  (57, 'DATA-KETEPATAN', NULL, '2026-11-01', 2, 90.2846, '2026-11-07T03:22:00.400555+00:00'),
-  (58, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 3, 15.625, '2026-11-07T03:22:00.400555+00:00'),
-  (59, 'EKO-VOLATILITAS', NULL, '2026-11-01', 2, 3.8755, '2026-11-07T03:22:00.400555+00:00'),
-  (60, 'EKO-MARGIN', NULL, '2026-11-01', 2, 28.3305, '2026-11-07T03:22:00.400555+00:00'),
-  (61, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 4, 13.6719, '2026-11-07T23:48:48.617683+00:00'),
-  (62, 'LOG-UTILISASI-CS', NULL, '2026-10-01', 3, 65.7579, '2026-11-08T02:38:16.541929+00:00'),
-  (63, 'LOG-RISIKO-FOODLOSS', NULL, '2026-10-01', 3, 42.6278, '2026-11-08T02:38:16.541929+00:00'),
-  (64, 'LOG-VOLUME-AGREGASI', NULL, '2026-10-01', 3, 450.8, '2026-11-08T02:38:16.541929+00:00'),
-  (65, 'LOG-VOLUME-AGREGASI', NULL, '2026-11-01', 3, 155.3, '2026-11-08T02:38:16.541929+00:00'),
-  (66, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-08-01', 3, 97.2222, '2026-11-08T15:13:05.530416+00:00'),
-  (67, 'DATA-KETEPATAN', NULL, '2026-08-01', 3, 91.6005, '2026-11-08T15:13:05.530416+00:00'),
-  (68, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-08-01', 3, 13.0712, '2026-11-08T15:13:05.530416+00:00'),
-  (69, 'EKO-VOLATILITAS', NULL, '2026-08-01', 3, 1.9487, '2026-11-08T15:13:05.530416+00:00'),
-  (70, 'EKO-MARGIN', NULL, '2026-08-01', 3, 27.9058, '2026-11-08T15:13:05.530416+00:00'),
-  (71, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-09-01', 3, 99.5, '2026-11-08T15:13:05.530416+00:00'),
-  (72, 'DATA-KETEPATAN', NULL, '2026-09-01', 3, 91.1019, '2026-11-08T15:13:05.530416+00:00'),
-  (73, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-09-01', 3, 19.2708, '2026-11-08T15:13:05.530416+00:00'),
-  (74, 'LOG-UTILISASI-CS', NULL, '2026-09-01', 2, 21.7789, '2026-11-08T15:13:05.530416+00:00'),
-  (75, 'LOG-RISIKO-FOODLOSS', NULL, '2026-09-01', 2, 54.1899, '2026-11-08T15:13:05.530416+00:00'),
-  (76, 'LOG-VOLUME-AGREGASI', NULL, '2026-09-01', 2, 47.3, '2026-11-08T15:13:05.530416+00:00'),
-  (77, 'EKO-VOLATILITAS', NULL, '2026-09-01', 3, 2.0866, '2026-11-08T15:13:05.530416+00:00'),
-  (78, 'EKO-MARGIN', NULL, '2026-09-01', 3, 28.0213, '2026-11-08T15:13:05.530416+00:00'),
-  (79, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-10-01', 2, 99.5, '2026-11-08T15:13:05.530416+00:00'),
-  (80, 'DATA-KETEPATAN', NULL, '2026-10-01', 3, 91.4247, '2026-11-08T15:13:05.530416+00:00'),
-  (81, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-10-01', 3, 19.3356, '2026-11-08T15:13:05.530416+00:00'),
-  (82, 'EKO-VOLATILITAS', NULL, '2026-10-01', 3, 3.2671, '2026-11-08T15:13:05.530416+00:00'),
-  (83, 'EKO-MARGIN', NULL, '2026-10-01', 3, 27.9807, '2026-11-08T15:13:05.530416+00:00'),
-  (84, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-11-01', 3, 82.0225, '2026-11-08T15:13:05.530416+00:00'),
-  (85, 'DATA-KETEPATAN', NULL, '2026-11-01', 3, 90.4087, '2026-11-08T15:13:05.530416+00:00'),
-  (86, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 5, 16.0528, '2026-11-08T15:13:05.530416+00:00'),
-  (87, 'EKO-VOLATILITAS', NULL, '2026-11-01', 3, 4.1072, '2026-11-08T15:13:05.530416+00:00'),
-  (88, 'EKO-MARGIN', NULL, '2026-11-01', 3, 28.1907, '2026-11-08T15:13:05.530416+00:00'),
-  (89, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 6, 14.2692, '2026-11-08T17:26:06.225+00:00'),
-  (90, 'LOG-UTILISASI-CS', NULL, '2026-10-01', 4, 60.8737, '2026-11-09T00:11:51.226736+00:00'),
-  (91, 'LOG-RISIKO-FOODLOSS', NULL, '2026-10-01', 4, 41.2326, '2026-11-09T00:11:51.226736+00:00'),
-  (92, 'LOG-VOLUME-AGREGASI', NULL, '2026-10-01', 4, 404.4, '2026-11-09T00:11:51.226736+00:00'),
-  (93, 'LOG-VOLUME-AGREGASI', NULL, '2026-11-01', 4, 201.7, '2026-11-09T00:11:51.226736+00:00'),
-  (94, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-08-01', 4, 96.962, '2026-11-09T00:11:51.083716+00:00'),
-  (95, 'DATA-KETEPATAN', NULL, '2026-08-01', 4, 91.625, '2026-11-09T00:11:51.083716+00:00'),
-  (96, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-08-01', 4, 12.4616, '2026-11-09T00:11:51.083716+00:00'),
-  (97, 'EKO-VOLATILITAS', NULL, '2026-08-01', 4, 1.9506, '2026-11-09T00:11:51.083716+00:00'),
-  (98, 'EKO-MARGIN', NULL, '2026-08-01', 4, 27.9184, '2026-11-09T00:11:51.083716+00:00'),
-  (99, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-09-01', 4, 19.246, '2026-11-09T00:11:51.083716+00:00'),
-  (100, 'EKO-VOLATILITAS', NULL, '2026-09-01', 4, 2.0745, '2026-11-09T00:11:51.083716+00:00'),
-  (101, 'EKO-MARGIN', NULL, '2026-09-01', 4, 28.0326, '2026-11-09T00:11:51.083716+00:00'),
-  (102, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-10-01', 3, 99.25, '2026-11-09T00:11:51.083716+00:00'),
-  (103, 'DATA-KETEPATAN', NULL, '2026-10-01', 4, 91.3172, '2026-11-09T00:11:51.083716+00:00'),
-  (104, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-10-01', 4, 19.3404, '2026-11-09T00:11:51.083716+00:00'),
-  (105, 'EKO-VOLATILITAS', NULL, '2026-10-01', 4, 3.0848, '2026-11-09T00:11:51.083716+00:00'),
-  (106, 'EKO-MARGIN', NULL, '2026-10-01', 4, 27.9766, '2026-11-09T00:11:51.083716+00:00'),
-  (107, 'DATA-PRODUSEN-TERVERIFIKASI', NULL, '2026-11-01', 4, 84.8797, '2026-11-09T00:11:51.083716+00:00'),
-  (108, 'DATA-KETEPATAN', NULL, '2026-11-01', 4, 90.9355, '2026-11-09T00:11:51.083716+00:00'),
-  (109, 'DATA-KELENGKAPAN-HARIAN', NULL, '2026-11-01', 7, 16.4352, '2026-11-09T00:11:51.083716+00:00'),
-  (110, 'EKO-VOLATILITAS', NULL, '2026-11-01', 4, 4.3736, '2026-11-09T00:11:51.083716+00:00'),
-  (111, 'EKO-MARGIN', NULL, '2026-11-01', 4, 28.1658, '2026-11-09T00:11:51.083716+00:00')
-ON CONFLICT DO NOTHING;
+WITH bulan AS (
+    SELECT m::date AS periode,
+           m AT TIME ZONE 'Asia/Jakarta' AS mulai,
+           (m + interval '1 month') AT TIME ZONE 'Asia/Jakarta' AS akhir
+      FROM generate_series(
+             date_trunc('month', now() AT TIME ZONE 'UTC') - interval '11 months',
+             date_trunc('month', now() AT TIME ZONE 'UTC'),
+             interval '1 month') AS m
+), jendela AS (
+    -- Bulan di masa depan dilewati; asof = min(akhir bulan, sekarang) untuk ukuran berbasis keadaan seperti stok.
+    SELECT periode, mulai, akhir, LEAST(akhir, now()) AS asof FROM bulan WHERE mulai <= now()
+), hitung (sumber_query, periode, nilai) AS (
 
+    SELECT 'produsen_terverifikasi', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        SELECT 100.0 * COUNT(DISTINCT kode_pedagang) FILTER (WHERE status IN ('DIVALIDASI', 'DIPUBLIKASI'))
+               / NULLIF(COUNT(DISTINCT kode_pedagang), 0) AS nilai
+          FROM entri_harga
+         WHERE tipe = 'PRODUSEN' AND kode_pedagang IS NOT NULL
+           AND dicatat_pada >= j.mulai AND dicatat_pada < j.akhir) q
+
+    UNION ALL
+    SELECT 'ketepatan_data', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        SELECT 100.0 * COUNT(*) FILTER (WHERE status IN ('DIVALIDASI', 'DIPUBLIKASI'))
+               / NULLIF(COUNT(*) FILTER (WHERE status IN ('DIVALIDASI', 'DIPUBLIKASI', 'DITOLAK')), 0) AS nilai
+          FROM entri_harga
+         WHERE dicatat_pada >= j.mulai AND dicatat_pada < j.akhir) q
+
+    -- Rata-rata harian: pasangan (pasar aktif x komoditas pilot) yang punya entri tervalidasi pada hari itu, dibagi
+    -- seluruh pasangan. Hari yang dihitung hanya yang sudah berlalu pada asof.
+    UNION ALL
+    SELECT 'kelengkapan_harian', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        WITH hari AS (
+            SELECT d::date AS tgl
+              FROM generate_series(
+                   (j.mulai AT TIME ZONE 'Asia/Jakarta')::date,
+                   LEAST((j.akhir AT TIME ZONE 'Asia/Jakarta')::date - 1, (j.asof AT TIME ZONE 'Asia/Jakarta')::date),
+                   interval '1 day') d
+        ), pasangan AS (
+            SELECT COUNT(*) AS n FROM pasar p CROSS JOIN komoditas k WHERE p.aktif AND k.pilot
+        ), terisi AS (
+            SELECT (e.dicatat_pada AT TIME ZONE 'Asia/Jakarta')::date AS tgl,
+                   COUNT(DISTINCT (e.pasar_id, e.komoditas_kode)) AS n
+              FROM entri_harga e
+              JOIN pasar p ON p.kode = e.pasar_id AND p.aktif
+              JOIN komoditas k ON k.kode = e.komoditas_kode AND k.pilot
+             WHERE e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+               AND e.dicatat_pada >= j.mulai AND e.dicatat_pada < j.akhir
+             GROUP BY 1
+        )
+        SELECT CASE WHEN EXISTS (SELECT 1 FROM terisi) AND (SELECT n FROM pasangan) > 0 AND EXISTS (SELECT 1 FROM hari)
+                    THEN 100.0 * (SELECT COALESCE(SUM(n), 0) FROM terisi WHERE tgl IN (SELECT tgl FROM hari))
+                         / ((SELECT COUNT(*) FROM hari) * (SELECT n FROM pasangan))
+               END AS nilai) q
+
+    -- Stok per fasilitas pada asof dari buku besar transaksi_stok (masuk menambah tujuan, keluar mengurangi asal,
+    -- pindah memindahkan keduanya). Sebelum ada satu pun transaksi dipakai pendekatan lama: lot dianggap tersimpan dari
+    -- masuk_pada sampai kedaluwarsa_pada. Kapasitas memakai fasilitas operasional saat ini.
+    UNION ALL
+    SELECT 'utilisasi_cold_storage', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        WITH kapasitas AS (
+            SELECT COALESCE(SUM(kapasitas_ton), 0) AS total FROM cold_storage WHERE status = 'OPERASIONAL'
+        ), gerak AS (
+            SELECT fasilitas_tujuan_id AS fasilitas, volume_ton AS delta FROM transaksi_stok
+             WHERE waktu <= j.asof AND fasilitas_tujuan_id IS NOT NULL
+            UNION ALL
+            SELECT fasilitas_asal_id, -volume_ton FROM transaksi_stok
+             WHERE waktu <= j.asof AND fasilitas_asal_id IS NOT NULL
+        ), buku AS (
+            SELECT SUM(g.delta) AS volume
+              FROM gerak g JOIN cold_storage c ON c.id = g.fasilitas AND c.status = 'OPERASIONAL'
+        ), lama AS (
+            SELECT SUM(s.volume_ton) AS volume
+              FROM stok_cold_storage s JOIN cold_storage c ON c.id = s.cold_storage_id
+             WHERE c.status = 'OPERASIONAL' AND s.masuk_pada <= j.asof AND s.kedaluwarsa_pada > j.asof
+        )
+        SELECT CASE
+                 WHEN (SELECT total FROM kapasitas) = 0 THEN NULL
+                 WHEN EXISTS (SELECT 1 FROM transaksi_stok) THEN
+                      CASE WHEN EXISTS (SELECT 1 FROM transaksi_stok WHERE waktu <= j.asof)
+                           THEN 100.0 * (SELECT volume FROM buku) / (SELECT total FROM kapasitas) END
+                 ELSE 100.0 * (SELECT volume FROM lama) / (SELECT total FROM kapasitas)
+               END AS nilai) q
+
+    -- Volume tiap lot pada asof dari buku besar: masuk + terima pindah sebagian - keluar - kirim pindah sebagian.
+    -- Risiko memakai nilai risiko lot saat ini.
+    UNION ALL
+    SELECT 'risiko_food_loss', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        WITH lot AS (
+            SELECT s.risiko_food_loss AS risiko,
+                   COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_id = s.id AND t.jenis = 'MASUK' AND t.waktu <= j.asof), 0)
+                 + COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_baru_id = s.id AND t.waktu <= j.asof), 0)
+                 - COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_id = s.id AND t.jenis = 'KELUAR' AND t.waktu <= j.asof), 0)
+                 - COALESCE((SELECT SUM(t.volume_ton) FROM transaksi_stok t WHERE t.lot_id = s.id AND t.jenis = 'PINDAH' AND t.lot_baru_id IS NOT NULL AND t.waktu <= j.asof), 0)
+                   AS volume
+              FROM stok_cold_storage s
+        ), buku AS (
+            SELECT volume, risiko FROM lot WHERE volume > 0.000001
+        ), lama AS (
+            SELECT volume_ton AS volume, risiko_food_loss AS risiko
+              FROM stok_cold_storage WHERE masuk_pada <= j.asof AND kedaluwarsa_pada > j.asof
+        ), dasar AS (
+            SELECT volume, risiko FROM buku WHERE EXISTS (SELECT 1 FROM transaksi_stok)
+            UNION ALL
+            SELECT volume, risiko FROM lama WHERE NOT EXISTS (SELECT 1 FROM transaksi_stok)
+        )
+        SELECT 100.0 * SUM(volume * risiko) / NULLIF(SUM(volume), 0) AS nilai FROM dasar) q
+
+    UNION ALL
+    SELECT 'rekomendasi_ai_dieksekusi', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        SELECT 100.0 * COUNT(*) FILTER (WHERE tahap LIKE '%-selesai') / NULLIF(COUNT(*), 0) AS nilai
+          FROM intervensi
+         WHERE rekomendasi_ai AND dibuat_pada >= j.mulai AND dibuat_pada < j.akhir) q
+
+    -- 16-B: model dan dampak. Hanya entri harga yang lolos validasi dianggap kenyataan.
+    -- MAPE prediksi harga: proyeksi yang tanggal targetnya jatuh pada bulan itu dibandingkan dengan rata-rata harga
+    -- konsumen tervalidasi pada hari dan kabupaten yang sama. Proyeksi tanpa kenyataan pembanding diabaikan.
+    UNION ALL
+    SELECT 'mape_harga', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        WITH aktual AS (
+            SELECT (e.dicatat_pada AT TIME ZONE 'Asia/Jakarta')::date AS tgl, p.kabupaten_kode, e.komoditas_kode, AVG(e.harga) AS harga
+              FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
+             WHERE e.tipe = 'KONSUMEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+               AND e.dicatat_pada >= j.mulai AND e.dicatat_pada < j.akhir
+             GROUP BY 1, 2, 3
+        )
+        SELECT 100.0 * AVG(ABS(pr.nilai - a.harga) / a.harga) AS nilai
+          FROM prediksi_harga pr
+          JOIN aktual a ON a.tgl = pr.tanggal_target AND a.kabupaten_kode = pr.kabupaten_kode AND a.komoditas_kode = pr.komoditas_kode
+         WHERE a.harga > 0
+           AND pr.tanggal_target >= (j.mulai AT TIME ZONE 'Asia/Jakarta')::date
+           AND pr.tanggal_target < (j.akhir AT TIME ZONE 'Asia/Jakarta')::date) q
+
+    -- Koefisien variasi harga produsen, dirata-rata atas kelompok (komoditas, kabupaten) dengan minimal 5 entri
+    -- tervalidasi pada bulan itu.
+    UNION ALL
+    SELECT 'volatilitas_harga', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        SELECT AVG(100.0 * sd / NULLIF(rata, 0)) AS nilai FROM (
+            SELECT STDDEV_SAMP(e.harga) AS sd, AVG(e.harga) AS rata
+              FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
+             WHERE e.tipe = 'PRODUSEN' AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+               AND e.dicatat_pada >= j.mulai AND e.dicatat_pada < j.akhir
+             GROUP BY e.komoditas_kode, p.kabupaten_kode
+            HAVING COUNT(*) >= 5) g) q
+
+    -- Margin = (konsumen - produsen) / konsumen, dirata-rata atas kelompok (komoditas, kabupaten) yang punya kedua
+    -- jenis harga tervalidasi pada bulan itu.
+    UNION ALL
+    SELECT 'margin_produsen_konsumen', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        WITH rata AS (
+            SELECT e.komoditas_kode, p.kabupaten_kode, e.tipe, AVG(e.harga) AS harga
+              FROM entri_harga e JOIN pasar p ON p.kode = e.pasar_id
+             WHERE e.tipe IN ('PRODUSEN', 'KONSUMEN') AND e.status IN ('DIVALIDASI', 'DIPUBLIKASI')
+               AND e.dicatat_pada >= j.mulai AND e.dicatat_pada < j.akhir
+             GROUP BY 1, 2, 3
+        )
+        SELECT AVG(100.0 * (k.harga - pr.harga) / NULLIF(k.harga, 0)) AS nilai
+          FROM rata k JOIN rata pr ON pr.komoditas_kode = k.komoditas_kode AND pr.kabupaten_kode = k.kabupaten_kode
+         WHERE k.tipe = 'KONSUMEN' AND pr.tipe = 'PRODUSEN') q
+
+    -- Volume yang masuk cold storage pada bulan itu (buku besar transaksi_stok).
+    UNION ALL
+    SELECT 'volume_agregasi', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        SELECT SUM(volume_ton) AS nilai FROM transaksi_stok
+         WHERE jenis = 'MASUK' AND waktu >= j.mulai AND waktu < j.akhir) q
+
+    -- Penghematan rencana optimal terhadap rencana pembanding serakah pada rencana yang disimpan di bulan itu
+    -- (hanya rencana terbaru per komoditas dan periode neraca).
+    UNION ALL
+    SELECT 'efisiensi_biaya_logistik', j.periode, q.nilai
+      FROM jendela j CROSS JOIN LATERAL (
+        SELECT 100.0 * (SUM(biaya_pembanding) - SUM(total_biaya)) / NULLIF(SUM(biaya_pembanding), 0) AS nilai
+          FROM optimasi_rute o
+         WHERE o.biaya_pembanding IS NOT NULL AND o.dibuat_pada >= j.mulai AND o.dibuat_pada < j.akhir
+           AND NOT EXISTS (SELECT 1 FROM optimasi_rute baru
+                            WHERE baru.komoditas_kode = o.komoditas_kode AND baru.periode = o.periode
+                              AND baru.dibuat_pada < j.akhir
+                              AND (baru.dibuat_pada, baru.id) > (o.dibuat_pada, o.id))) q
+
+), terhitung AS (
+    SELECT d.kode AS kpi_kode, d.urutan, h.periode, round(h.nilai::numeric, 4) AS nilai
+      FROM hitung h JOIN kpi_definisi d ON d.sumber_query = h.sumber_query
+     WHERE h.nilai IS NOT NULL
+)
+INSERT INTO kpi_nilai (kpi_kode, wilayah_kode, periode, versi, nilai, dihitung_pada)
+SELECT t.kpi_kode, NULL, t.periode, COALESCE(lama.versi, 0) + 1, t.nilai, now()
+  FROM terhitung t
+  LEFT JOIN LATERAL (
+        SELECT n.versi, n.nilai FROM kpi_nilai n
+         WHERE n.kpi_kode = t.kpi_kode AND n.wilayah_kode IS NULL AND n.periode = t.periode
+         ORDER BY n.versi DESC LIMIT 1) lama ON true
+ WHERE lama.versi IS NULL OR abs(lama.nilai - t.nilai) >= 0.00005
+ ORDER BY t.periode, t.urutan;

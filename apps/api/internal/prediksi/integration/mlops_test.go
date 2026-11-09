@@ -13,8 +13,8 @@ import (
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	"github.com/garda-inflasi/api/internal/prediksi/mlclient"
 	prediksiRoutes "github.com/garda-inflasi/api/internal/prediksi/routes"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -34,7 +34,7 @@ func newMLSuite(t *testing.T, name string, ml mlclient.Client) *suite {
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
-	require.NoError(t, seed.SeedDemo(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, berkasSeedDemo...))
 	seedRiwayat90(t, db)
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
@@ -42,7 +42,7 @@ func newMLSuite(t *testing.T, name string, ml mlclient.Client) *suite {
 	v1 := router.Group("/v1")
 	authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
 	prediksiRoutes.Register(v1, &prediksiRoutes.Dependencies{DB: db, Token: tokens, Logger: log, ML: ml})
-	return &suite{db: db, router: router, tokens: map[string]string{}}
+	return &suite{db: db, router: router, tokens: map[string]string{}, dasar: hariDasarSeed(t, db)}
 }
 
 // hariIni adalah awal hari UTC saat tes berjalan; riwayat dan evaluasi memakai jam nyata.

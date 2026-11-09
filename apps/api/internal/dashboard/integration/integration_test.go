@@ -16,9 +16,9 @@ import (
 	dashboardRoutes "github.com/garda-inflasi/api/internal/dashboard/routes"
 	hargaRoutes "github.com/garda-inflasi/api/internal/harga/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	siklusRoutes "github.com/garda-inflasi/api/internal/siklus/routes"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -49,14 +49,27 @@ type suite struct {
 	tokens map[string]string
 }
 
-// newSuite menyiapkan basis data berisi master dan akun demo; withSeed true menambah data demo.
+// berkasDemoDashboard adalah data demo yang dulu ditanam seeder Go suite ini: harga (harga.SeedDemo), cold storage
+// (coldstorage.SeedDemo), tugas lapangan (lapangan.SeedDemo), lalu siklus TEKANAN dan penyegaran agregat
+// (dashboard.SeedDemo). Berkas 16 harus terakhir: ia menghitung agregat dari data sebelumnya. Sengaja tidak memakai
+// seed.SeedDemo: itu juga menanam data ingestion, EWS, intervensi, dan seterusnya yang mengubah angka yang diuji
+// (mis. kabupaten dengan harga eksternal masuk ke heatmap).
+var berkasDemoDashboard = []string{
+	"demo/03_harga_harian.sql",
+	"demo/11_cold_storage_ops.sql",
+	"demo/08_lapangan_tugas.sql",
+	"demo/16_refresh_views.sql",
+}
+
+// newSuite menyiapkan basis data berisi referensi dan akun demo; withSeed true menambah data demo dashboard.
 func newSuite(t *testing.T, name string, withSeed bool) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, "demo/01_auth_users.sql"))
 	if withSeed {
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasDemoDashboard...))
 	}
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()

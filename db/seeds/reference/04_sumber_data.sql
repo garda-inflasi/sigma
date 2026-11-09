@@ -1,4 +1,12 @@
 -- GARDA INFLASI - Katalog Sumber Data Eksternal (API & Scraper)
+--
+-- Delapan sumber katalog dengan UUID stabil (garda_uuid_stabil('sumber_data', kode)), sama dengan seeder sumber-data
+-- yang digantikan. Sumber baru berstatus BELUM_AKTIF tanpa statistik (keadaan eksekusi contoh ada di
+-- demo/05_ingestion_demo.sql), jadi aman di produksi.
+--
+-- Idempoten: kunci kode. Dijalankan ulang hanya menyegarkan kolom identitas katalog (nama, penyedia, jenis, cakupan,
+-- jadwal_cron, robots_txt_patuh, atribusi, url_dasar); status, statistik eksekusi, dan konfigurasi hasil operasi tidak
+-- pernah ditimpa.
 
 -- =====================================================================
 -- Tabel: sumber_data (8 baris)
@@ -12,5 +20,8 @@ INSERT INTO sumber_data (id, kode, nama, penyedia, jenis, cakupan, jadwal_cron, 
   ('28a1cdfe-2973-34f2-a274-8de8ccf4735b', 'SRC-DJPB', 'Kanwil DJPb — realisasi belanja', 'Kanwil DJPb Aceh', 'API', 'APBD & BTT 23 kab/kota', '0 7 * * 1', TRUE, 'Sumber: Kanwil Direktorat Jenderal Perbendaharaan Provinsi Aceh', NULL, '{}'::jsonb),
   ('5a2dfe7a-a025-389a-81f9-04db72abc477', 'SRC-OWM', 'OpenWeather — cuaca aktual', 'OpenWeather', 'API', 'Titik sentra produksi', '0 * * * *', TRUE, 'Weather data provided by OpenWeather', 'https://api.openweathermap.org/data/2.5', '{}'::jsonb),
   ('371f5560-5b0f-3e09-9937-ba0d9af88fb2', 'SRC-PORTAL', 'Portal harga Disperindag Aceh', 'Pemerintah Aceh', 'SCRAPER', 'Pasar induk provinsi', '0 12 * * *', TRUE, 'Sumber: Dinas Perindustrian dan Perdagangan Aceh', NULL, '{}'::jsonb)
-ON CONFLICT (kode) DO NOTHING;
+ON CONFLICT (kode) DO UPDATE SET
+    nama = EXCLUDED.nama, penyedia = EXCLUDED.penyedia, jenis = EXCLUDED.jenis, cakupan = EXCLUDED.cakupan,
+    jadwal_cron = EXCLUDED.jadwal_cron, robots_txt_patuh = EXCLUDED.robots_txt_patuh, atribusi = EXCLUDED.atribusi,
+    url_dasar = EXCLUDED.url_dasar;
 

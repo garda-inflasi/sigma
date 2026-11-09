@@ -1,5 +1,5 @@
 // Package integration menguji API prediksi terhadap PostgreSQL sungguhan hasil
-// migrasi, dengan seed master.reference, akun demo, dan prediksi.demo.
+// migrasi, dengan seed lapis reference, akun demo, dan model serta proyeksi demo (db/seeds).
 package integration
 
 import (
@@ -18,8 +18,8 @@ import (
 	"github.com/garda-inflasi/api/internal/master"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
 	prediksiRoutes "github.com/garda-inflasi/api/internal/prediksi/routes"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -36,9 +36,16 @@ const (
 )
 
 var (
-	pg       *pgtest.Server
+	pg *pgtest.Server
+	// fixedNow adalah saat tetap untuk baris yang ditulis tes sendiri (repo_test.go); tidak terkait dengan seed demo,
+	// yang tanggalnya mengikuti hari ini UTC (lihat suite.dasar).
 	fixedNow = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
 )
+
+// berkasSeedDemo adalah berkas seed demo yang dibutuhkan tes prediksi: akun demo dan model beserta proyeksi demo.
+// Sengaja bukan seed.SeedDemo: itu juga menanam harga harian 30 hari semua kabupaten, sehingga riwayat harga di detail
+// proyeksi, deret latih ML, dan "komoditas tanpa data" tidak lagi hanya berasal dari entri yang ditanam tes.
+var berkasSeedDemo = []string{"demo/01_auth_users.sql", "demo/10_prediksi_harga.sql"}
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -49,6 +56,8 @@ type suite struct {
 	db     *gorm.DB
 	router *gin.Engine
 	tokens map[string]string
+	// dasar adalah hari dasar proyeksi demo (awal hari UTC saat seed dijalankan); tanggal harapan tes diturunkan darinya.
+	dasar time.Time
 }
 
 var (
@@ -62,25 +71,45 @@ func sharedSuite(t *testing.T) *suite {
 		db := pg.CreateDatabase(t, "prediksi_shared")
 		pgtest.MigrateUp(t, db)
 		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
-		seedRiwayat(t, db)
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasSeedDemo...))
+		dasar := hariDasarSeed(t, db)
+		seedRiwayat(t, db, dasar)
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
 		v1 := router.Group("/v1")
 		authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
 		prediksiRoutes.Register(v1, &prediksiRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
-		shared = &suite{db: db, router: router, tokens: map[string]string{}}
+		shared = &suite{db: db, router: router, tokens: map[string]string{}, dasar: dasar}
 	})
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
 	return shared
 }
 
+// hariDasarSeed membaca hari dasar proyeksi demo dari basis data: hari proyeksi dibuat (tanggal target dikurangi
+// horizon). Seed SQL memakai hari ini UTC, jadi nilainya berubah tiap hari; tes menurunkan tanggal harapannya dari sini
+// alih-alih menuliskan tanggal tetap.
+func hariDasarSeed(t *testing.T, db *gorm.DB) time.Time {
+	t.Helper()
+	var dasar time.Time
+	require.NoError(t, db.Raw(`SELECT max(tanggal_target - horizon_hari) FROM prediksi_harga WHERE sumber = 'DEMO'`).Scan(&dasar).Error)
+	require.False(t, dasar.IsZero(), "proyeksi demo belum di-seed")
+	return time.Date(dasar.Year(), dasar.Month(), dasar.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// hari memberi tanggal (YYYY-MM-DD) hari dasar yang digeser tiap selisih hari, mis. hari(-1, 0, 7).
+func (s *suite) hari(selisih ...int) []string {
+	out := make([]string, len(selisih))
+	for i, d := range selisih {
+		out[i] = s.dasar.AddDate(0, 0, d).Format(time.DateOnly)
+	}
+	return out
+}
+
 // seedRiwayat menanam harga konsumen tervalidasi cabai di Banda Aceh pada tiga hari
 // sebelum hari dasar, ditambah entri yang harus diabaikan (belum divalidasi, harga produsen, kabupaten lain).
-func seedRiwayat(t *testing.T, db *gorm.DB) {
+func seedRiwayat(t *testing.T, db *gorm.DB, dasar time.Time) {
 	t.Helper()
-	dasar := fixedNow.Truncate(24 * time.Hour)
 	entri := []struct {
 		id, pasar, tipe, status string
 		harga, hariLalu         int
@@ -273,7 +302,7 @@ func TestPrediksi_DetailJoinsHistoryProjectionFactorsAndModel(t *testing.T) {
 	assert.NotEmpty(t, got.Rekomendasi)
 	assert.Equal(t, "Ensemble LightGBM + SARIMAX", got.Model.Nama)
 	assert.Equal(t, "v2.3.1", got.Model.Versi)
-	assert.Equal(t, "2026-10-29", got.Model.Dilatih)
+	assert.Equal(t, s.hari(-7)[0], got.Model.Dilatih, "model produksi demo dilatih 7 hari sebelum hari dasar")
 
 	require.Len(t, got.Faktor, 5)
 	assert.Equal(t, "Curah hujan sentra Gayo", got.Faktor[0].Nama)
@@ -282,7 +311,7 @@ func TestPrediksi_DetailJoinsHistoryProjectionFactorsAndModel(t *testing.T) {
 
 	// Seri: 3 hari riwayat (rata-rata harian entri valid saja), titik sambung di hari dasar, proyeksi 7 dan 14 hari.
 	require.Len(t, got.Seri, 6, "%+v", got.Seri)
-	assert.Equal(t, []string{"2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-12", "2026-11-19"}, tanggalSeri(got.Seri))
+	assert.Equal(t, s.hari(-3, -2, -1, 0, 7, 14), tanggalSeri(got.Seri))
 	assert.Equal(t, 51000, *got.Seri[0].Aktual, "rata-rata 50.000 dan 52.000")
 	assert.Equal(t, 54000, *got.Seri[1].Aktual)
 	assert.Equal(t, 56000, *got.Seri[2].Aktual)

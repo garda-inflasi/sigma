@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/garda-inflasi/api/internal/seed"
+	"github.com/garda-inflasi/api/pkg/seed"
 )
 
 func main() {

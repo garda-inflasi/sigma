@@ -1,9 +1,19 @@
 -- GARDA INFLASI - Contoh Jejak Audit Demo
+--
+-- Aktor dicari lewat email, bukan UUID literal: bila tier admin dijalankan lebih
+-- dulu, superadmin@gardainflasi.id memakai id dari admin/01_admin_user.sql dan
+-- akun demo ber-email sama tidak pernah dibuat (ON CONFLICT (email)). UUID lama
+-- hanya dipakai untuk mengganti entitas_id yang merujuk aktor itu sendiri.
+-- Waktu digeser relatif ke now(): baris terbaru jatuh satu jam lalu.
 
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM audit_log WHERE kode LIKE 'demo-audit-%') THEN
-    INSERT INTO audit_log (kode, waktu, aktor_id, aksi, entitas, entitas_id, hasil, ip, metadata, aktor_nama, aktor_email, aktor_peran, user_agent) VALUES
+    -- Baris jatuh dalam ~1 hari terakhir; pastikan partisi bulan itu (dan bulan ini) ada.
+    PERFORM audit_log_siapkan_partisi(now() - interval '2 days', 2);
+
+    WITH v (kode, waktu, aktor_lama, aksi, entitas, entitas_id, hasil, ip, metadata, aktor_nama, aktor_email, aktor_peran, user_agent) AS (
+      VALUES
       ('demo-audit-0080', '2026-11-05T10:51:38.72247+00:00', '9e93356e-ae55-3f97-8aab-8dd459c17f0d', 'LOGIN', 'pengguna', '9e93356e-ae55-3f97-8aab-8dd459c17f0d', 'BERHASIL', '10.0.0.130', '{"demo": true}'::jsonb, 'Drs. Syahrul, M.M.', 'strategis.djpb@gardainflasi.id', 'STRATEGIS_DJPB', NULL),
       ('demo-audit-0079', '2026-11-05T11:05:38.72247+00:00', '8618501a-4585-3e4a-b466-31fcdd4abb83', 'LOGIN', 'pengguna', '8618501a-4585-3e4a-b466-31fcdd4abb83', 'BERHASIL', '10.0.3.181', '{"demo": true}'::jsonb, 'Hendra Gunawan, S.T., M.T.', 'manajer.mutu@gardainflasi.id', 'MANAJER_MUTU', NULL),
       ('demo-audit-0078', '2026-11-05T11:16:38.72247+00:00', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1', 'BULK_rekomendasi_olahan', 'stok_cold_storage', 'STO-2322', 'BERHASIL', '10.0.0.163', '{"demo": true}'::jsonb, 'Maya Sari, S.Stat.', 'agregator.data@gardainflasi.id', 'OPS_AGREGATOR', NULL),
@@ -83,6 +93,23 @@ BEGIN
       ('demo-audit-0004', '2026-11-06T08:17:38.72247+00:00', '5008d2a8-68fd-3c21-81bf-430a2b59c9be', 'LOGOUT', 'pengguna', '5008d2a8-68fd-3c21-81bf-430a2b59c9be', 'BERHASIL', '10.0.3.191', '{"demo": true}'::jsonb, 'Muhammad Rizki', 'mahasiswa.5@gardainflasi.id', 'OPS_MAHASISWA', NULL),
       ('demo-audit-0003', '2026-11-06T08:34:38.72247+00:00', '4a5595b3-31f9-3231-97cc-91bb5aa27394', 'PINDAH_TAHAP', 'intervensi', 'INT-2060', 'BERHASIL', '10.0.3.41', '{"demo": true}'::jsonb, 'Dr. Nurul Aini, S.E., M.E.', 'manajer.kebijakan@gardainflasi.id', 'MANAJER_KEBIJAKAN', NULL),
       ('demo-audit-0002', '2026-11-06T09:00:38.72247+00:00', '8618501a-4585-3e4a-b466-31fcdd4abb83', 'UBAH_AMBANG_EWS', 'aturan_ews', 'ATU-6870', 'BERHASIL', '10.0.0.69', '{"demo": true}'::jsonb, 'Hendra Gunawan, S.T., M.T.', 'manajer.mutu@gardainflasi.id', 'MANAJER_MUTU', NULL),
-      ('demo-audit-0001', '2026-11-06T09:10:38.72247+00:00', 'c754ff9b-1b8f-3955-b93e-231d5cd836ab', 'AJUKAN_MASTER', 'komoditas', 'KOM-4265', 'BERHASIL', '10.0.1.191', '{"demo": true}'::jsonb, 'Nurul Fajri', 'mahasiswa.6@gardainflasi.id', 'OPS_MAHASISWA', NULL);
+      ('demo-audit-0001', '2026-11-06T09:10:38.72247+00:00', 'c754ff9b-1b8f-3955-b93e-231d5cd836ab', 'AJUKAN_MASTER', 'komoditas', 'KOM-4265', 'BERHASIL', '10.0.1.191', '{"demo": true}'::jsonb, 'Nurul Fajri', 'mahasiswa.6@gardainflasi.id', 'OPS_MAHASISWA', NULL)
+    ),
+    geser AS (
+      SELECT (now() - interval '1 hour') - max(waktu::timestamptz) AS d FROM v
+    )
+    INSERT INTO audit_log (kode, waktu, aktor_id, aksi, entitas, entitas_id, hasil, ip, metadata, aktor_nama, aktor_email, aktor_peran, user_agent)
+    SELECT v.kode,
+           v.waktu::timestamptz + geser.d,
+           p.id,
+           v.aksi,
+           v.entitas,
+           CASE WHEN v.entitas = 'pengguna' AND v.entitas_id = v.aktor_lama AND p.id IS NOT NULL
+                THEN p.id::text ELSE v.entitas_id END,
+           v.hasil, v.ip, v.metadata, v.aktor_nama, v.aktor_email, v.aktor_peran, v.user_agent::text
+    FROM v
+    CROSS JOIN geser
+    LEFT JOIN pengguna p ON p.email = v.aktor_email
+    ORDER BY v.waktu::timestamptz;
   END IF;
 END $$;

@@ -11,9 +11,9 @@ import (
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	spasialRoutes "github.com/garda-inflasi/api/internal/spasial/routes"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -63,14 +63,14 @@ func writableSuite(t *testing.T, name string) (*suite, *gorm.DB) {
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
-	require.NoError(t, seed.SeedDemo(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, berkasSeedDemo...))
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 	router := gin.New()
 	v1 := router.Group("/v1")
 	authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
 	spasialRoutes.Register(v1, &spasialRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
-	return &suite{router: router, tokens: map[string]string{}}, db
+	return &suite{router: router, tokens: map[string]string{}, periode: periodeSeed(t, db)}, db
 }
 
 func (s *suite) post(t *testing.T, path, email string, body any) *httptest.ResponseRecorder {

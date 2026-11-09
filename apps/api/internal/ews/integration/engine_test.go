@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/garda-inflasi/api/internal/seed"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -252,7 +252,10 @@ func TestEngine_InactiveRuleIsIgnoredAndThresholdsAreHonoured(t *testing.T) {
 
 	require.NoError(t, s.db.Exec(`UPDATE aturan_ews SET ambang_waspada = 15, ambang_siaga = 30, ambang_kritis = 50 WHERE kode = 'ATR-LH-CBM-KRT'`).Error)
 	assert.Equal(t, 1, s.evaluasi(t).Dibuat)
-	assert.Equal(t, "WASPADA", s.alertMesin(t, "LONJAKAN_HARGA|CBM-KRT|1171")[0].Severity)
+	// require, bukan assert: tanpa alert, mengindeks [0] akan panik dan membatalkan seluruh paket.
+	alerts := s.alertMesin(t, "LONJAKAN_HARGA|CBM-KRT|1171")
+	require.Len(t, alerts, 1)
+	assert.Equal(t, "WASPADA", alerts[0].Severity)
 }
 
 func TestEngine_EvaluasiEndpointAuthorization(t *testing.T) {

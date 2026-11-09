@@ -1,5 +1,5 @@
 // Package integration menguji API spasial terhadap PostgreSQL sungguhan dengan
-// seed master.reference, auth.demo, dan spasial.demo.
+// seed lapis reference (master, geometri), akun demo, dan neraca, rute, serta kandidat spasial demo (db/seeds).
 package integration
 
 import (
@@ -10,17 +10,17 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	spasialRoutes "github.com/garda-inflasi/api/internal/spasial/routes"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 const (
@@ -31,10 +31,22 @@ const (
 	emailTanpaIzin = "mahasiswa.1@gardainflasi.id"
 )
 
-var (
-	pg      *pgtest.Server
-	seedNow = time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
-)
+var pg *pgtest.Server
+
+// berkasSeedDemo adalah berkas seed demo yang dibutuhkan tes spasial: akun demo dan neraca, rute, serta kandidat
+// cold storage. Sengaja bukan seed.SeedDemo, yang menanam data demo semua modul (harga 30 hari, intervensi, dan
+// seterusnya) yang tidak dipakai tes ini.
+var berkasSeedDemo = []string{"demo/01_auth_users.sql", "demo/09_spasial_neraca.sql"}
+
+// periodeSeed membaca periode neraca yang ditulis seed: awal bulan seed dijalankan (UTC), jadi nilainya berubah tiap
+// bulan; tes menurunkan tanggal harapannya dari sini alih-alih menuliskan tanggal tetap.
+func periodeSeed(t *testing.T, db *gorm.DB) string {
+	t.Helper()
+	var periode string
+	require.NoError(t, db.Raw(`SELECT to_char(max(periode), 'YYYY-MM-DD') FROM neraca_wilayah`).Scan(&periode).Error)
+	require.NotEmpty(t, periode, "neraca demo belum di-seed")
+	return periode
+}
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -44,6 +56,8 @@ func TestMain(m *testing.M) {
 type suite struct {
 	router *gin.Engine
 	tokens map[string]string
+	// periode adalah periode neraca demo (YYYY-MM-DD, awal bulan seed).
+	periode string
 }
 
 var (
@@ -57,14 +71,14 @@ func sharedSuite(t *testing.T) *suite {
 		db := pg.CreateDatabase(t, "spasial_shared")
 		pgtest.MigrateUp(t, db)
 		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasSeedDemo...))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
 		v1 := router.Group("/v1")
 		authRoutes.Register(v1, &authRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
 		spasialRoutes.Register(v1, &spasialRoutes.Dependencies{DB: db, Token: tokens, Logger: log})
-		shared = &suite{router: router, tokens: map[string]string{}}
+		shared = &suite{router: router, tokens: map[string]string{}, periode: periodeSeed(t, db)}
 	})
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
 	return shared
@@ -179,7 +193,7 @@ func TestSpasial_Neraca(t *testing.T) {
 		got := data[[]row](t, s.call(t, "/v1/spasial/neraca", emailLihat))
 		assert.Len(t, got, 8*23)
 		for _, r := range got {
-			assert.Equal(t, "2026-10-01", r.Periode)
+			assert.Equal(t, s.periode, r.Periode, "periode terbaru = periode neraca yang di-seed (awal bulan ini)")
 			assert.Equal(t, "DEMO", r.Sumber)
 		}
 	})

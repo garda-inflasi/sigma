@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/garda-inflasi/api/internal/gardactl"
+	"github.com/garda-inflasi/api/pkg/gardactl"
 )
 
 func main() {

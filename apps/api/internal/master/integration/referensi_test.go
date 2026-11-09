@@ -16,9 +16,9 @@ import (
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
 	"github.com/garda-inflasi/api/internal/platform/migrate"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -41,8 +41,7 @@ func refSuite(t *testing.T) *suite {
 	refOnce.Do(func() {
 		db := pg.CreateDatabase(t, refDBName)
 		pgtest.MigrateUp(t, db)
-		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasSeed...))
 		refShared = bangunSuite(db)
 	})
 	require.NotNil(t, refShared, "suite referensi gagal dibuat")

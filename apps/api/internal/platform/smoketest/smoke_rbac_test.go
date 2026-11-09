@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/garda-inflasi/api/internal/seed"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

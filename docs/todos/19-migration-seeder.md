@@ -175,7 +175,7 @@ Urutan semua task (Fase P/F) ada di [00 §6](00-cara-kerja.md). Berikut rincian 
 ### F0-4 — Direct SQL Seeder (`db/seeds/`)
 - [x] Arsitektur seeder direfaktor penuh ke berkas SQL deklaratif di `db/seeds/{reference,admin,demo}/`.
 - [x] Seluruh 16 folder Go seeder di `apps/api/internal/<modul>/seeder/` dihapus total.
-- [x] Runner `apps/api/cmd/seed` (dan paket `internal/seed`) mengeksekusi berkas `.sql` per tier, mendukung guard produksi `APP_ENV=production`, resolusi lokasi `SEEDS_DIR`, dan idempoten.
+- [x] Runner `apps/api/cmd/seed` (dan paket `pkg/seed`) mengeksekusi berkas `.sql` per tier, mendukung guard produksi `APP_ENV=production`, resolusi lokasi `SEEDS_DIR`, dan idempoten.
 - [x] `cmd/seed-analytics` dihapus bersama modul `analytics` dan MongoDB (D4: Postgres saja).
 - [x] Tes: verifikasi idempoten (eksekusi berkas SQL dua kali tidak menambah baris), serta penolakan tier `demo` pada mode produksi.
 

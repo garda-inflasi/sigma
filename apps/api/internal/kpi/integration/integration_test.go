@@ -15,8 +15,8 @@ import (
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	kpiRoutes "github.com/garda-inflasi/api/internal/kpi/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -45,6 +45,16 @@ type suite struct {
 	tokens map[string]string
 }
 
+// berkasDemoKPI adalah data demo yang dulu ditanam seeder Go suite ini: akun demo, cold storage (coldstorage.SeedDemo),
+// lalu nilai KPI yang dihitung dari data itu (kpi.SeedDemo). Sengaja bukan seed.SeedDemo: itu juga menanam harga,
+// intervensi, dan prediksi sehingga KPI berbasis data tersebut (volatilitas, margin, kelengkapan harian, dst.) bernilai,
+// padahal tes ini menguji KPI yang MENUNGGU DATA. Berkas 13 harus terakhir: ia menghitung dari data sebelumnya.
+var berkasDemoKPI = []string{
+	"demo/01_auth_users.sql",
+	"demo/11_cold_storage_ops.sql",
+	"demo/13_kpi_rekam.sql",
+}
+
 var (
 	once   sync.Once
 	shared *suite
@@ -56,7 +66,7 @@ func sharedSuite(t *testing.T) *suite {
 		db := pg.CreateDatabase(t, "kpi_shared")
 		pgtest.MigrateUp(t, db)
 		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasDemoKPI...))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()

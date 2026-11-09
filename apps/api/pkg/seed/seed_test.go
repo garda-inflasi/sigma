@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/garda-inflasi/api/internal/seedkit"
+	"github.com/garda-inflasi/api/pkg/seedkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -164,7 +164,7 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 			return fmt.Errorf("cari alert aktif: %w", res.Error)
 		}
 		if res.RowsAffected > 0 {
-			naik, err := naikkan(tx, aktif.ID, aktif.Status, aktif.Severity, in)
+			naik, err := naikkan(tx, aktif.ID, aktif.Status, aktif.Severity, in, now)
 			hasil, alertID = domain.HasilDilewati, aktif.ID
 			if err != nil || !naik {
 				return err
@@ -233,7 +233,9 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 }
 
 // naikkan memperbarui alert aktif bila tingkatnya lebih tinggi dari yang tersimpan.
-func naikkan(tx *gorm.DB, id idx.ID, status, severityLama string, in domain.NewAlert) (bool, error) {
+// Waktu riwayat memakai now dari engine, sama dengan riwayat "Dibuat oleh rule engine", supaya urutannya tidak
+// bergantung pada selisih jam aplikasi dan basis data.
+func naikkan(tx *gorm.DB, id idx.ID, status, severityLama string, in domain.NewAlert, now time.Time) (bool, error) {
 	if domain.SeverityRank(in.Severity) <= domain.SeverityRank(severityLama) {
 		return false, nil
 	}
@@ -248,8 +250,8 @@ func naikkan(tx *gorm.DB, id idx.ID, status, severityLama string, in domain.NewA
 	}
 	catatan := fmt.Sprintf("Tingkat naik dari %s ke %s", severityLama, in.Severity)
 	err = tx.Exec(`
-		INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, catatan)
-		VALUES (?, CAST(? AS status_ews), CAST(? AS status_ews), NULL, ?)`, id, status, status, catatan).Error
+		INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, waktu, catatan)
+		VALUES (?, CAST(? AS status_ews), CAST(? AS status_ews), NULL, ?, ?)`, id, status, status, now, catatan).Error
 	if err != nil {
 		return false, fmt.Errorf("riwayat kenaikan alert: %w", err)
 	}

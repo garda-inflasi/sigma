@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,9 +24,9 @@ import (
 	"github.com/garda-inflasi/api/internal/policy-brief/domain"
 	"github.com/garda-inflasi/api/internal/policy-brief/generator"
 	briefRoutes "github.com/garda-inflasi/api/internal/policy-brief/routes"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -42,10 +43,7 @@ const (
 	emailTanpaIzin = "mahasiswa.1@gardainflasi.id"
 )
 
-var (
-	pg       *pgtest.Server
-	fixedNow = time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC)
-)
+var pg *pgtest.Server
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -315,16 +313,11 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 	require.Len(t, d.Konten.Bagian, 5)
 
 	t.Run("angka berasal dari basis data, bukan karangan", func(t *testing.T) {
-		var inflasi struct {
-			Mtm, Yoy, Ytd float64
-			Sumber        string
-		}
-		require.NoError(t, s.db.Raw(`SELECT inflasi_mtm AS mtm, inflasi_yoy AS yoy, inflasi_ytd AS ytd, sumber FROM inflasi_bulanan
-			WHERE wilayah_kode = '11' AND periode = '2026-10-01'`).Scan(&inflasi).Error)
+		inflasi := s.inflasiTerbaru(t, "2026-11-01")
 		require.Equal(t, "DEMO", inflasi.Sumber)
-		assert.InDelta(t, 2.84, inflasi.Yoy, 1e-9)
 
-		assert.Contains(t, d.Ringkasan, "Inflasi tahunan Oktober 2026 tercatat 2,84% (bulanan 0,41%)")
+		assert.Contains(t, d.Ringkasan, fmt.Sprintf("Inflasi tahunan %s tercatat %s (bulanan %s)",
+			domain.LabelPeriode(inflasi.Periode), persen(inflasi.Yoy), persen(inflasi.Mtm)))
 		assert.Contains(t, d.Ringkasan, "sebagian angka berasal dari data demo", "data demo diberi catatan keandalan")
 
 		fakta := map[string]domain.Fakta{}
@@ -332,8 +325,8 @@ func TestPolicyBrief_GenerateTanpaLLMMenyusunDrafDariDataNyata(t *testing.T) {
 			fakta[f.ID] = f
 		}
 		assert.Equal(t, "inflasi_bulanan (DEMO)", fakta["INFLASI_YOY"].Sumber)
-		assert.Equal(t, "2,84%", fakta["INFLASI_YOY"].Nilai)
-		assert.Equal(t, "2,13%", fakta["INFLASI_YTD"].Nilai)
+		assert.Equal(t, persen(inflasi.Yoy), fakta["INFLASI_YOY"].Nilai)
+		assert.Equal(t, persen(inflasi.Ytd), fakta["INFLASI_YTD"].Nilai)
 		assert.Contains(t, fakta, "ANDIL_1_KOMODITAS")
 		assert.Contains(t, fakta, "EWS_TOTAL")
 		assert.Contains(t, fakta, "PROYEKSI_1_PERUBAHAN")
@@ -408,6 +401,29 @@ func ribuan(n int) string {
 	return b.String()
 }
 
+// persen menulis angka seperti narasi brief: dua desimal, koma desimal, dan tanda persen (mis. 2,84%).
+func persen(v float64) string {
+	return strings.Replace(strconv.FormatFloat(v, 'f', 2, 64), ".", ",", 1) + "%"
+}
+
+type inflasiRow struct {
+	Periode       time.Time
+	Mtm, Yoy, Ytd float64
+	Sumber        string
+}
+
+// inflasiTerbaru membaca inflasi provinsi pada bulan data terbaru yang tidak melewati periode (YYYY-MM-DD, awal bulan
+// brief), yaitu data yang dipakai penyusun brief. Bulan itu mengikuti hari seed demo eksekutif dijalankan (deretnya
+// berakhir di bulan lalu), jadi tes menurunkan angka harapannya dari basis data alih-alih menuliskannya.
+func (s *suite) inflasiTerbaru(t *testing.T, periode string) inflasiRow {
+	t.Helper()
+	var row inflasiRow
+	require.NoError(t, s.db.Raw(`SELECT periode, inflasi_mtm AS mtm, inflasi_yoy AS yoy, inflasi_ytd AS ytd, sumber FROM inflasi_bulanan
+		WHERE wilayah_kode = '11' AND periode <= ?::date ORDER BY periode DESC LIMIT 1`, periode).Scan(&row).Error)
+	require.False(t, row.Periode.IsZero(), "tidak ada data inflasi demo sampai %s", periode)
+	return row
+}
+
 // llmPalsu adalah Generator palsu yang menyusun narasi ber-placeholder atau gagal.
 type llmPalsu struct {
 	narasi  *domain.Narasi
@@ -452,7 +468,8 @@ func TestPolicyBrief_GenerateDenganLLMMenyimpanJejakModelDanLabelDrafAI(t *testi
 	assert.Nil(t, d.Galat)
 
 	// Placeholder sudah diganti nilai dari data; LLM tidak pernah menulis angka sendiri.
-	assert.Equal(t, "Inflasi tahunan Oktober 2026 tercatat 2,84%, berada dalam koridor sasaran inflasi.", d.Ringkasan)
+	inflasi := s.inflasiTerbaru(t, "2026-12-01")
+	assert.Equal(t, fmt.Sprintf("Inflasi tahunan %s tercatat %s, berada dalam koridor sasaran inflasi.", domain.LabelPeriode(inflasi.Periode), persen(inflasi.Yoy)), d.Ringkasan)
 	assert.Contains(t, d.Konten.Butir(domain.BagianTemuan)[0], "poin persen")
 	assert.NotContains(t, d.Konten.Butir(domain.BagianRisiko)[0], "{{")
 
@@ -463,7 +480,7 @@ func TestPolicyBrief_GenerateDenganLLMMenyimpanJejakModelDanLabelDrafAI(t *testi
 	for _, f := range gen.konteks.Fakta {
 		ada[f.ID] = f.Nilai
 	}
-	assert.Equal(t, "2,84%", ada["INFLASI_YOY"])
+	assert.Equal(t, persen(inflasi.Yoy), ada["INFLASI_YOY"])
 	assert.Equal(t, "Desember 2026", ada["PERIODE"])
 
 	var catatan auditdomain.AuditLog

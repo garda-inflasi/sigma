@@ -17,9 +17,9 @@ import (
 	"github.com/garda-inflasi/api/internal/master"
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -42,6 +42,13 @@ const (
 
 var pg *pgtest.Server
 
+// berkasSeed adalah seed yang dibutuhkan tes master: referensi master (satuan, wilayah, kecamatan, pasar, komoditas),
+// matriks izin, dan akun demo. SeedDemo penuh sengaja tidak dipakai karena ikut mengisi pedagang, entri harga, dan
+// data modul lain; tes daftar dan hitungan di sini menghitung baris yang ditambahkannya sendiri.
+var berkasSeed = []string{
+	"reference/01_master.sql", "reference/02_kecamatan.sql", "reference/03_auth_rbac.sql", "demo/01_auth_users.sql",
+}
+
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 	os.Exit(pgtest.Main(m, &pg))
@@ -63,8 +70,7 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "master_shared")
 		pgtest.MigrateUp(t, db)
-		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasSeed...))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()

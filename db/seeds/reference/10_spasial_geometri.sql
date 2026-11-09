@@ -1,4 +1,10 @@
 -- GARDA INFLASI - Geometri Wilayah Kabupaten/Kota
+--
+-- Padanan bagian geometri seeder Go lama internal/spasial/seeder: poligon PERKIRAAN (selimut cembung dari segi-10 tak
+-- beraturan di sekitar titik pusat kabupaten/kota, ditambah kotak kecil di sekitar tiap pasar dan cold storage supaya titik
+-- itu pasti berada di dalam poligonnya). Bukan batas administratif resmi: baris bersumber 'DEMO' dan API menandainya
+-- perkiraan sampai diganti impor batas BPS/Geoportal (sumber 'RESMI'). DO NOTHING agar seed ulang tidak menimpa batas resmi.
+-- Prasyarat: reference/01_master.sql (kabupaten, pasar) dan reference/09_cold_storage.sql (titik jangkar).
 
 -- =====================================================================
 -- Tabel: wilayah_geometri (23 baris)

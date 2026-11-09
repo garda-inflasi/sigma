@@ -17,8 +17,8 @@ import (
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	lapanganRoutes "github.com/garda-inflasi/api/internal/lapangan/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -59,8 +59,11 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "lapangan_shared")
 		pgtest.MigrateUp(t, db)
-		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		// Master dan akun (beserta matriks izin), tugas lapangan demo, dan histori entri harga demo; modul lain tidak
+		// ikut disemai (SeedDemo penuh juga mengisi pedagang, EWS, prediksi, dan seterusnya yang tidak dipakai tes ini).
+		require.NoError(t, seed.SeedFiles(t.Context(), db,
+			"reference/01_master.sql", "reference/02_kecamatan.sql", "reference/03_auth_rbac.sql", "demo/01_auth_users.sql",
+			"demo/08_lapangan_tugas.sql", "demo/03_harga_harian.sql"))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()

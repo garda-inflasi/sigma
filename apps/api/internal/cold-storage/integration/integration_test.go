@@ -1,5 +1,5 @@
 // Package integration menguji modul cold storage terhadap PostgreSQL sungguhan
-// (container dockertest): migrasi, seeder, query SQL, RBAC, dan kontrak OpenAPI.
+// (container dockertest): migrasi, seed SQL (db/seeds), query SQL, RBAC, dan kontrak OpenAPI.
 //
 // Memerlukan Docker. Lewati dengan `go test -short`.
 package integration
@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -22,8 +21,8 @@ import (
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	coldRoutes "github.com/garda-inflasi/api/internal/cold-storage/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -34,10 +33,20 @@ import (
 
 const (
 	jwtSecret = "integration-test-secret-key-32chars!!"
-	// Kata sandi akun demo (seeder auth.demo).
+	// Kata sandi akun demo (db/seeds/demo/01_auth_users.sql).
 	seedPassword = "Garda2024!"
 
 	contractPath = "../../../../../packages/contracts/openapi.yaml"
+)
+
+// Berkas seed yang dibutuhkan suite ini (relatif terhadap db/seeds). seed.SeedDemo menjalankan seluruh lapis demo,
+// yaitu data semua modul (harga, EWS, intervensi, ...) yang tidak dibutuhkan di sini dan melambatkan tiap basis data
+// uji, jadi tes memilih berkas milik modul ini saja lewat seed.SeedFiles, setara dengan seeder auth.demo dan
+// coldstorage.demo sebelum seeder dipindah ke SQL. Lapis reference (master, RBAC, fasilitas) dijalankan utuh.
+const (
+	seedAkunDemo        = "demo/01_auth_users.sql"
+	seedFasilitas       = "reference/09_cold_storage.sql"
+	seedColdStorageDemo = "demo/11_cold_storage_ops.sql"
 )
 
 var pg *pgtest.Server
@@ -64,7 +73,7 @@ type suite struct {
 	tokens map[string]string // email → access token
 }
 
-// Akun demo (seeder auth.demo) dan izin cold storage yang dibawa perannya
+// Akun demo (db/seeds/demo/01_auth_users.sql) dan izin cold storage yang dibawa perannya
 // (rolePermissions di modul auth).
 const (
 	userLihatSaja   = "manajer.risiko@gardainflasi.id"       // MANAJER_RISIKO: coldstorage.lihat
@@ -75,11 +84,27 @@ const (
 	userKoordinator = "koordinator.lapangan@gardainflasi.id" // OPS_KOORDINATOR: tidak ada izin cold storage
 )
 
-// seedMasterAndAccounts mengisi master referensi dan akun demo yang dipakai suite ini.
+// seedMasterAndAccounts mengisi data referensi (master, RBAC, fasilitas cold storage) dan akun demo yang dipakai suite ini.
 func seedMasterAndAccounts(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	require.NoError(t, seed.SeedReference(t.Context(), db), "seed master")
-	require.NoError(t, seed.SeedDemo(t.Context(), db), "seed akun demo")
+	require.NoError(t, seed.SeedReference(t.Context(), db), "seed referensi")
+	require.NoError(t, seed.SeedFiles(t.Context(), db, seedAkunDemo), "seed akun demo")
+}
+
+// seedMasterLegacy mengisi master minimum pada skema lama (sebelum 000121/000122: kunci VARCHAR, belum ada tabel
+// satuan) untuk tes yang menghentikan migrasi di versi lama lalu menyisipkan data lama. Seed SQL (db/seeds)
+// mengandaikan skema terbaru sehingga tidak bisa dijalankan di sana. Nilainya sama dengan reference/01_master.sql:
+// provinsi Aceh, dua kabupaten/kota yang dirujuk fasilitas uji, dan komoditas CBM-KRT (masa simpan 21 hari).
+func seedMasterLegacy(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	execSQL(t, db, `
+		INSERT INTO provinsi (kode, nama) VALUES ('11', 'ACEH');
+		INSERT INTO kabupaten (kode, nama, jenis, ibukota, lat, lng, provinsi_kode) VALUES
+			('1108', 'KABUPATEN ACEH BESAR', 'Kabupaten', 'Kota Jantho', 5.3, 95.63, '11'),
+			('1171', 'KOTA BANDA ACEH', 'Kota', 'Banda Aceh', 5.55, 95.32, '11');
+		INSERT INTO komoditas (kode, nama, satuan, kategori, harga_acuan, pilot, shelf_life_hari)
+		VALUES ('CBM-KRT', 'Cabai merah keriting', 'kg', 'Hortikultura', 52000, TRUE, 21);
+	`, "master minimum skema lama")
 }
 
 // newSuite menyiapkan basis data (migrasi + seed), router, dan token login.
@@ -87,6 +112,7 @@ func newSuite(t *testing.T, db *gorm.DB) *suite {
 	t.Helper()
 	pgtest.MigrateUp(t, db)
 	seedMasterAndAccounts(t, db)
+	require.NoError(t, seed.SeedFiles(t.Context(), db, seedColdStorageDemo), "seed lot stok")
 
 	tokenMgr := token.NewManager(jwtSecret)
 	log := logger.NewDefault()
@@ -212,7 +238,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 	db := pg.NewDatabase(t, "mig_000007")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 6))
-	require.NoError(t, seed.SeedReference(t.Context(), db), "master referensi pra-000007")
+	seedMasterLegacy(t, db)
 
 	// Data yang sudah ada sebelum 000007 (tanpa kolom kedaluwarsa_pada).
 	execSQL(t, db, `
@@ -303,24 +329,74 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 		require.NoError(t, db.Table(table).Count(&n).Error)
 		return n
 	}
+	idLotDanTransaksi := func() string {
+		var ids string
+		require.NoError(t, db.Raw(`SELECT string_agg(tabel || ':' || id, ',' ORDER BY tabel, id) FROM (
+			SELECT 'stok' AS tabel, id FROM stok_cold_storage UNION ALL SELECT 'trx', id FROM transaksi_stok) x`).Scan(&ids).Error)
+		return ids
+	}
 
-	require.NoError(t, seed.SeedDemo(t.Context(), db))
+	// Lapis reference hanya menulis fasilitas; lot, telemetri, dan transaksi adalah data demo (ditolak di produksi).
+	assert.Equal(t, int64(5), count("cold_storage"))
+	for _, table := range []string{"stok_cold_storage", "telemetri_suhu", "transaksi_stok"} {
+		assert.Zero(t, count(table), "%s adalah data demo, bukan referensi", table)
+	}
+
+	require.NoError(t, seed.SeedFiles(t.Context(), db, seedColdStorageDemo))
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 	assert.Equal(t, int64(384), count("telemetri_suhu"), "96 titik x 4 fasilitas beroperasi")
 	assert.Equal(t, int64(23), count("transaksi_stok"))
+	idSebelum := idLotDanTransaksi()
 
-	// Menjalankan ulang pada waktu lain: tidak menggandakan baris
+	// Menjalankan ulang pada waktu lain. SQL memakai now() basis data sehingga jam tidak bisa disuntikkan seperti
+	// parameter seeder Go lama; sebagai gantinya seluruh tanggal demo digeser 10 hari ke belakang, seolah seed
+	// sebelumnya dijalankan 10 hari lalu. Tanggal harus kembali mengikuti waktu sekarang tanpa menggandakan baris.
+	execSQL(t, db, `
+		UPDATE stok_cold_storage SET masuk_pada = masuk_pada - INTERVAL '10 day', kedaluwarsa_pada = kedaluwarsa_pada - INTERVAL '10 day';
+		UPDATE transaksi_stok SET waktu = waktu - INTERVAL '10 day';
+		UPDATE telemetri_suhu SET waktu = waktu - INTERVAL '10 day';
+	`, "geser tanggal demo 10 hari ke belakang")
 	require.NoError(t, seed.SeedReference(t.Context(), db))
-	require.NoError(t, seed.SeedDemo(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, seedColdStorageDemo))
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 	assert.Equal(t, int64(384), count("telemetri_suhu"), "jendela bergeser, jumlah baris tetap")
 	assert.Equal(t, int64(23), count("transaksi_stok"))
+	assert.Equal(t, idSebelum, idLotDanTransaksi(), "ID lot dan transaksi tidak berubah dan tidak ada baris baru")
 
-	var masuk time.Time
-	require.NoError(t, db.Raw(`SELECT masuk_pada FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&masuk).Error)
-	assert.False(t, masuk.IsZero(), "masuk_pada terisi")
+	t.Run("tanggal mengikuti waktu seed terakhir", func(t *testing.T) {
+		// Dibandingkan dengan jam basis data (bukan jam Go) agar kebal terhadap selisih jam host dan container.
+		for _, lot := range []struct {
+			kode               string
+			umurHari, masaHari float64
+		}{{"STK-CS01-01", 16, 21}, {"STK-CS02-02", 106, 120}} {
+			var d struct{ Selisih, MasaHari float64 }
+			require.NoError(t, db.Raw(`
+				SELECT ABS(EXTRACT(EPOCH FROM (clock_timestamp() - ? * INTERVAL '1 day' - masuk_pada))) AS selisih,
+				       EXTRACT(EPOCH FROM (kedaluwarsa_pada - masuk_pada)) / 86400 AS masa_hari
+				  FROM stok_cold_storage WHERE kode = ?`, lot.umurHari, lot.kode).Scan(&d).Error)
+			assert.Less(t, d.Selisih, 300.0, "lot %s berumur %v hari pada waktu seed terakhir", lot.kode, lot.umurHari)
+			assert.Equal(t, lot.masaHari, d.MasaHari, "masa simpan lot %s dari masuk", lot.kode)
+		}
+
+		var umur struct{ Terbaru, Tertua float64 }
+		require.NoError(t, db.Raw(`SELECT EXTRACT(EPOCH FROM (clock_timestamp() - MAX(waktu))) AS terbaru,
+			EXTRACT(EPOCH FROM (clock_timestamp() - MIN(waktu))) AS tertua FROM telemetri_suhu`).Scan(&umur).Error)
+		assert.GreaterOrEqual(t, umur.Terbaru, 0.0)
+		assert.Less(t, umur.Terbaru, 31*60.0, "pembacaan terbaru menempel pada kelipatan 30 menit terakhir")
+		assert.Less(t, umur.Tertua, 48*3600.0+5*60, "jendela 48 jam: telemetri seed sebelumnya sudah dibuang")
+	})
+
+	t.Run("suhu aktual fasilitas diturunkan dari pembacaan terbaru", func(t *testing.T) {
+		var n int64
+		require.NoError(t, db.Raw(`
+			SELECT COUNT(*) FROM cold_storage c
+			  JOIN LATERAL (SELECT waktu, suhu_c, kelembapan_pct FROM telemetri_suhu
+			                 WHERE fasilitas_id = c.id ORDER BY waktu DESC LIMIT 1) t ON TRUE
+			 WHERE c.suhu_aktual_c = t.suhu_c AND c.kelembapan_aktual_pct = t.kelembapan_pct AND c.telemetri_pada = t.waktu`).Scan(&n).Error)
+		assert.EqualValues(t, 4, n, "keempat fasilitas beroperasi")
+	})
 
 	t.Run("wilayah dirujuk menurut nama master", func(t *testing.T) {
 		var rows []struct{ ID, Nama string }
@@ -345,12 +421,12 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	})
 }
 
-// Kunci idempotensi seeder: fasilitas memakai UUID stabil dari kode, lot dan transaksi memakai kode (ID lama).
+// Kunci idempotensi seed: fasilitas memakai UUID stabil dari kode, lot dan transaksi memakai kode (ID lama).
 func TestSeeder_KeysAreStableUUIDAndKode(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_kunci")
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
-	require.NoError(t, seed.SeedDemo(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, seedColdStorageDemo))
 
 	var id, kode string
 	for _, k := range []string{"CS-01", "CS-02", "CS-03", "CS-04", "CS-05"} {
@@ -364,18 +440,18 @@ func TestSeeder_KeysAreStableUUIDAndKode(t *testing.T) {
 
 	var n int64
 	require.NoError(t, db.Raw(`SELECT COUNT(*) FROM transaksi_stok t JOIN stok_cold_storage s ON s.id = t.lot_id
-		WHERE t.kode = 'TRX-DEMO-' || s.kode`).Scan(&n).Error)
-	assert.EqualValues(t, 23, n, "kode transaksi demo = TRX-DEMO- + kode lot, dan menunjuk lotnya")
+		WHERE t.kode = 'TRX-DEMO-' || s.kode AND t.fasilitas_tujuan_id = s.cold_storage_id`).Scan(&n).Error)
+	assert.EqualValues(t, 23, n, "kode transaksi demo = TRX-DEMO- + kode lot, dan menunjuk lot serta fasilitasnya")
 }
 
-// Seeder dijalankan pada basis data hasil migrasi 000113 (baris sudah ada dengan UUID stabil dan kode = ID lama):
-// tidak menggandakan baris dan tidak mengubah ID lot yang sudah ada.
+// Seed dijalankan pada basis data yang barisnya berasal dari migrasi 000113 (sudah ada dengan UUID stabil dan
+// kode = ID lama): tidak menggandakan baris dan tidak mengubah ID lot yang sudah ada.
 func TestSeeder_RunsIdempotentlyOnMigratedDatabase(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_pasca_migrasi")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 112))
-	require.NoError(t, seed.SeedReference(t.Context(), db))
-	// Bentuk data lama: ID berupa teks. Satu fasilitas, satu lot, satu transaksi, satu pembacaan.
+	seedMasterLegacy(t, db)
+	// Bentuk data lama: ID berupa teks. Satu fasilitas, satu lot, satu transaksi.
 	execSQL(t, db, `
 		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
 		SELECT 'CS-01', 'Nama Lama', kode, 5.5, 95.3, 400, 4, 'OPERASIONAL' FROM kabupaten WHERE nama = 'KABUPATEN ACEH BESAR';
@@ -389,9 +465,12 @@ func TestSeeder_RunsIdempotentlyOnMigratedDatabase(t *testing.T) {
 	var lotSebelum int64
 	require.NoError(t, db.Raw(`SELECT id FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&lotSebelum).Error)
 
+	// Seed SQL mengandaikan skema terbaru (satuan, kecamatan, kunci master 000121/000122), jadi migrasi dilanjutkan
+	// sampai akhir lebih dulu; baris hasil 000113 ikut terbawa.
+	require.NoError(t, migrator.Up(t.Context()))
 	for range 2 {
 		require.NoError(t, seed.SeedReference(t.Context(), db))
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, seedColdStorageDemo))
 	}
 
 	count := func(table string) int64 {
@@ -412,18 +491,20 @@ func TestSeeder_RunsIdempotentlyOnMigratedDatabase(t *testing.T) {
 
 func TestSeeder_FailsAtomicallyWhenMasterDataMissing(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_missing_master")
-	// Tanpa seeder master.reference: master kabupaten dan komoditas kosong.
-	migrator := pgtest.Migrator(t, db)
-	require.NoError(t, migrator.UpTo(t.Context(), 5))
-	require.NoError(t, migrator.Apply(t.Context(), 7, true))
+	// Tanpa lapis reference: kabupaten, komoditas, dan fasilitas kosong. Seed SQL mengandaikan skema terbaru, jadi
+	// kegagalan di sini pasti karena data master yang hilang, bukan karena kolom yang belum ada di skema lama.
+	pgtest.MigrateUp(t, db)
 
-	seedsDir, err := seed.LocateSeedsDir()
-	require.NoError(t, err)
-	err = seed.ExecuteSQLFile(t.Context(), db, filepath.Join(seedsDir, "reference", "09_cold_storage.sql"))
+	err := seed.SeedFiles(t.Context(), db, seedFasilitas)
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cold_storage_kabupaten_kode_fkey", "fasilitas menolak wilayah yang belum ada di master")
+
+	err = seed.SeedFiles(t.Context(), db, seedColdStorageDemo)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cold_storage_id", "lot menolak fasilitas yang belum ada")
 
 	var n int64
-	for _, table := range []string{"komoditas", "cold_storage", "stok_cold_storage"} {
+	for _, table := range []string{"komoditas", "cold_storage", "stok_cold_storage", "transaksi_stok", "telemetri_suhu"} {
 		require.NoError(t, db.Table(table).Count(&n).Error)
 		assert.Zero(t, n, "%s harus kosong: transaksi seed di-rollback", table)
 	}

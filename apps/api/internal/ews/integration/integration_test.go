@@ -1,5 +1,7 @@
-// Package integration menguji API EWS terhadap PostgreSQL sungguhan dengan seed
-// master.reference, auth.demo, ews.reference, dan ews.demo.
+// Package integration menguji API EWS terhadap PostgreSQL sungguhan dengan seed tier reference (master, RBAC, aturan
+// EWS, ...) ditambah demo/01_auth_users.sql dan demo/06_ews_alerts.sql saja. Tier demo utuh sengaja tidak dipakai:
+// harga, cuaca, dan cold storage demo akan terbaca rule engine sehingga tes mesin tidak lagi terisolasi, dan
+// alert/kartu modul lain ikut terhitung.
 package integration
 
 import (
@@ -12,13 +14,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	ewsRoutes "github.com/garda-inflasi/api/internal/ews/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -39,10 +40,7 @@ const (
 	emailTanpaIzin = "mahasiswa.1@gardainflasi.id"
 )
 
-var (
-	pg      *pgtest.Server
-	seedNow = time.Now().UTC()
-)
+var pg *pgtest.Server
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -60,13 +58,14 @@ var (
 	shared *suite
 )
 
-// newSuite membuat basis data baru lengkap dengan seed dan router.
+// newSuite membuat basis data baru lengkap dengan seed dan router. Hanya akun demo dan alert EWS demo yang di-seed
+// dari tier demo (lihat dokumentasi paket).
 func newSuite(t *testing.T, name string) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
-	require.NoError(t, seed.SeedDemo(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, "demo/01_auth_users.sql", "demo/06_ews_alerts.sql"))
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 	router := gin.New()

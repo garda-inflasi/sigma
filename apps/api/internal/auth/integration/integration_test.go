@@ -16,10 +16,10 @@ import (
 	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -75,8 +75,10 @@ func newSuiteBatas(t *testing.T, seedData func(*testing.T, *gorm.DB), batasAuth 
 
 	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
 	pgtest.MigrateUp(t, db)
-	// Izin dibaca dari basis data (02-C): tanpa referensi RBAC tidak ada peran yang punya izin apa pun.
-	require.NoError(t, seed.SeedReference(t.Context(), db))
+	// Izin dibaca dari basis data (02-C): tanpa referensi RBAC tidak ada peran yang punya izin apa pun. Hanya matriks
+	// izin yang disemai: seluruh tier reference juga mengisi komoditas, pasar, dan wilayah yang dibuat sendiri oleh
+	// tes-tes di paket ini.
+	require.NoError(t, seed.SeedFiles(t.Context(), db, "reference/03_auth_rbac.sql"))
 	seedData(t, db)
 
 	tokenMgr := token.NewManager(jwtSecret)

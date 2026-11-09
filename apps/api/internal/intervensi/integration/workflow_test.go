@@ -184,6 +184,8 @@ func TestWorkflow_SLAEscalatesOverdueCardsOnce(t *testing.T) {
 	assert.Nil(t, card(t, s, "INT-319").DieskalasiPada, "kartu selesai tidak dieskalasi")
 
 	rows := riwayat(t, s, "INT-301")
+	// require, bukan assert: tanpa riwayat eskalasi, mengindeks len(rows)-2 akan panik dan membatalkan seluruh paket.
+	require.GreaterOrEqual(t, len(rows), 2, "riwayat harus memuat ESKALASI lalu AJUKAN")
 	last := rows[len(rows)-1]
 	assert.Equal(t, "AJUKAN", last.Aksi, "eskalasi membuka telaah Dewan Pengarah")
 	assert.Equal(t, "ESKALASI", rows[len(rows)-2].Aksi)

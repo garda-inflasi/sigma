@@ -39,7 +39,7 @@ test/api/short: ## Run short Go tests (no integration)
 	cd apps/api && go test ./... -v -count=1 -short
 
 # Paket integrasi: tiap yang memakai Docker (dockertest). Tambahkan paket baru di sini.
-INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/lapangan/integration/... ./internal/dashboard/integration/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./internal/gardactl/... ./internal/master/integration/... ./internal/audit/integration/...
+INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/lapangan/integration/... ./internal/dashboard/integration/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./pkg/gardactl/... ./pkg/seed/integration/... ./internal/master/integration/... ./internal/audit/integration/...
 
 test/api/integration: ## Run Go integration tests (requires Docker)
 	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1

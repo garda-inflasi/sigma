@@ -1,3 +1,5 @@
--- GARDA INFLASI - Templat & Format Standar Policy Brief
-
--- Konfigurasi templat policy brief reference (jika ada)
+-- GARDA INFLASI - Templat & Format Standar Policy Brief (lapis reference)
+--
+-- Sengaja tanpa baris data. Policy brief tidak punya data referensi di basis data: narasi draf disusun saat brief dibuat
+-- (templat deterministik di internal/policy-brief/generator/templat.go, atau LLM bila kunci API dikonfigurasi), dan
+-- tabel policy_brief diisi lewat API. Brief contoh berlabel demo ada di demo/12_policy_brief.sql dan tidak ikut ke produksi.

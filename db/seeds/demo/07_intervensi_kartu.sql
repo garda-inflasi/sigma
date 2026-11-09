@@ -1,204 +1,206 @@
--- GARDA INFLASI - Kartu & Alur Intervensi Demo
+-- GARDA INFLASI - Kartu Intervensi Demo (papan kanban TPID)
+--
+-- Setara dengan SeedDemo seeder Go lama (internal/intervensi/seeder): 19 kartu contoh yang meniru mockKanban
+-- (apps/web/src/lib/api/mock.ts) = 7 kartu tekanan harga, 6 normal, 6 surplus, tersebar di semua tahap, beserta
+-- penanggung jawab, riwayat pemindahan tahap, dan satu permintaan persetujuan terbuka (INT-304 ke t-fiskal).
+-- TIDAK memuat kartu buatan workflow otomatis dari alert rule engine.
+--
+-- * Waktu relatif terhadap now() saat berkas dijalankan: kartu ke-n dibuat (240 - n) jam lalu, tenggat dalam hari dari
+--   sekarang (negatif = terlambat), tahap_sejak = dibuat + (posisi tahap - 1) x 6 jam, kartu di tahap penutup
+--   (*-selesai) selesai 24 jam lalu. Dengan begitu SLA tahap dan KPI bulanan demo selalu bermakna kapan pun dijalankan.
+-- * Kode tampilan INT-301..INT-319 berada DI BAWAH rentang intervensi_kode_seq (mulai 1000): kartu baru tidak pernah
+--   bentrok dengan seed. Jangan menaruh kode INT-1000 ke atas di sini.
+-- * ID kartu = UUID stabil garda_uuid_stabil('intervensi', <kode>) (sama dengan idx.UUIDStabil dan migrasi 000112);
+--   ews_alert_id dicari dari kode alert (demo/06_ews_alerts.sql). Pengguna dirujuk lewat slug akun demo.
+-- * Idempoten: dijalankan ulang, kartu contoh, penanggung jawab, riwayat, dan permintaan persetujuannya dikembalikan
+--   ke keadaan awal (waktu ikut disegarkan) tanpa menggandakan baris. Kartu lain tidak disentuh.
+--
+-- Prasyarat: reference/01_master.sql, reference/08_intervensi_tahap.sql, demo/01_auth_users.sql, demo/06_ews_alerts.sql.
+
+-- Gagal dengan pesan jelas bila prasyarat belum di-seed: tanpa pemeriksaan ini ews_alert_id kartu diam-diam NULL.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM tahap_intervensi_def) THEN
+    RAISE EXCEPTION 'seed kartu intervensi: definisi tahap belum ada (jalankan seed reference lebih dulu: reference/08_intervensi_tahap.sql)';
+  END IF;
+  IF (SELECT COUNT(*) FROM ews_alert WHERE kode IN ('EWS-1000', 'EWS-1002', 'EWS-1003', 'EWS-1012', 'EWS-1013')) < 5 THEN
+    RAISE EXCEPTION 'seed kartu intervensi: alert ews demo belum ada (jalankan demo/06_ews_alerts.sql lebih dulu)';
+  END IF;
+END $$;
 
 -- =====================================================================
--- Tabel: intervensi (43 baris)
+-- Tabel: intervensi (19 baris)
 -- =====================================================================
-INSERT INTO intervensi (id, kode, siklus, tahap, urutan, judul, komoditas_kode, kabupaten_kode, prioritas, tenggat, rekomendasi_ai, checklist_selesai, checklist_total, dibuat_oleh_id, dibuat_pada, deskripsi, versi) OVERRIDING SYSTEM VALUE VALUES
-  ('0131796f-d03e-49e0-961e-b3fa25f47597', 'INT-1031', 'TEKANAN', 't-ews', 19, 'Curah hujan tinggi di Kabupaten Bireuen — Kabupaten Bireuen', 'BRS-MED', '1110', 'SEDANG', '2026-11-09T15:28:05.990558+00:00', FALSE, 0, 0, NULL, '2026-11-08T15:28:05.990558+00:00', 'Curah hujan kumulatif 241 mm dalam 10 hari di Kabupaten Bireuen. Risiko gangguan pasokan beras medium meningkat.', 1),
-  ('028aaf9f-f483-4b6f-908c-d72544a7d1a3', 'INT-1018', 'TEKANAN', 't-ews', 10, 'Curah hujan tinggi di Kota Sabang — Kota Sabang', 'BWM', '1172', 'SEDANG', '2026-11-08T03:37:00.561952+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.561952+00:00', 'Curah hujan kumulatif 146 mm dalam 10 hari di Kota Sabang. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('0a49059c-879f-48e8-a876-0c015895dca9', 'INT-1037', 'TEKANAN', 't-ews', 25, 'Lonjakan harga cabai merah keriting — Kabupaten Aceh Tenggara', 'CBM-KRT', '1104', 'SEDANG', '2026-11-10T02:12:36.981225+00:00', FALSE, 0, 0, NULL, '2026-11-09T02:12:36.981225+00:00', 'Harga konsumen naik 15,5% di atas rata-rata 7 hari di Kabupaten Aceh Tenggara. Harga rata-rata terbaru Rp67.700/kg.', 1),
-  ('0e3d9ffb-2cc2-3836-b474-1dbf1cf9116b', 'INT-312', 'NORMAL', 'n-pantau', 1, 'Pantau daging ayam Langsa', 'DAG-AYM', '1173', 'RENDAH', '2026-11-10T02:12:35.191457+00:00', FALSE, 0, 3, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T13:12:35.191457+00:00', '', 1),
-  ('0e427c8b-79d2-439a-8bec-c0d53593e9ae', 'INT-1032', 'TEKANAN', 't-ews', 20, 'Curah hujan tinggi di Kabupaten Aceh Selatan — Kabupaten Aceh Selatan', 'BWM', '1103', 'SEDANG', '2026-11-09T15:28:06.03126+00:00', FALSE, 0, 0, NULL, '2026-11-08T15:28:06.03126+00:00', 'Curah hujan kumulatif 146 mm dalam 10 hari di Kabupaten Aceh Selatan. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('1c3f7dbc-616d-4a55-a7b6-f7f85c1b1887', 'INT-1033', 'TEKANAN', 't-ews', 21, 'Curah hujan tinggi di Kabupaten Aceh Selatan — Kabupaten Aceh Selatan', 'CBM-KRT', '1103', 'SEDANG', '2026-11-09T15:28:06.061932+00:00', FALSE, 0, 0, NULL, '2026-11-08T15:28:06.061932+00:00', 'Curah hujan kumulatif 146 mm dalam 10 hari di Kabupaten Aceh Selatan. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('2daf5055-cfcd-39d6-814f-eed12aa5f793', 'INT-1000', 'TEKANAN', 't-ews', 2, 'Curah hujan tinggi di Kabupaten Aceh Besar — Kabupaten Aceh Besar', 'BWM', '1108', 'SEDANG', '2026-11-07T09:34:38.896967+00:00', FALSE, 0, 0, NULL, '2026-11-06T09:34:38.896967+00:00', 'Curah hujan kumulatif 150 mm dalam 10 hari di Kabupaten Aceh Besar. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('2ee21b55-d10d-40ab-b026-797c1da9ec2c', 'INT-1019', 'TEKANAN', 't-ews', 11, 'Curah hujan tinggi di Kota Lhokseumawe — Kota Lhokseumawe', 'BWM', '1174', 'SEDANG', '2026-11-08T03:37:00.565072+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.565072+00:00', 'Curah hujan kumulatif 156 mm dalam 10 hari di Kota Lhokseumawe. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('2f7b4b9e-3e03-3347-9c8a-65e73cf86b4a', 'INT-310', 'NORMAL', 'n-jadwal', 0, 'Jadwal armada Bireuen–Lhokseumawe', 'TLR', '1110', 'RENDAH', '2026-11-15T02:12:35.191457+00:00', FALSE, 2, 4, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T11:12:35.191457+00:00', '', 1),
-  ('34c86868-b651-3255-b5e7-145d290fcb9a', 'INT-309', 'NORMAL', 'n-verifikasi', 0, 'Cocokkan IHK BPS September', 'BRS-MED', '1171', 'SEDANG', '2026-11-12T02:12:35.191457+00:00', FALSE, 2, 5, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T10:12:35.191457+00:00', '', 1),
-  ('3cbe164c-3e0d-3f37-8366-d61db54ec0b1', 'INT-318', 'SURPLUS', 's-ekspansi', 0, 'Pembeli kentang dari Medan', 'KTG', '1106', 'SEDANG', '2026-11-14T02:12:35.191457+00:00', FALSE, 3, 5, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T19:12:35.191457+00:00', '', 1),
-  ('3f7bad9d-b817-311a-a376-e48d92a8bea8', 'INT-1002', 'TEKANAN', 't-ews', 4, 'Curah hujan tinggi di Kabupaten Aceh Besar — Kabupaten Aceh Besar', 'CBM-KRT', '1108', 'SEDANG', '2026-11-07T09:34:38.929281+00:00', FALSE, 0, 0, NULL, '2026-11-06T09:34:38.929281+00:00', 'Curah hujan kumulatif 150 mm dalam 10 hari di Kabupaten Aceh Besar. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('41c76530-7884-4a1b-826f-e149678a2f2b', 'INT-1023', 'TEKANAN', 't-ews', 15, 'Curah hujan tinggi di Kota Sabang — Kota Sabang', 'CBM-KRT', '1172', 'SEDANG', '2026-11-08T03:37:00.579721+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.579721+00:00', 'Curah hujan kumulatif 146 mm dalam 10 hari di Kota Sabang. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('50c71356-4b11-4511-bf17-fea8e66f58fc', 'INT-1016', 'TEKANAN', 't-ews', 8, 'Curah hujan tinggi di Kabupaten Bireuen — Kabupaten Bireuen', 'BWM', '1110', 'SEDANG', '2026-11-08T03:37:00.553064+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.553064+00:00', 'Curah hujan kumulatif 184 mm dalam 10 hari di Kabupaten Bireuen. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('5fc24dd3-5838-3966-af21-fbf1452b16c6', 'INT-319', 'SURPLUS', 's-selesai', 0, 'Keripik kentang — mitra koperasi', 'KTG', '1106', 'RENDAH', '2026-11-08T02:12:35.191457+00:00', FALSE, 4, 4, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T20:12:35.191457+00:00', '', 1),
-  ('635c0930-7ceb-3131-b6d5-1b68ad8cb487', 'INT-306', 'TEKANAN', 't-verifikasi', 1, 'Verifikasi harga ikan tongkol Sabang', 'IKN-TGK', '1172', 'RENDAH', '2026-11-08T02:12:35.191457+00:00', FALSE, 1, 3, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T07:12:35.191457+00:00', '', 1),
-  ('648c1e40-af74-4f4f-a2d7-4dffe4e26694', 'INT-1022', 'TEKANAN', 't-ews', 14, 'Curah hujan tinggi di Kabupaten Aceh Jaya — Kabupaten Aceh Jaya', 'CBM-KRT', '1116', 'SEDANG', '2026-11-08T03:37:00.575636+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.575636+00:00', 'Curah hujan kumulatif 146 mm dalam 10 hari di Kabupaten Aceh Jaya. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('6ce6436e-3ca0-4ac7-9d0c-0fdc2ff6c20e', 'INT-1034', 'TEKANAN', 't-ews', 22, 'Curah hujan tinggi di Kabupaten Pidie — Kabupaten Pidie', 'BRS-MED', '1109', 'SEDANG', '2026-11-10T02:12:36.925999+00:00', FALSE, 0, 0, NULL, '2026-11-09T02:12:36.925999+00:00', 'Curah hujan kumulatif 234 mm dalam 10 hari di Kabupaten Pidie. Risiko gangguan pasokan beras medium meningkat.', 1),
-  ('72f64935-a9dd-36a9-a66d-f517a83a464c', 'INT-308', 'NORMAL', 'n-pantau', 0, 'Rekap harga beras pekan 40', 'BRS-MED', '1171', 'RENDAH', '2026-11-14T02:12:35.191457+00:00', FALSE, 1, 4, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T09:12:35.191457+00:00', '', 1),
-  ('7381a203-87de-4335-8da8-dada61a33e15', 'INT-1017', 'TEKANAN', 't-ews', 9, 'Curah hujan tinggi di Kabupaten Aceh Jaya — Kabupaten Aceh Jaya', 'BWM', '1116', 'SEDANG', '2026-11-08T03:37:00.557035+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.557035+00:00', 'Curah hujan kumulatif 146 mm dalam 10 hari di Kabupaten Aceh Jaya. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('7c45ad90-863d-3572-a70e-aeee5dcb9131', 'INT-301', 'TEKANAN', 't-ews', 0, 'Lonjakan cabai merah Banda Aceh', 'CBM-KRT', '1171', 'TINGGI', '2026-11-10T02:12:35.191457+00:00', TRUE, 1, 5, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T02:12:35.191457+00:00', '', 1),
-  ('8343a982-c692-3e51-a7b6-2d3fb5f0396b', 'INT-1004', 'TEKANAN', 't-ews', 6, 'Lonjakan harga cabai merah keriting — Kabupaten Pidie', 'CBM-KRT', '1109', 'SEDANG', '2026-11-07T09:34:38.958544+00:00', FALSE, 0, 0, NULL, '2026-11-06T09:34:38.958544+00:00', 'Harga konsumen naik 13,4% di atas rata-rata 7 hari di Kabupaten Pidie. Harga rata-rata terbaru Rp65.100/kg.', 1),
-  ('85ce906b-b311-3f2c-9350-b01f4f219778', 'INT-311', 'NORMAL', 'n-agregasi', 0, 'Agregasi telur peternak Bireuen', 'TLR', '1110', 'SEDANG', '2026-11-13T02:12:35.191457+00:00', FALSE, 3, 6, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T12:12:35.191457+00:00', '', 1),
-  ('91629f8b-76b2-4e65-9c6b-ff13f9a4c8ce', 'INT-1020', 'TEKANAN', 't-ews', 12, 'Curah hujan tinggi di Kabupaten Pidie — Kabupaten Pidie', 'CBM-KRT', '1109', 'SEDANG', '2026-11-08T03:37:00.570199+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.570199+00:00', 'Curah hujan kumulatif 162 mm dalam 10 hari di Kabupaten Pidie. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('93656c0b-c01c-4fa8-8df6-9ffe54dff783', 'INT-1021', 'TEKANAN', 't-ews', 13, 'Curah hujan tinggi di Kabupaten Bireuen — Kabupaten Bireuen', 'CBM-KRT', '1110', 'SEDANG', '2026-11-08T03:37:00.57282+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.57282+00:00', 'Curah hujan kumulatif 184 mm dalam 10 hari di Kabupaten Bireuen. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('96b647f9-029c-318a-a9de-e46211fd082a', 'INT-307', 'TEKANAN', 't-petakan', 0, 'Operasi pasar cabai Peunayong', 'CBM-KRT', '1171', 'TINGGI', '2026-11-11T02:12:35.191457+00:00', FALSE, 2, 6, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T08:12:35.191457+00:00', '', 1),
-  ('a0b80dd3-92f8-3685-a311-49104ae80ae8', 'INT-304', 'TEKANAN', 't-logistik', 0, 'Kirim cabai Takengon → Banda Aceh', 'CBM-KRT', '1106', 'TINGGI', '2026-11-13T02:12:35.191457+00:00', FALSE, 3, 7, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T05:12:35.191457+00:00', '', 1),
-  ('a8104440-3f08-3cb3-8098-239d2469aa14', 'INT-317', 'SURPLUS', 's-olahan', 0, 'Uji olahan saus tomat UMKM', 'TMT', '1117', 'SEDANG', '2026-11-16T02:12:35.191457+00:00', FALSE, 2, 7, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T18:12:35.191457+00:00', '', 1),
-  ('a8f67835-0fad-36ed-8d7b-a8b760a5a9c0', 'INT-1003', 'TEKANAN', 't-ews', 5, 'Curah hujan tinggi di Kabupaten Bener Meriah — Kabupaten Bener Meriah', 'CBM-KRT', '1117', 'SEDANG', '2026-11-07T09:34:38.942887+00:00', FALSE, 0, 0, NULL, '2026-11-06T09:34:38.942887+00:00', 'Curah hujan kumulatif 165 mm dalam 10 hari di Kabupaten Bener Meriah. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('a9004fed-0c60-376c-874c-08e53c3b39bf', 'INT-302', 'TEKANAN', 't-ews', 1, 'Pasokan cabai rawit Lhokseumawe', 'CBR-RWT', '1174', 'TINGGI', '2026-11-11T02:12:35.191457+00:00', TRUE, 0, 4, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T03:12:35.191457+00:00', '', 1),
-  ('a915ab3e-1b5d-3457-8237-4b5f6520d752', 'INT-314', 'SURPLUS', 's-deteksi', 0, 'Kentang Gayo: harga produsen −18%', 'KTG', '1106', 'TINGGI', '2026-11-11T02:12:35.191457+00:00', TRUE, 1, 5, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T15:12:35.191457+00:00', '', 1),
-  ('aa52095c-bad5-4269-a7be-4a4ff2bb14f6', 'INT-1024', 'TEKANAN', 't-ews', 16, 'Curah hujan tinggi di Kota Lhokseumawe — Kota Lhokseumawe', 'CBM-KRT', '1174', 'SEDANG', '2026-11-08T03:37:00.5824+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.5824+00:00', 'Curah hujan kumulatif 156 mm dalam 10 hari di Kota Lhokseumawe. Risiko gangguan pasokan cabai merah keriting meningkat.', 1),
-  ('aaf04f04-bed1-4970-9a5f-1d8f2a48daec', 'INT-1026', 'TEKANAN', 't-ews', 18, 'Lonjakan harga cabai merah keriting — Kota Lhokseumawe', 'CBM-KRT', '1174', 'SEDANG', '2026-11-08T03:37:00.59722+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.59722+00:00', 'Harga konsumen naik 13,7% di atas rata-rata 7 hari di Kota Lhokseumawe. Harga rata-rata terbaru Rp64.300/kg.', 1),
-  ('ad460100-0512-342b-b4ef-e2fe15ba0214', 'INT-316', 'SURPLUS', 's-coldstorage', 0, 'Alokasi 80 ton ke CS Takengon', 'KTG', '1106', 'SEDANG', '2026-11-13T02:12:35.191457+00:00', FALSE, 3, 6, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T17:12:35.191457+00:00', '', 1),
-  ('af9cc52b-682a-4b5f-9954-8de0888009d1', 'INT-1015', 'TEKANAN', 't-ews', 7, 'Curah hujan tinggi di Kabupaten Pidie — Kabupaten Pidie', 'BWM', '1109', 'SEDANG', '2026-11-08T03:37:00.545541+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.545541+00:00', 'Curah hujan kumulatif 162 mm dalam 10 hari di Kabupaten Pidie. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('bccddffd-73e1-3f0e-bb5a-3f9fb581290a', 'INT-305', 'TEKANAN', 't-fiskal', 0, 'Subsidi ongkos angkut Simeulue', 'CBM-KRT', '1101', 'SEDANG', '2026-11-15T02:12:35.191457+00:00', FALSE, 4, 5, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T06:12:35.191457+00:00', '', 1),
-  ('c27d4e96-52d7-3424-9834-00d81c2742c2', 'INT-303', 'TEKANAN', 't-verifikasi', 0, 'Bawang merah Meulaboh naik 9%', 'BWM', '1107', 'SEDANG', '2026-11-12T02:12:35.191457+00:00', TRUE, 2, 6, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T04:12:35.191457+00:00', '', 1),
-  ('cbd55d7f-98f7-377f-8191-20f37df6fb42', 'INT-313', 'NORMAL', 'n-selesai', 0, 'Verifikasi gula pasir Pidie', 'GLA', '1109', 'RENDAH', '2026-11-07T02:12:35.191457+00:00', FALSE, 3, 3, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T14:12:35.191457+00:00', '', 1),
-  ('ce47fa55-d505-449a-a8a2-08e47ede88ae', 'INT-1036', 'TEKANAN', 't-ews', 24, 'Curah hujan tinggi di Kota Lhokseumawe — Kota Lhokseumawe', 'BRS-MED', '1174', 'SEDANG', '2026-11-10T02:12:36.95171+00:00', FALSE, 0, 0, NULL, '2026-11-09T02:12:36.95171+00:00', 'Curah hujan kumulatif 269 mm dalam 10 hari di Kota Lhokseumawe. Risiko gangguan pasokan beras medium meningkat.', 1),
-  ('df344da1-ed3c-4ba0-aca9-0cad5653395f', 'INT-1035', 'TEKANAN', 't-ews', 23, 'Curah hujan tinggi di Kota Sabang — Kota Sabang', 'BRS-MED', '1172', 'SEDANG', '2026-11-10T02:12:36.94408+00:00', FALSE, 0, 0, NULL, '2026-11-09T02:12:36.94408+00:00', 'Curah hujan kumulatif 248 mm dalam 10 hari di Kota Sabang. Risiko gangguan pasokan beras medium meningkat.', 1),
-  ('e58ab798-731b-361b-9028-b1d17c3350fa', 'INT-1001', 'TEKANAN', 't-ews', 3, 'Curah hujan tinggi di Kabupaten Bener Meriah — Kabupaten Bener Meriah', 'BWM', '1117', 'SEDANG', '2026-11-07T09:34:38.913157+00:00', FALSE, 0, 0, NULL, '2026-11-06T09:34:38.913157+00:00', 'Curah hujan kumulatif 165 mm dalam 10 hari di Kabupaten Bener Meriah. Risiko gangguan pasokan bawang merah meningkat.', 1),
-  ('f286d702-4330-4046-a3bb-7e400b27c19b', 'INT-1025', 'TEKANAN', 't-ews', 17, 'Lonjakan harga cabai merah keriting — Kabupaten Aceh Barat', 'CBM-KRT', '1107', 'SEDANG', '2026-11-08T03:37:00.593736+00:00', FALSE, 0, 0, NULL, '2026-11-07T03:37:00.593736+00:00', 'Harga konsumen naik 16,7% di atas rata-rata 7 hari di Kabupaten Aceh Barat. Harga rata-rata terbaru Rp65.300/kg.', 1),
-  ('f6f9e40e-0679-31e2-a90d-6e1596a5869d', 'INT-315', 'SURPLUS', 's-deteksi', 1, 'Tomat Bener Meriah surplus 1.200 ton', 'TMT', '1117', 'TINGGI', '2026-11-12T02:12:35.191457+00:00', TRUE, 0, 4, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T16:12:35.191457+00:00', '', 1)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO intervensi (id, kode, siklus, tahap, urutan, judul, deskripsi, komoditas_kode, kabupaten_kode, prioritas, tenggat,
+                        rekomendasi_ai, checklist_selesai, checklist_total, ews_alert_id, dibuat_oleh_id, dibuat_pada,
+                        selesai_pada, versi, dieskalasi_pada, dieskalasi_oleh_id, tahap_sejak)
+SELECT garda_uuid_stabil('intervensi', s.kode), s.kode, CAST(s.siklus AS siklus), s.tahap,
+       -- urutan kartu dalam satu tahap mengikuti urutan kemunculan di daftar ini
+       CAST(row_number() OVER (PARTITION BY s.tahap ORDER BY s.no) - 1 AS integer),
+       s.judul, '', s.komoditas_kode, s.kabupaten_kode, CAST(s.prioritas AS prioritas),
+       now() + s.tenggat_hari * interval '24 hours',
+       s.rekomendasi_ai, s.checklist_selesai, s.checklist_total,
+       (SELECT a.id FROM ews_alert a WHERE a.kode = s.alert_kode),
+       garda_uuid_stabil('pengguna', 'manajer_program'),
+       now() - interval '240 hours' + s.no * interval '1 hour',
+       CASE WHEN s.tahap LIKE '%-selesai' THEN now() - interval '24 hours' END,
+       1, NULL, NULL,
+       now() - interval '240 hours' + s.no * interval '1 hour' + (d.urutan - 1) * interval '6 hours'
+  FROM (VALUES
+    (0, 'INT-301', 'TEKANAN', 't-ews', 'CBM-KRT', '1171', 'TINGGI', TRUE, 'EWS-1000', 1, 5, 1, 'Lonjakan cabai merah Banda Aceh'),
+    (1, 'INT-302', 'TEKANAN', 't-ews', 'CBR-RWT', '1174', 'TINGGI', TRUE, 'EWS-1002', 2, 4, 0, 'Pasokan cabai rawit Lhokseumawe'),
+    (2, 'INT-303', 'TEKANAN', 't-verifikasi', 'BWM', '1107', 'SEDANG', TRUE, 'EWS-1003', 3, 6, 2, 'Bawang merah Meulaboh naik 9%'),
+    (3, 'INT-304', 'TEKANAN', 't-logistik', 'CBM-KRT', '1106', 'TINGGI', FALSE, NULL, 4, 7, 3, 'Kirim cabai Takengon → Banda Aceh'),
+    (4, 'INT-305', 'TEKANAN', 't-fiskal', 'CBM-KRT', '1101', 'SEDANG', FALSE, NULL, 6, 5, 4, 'Subsidi ongkos angkut Simeulue'),
+    (5, 'INT-306', 'TEKANAN', 't-verifikasi', 'IKN-TGK', '1172', 'RENDAH', FALSE, NULL, -1, 3, 1, 'Verifikasi harga ikan tongkol Sabang'),
+    (6, 'INT-307', 'TEKANAN', 't-petakan', 'CBM-KRT', '1171', 'TINGGI', FALSE, NULL, 2, 6, 2, 'Operasi pasar cabai Peunayong'),
+    (7, 'INT-308', 'NORMAL', 'n-pantau', 'BRS-MED', '1171', 'RENDAH', FALSE, NULL, 5, 4, 1, 'Rekap harga beras pekan 40'),
+    (8, 'INT-309', 'NORMAL', 'n-verifikasi', 'BRS-MED', '1171', 'SEDANG', FALSE, NULL, 3, 5, 2, 'Cocokkan IHK BPS September'),
+    (9, 'INT-310', 'NORMAL', 'n-jadwal', 'TLR', '1110', 'RENDAH', FALSE, NULL, 6, 4, 2, 'Jadwal armada Bireuen–Lhokseumawe'),
+    (10, 'INT-311', 'NORMAL', 'n-agregasi', 'TLR', '1110', 'SEDANG', FALSE, NULL, 4, 6, 3, 'Agregasi telur peternak Bireuen'),
+    (11, 'INT-312', 'NORMAL', 'n-pantau', 'DAG-AYM', '1173', 'RENDAH', FALSE, NULL, 1, 3, 0, 'Pantau daging ayam Langsa'),
+    (12, 'INT-313', 'NORMAL', 'n-selesai', 'GLA', '1109', 'RENDAH', FALSE, NULL, -2, 3, 3, 'Verifikasi gula pasir Pidie'),
+    (13, 'INT-314', 'SURPLUS', 's-deteksi', 'KTG', '1106', 'TINGGI', TRUE, 'EWS-1012', 2, 5, 1, 'Kentang Gayo: harga produsen −18%'),
+    (14, 'INT-315', 'SURPLUS', 's-deteksi', 'TMT', '1117', 'TINGGI', TRUE, 'EWS-1013', 3, 4, 0, 'Tomat Bener Meriah surplus 1.200 ton'),
+    (15, 'INT-316', 'SURPLUS', 's-coldstorage', 'KTG', '1106', 'SEDANG', FALSE, NULL, 4, 6, 3, 'Alokasi 80 ton ke CS Takengon'),
+    (16, 'INT-317', 'SURPLUS', 's-olahan', 'TMT', '1117', 'SEDANG', FALSE, NULL, 7, 7, 2, 'Uji olahan saus tomat UMKM'),
+    (17, 'INT-318', 'SURPLUS', 's-ekspansi', 'KTG', '1106', 'SEDANG', FALSE, NULL, 5, 5, 3, 'Pembeli kentang dari Medan'),
+    (18, 'INT-319', 'SURPLUS', 's-selesai', 'KTG', '1106', 'RENDAH', FALSE, NULL, -1, 4, 4, 'Keripik kentang — mitra koperasi')
+       ) AS s (no, kode, siklus, tahap, komoditas_kode, kabupaten_kode, prioritas, rekomendasi_ai, alert_kode, tenggat_hari,
+               checklist_total, checklist_selesai, judul)
+  LEFT JOIN tahap_intervensi_def d ON d.siklus = CAST(s.siklus AS siklus) AND d.kode_tahap = s.tahap
+ ORDER BY s.no
+ON CONFLICT (id) DO UPDATE SET
+       kode = EXCLUDED.kode, siklus = EXCLUDED.siklus, tahap = EXCLUDED.tahap, urutan = EXCLUDED.urutan,
+       judul = EXCLUDED.judul, deskripsi = EXCLUDED.deskripsi, komoditas_kode = EXCLUDED.komoditas_kode,
+       kabupaten_kode = EXCLUDED.kabupaten_kode, prioritas = EXCLUDED.prioritas, tenggat = EXCLUDED.tenggat,
+       rekomendasi_ai = EXCLUDED.rekomendasi_ai, checklist_selesai = EXCLUDED.checklist_selesai,
+       checklist_total = EXCLUDED.checklist_total, ews_alert_id = EXCLUDED.ews_alert_id,
+       dibuat_oleh_id = EXCLUDED.dibuat_oleh_id, dibuat_pada = EXCLUDED.dibuat_pada, selesai_pada = EXCLUDED.selesai_pada,
+       versi = EXCLUDED.versi, dieskalasi_pada = EXCLUDED.dieskalasi_pada, dieskalasi_oleh_id = EXCLUDED.dieskalasi_oleh_id,
+       tahap_sejak = EXCLUDED.tahap_sejak;
 
 -- =====================================================================
--- Tabel: intervensi_pj (52 baris)
+-- Tabel: intervensi_pj (28 baris). Dikembalikan ke keadaan awal: baris lama kartu contoh dibuang lebih dulu.
 -- =====================================================================
-INSERT INTO intervensi_pj (intervensi_id, pengguna_id) VALUES
-  ('2daf5055-cfcd-39d6-814f-eed12aa5f793', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('e58ab798-731b-361b-9028-b1d17c3350fa', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('3f7bad9d-b817-311a-a376-e48d92a8bea8', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('a8f67835-0fad-36ed-8d7b-a8b760a5a9c0', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('8343a982-c692-3e51-a7b6-2d3fb5f0396b', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('6ce6436e-3ca0-4ac7-9d0c-0fdc2ff6c20e', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('df344da1-ed3c-4ba0-aca9-0cad5653395f', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('ce47fa55-d505-449a-a8a2-08e47ede88ae', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('0a49059c-879f-48e8-a876-0c015895dca9', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('7c45ad90-863d-3572-a70e-aeee5dcb9131', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('a9004fed-0c60-376c-874c-08e53c3b39bf', 'e41b54c1-8d8f-39df-8efe-c661d1ec7d15'),
-  ('a9004fed-0c60-376c-874c-08e53c3b39bf', '8618501a-4585-3e4a-b466-31fcdd4abb83'),
-  ('c27d4e96-52d7-3424-9834-00d81c2742c2', '4a5595b3-31f9-3231-97cc-91bb5aa27394'),
-  ('a0b80dd3-92f8-3685-a311-49104ae80ae8', '32bfeac0-23e5-3218-b0ba-26b03d9675f0'),
-  ('a0b80dd3-92f8-3685-a311-49104ae80ae8', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1'),
-  ('bccddffd-73e1-3f0e-bb5a-3f9fb581290a', '8618501a-4585-3e4a-b466-31fcdd4abb83'),
-  ('635c0930-7ceb-3131-b6d5-1b68ad8cb487', '51dc3298-0976-3724-b5cc-45c2c6c20714'),
-  ('635c0930-7ceb-3131-b6d5-1b68ad8cb487', 'e41b54c1-8d8f-39df-8efe-c661d1ec7d15'),
-  ('96b647f9-029c-318a-a9de-e46211fd082a', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1'),
-  ('72f64935-a9dd-36a9-a66d-f517a83a464c', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('72f64935-a9dd-36a9-a66d-f517a83a464c', '32bfeac0-23e5-3218-b0ba-26b03d9675f0'),
-  ('34c86868-b651-3255-b5e7-145d290fcb9a', 'e41b54c1-8d8f-39df-8efe-c661d1ec7d15'),
-  ('2f7b4b9e-3e03-3347-9c8a-65e73cf86b4a', '4a5595b3-31f9-3231-97cc-91bb5aa27394'),
-  ('2f7b4b9e-3e03-3347-9c8a-65e73cf86b4a', '51dc3298-0976-3724-b5cc-45c2c6c20714'),
-  ('85ce906b-b311-3f2c-9350-b01f4f219778', '32bfeac0-23e5-3218-b0ba-26b03d9675f0'),
-  ('0e3d9ffb-2cc2-3836-b474-1dbf1cf9116b', '8618501a-4585-3e4a-b466-31fcdd4abb83'),
-  ('0e3d9ffb-2cc2-3836-b474-1dbf1cf9116b', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('cbd55d7f-98f7-377f-8191-20f37df6fb42', '51dc3298-0976-3724-b5cc-45c2c6c20714'),
-  ('a915ab3e-1b5d-3457-8237-4b5f6520d752', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1'),
-  ('a915ab3e-1b5d-3457-8237-4b5f6520d752', '4a5595b3-31f9-3231-97cc-91bb5aa27394'),
-  ('f6f9e40e-0679-31e2-a90d-6e1596a5869d', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('ad460100-0512-342b-b4ef-e2fe15ba0214', 'e41b54c1-8d8f-39df-8efe-c661d1ec7d15'),
-  ('ad460100-0512-342b-b4ef-e2fe15ba0214', '8618501a-4585-3e4a-b466-31fcdd4abb83'),
-  ('af9cc52b-682a-4b5f-9954-8de0888009d1', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('50c71356-4b11-4511-bf17-fea8e66f58fc', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('7381a203-87de-4335-8da8-dada61a33e15', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('028aaf9f-f483-4b6f-908c-d72544a7d1a3', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('2ee21b55-d10d-40ab-b026-797c1da9ec2c', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('91629f8b-76b2-4e65-9c6b-ff13f9a4c8ce', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('93656c0b-c01c-4fa8-8df6-9ffe54dff783', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('648c1e40-af74-4f4f-a2d7-4dffe4e26694', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('41c76530-7884-4a1b-826f-e149678a2f2b', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('aa52095c-bad5-4269-a7be-4a4ff2bb14f6', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('f286d702-4330-4046-a3bb-7e400b27c19b', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('aaf04f04-bed1-4970-9a5f-1d8f2a48daec', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('0131796f-d03e-49e0-961e-b3fa25f47597', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('0e427c8b-79d2-439a-8bec-c0d53593e9ae', 'e810ffa6-9117-330a-aee6-f281fa031dfe'),
-  ('a8104440-3f08-3cb3-8098-239d2469aa14', '4a5595b3-31f9-3231-97cc-91bb5aa27394'),
-  ('3cbe164c-3e0d-3f37-8366-d61db54ec0b1', '32bfeac0-23e5-3218-b0ba-26b03d9675f0'),
-  ('3cbe164c-3e0d-3f37-8366-d61db54ec0b1', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1'),
-  ('5fc24dd3-5838-3966-af21-fbf1452b16c6', '8618501a-4585-3e4a-b466-31fcdd4abb83'),
-  ('1c3f7dbc-616d-4a55-a7b6-f7f85c1b1887', 'e810ffa6-9117-330a-aee6-f281fa031dfe')
+DELETE FROM intervensi_pj
+ WHERE intervensi_id IN (SELECT garda_uuid_stabil('intervensi', 'INT-' || n) FROM generate_series(301, 319) AS n);
+
+INSERT INTO intervensi_pj (intervensi_id, pengguna_id)
+SELECT garda_uuid_stabil('intervensi', p.kode), garda_uuid_stabil('pengguna', p.pengguna)
+  FROM (VALUES
+    ('INT-301', 'manajer_program'),
+    ('INT-302', 'manajer_mutu'),
+    ('INT-302', 'manajer_data'),
+    ('INT-303', 'manajer_kebijakan'),
+    ('INT-304', 'manajer_risiko'),
+    ('INT-304', 'agregator_data'),
+    ('INT-305', 'manajer_mutu'),
+    ('INT-306', 'koordinator_lapangan'),
+    ('INT-306', 'manajer_data'),
+    ('INT-307', 'agregator_data'),
+    ('INT-308', 'manajer_risiko'),
+    ('INT-308', 'manajer_program'),
+    ('INT-309', 'manajer_data'),
+    ('INT-310', 'manajer_kebijakan'),
+    ('INT-310', 'koordinator_lapangan'),
+    ('INT-311', 'manajer_risiko'),
+    ('INT-312', 'manajer_mutu'),
+    ('INT-312', 'manajer_program'),
+    ('INT-313', 'koordinator_lapangan'),
+    ('INT-314', 'manajer_kebijakan'),
+    ('INT-314', 'agregator_data'),
+    ('INT-315', 'manajer_program'),
+    ('INT-316', 'manajer_mutu'),
+    ('INT-316', 'manajer_data'),
+    ('INT-317', 'manajer_kebijakan'),
+    ('INT-318', 'manajer_risiko'),
+    ('INT-318', 'agregator_data'),
+    ('INT-319', 'manajer_mutu')
+       ) AS p (kode, pengguna)
 ON CONFLICT (intervensi_id, pengguna_id) DO NOTHING;
 
 -- =====================================================================
--- Tabel: intervensi_riwayat (74 baris)
+-- Tabel: intervensi_riwayat (50 baris). Tiap kartu dibuat di tahap pertama siklusnya, lalu dipindah satu per satu
+-- (selang 6 jam) sampai tahapnya sekarang oleh penanggung jawab pertamanya. jam = jam sesudah kartu dibuat.
+-- Dikembalikan ke keadaan awal: riwayat lama kartu contoh dibuang lebih dulu (id baris dari sequence).
 -- =====================================================================
-INSERT INTO intervensi_riwayat (id, intervensi_id, aksi, dari, ke, oleh, waktu, alasan) OVERRIDING SYSTEM VALUE VALUES
-  (51, '2daf5055-cfcd-39d6-814f-eed12aa5f793', 'BUAT', NULL, 't-ews', NULL, '2026-11-06T09:34:38.897004+00:00', 'Dibuat otomatis dari alert EWS-2003'),
-  (52, 'e58ab798-731b-361b-9028-b1d17c3350fa', 'BUAT', NULL, 't-ews', NULL, '2026-11-06T09:34:38.913184+00:00', 'Dibuat otomatis dari alert EWS-2007'),
-  (53, '3f7bad9d-b817-311a-a376-e48d92a8bea8', 'BUAT', NULL, 't-ews', NULL, '2026-11-06T09:34:38.929301+00:00', 'Dibuat otomatis dari alert EWS-2012'),
-  (54, 'a8f67835-0fad-36ed-8d7b-a8b760a5a9c0', 'BUAT', NULL, 't-ews', NULL, '2026-11-06T09:34:38.942911+00:00', 'Dibuat otomatis dari alert EWS-2016'),
-  (55, '8343a982-c692-3e51-a7b6-2d3fb5f0396b', 'BUAT', NULL, 't-ews', NULL, '2026-11-06T09:34:38.958566+00:00', 'Dibuat otomatis dari alert EWS-2020'),
-  (161, 'af9cc52b-682a-4b5f-9954-8de0888009d1', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.545564+00:00', 'Dibuat otomatis dari alert EWS-2004'),
-  (162, '50c71356-4b11-4511-bf17-fea8e66f58fc', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.553087+00:00', 'Dibuat otomatis dari alert EWS-2005'),
-  (163, '7381a203-87de-4335-8da8-dada61a33e15', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.557052+00:00', 'Dibuat otomatis dari alert EWS-2006'),
-  (164, '028aaf9f-f483-4b6f-908c-d72544a7d1a3', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.561965+00:00', 'Dibuat otomatis dari alert EWS-2026'),
-  (165, '2ee21b55-d10d-40ab-b026-797c1da9ec2c', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.56509+00:00', 'Dibuat otomatis dari alert EWS-2009'),
-  (166, '91629f8b-76b2-4e65-9c6b-ff13f9a4c8ce', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.570213+00:00', 'Dibuat otomatis dari alert EWS-2013'),
-  (167, '93656c0b-c01c-4fa8-8df6-9ffe54dff783', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.572833+00:00', 'Dibuat otomatis dari alert EWS-2014'),
-  (168, '648c1e40-af74-4f4f-a2d7-4dffe4e26694', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.575648+00:00', 'Dibuat otomatis dari alert EWS-2015'),
-  (169, '41c76530-7884-4a1b-826f-e149678a2f2b', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.579736+00:00', 'Dibuat otomatis dari alert EWS-2028'),
-  (170, 'aa52095c-bad5-4269-a7be-4a4ff2bb14f6', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.582412+00:00', 'Dibuat otomatis dari alert EWS-2018'),
-  (171, 'f286d702-4330-4046-a3bb-7e400b27c19b', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.593752+00:00', 'Dibuat otomatis dari alert EWS-2032'),
-  (172, 'aaf04f04-bed1-4970-9a5f-1d8f2a48daec', 'BUAT', NULL, 't-ews', NULL, '2026-11-07T03:37:00.597232+00:00', 'Dibuat otomatis dari alert EWS-2033'),
-  (325, '0131796f-d03e-49e0-961e-b3fa25f47597', 'BUAT', NULL, 't-ews', NULL, '2026-11-08T15:28:05.99084+00:00', 'Dibuat otomatis dari alert EWS-2023'),
-  (326, '0e427c8b-79d2-439a-8bec-c0d53593e9ae', 'BUAT', NULL, 't-ews', NULL, '2026-11-08T15:28:06.031319+00:00', 'Dibuat otomatis dari alert EWS-2025'),
-  (327, '1c3f7dbc-616d-4a55-a7b6-f7f85c1b1887', 'BUAT', NULL, 't-ews', NULL, '2026-11-08T15:28:06.061974+00:00', 'Dibuat otomatis dari alert EWS-2027'),
-  (428, '6ce6436e-3ca0-4ac7-9d0c-0fdc2ff6c20e', 'BUAT', NULL, 't-ews', NULL, '2026-11-09T02:12:36.926027+00:00', 'Dibuat otomatis dari alert EWS-2022'),
-  (429, 'df344da1-ed3c-4ba0-aca9-0cad5653395f', 'BUAT', NULL, 't-ews', NULL, '2026-11-09T02:12:36.944101+00:00', 'Dibuat otomatis dari alert EWS-2035'),
-  (430, 'ce47fa55-d505-449a-a8a2-08e47ede88ae', 'BUAT', NULL, 't-ews', NULL, '2026-11-09T02:12:36.95173+00:00', 'Dibuat otomatis dari alert EWS-2024'),
-  (431, '0a49059c-879f-48e8-a876-0c015895dca9', 'BUAT', NULL, 't-ews', NULL, '2026-11-09T02:12:36.981242+00:00', 'Dibuat otomatis dari alert EWS-2037'),
-  (432, '7c45ad90-863d-3572-a70e-aeee5dcb9131', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T02:12:35.191457+00:00', ''),
-  (433, 'a9004fed-0c60-376c-874c-08e53c3b39bf', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T03:12:35.191457+00:00', ''),
-  (434, 'c27d4e96-52d7-3424-9834-00d81c2742c2', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T04:12:35.191457+00:00', ''),
-  (435, 'c27d4e96-52d7-3424-9834-00d81c2742c2', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', '4a5595b3-31f9-3231-97cc-91bb5aa27394', '2026-10-30T10:12:35.191457+00:00', ''),
-  (436, 'a0b80dd3-92f8-3685-a311-49104ae80ae8', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T05:12:35.191457+00:00', ''),
-  (437, 'a0b80dd3-92f8-3685-a311-49104ae80ae8', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-30T11:12:35.191457+00:00', ''),
-  (438, 'a0b80dd3-92f8-3685-a311-49104ae80ae8', 'PINDAH_TAHAP', 't-verifikasi', 't-petakan', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-30T17:12:35.191457+00:00', ''),
-  (439, 'a0b80dd3-92f8-3685-a311-49104ae80ae8', 'PINDAH_TAHAP', 't-petakan', 't-logistik', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-30T23:12:35.191457+00:00', ''),
-  (440, 'bccddffd-73e1-3f0e-bb5a-3f9fb581290a', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T06:12:35.191457+00:00', ''),
-  (441, 'bccddffd-73e1-3f0e-bb5a-3f9fb581290a', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-30T12:12:35.191457+00:00', ''),
-  (442, 'bccddffd-73e1-3f0e-bb5a-3f9fb581290a', 'PINDAH_TAHAP', 't-verifikasi', 't-petakan', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-30T18:12:35.191457+00:00', ''),
-  (443, 'bccddffd-73e1-3f0e-bb5a-3f9fb581290a', 'PINDAH_TAHAP', 't-petakan', 't-logistik', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-31T00:12:35.191457+00:00', ''),
-  (444, 'bccddffd-73e1-3f0e-bb5a-3f9fb581290a', 'PINDAH_TAHAP', 't-logistik', 't-fiskal', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-31T06:12:35.191457+00:00', ''),
-  (445, '635c0930-7ceb-3131-b6d5-1b68ad8cb487', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T07:12:35.191457+00:00', ''),
-  (446, '635c0930-7ceb-3131-b6d5-1b68ad8cb487', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', '51dc3298-0976-3724-b5cc-45c2c6c20714', '2026-10-30T13:12:35.191457+00:00', ''),
-  (447, '96b647f9-029c-318a-a9de-e46211fd082a', 'BUAT', NULL, 't-ews', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T08:12:35.191457+00:00', ''),
-  (448, '96b647f9-029c-318a-a9de-e46211fd082a', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1', '2026-10-30T14:12:35.191457+00:00', ''),
-  (449, '96b647f9-029c-318a-a9de-e46211fd082a', 'PINDAH_TAHAP', 't-verifikasi', 't-petakan', 'b8ab1221-4c1c-322b-ba15-55e2e8f17ec1', '2026-10-30T20:12:35.191457+00:00', ''),
-  (450, '72f64935-a9dd-36a9-a66d-f517a83a464c', 'BUAT', NULL, 'n-pantau', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T09:12:35.191457+00:00', ''),
-  (451, '34c86868-b651-3255-b5e7-145d290fcb9a', 'BUAT', NULL, 'n-pantau', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T10:12:35.191457+00:00', ''),
-  (452, '34c86868-b651-3255-b5e7-145d290fcb9a', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', 'e41b54c1-8d8f-39df-8efe-c661d1ec7d15', '2026-10-30T16:12:35.191457+00:00', ''),
-  (453, '2f7b4b9e-3e03-3347-9c8a-65e73cf86b4a', 'BUAT', NULL, 'n-pantau', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T11:12:35.191457+00:00', ''),
-  (454, '2f7b4b9e-3e03-3347-9c8a-65e73cf86b4a', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', '4a5595b3-31f9-3231-97cc-91bb5aa27394', '2026-10-30T17:12:35.191457+00:00', ''),
-  (455, '2f7b4b9e-3e03-3347-9c8a-65e73cf86b4a', 'PINDAH_TAHAP', 'n-verifikasi', 'n-jadwal', '4a5595b3-31f9-3231-97cc-91bb5aa27394', '2026-10-30T23:12:35.191457+00:00', ''),
-  (456, '85ce906b-b311-3f2c-9350-b01f4f219778', 'BUAT', NULL, 'n-pantau', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T12:12:35.191457+00:00', ''),
-  (457, '85ce906b-b311-3f2c-9350-b01f4f219778', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-30T18:12:35.191457+00:00', ''),
-  (458, '85ce906b-b311-3f2c-9350-b01f4f219778', 'PINDAH_TAHAP', 'n-verifikasi', 'n-jadwal', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-31T00:12:35.191457+00:00', ''),
-  (459, '85ce906b-b311-3f2c-9350-b01f4f219778', 'PINDAH_TAHAP', 'n-jadwal', 'n-agregasi', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-31T06:12:35.191457+00:00', ''),
-  (460, '0e3d9ffb-2cc2-3836-b474-1dbf1cf9116b', 'BUAT', NULL, 'n-pantau', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T13:12:35.191457+00:00', ''),
-  (461, 'cbd55d7f-98f7-377f-8191-20f37df6fb42', 'BUAT', NULL, 'n-pantau', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T14:12:35.191457+00:00', ''),
-  (462, 'cbd55d7f-98f7-377f-8191-20f37df6fb42', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', '51dc3298-0976-3724-b5cc-45c2c6c20714', '2026-10-30T20:12:35.191457+00:00', ''),
-  (463, 'cbd55d7f-98f7-377f-8191-20f37df6fb42', 'PINDAH_TAHAP', 'n-verifikasi', 'n-jadwal', '51dc3298-0976-3724-b5cc-45c2c6c20714', '2026-10-31T02:12:35.191457+00:00', ''),
-  (464, 'cbd55d7f-98f7-377f-8191-20f37df6fb42', 'PINDAH_TAHAP', 'n-jadwal', 'n-agregasi', '51dc3298-0976-3724-b5cc-45c2c6c20714', '2026-10-31T08:12:35.191457+00:00', ''),
-  (465, 'cbd55d7f-98f7-377f-8191-20f37df6fb42', 'PINDAH_TAHAP', 'n-agregasi', 'n-selesai', '51dc3298-0976-3724-b5cc-45c2c6c20714', '2026-10-31T14:12:35.191457+00:00', ''),
-  (466, 'a915ab3e-1b5d-3457-8237-4b5f6520d752', 'BUAT', NULL, 's-deteksi', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T15:12:35.191457+00:00', ''),
-  (467, 'f6f9e40e-0679-31e2-a90d-6e1596a5869d', 'BUAT', NULL, 's-deteksi', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T16:12:35.191457+00:00', ''),
-  (468, 'ad460100-0512-342b-b4ef-e2fe15ba0214', 'BUAT', NULL, 's-deteksi', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T17:12:35.191457+00:00', ''),
-  (469, 'ad460100-0512-342b-b4ef-e2fe15ba0214', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', 'e41b54c1-8d8f-39df-8efe-c661d1ec7d15', '2026-10-30T23:12:35.191457+00:00', ''),
-  (470, 'a8104440-3f08-3cb3-8098-239d2469aa14', 'BUAT', NULL, 's-deteksi', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T18:12:35.191457+00:00', ''),
-  (471, 'a8104440-3f08-3cb3-8098-239d2469aa14', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', '4a5595b3-31f9-3231-97cc-91bb5aa27394', '2026-10-31T00:12:35.191457+00:00', ''),
-  (472, 'a8104440-3f08-3cb3-8098-239d2469aa14', 'PINDAH_TAHAP', 's-coldstorage', 's-olahan', '4a5595b3-31f9-3231-97cc-91bb5aa27394', '2026-10-31T06:12:35.191457+00:00', ''),
-  (473, '3cbe164c-3e0d-3f37-8366-d61db54ec0b1', 'BUAT', NULL, 's-deteksi', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T19:12:35.191457+00:00', ''),
-  (474, '3cbe164c-3e0d-3f37-8366-d61db54ec0b1', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-31T01:12:35.191457+00:00', ''),
-  (475, '3cbe164c-3e0d-3f37-8366-d61db54ec0b1', 'PINDAH_TAHAP', 's-coldstorage', 's-olahan', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-31T07:12:35.191457+00:00', ''),
-  (476, '3cbe164c-3e0d-3f37-8366-d61db54ec0b1', 'PINDAH_TAHAP', 's-olahan', 's-ekspansi', '32bfeac0-23e5-3218-b0ba-26b03d9675f0', '2026-10-31T13:12:35.191457+00:00', ''),
-  (477, '5fc24dd3-5838-3966-af21-fbf1452b16c6', 'BUAT', NULL, 's-deteksi', 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-10-30T20:12:35.191457+00:00', ''),
-  (478, '5fc24dd3-5838-3966-af21-fbf1452b16c6', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-31T02:12:35.191457+00:00', ''),
-  (479, '5fc24dd3-5838-3966-af21-fbf1452b16c6', 'PINDAH_TAHAP', 's-coldstorage', 's-olahan', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-31T08:12:35.191457+00:00', ''),
-  (480, '5fc24dd3-5838-3966-af21-fbf1452b16c6', 'PINDAH_TAHAP', 's-olahan', 's-ekspansi', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-31T14:12:35.191457+00:00', ''),
-  (481, '5fc24dd3-5838-3966-af21-fbf1452b16c6', 'PINDAH_TAHAP', 's-ekspansi', 's-selesai', '8618501a-4585-3e4a-b466-31fcdd4abb83', '2026-10-31T20:12:35.191457+00:00', '')
-ON CONFLICT (id) DO NOTHING;
+DELETE FROM intervensi_riwayat
+ WHERE intervensi_id IN (SELECT garda_uuid_stabil('intervensi', 'INT-' || n) FROM generate_series(301, 319) AS n);
+
+INSERT INTO intervensi_riwayat (intervensi_id, aksi, dari, ke, oleh, waktu)
+SELECT k.id, r.aksi, r.dari, r.ke, garda_uuid_stabil('pengguna', r.pelaku), k.dibuat_pada + r.jam * interval '1 hour'
+  FROM (VALUES
+    (1, 'INT-301', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (2, 'INT-302', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (3, 'INT-303', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (4, 'INT-303', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', 'manajer_kebijakan', 6),
+    (5, 'INT-304', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (6, 'INT-304', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', 'manajer_risiko', 6),
+    (7, 'INT-304', 'PINDAH_TAHAP', 't-verifikasi', 't-petakan', 'manajer_risiko', 12),
+    (8, 'INT-304', 'PINDAH_TAHAP', 't-petakan', 't-logistik', 'manajer_risiko', 18),
+    (9, 'INT-305', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (10, 'INT-305', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', 'manajer_mutu', 6),
+    (11, 'INT-305', 'PINDAH_TAHAP', 't-verifikasi', 't-petakan', 'manajer_mutu', 12),
+    (12, 'INT-305', 'PINDAH_TAHAP', 't-petakan', 't-logistik', 'manajer_mutu', 18),
+    (13, 'INT-305', 'PINDAH_TAHAP', 't-logistik', 't-fiskal', 'manajer_mutu', 24),
+    (14, 'INT-306', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (15, 'INT-306', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', 'koordinator_lapangan', 6),
+    (16, 'INT-307', 'BUAT', NULL, 't-ews', 'manajer_program', 0),
+    (17, 'INT-307', 'PINDAH_TAHAP', 't-ews', 't-verifikasi', 'agregator_data', 6),
+    (18, 'INT-307', 'PINDAH_TAHAP', 't-verifikasi', 't-petakan', 'agregator_data', 12),
+    (19, 'INT-308', 'BUAT', NULL, 'n-pantau', 'manajer_program', 0),
+    (20, 'INT-309', 'BUAT', NULL, 'n-pantau', 'manajer_program', 0),
+    (21, 'INT-309', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', 'manajer_data', 6),
+    (22, 'INT-310', 'BUAT', NULL, 'n-pantau', 'manajer_program', 0),
+    (23, 'INT-310', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', 'manajer_kebijakan', 6),
+    (24, 'INT-310', 'PINDAH_TAHAP', 'n-verifikasi', 'n-jadwal', 'manajer_kebijakan', 12),
+    (25, 'INT-311', 'BUAT', NULL, 'n-pantau', 'manajer_program', 0),
+    (26, 'INT-311', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', 'manajer_risiko', 6),
+    (27, 'INT-311', 'PINDAH_TAHAP', 'n-verifikasi', 'n-jadwal', 'manajer_risiko', 12),
+    (28, 'INT-311', 'PINDAH_TAHAP', 'n-jadwal', 'n-agregasi', 'manajer_risiko', 18),
+    (29, 'INT-312', 'BUAT', NULL, 'n-pantau', 'manajer_program', 0),
+    (30, 'INT-313', 'BUAT', NULL, 'n-pantau', 'manajer_program', 0),
+    (31, 'INT-313', 'PINDAH_TAHAP', 'n-pantau', 'n-verifikasi', 'koordinator_lapangan', 6),
+    (32, 'INT-313', 'PINDAH_TAHAP', 'n-verifikasi', 'n-jadwal', 'koordinator_lapangan', 12),
+    (33, 'INT-313', 'PINDAH_TAHAP', 'n-jadwal', 'n-agregasi', 'koordinator_lapangan', 18),
+    (34, 'INT-313', 'PINDAH_TAHAP', 'n-agregasi', 'n-selesai', 'koordinator_lapangan', 24),
+    (35, 'INT-314', 'BUAT', NULL, 's-deteksi', 'manajer_program', 0),
+    (36, 'INT-315', 'BUAT', NULL, 's-deteksi', 'manajer_program', 0),
+    (37, 'INT-316', 'BUAT', NULL, 's-deteksi', 'manajer_program', 0),
+    (38, 'INT-316', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', 'manajer_data', 6),
+    (39, 'INT-317', 'BUAT', NULL, 's-deteksi', 'manajer_program', 0),
+    (40, 'INT-317', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', 'manajer_kebijakan', 6),
+    (41, 'INT-317', 'PINDAH_TAHAP', 's-coldstorage', 's-olahan', 'manajer_kebijakan', 12),
+    (42, 'INT-318', 'BUAT', NULL, 's-deteksi', 'manajer_program', 0),
+    (43, 'INT-318', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', 'manajer_risiko', 6),
+    (44, 'INT-318', 'PINDAH_TAHAP', 's-coldstorage', 's-olahan', 'manajer_risiko', 12),
+    (45, 'INT-318', 'PINDAH_TAHAP', 's-olahan', 's-ekspansi', 'manajer_risiko', 18),
+    (46, 'INT-319', 'BUAT', NULL, 's-deteksi', 'manajer_program', 0),
+    (47, 'INT-319', 'PINDAH_TAHAP', 's-deteksi', 's-coldstorage', 'manajer_mutu', 6),
+    (48, 'INT-319', 'PINDAH_TAHAP', 's-coldstorage', 's-olahan', 'manajer_mutu', 12),
+    (49, 'INT-319', 'PINDAH_TAHAP', 's-olahan', 's-ekspansi', 'manajer_mutu', 18),
+    (50, 'INT-319', 'PINDAH_TAHAP', 's-ekspansi', 's-selesai', 'manajer_mutu', 24)
+       ) AS r (urut, kode, aksi, dari, ke, pelaku, jam)
+  JOIN intervensi k ON k.id = garda_uuid_stabil('intervensi', r.kode)
+ ORDER BY r.urut;
 
 -- =====================================================================
--- Tabel: intervensi_persetujuan (1 baris)
+-- Tabel: intervensi_persetujuan (1 baris) dan intervensi_persetujuan_langkah (2 baris)
+-- INT-304 (menunggu di Usulan intervensi logistik kilat) diajukan pindah ke Dukungan instrumen belanja; rantai
+-- langkahnya disalin dari definisi alur seperti pada permintaan nyata. Dibangun ulang tiap dijalankan (id dari sequence).
 -- =====================================================================
-INSERT INTO intervensi_persetujuan (id, intervensi_id, alur_kode, jenis, tahap_tujuan, status, langkah_kini, diajukan_oleh, diajukan_pada, catatan) OVERRIDING SYSTEM VALUE VALUES
-  (9, 'a0b80dd3-92f8-3685-a311-49104ae80ae8', 'pindah-tekanan-fiskal', 'PINDAH_TAHAP', 't-fiskal', 'MENUNGGU', 1, 'e810ffa6-9117-330a-aee6-f281fa031dfe', '2026-11-08T23:12:35.191457+00:00', 'Rute dan volume sudah siap; mohon dukungan ongkos angkut')
-ON CONFLICT (id) DO NOTHING;
+DELETE FROM intervensi_persetujuan
+ WHERE intervensi_id IN (SELECT garda_uuid_stabil('intervensi', 'INT-' || n) FROM generate_series(301, 319) AS n);
 
--- =====================================================================
--- Tabel: intervensi_persetujuan_langkah (2 baris)
--- =====================================================================
-INSERT INTO intervensi_persetujuan_langkah (persetujuan_id, urutan, label, izin_dibutuhkan, keputusan, oleh, waktu, catatan) VALUES
-  (9, 1, 'Persetujuan Dewan Pengarah', 'intervensi.setujui', NULL, NULL, NULL, ''),
-  (9, 2, 'Persetujuan Kanwil DJPb', 'intervensi.setujui_fiskal', NULL, NULL, NULL, '')
+INSERT INTO intervensi_persetujuan (intervensi_id, alur_kode, jenis, tahap_tujuan, diajukan_oleh, diajukan_pada, catatan)
+VALUES (garda_uuid_stabil('intervensi', 'INT-304'), 'pindah-tekanan-fiskal', 'PINDAH_TAHAP', 't-fiskal',
+        garda_uuid_stabil('pengguna', 'manajer_program'), now() - interval '3 hours',
+        'Rute dan volume sudah siap; mohon dukungan ongkos angkut');
+
+INSERT INTO intervensi_persetujuan_langkah (persetujuan_id, urutan, label, izin_dibutuhkan)
+SELECT p.id, l.urutan, l.label, l.izin_dibutuhkan
+  FROM intervensi_persetujuan p
+  JOIN alur_persetujuan_langkah l ON l.alur_kode = p.alur_kode
+ WHERE p.intervensi_id = garda_uuid_stabil('intervensi', 'INT-304') AND p.status = 'MENUNGGU'
 ON CONFLICT (persetujuan_id, urutan) DO NOTHING;
-

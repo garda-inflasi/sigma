@@ -1,5 +1,7 @@
-// Package integration menguji API intervensi terhadap PostgreSQL sungguhan
-// dengan seed master.reference, auth.demo, ews.*, dan intervensi.*.
+// Package integration menguji API intervensi terhadap PostgreSQL sungguhan dengan seed tier reference (master, RBAC,
+// aturan EWS, tahap dan alur intervensi, ...) ditambah demo/01_auth_users.sql, demo/06_ews_alerts.sql, dan
+// demo/07_intervensi_kartu.sql saja. Tier demo utuh sengaja tidak dipakai: data demo modul lain (harga, cuaca, cold
+// storage, audit, ...) membuat rule engine dan jejak audit tidak lagi terisolasi dari yang diuji di sini.
 package integration
 
 import (
@@ -17,9 +19,9 @@ import (
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	intervensiRoutes "github.com/garda-inflasi/api/internal/intervensi/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -42,10 +44,7 @@ const (
 	emailTanpaIzin = "mahasiswa.1@gardainflasi.id"
 )
 
-var (
-	pg      *pgtest.Server
-	seedNow = time.Now().UTC()
-)
+var pg *pgtest.Server
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
@@ -69,7 +68,7 @@ func newSuite(t *testing.T, name string) *suite {
 	pgtest.MigrateUp(t, db)
 	ctx := t.Context()
 	require.NoError(t, seed.SeedReference(ctx, db))
-	require.NoError(t, seed.SeedDemo(ctx, db))
+	require.NoError(t, seed.SeedFiles(ctx, db, "demo/01_auth_users.sql", "demo/06_ews_alerts.sql", "demo/07_intervensi_kartu.sql"))
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 	router := gin.New()

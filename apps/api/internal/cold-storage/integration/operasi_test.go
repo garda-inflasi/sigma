@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,7 +75,7 @@ func TestMigration000100_KeepsFacilitiesAndLotsOnDown(t *testing.T) {
 	db := pg.NewDatabase(t, "mig_000100")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 100))
-	require.NoError(t, seed.SeedReference(t.Context(), db))
+	seedMasterLegacy(t, db)
 	execSQL(t, db, `
 		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
 		VALUES ('CS-M', 'Fasilitas M', '1171', 5.5, 95.3, 100, 4, 'OPERASIONAL');

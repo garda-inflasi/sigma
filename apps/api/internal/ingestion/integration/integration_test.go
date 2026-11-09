@@ -18,9 +18,9 @@ import (
 	"github.com/garda-inflasi/api/internal/ingestion/ingestiontest"
 	"github.com/garda-inflasi/api/internal/ingestion/repository/postgres"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	sumberdomain "github.com/garda-inflasi/api/internal/sumber-data/domain"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -57,7 +57,10 @@ func newSetup(t *testing.T, name string) *setup {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	require.NoError(t, seed.SeedReference(t.Context(), db))
+	// Hanya yang dipakai ingestion: master, katalog sumber, dan pemetaan. Batas harga (06) tidak ikut karena ia juga
+	// merujuk komoditas (batas_harga_komoditas_kode_fkey) dan menutupi galat FK harga_eksternal yang diuji di sini.
+	require.NoError(t, seed.SeedFiles(t.Context(), db,
+		"reference/01_master.sql", "reference/02_kecamatan.sql", "reference/04_sumber_data.sql", "reference/05_ingestion_mapping.sql"))
 	require.NoError(t, db.Exec(`UPDATE sumber_data SET konfigurasi = '{"province_id":"7"}' WHERE kode = ?`, pihps.Kode).Error)
 	require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master) VALUES (?, 'WILAYAH', '101', '1171')`, idBI).Error)
 

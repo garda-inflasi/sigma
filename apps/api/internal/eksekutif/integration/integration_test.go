@@ -15,8 +15,8 @@ import (
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
 	eksekutifRoutes "github.com/garda-inflasi/api/internal/eksekutif/routes"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -60,15 +60,32 @@ func newRouter(t *testing.T, db *gorm.DB) *gin.Engine {
 	return router
 }
 
+// berkasDemoEksekutif adalah data demo yang dulu ditanam eksekutif.SeedDemo: inflasi, andil, neraca, dan ruang fiskal.
+// Sengaja bukan seed.SeedDemo: itu juga menanam alert EWS, intervensi, dan siklus TEKANAN dashboard yang mengubah
+// blok EWS dan siklus dominan (tes ini menguji "tanpa data EWS: nol" dan siklus "normal").
+const berkasDemoEksekutif = "demo/14_eksekutif_data.sql"
+
+// seeded menyiapkan basis data berisi referensi (termasuk target inflasi) dan akun demo; demo true menambah data eksekutif demo.
 func seeded(t *testing.T, name string, demo bool) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db, "demo/01_auth_users.sql"))
 	if demo {
-		require.NoError(t, seed.SeedDemo(t.Context(), db))
+		require.NoError(t, seed.SeedFiles(t.Context(), db, berkasDemoEksekutif))
 	}
 	return &suite{db: db, router: newRouter(t, db), tokens: map[string]string{}}
+}
+
+// bulanLalu adalah tanggal 1 bulan lalu menurut jam basis data dalam UTC. Seed demo menghitung "bulan lalu" dari
+// (now() AT TIME ZONE 'UTC') (bukan dari zona waktu proses uji atau sesi), jadi tes yang menyasar baris seed harus memakai
+// acuan yang sama.
+func bulanLalu(t *testing.T, db *gorm.DB) time.Time {
+	t.Helper()
+	var tanggal time.Time
+	require.NoError(t, db.Raw(`SELECT (date_trunc('month', now() AT TIME ZONE 'UTC') - interval '1 month')::date`).Scan(&tanggal).Error)
+	return tanggal
 }
 
 func sharedSuite(t *testing.T) *suite {
@@ -243,8 +260,7 @@ func TestEksekutif_OfficialDataReplacesDemoEvenWhenOlder(t *testing.T) {
 	// Seed demo: inflasi 12 bulan sampai bulan lalu, andil/neraca bulan lalu, fiskal akhir bulan lalu.
 	// Ingestion BPS menggantikan baris contoh pada dua bulan (kunci wilayah+periode sama), keduanya
 	// lebih tua dari bulan contoh terbaru.
-	bulanLalu := time.Date(time.Now().Year(), time.Now().Month()-1, 1, 0, 0, 0, 0, time.UTC)
-	older := bulanLalu.AddDate(0, -3, 0)
+	older := bulanLalu(t, s.db).AddDate(0, -3, 0)
 	require.NoError(t, s.db.Exec(`
 		UPDATE inflasi_bulanan SET sumber = 'BPS', inflasi_yoy = CASE WHEN periode = ? THEN 3.3 ELSE 3.1 END
 		 WHERE wilayah_kode = '11' AND periode IN (?, ?)`, older, older, older.AddDate(0, -1, 0)).Error)
@@ -264,14 +280,14 @@ func TestEksekutif_OfficialDataReplacesDemoEvenWhenOlder(t *testing.T) {
 
 func TestEksekutif_AllBlocksOfficialClearsDemoLabel(t *testing.T) {
 	s := seeded(t, "eksekutif_semua_resmi", true)
-	bulanLalu := time.Date(time.Now().Year(), time.Now().Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	lalu := bulanLalu(t, s.db)
 	// Impor resmi menggantikan baris contoh bulan lalu; baris contoh lainnya (komoditas lain, instrumen
 	// fiskal contoh) tetap ada dan tidak boleh ikut tampil.
-	require.NoError(t, s.db.Exec(`UPDATE inflasi_bulanan SET sumber = 'BPS', inflasi_yoy = 3.1 WHERE wilayah_kode = '11' AND periode = ?`, bulanLalu).Error)
-	require.NoError(t, s.db.Exec(`UPDATE andil_inflasi SET sumber = 'BPS', andil = 0.07 WHERE periode = ? AND komoditas_kode = 'BWM'`, bulanLalu).Error)
-	require.NoError(t, s.db.Exec(`UPDATE neraca_pangan SET sumber = 'BAPANAS', produksi_ton = 100, konsumsi_ton = 80 WHERE periode = ? AND komoditas_kode = 'BRS-MED'`, bulanLalu).Error)
+	require.NoError(t, s.db.Exec(`UPDATE inflasi_bulanan SET sumber = 'BPS', inflasi_yoy = 3.1 WHERE wilayah_kode = '11' AND periode = ?`, lalu).Error)
+	require.NoError(t, s.db.Exec(`UPDATE andil_inflasi SET sumber = 'BPS', andil = 0.07 WHERE periode = ? AND komoditas_kode = 'BWM'`, lalu).Error)
+	require.NoError(t, s.db.Exec(`UPDATE neraca_pangan SET sumber = 'BAPANAS', produksi_ton = 100, konsumsi_ton = 80 WHERE periode = ? AND komoditas_kode = 'BRS-MED'`, lalu).Error)
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO ruang_fiskal (kode, tahun, instrumen, pagu, realisasi, per_tanggal, sumber) VALUES ('RF-RESMI-1', ?, 'BTT', 100, 40, ?, 'DJPB')`, bulanLalu.Year(), bulanLalu).Error)
+		INSERT INTO ruang_fiskal (kode, tahun, instrumen, pagu, realisasi, per_tanggal, sumber) VALUES ('RF-RESMI-1', ?, 'BTT', 100, 40, ?, 'DJPB')`, lalu.Year(), lalu).Error)
 
 	res := decode(t, s.get(t, "/v1/dashboard/eksekutif", emailEksekutif))
 
@@ -290,15 +306,15 @@ func TestEksekutif_AllBlocksOfficialClearsDemoLabel(t *testing.T) {
 
 func TestEksekutif_DemoSeedNeverOverwritesOfficialRows(t *testing.T) {
 	s := seeded(t, "eksekutif_demo_tak_menimpa", false)
-	bulanLalu := time.Date(time.Now().Year(), time.Now().Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	lalu := bulanLalu(t, s.db)
 	require.NoError(t, s.db.Exec(`
-		INSERT INTO inflasi_bulanan (wilayah_kode, periode, ihk, inflasi_mtm, inflasi_yoy, inflasi_ytd, sumber) VALUES ('11', ?, 110, 0.1, 3.1, 1.0, 'BPS')`, bulanLalu).Error)
+		INSERT INTO inflasi_bulanan (wilayah_kode, periode, ihk, inflasi_mtm, inflasi_yoy, inflasi_ytd, sumber) VALUES ('11', ?, 110, 0.1, 3.1, 1.0, 'BPS')`, lalu).Error)
 
-	require.NoError(t, seed.SeedDemo(t.Context(), s.db))
+	require.NoError(t, seed.SeedFiles(t.Context(), s.db, berkasDemoEksekutif))
 
 	var yoy float64
 	var sumber string
-	require.NoError(t, s.db.Raw(`SELECT inflasi_yoy, sumber FROM inflasi_bulanan WHERE wilayah_kode = '11' AND periode = ?`, bulanLalu).Row().Scan(&yoy, &sumber))
+	require.NoError(t, s.db.Raw(`SELECT inflasi_yoy, sumber FROM inflasi_bulanan WHERE wilayah_kode = '11' AND periode = ?`, lalu).Row().Scan(&yoy, &sumber))
 	assert.Equal(t, "BPS", sumber)
 	assert.InDelta(t, 3.1, yoy, 1e-9)
 }

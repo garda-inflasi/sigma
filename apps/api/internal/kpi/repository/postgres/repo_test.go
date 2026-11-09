@@ -9,7 +9,7 @@ import (
 	"github.com/garda-inflasi/api/internal/kpi/domain"
 	postgres "github.com/garda-inflasi/api/internal/kpi/repository/postgres"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
-	"github.com/garda-inflasi/api/internal/seed"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -30,11 +30,15 @@ func oktober() domain.Jendela {
 	return domain.Jendela{Mulai: mulai, Akhir: akhir, AsOf: akhir}
 }
 
+// newDB menyiapkan basis data berisi master dan definisi/target KPI, sama dengan seeder Go lama (master.SeedReference dan
+// kpi.SeedReference). Sengaja bukan seed.SeedReference: tier itu juga menanam fasilitas cold storage resmi, padahal tes
+// cold storage di sini menghitung utilisasi terhadap kapasitas fasilitas yang ditambahkan tes sendiri.
 func newDB(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedFiles(t.Context(), db,
+		"reference/01_master.sql", "reference/02_kecamatan.sql", "reference/13_kpi_definisi.sql"))
 	return db
 }
 

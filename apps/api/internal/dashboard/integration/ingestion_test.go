@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
-	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,13 +19,21 @@ var (
 	sharedIngestion *suite
 )
 
+// berkasDemoIngestion adalah data hasil ingestion contoh yang dulu ditanam ingestion.SeedDemo: cuaca, riwayat eksekusi,
+// payload bronze, dan harga eksternal. Katalog sumber (SRC-BI, SRC-BMKG, ...) sudah ada dari tier referensi. Berkas 16
+// diulang agar gold_harga_harian (gabungan harga lapangan dan eksternal) dihitung ulang.
+var berkasDemoIngestion = []string{
+	"demo/04_cuaca_harian.sql",
+	"demo/05_ingestion_demo.sql",
+	"demo/16_refresh_views.sql",
+}
+
 // ingestionSuite menambah data hasil ingestion contoh (harga eksternal, cuaca) di atas suite bersama.
 func ingestionSuite(t *testing.T) *suite {
 	t.Helper()
 	onceIngestion.Do(func() {
 		s := newSuite(t, "dashboard_ingestion", true)
-		require.NoError(t, seed.SeedReference(t.Context(), s.db))
-		require.NoError(t, seed.SeedDemo(t.Context(), s.db))
+		require.NoError(t, seed.SeedFiles(t.Context(), s.db, berkasDemoIngestion...))
 		sharedIngestion = s
 	})
 	require.NotNil(t, sharedIngestion, "suite ingestion gagal dibuat")
@@ -131,8 +139,9 @@ func TestOperasionalHasilIngestion_KosongBukanGalat(t *testing.T) {
 }
 
 func TestHeatmap_MelengkapiSelTanpaDataLapanganDariHargaEksternal(t *testing.T) {
+	// Katalog sumber (SRC-BI) berasal dari tier referensi yang sudah ditanam newSuite; harga eksternal sengaja tidak ada
+	// di awal supaya hanya sel yang dibuat tes ini yang berasal dari harga eksternal.
 	s := newSuite(t, "dashboard_heatmap_eksternal", true)
-	require.NoError(t, seed.SeedReference(t.Context(), s.db))
 
 	type sel struct {
 		KomoditasKode string  `json:"komoditas_kode"`

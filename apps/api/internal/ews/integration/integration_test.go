@@ -15,11 +15,9 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	ewsRoutes "github.com/garda-inflasi/api/internal/ews/routes"
-	ewsseeder "github.com/garda-inflasi/api/internal/ews/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -67,14 +65,8 @@ func newSuite(t *testing.T, name string) *suite {
 	t.Helper()
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = authseeder.SeedDemo(t.Context(), db)
-	require.NoError(t, err)
-	_, err = ewsseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = ewsseeder.SeedDemo(t.Context(), db, seedNow)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedDemo(t.Context(), db))
 
 	tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 	router := gin.New()
@@ -113,7 +105,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

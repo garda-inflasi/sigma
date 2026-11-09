@@ -13,12 +13,9 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	coldseeder "github.com/garda-inflasi/api/internal/cold-storage/seeder"
 	kpiRoutes "github.com/garda-inflasi/api/internal/kpi/routes"
-	kpiseeder "github.com/garda-inflasi/api/internal/kpi/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -58,17 +55,8 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "kpi_shared")
 		pgtest.MigrateUp(t, db)
-		now := time.Now()
-		for _, seed := range []func() error{
-			func() error { _, err := masterseeder.SeedReference(t.Context(), db); return err },
-			func() error { _, err := authseeder.SeedDemo(t.Context(), db); return err },
-			func() error { _, err := kpiseeder.SeedReference(t.Context(), db); return err },
-			func() error { _, err := coldseeder.SeedReference(t.Context(), db); return err },
-			func() error { _, err := coldseeder.SeedDemo(t.Context(), db, now); return err },
-			func() error { _, err := kpiseeder.SeedDemo(t.Context(), db, now); return err },
-		} {
-			require.NoError(t, seed())
-		}
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
@@ -97,7 +85,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

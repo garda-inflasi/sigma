@@ -15,12 +15,9 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
-	hargaseeder "github.com/garda-inflasi/api/internal/harga/seeder"
 	lapanganRoutes "github.com/garda-inflasi/api/internal/lapangan/routes"
-	lapanganseeder "github.com/garda-inflasi/api/internal/lapangan/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -62,14 +59,8 @@ func sharedSuite(t *testing.T) *suite {
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "lapangan_shared")
 		pgtest.MigrateUp(t, db)
-		_, err := masterseeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = authseeder.SeedDemo(t.Context(), db)
-		require.NoError(t, err)
-		_, err = lapanganseeder.SeedDemo(t.Context(), db, time.Now())
-		require.NoError(t, err)
-		_, err = hargaseeder.SeedDemo(t.Context(), db, time.Now())
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
@@ -111,7 +102,7 @@ func (s *suite) login(t *testing.T, email string) string {
 	if tok, ok := s.tokens[email]; ok {
 		return tok
 	}
-	body, _ := json.Marshal(map[string]string{"email": email, "password": authseeder.DemoPassword})
+	body, _ := json.Marshal(map[string]string{"email": email, "password": seed.DemoPassword})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

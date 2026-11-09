@@ -8,9 +8,8 @@ import (
 
 	"github.com/garda-inflasi/api/internal/kpi/domain"
 	postgres "github.com/garda-inflasi/api/internal/kpi/repository/postgres"
-	kpiseeder "github.com/garda-inflasi/api/internal/kpi/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -35,8 +34,7 @@ func newDB(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db := pg.NewDatabase(t, name)
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 	return db
 }
 
@@ -65,8 +63,6 @@ func hitung(t *testing.T, repo *postgres.Repository, query string, w domain.Jend
 
 func TestHitung_EveryCatalogQueryRunsAgainstTheRealSchema(t *testing.T) {
 	db := newDB(t, "kpi_repo_schema")
-	_, err := kpiseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
 	repo := postgres.New(db)
 	defs, err := repo.Definisi(t.Context())
 	require.NoError(t, err)
@@ -243,8 +239,6 @@ func TestHitung_RekomendasiAIDieksekusi(t *testing.T) {
 
 func TestSimpanNilai_IsIdempotentAndVersioned(t *testing.T) {
 	db := newDB(t, "kpi_repo_simpan")
-	_, err := kpiseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
 	repo := postgres.New(db)
 	periode := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	simpan := func(v float64) domain.HasilSimpan {
@@ -272,8 +266,6 @@ func TestSimpanNilai_IsIdempotentAndVersioned(t *testing.T) {
 
 func TestNilaiBerlakuDanRiwayat(t *testing.T) {
 	db := newDB(t, "kpi_repo_riwayat")
-	_, err := kpiseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
 	repo := postgres.New(db)
 	for bulan := 1; bulan <= 5; bulan++ {
 		_, err := repo.SimpanNilai(t.Context(), "LOG-UTILISASI-CS", time.Date(2026, time.Month(bulan), 1, 0, 0, 0, 0, time.UTC), float64(bulan*10), time.Now())
@@ -301,8 +293,6 @@ func TestNilaiBerlakuDanRiwayat(t *testing.T) {
 
 func TestTargetBerlaku_PrefersRegionalThenLatestStart(t *testing.T) {
 	db := newDB(t, "kpi_repo_target")
-	_, err := kpiseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
 	repo := postgres.New(db)
 	require.NoError(t, db.Exec(`
 		INSERT INTO kpi_target (kpi_kode, wilayah_kode, periode_mulai, target) VALUES
@@ -330,8 +320,6 @@ func TestTargetBerlaku_PrefersRegionalThenLatestStart(t *testing.T) {
 
 func TestDefinisiByKode(t *testing.T) {
 	db := newDB(t, "kpi_repo_definisi")
-	_, err := kpiseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
 	repo := postgres.New(db)
 
 	def, err := repo.DefinisiByKode(t.Context(), "TL-REKOMENDASI-AI")

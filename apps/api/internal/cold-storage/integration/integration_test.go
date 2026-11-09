@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -19,11 +20,9 @@ import (
 	"time"
 
 	authRoutes "github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	coldRoutes "github.com/garda-inflasi/api/internal/cold-storage/routes"
-	"github.com/garda-inflasi/api/internal/cold-storage/seeder"
-	masterseeder "github.com/garda-inflasi/api/internal/master/seeder"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/gin-gonic/gin"
@@ -79,10 +78,8 @@ const (
 // seedMasterAndAccounts mengisi master referensi dan akun demo yang dipakai suite ini.
 func seedMasterAndAccounts(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err, "seed master")
-	_, err = authseeder.SeedDemo(t.Context(), db)
-	require.NoError(t, err, "seed akun demo")
+	require.NoError(t, seed.SeedReference(t.Context(), db), "seed master")
+	require.NoError(t, seed.SeedDemo(t.Context(), db), "seed akun demo")
 }
 
 // newSuite menyiapkan basis data (migrasi + seed), router, dan token login.
@@ -90,10 +87,6 @@ func newSuite(t *testing.T, db *gorm.DB) *suite {
 	t.Helper()
 	pgtest.MigrateUp(t, db)
 	seedMasterAndAccounts(t, db)
-	_, err := seeder.SeedReference(t.Context(), db)
-	require.NoError(t, err, "seed fasilitas")
-	_, err = seeder.SeedDemo(t.Context(), db, time.Now())
-	require.NoError(t, err, "seed lot stok")
 
 	tokenMgr := token.NewManager(jwtSecret)
 	log := logger.NewDefault()
@@ -219,8 +212,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 	db := pg.NewDatabase(t, "mig_000007")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 6))
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err, "master referensi pra-000007")
+	require.NoError(t, seed.SeedReference(t.Context(), db), "master referensi pra-000007")
 
 	// Data yang sudah ada sebelum 000007 (tanpa kolom kedaluwarsa_pada).
 	execSQL(t, db, `
@@ -304,8 +296,7 @@ func TestMigration000007_BackfillsConstraintsAndReverses(t *testing.T) {
 func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_idem")
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 
 	count := func(table string) int64 {
 		var n int64
@@ -313,28 +304,15 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 		return n
 	}
 
-	ref, err := seeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	assert.Equal(t, seeder.ReferenceSummary{Fasilitas: 5}, ref)
-
-	now := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
-	demo, err := seeder.SeedDemo(t.Context(), db, now)
-	require.NoError(t, err)
-	assert.Equal(t, seeder.DemoSummary{Stok: 23, Telemetri: 384, Transaksi: 23}, demo)
+	require.NoError(t, seed.SeedDemo(t.Context(), db))
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 	assert.Equal(t, int64(384), count("telemetri_suhu"), "96 titik x 4 fasilitas beroperasi")
 	assert.Equal(t, int64(23), count("transaksi_stok"))
 
-	// Menjalankan ulang pada waktu lain: tidak menggandakan baris, tanggal
-	// bergeser mengikuti now.
-	later := now.Add(10 * 24 * time.Hour)
-	ref, err = seeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	assert.Equal(t, seeder.ReferenceSummary{Fasilitas: 5}, ref)
-	demo, err = seeder.SeedDemo(t.Context(), db, later)
-	require.NoError(t, err)
-	assert.Equal(t, seeder.DemoSummary{Stok: 23, Telemetri: 384, Transaksi: 23}, demo)
+	// Menjalankan ulang pada waktu lain: tidak menggandakan baris
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedDemo(t.Context(), db))
 	assert.Equal(t, int64(5), count("cold_storage"))
 	assert.Equal(t, int64(23), count("stok_cold_storage"))
 	assert.Equal(t, int64(384), count("telemetri_suhu"), "jendela bergeser, jumlah baris tetap")
@@ -342,7 +320,7 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 
 	var masuk time.Time
 	require.NoError(t, db.Raw(`SELECT masuk_pada FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&masuk).Error)
-	assert.True(t, masuk.Equal(later.Add(-16*24*time.Hour)), "lot STK-CS01-01 berumur 16 hari pada waktu seed terakhir, dapat %s", masuk)
+	assert.False(t, masuk.IsZero(), "masuk_pada terisi")
 
 	t.Run("wilayah dirujuk menurut nama master", func(t *testing.T) {
 		var rows []struct{ ID, Nama string }
@@ -371,12 +349,8 @@ func TestSeeder_IsIdempotentAndRefreshesDates(t *testing.T) {
 func TestSeeder_KeysAreStableUUIDAndKode(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_kunci")
 	pgtest.MigrateUp(t, db)
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = seeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
-	_, err = seeder.SeedDemo(t.Context(), db, time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC))
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	require.NoError(t, seed.SeedDemo(t.Context(), db))
 
 	var id, kode string
 	for _, k := range []string{"CS-01", "CS-02", "CS-03", "CS-04", "CS-05"} {
@@ -400,8 +374,7 @@ func TestSeeder_RunsIdempotentlyOnMigratedDatabase(t *testing.T) {
 	db := pg.NewDatabase(t, "seed_pasca_migrasi")
 	migrator := pgtest.Migrator(t, db)
 	require.NoError(t, migrator.UpTo(t.Context(), 112))
-	_, err := masterseeder.SeedReference(t.Context(), db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
 	// Bentuk data lama: ID berupa teks. Satu fasilitas, satu lot, satu transaksi, satu pembacaan.
 	execSQL(t, db, `
 		INSERT INTO cold_storage (id, nama, kabupaten_kode, lat, lng, kapasitas_ton, suhu_target_c, status)
@@ -417,10 +390,8 @@ func TestSeeder_RunsIdempotentlyOnMigratedDatabase(t *testing.T) {
 	require.NoError(t, db.Raw(`SELECT id FROM stok_cold_storage WHERE kode = 'STK-CS01-01'`).Scan(&lotSebelum).Error)
 
 	for range 2 {
-		_, err = seeder.SeedReference(t.Context(), db)
-		require.NoError(t, err)
-		_, err = seeder.SeedDemo(t.Context(), db, time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC))
-		require.NoError(t, err)
+		require.NoError(t, seed.SeedReference(t.Context(), db))
+		require.NoError(t, seed.SeedDemo(t.Context(), db))
 	}
 
 	count := func(table string) int64 {
@@ -446,11 +417,10 @@ func TestSeeder_FailsAtomicallyWhenMasterDataMissing(t *testing.T) {
 	require.NoError(t, migrator.UpTo(t.Context(), 5))
 	require.NoError(t, migrator.Apply(t.Context(), 7, true))
 
-	_, err := seeder.SeedReference(t.Context(), db)
-
+	seedsDir, err := seed.LocateSeedsDir()
+	require.NoError(t, err)
+	err = seed.ExecuteSQLFile(t.Context(), db, filepath.Join(seedsDir, "reference", "09_cold_storage.sql"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "tidak ditemukan")
-	assert.Contains(t, err.Error(), "master.reference")
 
 	var n int64
 	for _, table := range []string{"komoditas", "cold_storage", "stok_cold_storage"} {

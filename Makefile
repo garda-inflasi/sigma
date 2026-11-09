@@ -39,7 +39,7 @@ test/api/short: ## Run short Go tests (no integration)
 	cd apps/api && go test ./... -v -count=1 -short
 
 # Paket integrasi: tiap yang memakai Docker (dockertest). Tambahkan paket baru di sini.
-INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/harga/seeder/... ./internal/lapangan/integration/... ./internal/lapangan/seeder/... ./internal/dashboard/integration/... ./internal/dashboard/seeder/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./internal/ingestion/seeder/... ./internal/gardactl/... ./internal/master/integration/... ./internal/master/seeder/... ./internal/audit/integration/... ./internal/audit/seeder/...
+INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/lapangan/integration/... ./internal/dashboard/integration/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./internal/gardactl/... ./internal/master/integration/... ./internal/audit/integration/...
 
 test/api/integration: ## Run Go integration tests (requires Docker)
 	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1
@@ -78,17 +78,17 @@ db/migrate/version: ## Cetak versi skema saat ini
 	cd apps/api && MIGRATIONS_DIR=../../db/migrations go run ./cmd/migrate version
 
 db/seed/reference: ## Seed data referensi (aman di produksi)
-	cd apps/api && go run ./cmd/seed reference
+	cd apps/api && SEEDS_DIR=../../db/seeds go run ./cmd/seed reference
 
 db/seed/admin: ## Seed akun admin awal (SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD)
-	cd apps/api && go run ./cmd/seed admin
+	cd apps/api && SEEDS_DIR=../../db/seeds go run ./cmd/seed admin
 
 db/seed/demo: ## Seed data demo (ditolak bila APP_ENV=production)
-	cd apps/api && go run ./cmd/seed demo
+	cd apps/api && SEEDS_DIR=../../db/seeds go run ./cmd/seed demo
 
 # Menyegarkan kecamatan_aceh.csv dari API bridging wilayah BPS (perlu internet). Hasilnya di-commit; seeder
-# master.reference menanamnya. Sumber dan lisensi: apps/api/internal/master/seeder/SUMBER.md.
-db/impor/kecamatan: ## Impor kecamatan se-Aceh dari BPS ke seeder/kecamatan_aceh.csv
+# master.reference menanamnya. Sumber dan lisensi: apps/api/internal/master/SUMBER.md.
+db/impor/kecamatan: ## Impor kecamatan se-Aceh dari BPS ke internal/master/kecamatan_aceh.csv
 	cd apps/api && go run ./cmd/gardactl master impor-kecamatan
 
 ctl/ingest: ## Jalankan utilitas CLI gardactl ingest (mis. make ctl/ingest ARGS="daftar")

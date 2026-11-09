@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	hargaseeder "github.com/garda-inflasi/api/internal/harga/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -194,8 +194,7 @@ func TestBatasHarga_ReseedKeepsAdminEdits(t *testing.T) {
 	s := sharedSuite(t)
 	require.NoError(t, s.db.Exec("UPDATE batas_harga SET batas_maks = 99999 WHERE kode = 'BH-TLR'").Error)
 
-	_, err := hargaseeder.SeedReference(t.Context(), s.db)
-	require.NoError(t, err)
+	require.NoError(t, seed.SeedReference(t.Context(), s.db))
 
 	var maks int
 	require.NoError(t, s.db.Raw("SELECT batas_maks FROM batas_harga WHERE kode = 'BH-TLR'").Scan(&maks).Error)

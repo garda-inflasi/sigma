@@ -32,6 +32,7 @@ func (s *suite) jalankanBersih(t *testing.T) {
 	t.Helper()
 	s.reset(t)
 	for _, q := range []string{
+		`DELETE FROM entri_harga`,
 		`DELETE FROM harga_eksternal`,
 		`DELETE FROM data_mentah`,
 		`DELETE FROM eksekusi_sumber`,

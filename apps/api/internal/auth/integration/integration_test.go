@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/routes"
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/internal/platform/pgtest"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
@@ -70,15 +70,14 @@ func newSuite(t *testing.T, seed func(*testing.T, *gorm.DB), opts ...routes.Opti
 
 // newSuiteBatas seperti newSuite dengan pembatas laju auth per IP (batasAuth permintaan per menit; 0 = mati) dan,
 // bila proxies tidak nil, daftar proxy tepercaya untuk X-Forwarded-For (kosong tetapi tidak nil = tak seorang pun).
-func newSuiteBatas(t *testing.T, seed func(*testing.T, *gorm.DB), batasAuth int, proxies []string, opts ...routes.Options) *Suite {
+func newSuiteBatas(t *testing.T, seedData func(*testing.T, *gorm.DB), batasAuth int, proxies []string, opts ...routes.Options) *Suite {
 	t.Helper()
 
 	db := pg.NewDatabase(t, strings.ToLower(t.Name()))
 	pgtest.MigrateUp(t, db)
 	// Izin dibaca dari basis data (02-C): tanpa referensi RBAC tidak ada peran yang punya izin apa pun.
-	_, err := authseeder.SeedRBAC(t.Context(), db)
-	require.NoError(t, err)
-	seed(t, db)
+	require.NoError(t, seed.SeedReference(t.Context(), db))
+	seedData(t, db)
 
 	tokenMgr := token.NewManager(jwtSecret)
 

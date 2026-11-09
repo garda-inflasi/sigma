@@ -44,6 +44,8 @@ type Runner struct {
 	// SetelahSilver dipanggil bila sebuah eksekusi menulis baris silver, mis.
 	// untuk menyegarkan agregat gold. Boleh nil.
 	SetelahSilver func()
+	// PadaEksekusiSelesai dipanggil setelah eksekusi dicatat di basis data. Boleh nil.
+	PadaEksekusiSelesai func(ctx context.Context, e *domain.EksekusiSumber, s *sumber.SumberData)
 }
 
 // New membuat Runner dari repository, fetcher, dan konektor.
@@ -131,6 +133,9 @@ func (run *Run) Jalankan(ctx context.Context) (*domain.EksekusiSumber, error) {
 	}
 	if e.BarisDiambil > 0 && r.SetelahSilver != nil {
 		r.SetelahSilver()
+	}
+	if r.PadaEksekusiSelesai != nil {
+		r.PadaEksekusiSelesai(ctx, &e, run.sumber)
 	}
 	return &e, nil
 }

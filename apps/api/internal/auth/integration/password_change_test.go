@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	authseeder "github.com/garda-inflasi/api/internal/auth/seeder"
+	"github.com/garda-inflasi/api/internal/seed"
 	"github.com/garda-inflasi/api/pkg/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ const (
 
 func seedAdminAwal(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	sum, err := authseeder.SeedAdmin(t.Context(), db, authseeder.AdminConfig{Email: adminEmail, Password: adminTempSandi})
+	sum, err := seed.SeedAdminConfig(t.Context(), db, seed.AdminConfig{Email: adminEmail, Password: adminTempSandi})
 	require.NoError(t, err)
 	require.Equal(t, 1, sum.Dibuat)
 }

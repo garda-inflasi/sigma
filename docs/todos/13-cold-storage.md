@@ -11,19 +11,19 @@ Fitur paling matang: migrasi, backend, BFF, seeder, dan UI sudah terhubung.
 - **BFF:** `app/api/cold-storage` dan `.../bulk`; klien [cold-storage.ts](../../apps/web/src/lib/api/cold-storage.ts).
 - **API Go:** `GET /v1/cold-storage` (`coldstorage.lihat`), `POST /v1/cold-storage/bulk` (`coldstorage.kelola` atau `logistik.kelola`).
 - **Skema:** kunci primer dan kunci asing mengikuti [SKEMA-DATABASE.md](../SKEMA-DATABASE.md) sejak migrasi 000113: fasilitas **UUID**, lot dan transaksi **BIGINT**, telemetri BIGSERIAL (lihat [Kunci primer](#kunci-primer-000113-)). `cold_storage` dan `stok_cold_storage` (000002); 000007 menambah `suhu_aktual_c`, `kedaluwarsa_pada` (diisi dari `komoditas.shelf_life_hari`), `CHECK` volume dan `risiko_food_loss` 0–1, dua index; `Down` ada. Entity cocok.
-- **Seeder** `internal/cold-storage/seeder`, terdaftar di registry (`cmd/seed/register_coldstorage.go`): `coldstorage.reference` (5 fasilitas, aman di produksi) dan `coldstorage.demo` (23 lot; tanggal digeser mengikuti `now`, ditolak di produksi). Idempoten, diuji termasuk lewat PostgreSQL (`seeder_db_test.go`, coverage 94%).
-- **Tes:** usecase 100%, handler 93,9%, seeder 94%; integrasi memakai seeder (`master.reference`, `auth.demo`, fasilitas, lot), bukan data migrasi; kasus asap `/v1/cold-storage`; tes web lolos.
+- **Seeder** SQL di `db/seeds/reference/09_cold_storage.sql` (5 fasilitas, aman di produksi) dan `db/seeds/demo/11_cold_storage_ops.sql` (23 lot simulasi, ditolak di produksi). Idempoten, diuji lewat runner SQL seed dan PostgreSQL.
+- **Tes:** usecase 100%, handler 93,9%; integrasi memakai seeder (`reference`, `demo`), bukan data migrasi; kasus asap `/v1/cold-storage`; tes web lolos.
 
 ---
 
-## 13-A — Rapikan seeder ke registry *(Fase P, urutan #11; tanpa migration)*
+## 13-A — Rapikan seeder ke SQL-First `db/seeds/` *(Fase P, urutan #11; tanpa migration)*
 
-**Tujuan:** fitur ini ikut aturan seeder (lapis, dependensi, guard produksi) tanpa mengubah perilakunya.
+**Tujuan:** fitur ini ikut aturan seeder SQL-First (lapis `reference` dan `demo`, dependensi, guard produksi) tanpa mengubah perilakunya.
 **Bergantung pada:** F0-2, F0-4.
 
 1. **MIG**: tidak ada.
 2. **SEED**
-   - [x] Pisahkan isi seeder: fasilitas (`cold_storage`) = `reference`; lot dan umur stok yang digeser mengikuti `now` = `demo`. Seeder sekarang **menggeser tanggal lot setiap dijalankan**, jadi tidak boleh jalan di produksi (guard `APP_ENV`).
+   - [x] Pisahkan isi seeder: fasilitas (`cold_storage`) = `db/seeds/reference/09_cold_storage.sql`; lot dan umur stok yang digeser mengikuti `CURRENT_DATE` = `db/seeds/demo/11_cold_storage_ops.sql`. Seeder demo tidak boleh jalan di produksi (guard `APP_ENV`).
    - [x] Pindahkan 2 komoditas yang disisipkannya ke seed master ([04-A](04-master-data.md)).
    - [x] Naikkan coverage seeder (28,6%) dengan tes `BuildFasilitas` dan `BuildStok`.
 3. **API/FE**: tidak ada perubahan perilaku.

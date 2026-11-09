@@ -95,24 +95,61 @@ Akibat lain yang terverifikasi dari kode: route yang meminta `lapangan.lihat`, `
 - [ ] Email unik tak peka huruf besar-kecil (`UNIQUE (lower(email))` atau `citext`).
 - [ ] Lint migrasi di CI (mis. `squawk`) untuk menangkap operasi yang mengunci tabel.
 
-## 4. Strategi seeder: tiga lapis
+## 4. Strategi seeder: SQL-First di `db/seeds/` (tiga lapis)
 
-Pisahkan menurut keamanan dan tujuan. Semua seeder idempoten (upsert) dan deterministik (PRNG dengan seed tetap; tanggal relatif terhadap parameter `now`, seperti seeder cold-storage).
+Seluruh inisialisasi data benih dipindahkan dari paket Go domain internal ke berkas SQL deklaratif murni (`.sql`) di dalam direktori `db/seeds/`. Pendekatan ini menjaga Clean Architecture, mengisolasi domain internal dari data fixture, memperkecil ukuran binary Go, dan memungkinkan bootstrapping instan murni melalui `psql` maupun CLI runner `cmd/seed`.
+
+Struktur folder terbagi menjadi tiga tingkatan (*tier*):
+
+```text
+db/seeds/
+├── reference/                  # Tier 1: Data referensi master & sistem (Aman untuk Produksi)
+│   ├── 01_master.sql           # Satuan, Provinsi Aceh, 23 Kab/Kota, Komoditas Pokok, Pasar
+│   ├── 02_kecamatan.sql        # Master 290 kecamatan di Aceh
+│   ├── 03_auth_rbac.sql        # 14 Peran baku, 35 izin baku, penugasan role_permissions
+│   ├── 04_sumber_data.sql      # Katalog sumber eksternal (BPS, BI, BMKG, Bapanas, OWM)
+│   ├── 05_ingestion_mapping.sql# Pemetaan alias komoditas/wilayah sumber ke master
+│   ├── 06_harga_pasar.sql      # Rujukan pedagang pasar percontohan
+│   ├── 07_ews_aturan.sql       # Ambang batas & aturan deteksi dini awal
+│   ├── 08_intervensi_tahap.sql # Definisi tahap intervensi pengendalian inflasi
+│   ├── 09_cold_storage.sql     # Fasilitas cold storage resmi
+│   ├── 10_spasial_geometri.sql # Koordinat dan centroid kabupaten/kota
+│   ├── 11_prediksi_model.sql   # Registri model prediksi harga awal
+│   ├── 12_policy_brief_tpl.sql # Templat standar kajian kebijakan
+│   └── 13_kpi_definisi.sql     # Definisi indikator makro, target KPI, dan target inflasi
+├── admin/                      # Tier 2: Akun Administrator Awal (Bootstrap Produksi)
+│   └── 01_admin_user.sql       # Superadmin awal (hash bcrypt aman / variabel env)
+└── demo/                       # Tier 3: Data Simulasi & Mock Parity (Ditolak di Produksi)
+    ├── 01_auth_users.sql       # 25 Akun pengguna simulasi per peran (Garda2024! + MFA)
+    ├── 02_master_pedagang.sql  # Data pedagang pasar simulasi
+    ├── 03_harga_harian.sql     # Entri harga pangan harian & histori 30 hari
+    ├── 04_cuaca_harian.sql     # Data cuaca & anomali iklim simulasi
+    ├── 05_ingestion_demo.sql   # Sampel log data mentah (bronze) & riwayat eksekusi
+    ├── 06_ews_alerts.sql       # Insiden & alert peringatan dini simulasi
+    ├── 07_intervensi_kartu.sql # Kartu intervensi lintas status (kanban)
+    ├── 08_lapangan_tugas.sql   # Penugasan enumerator lapangan
+    ├── 09_spasial_neraca.sql   # Neraca pangan spasial & rute distribusi
+    ├── 10_prediksi_harga.sql   # Proyeksi harga pangan & faktor XAI
+    ├── 11_cold_storage_ops.sql # Simulasi lot komoditas & telemetri suhu
+    ├── 12_policy_brief.sql     # Draf brief kebijakan inflasi simulasi (lengkap dengan konten)
+    ├── 13_kpi_rekam.sql        # Rekaman realisasi KPI bulanan
+    ├── 14_eksekutif_data.sql   # Ringkasan inflasi, andil, neraca pangan, fiskal, dan siklus ekonomi
+    ├── 15_audit_trail.sql      # Jejak log audit aktivitas simulasi
+    └── 16_refresh_views.sql    # Refresh materialized view (agregat, heatmap, KPI, gold) & sinkronisasi sequence
+```
 
 | Lapis          | Isi                                                                                                                                                                                                                       | Aman di produksi?                                  | Perintah                      |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------- |
-| **referensi**  | provinsi, kabupaten/kota, kecamatan, pasar, komoditas, satuan, definisi tahap intervensi, ambang EWS awal, katalog sumber data, definisi dan target KPI, templat brief, versi kode etik, (opsional) daftar izin dan peran | **Ya**, upsert                                     | `make db/seed/reference` |
+| **referensi**  | provinsi, kabupaten/kota, kecamatan, pasar, komoditas, satuan, definisi tahap intervensi, ambang EWS awal, katalog sumber data, definisi dan target KPI, templat brief, versi kode etik, daftar izin dan peran baku     | **Ya**, upsert                                     | `make db/seed/reference` |
 | **admin awal** | satu akun admin dari env (`SEED_ADMIN_EMAIL`, password dari env atau acak dan dicetak sekali), `wajib_ganti_password`, MFA wajib                                                                                          | **Ya**, hanya bila belum ada admin                 | `make db/seed/admin`     |
-| **demo**       | 25 akun contoh, histori harga, EWS, intervensi, brief, tugas, prediksi, KPI, audit, cold storage (lot dan suhu)                                                                                                           | **Tidak.** Menolak jalan bila `APP_ENV=production` | `make db/seed/demo`      |
-| **test**       | fixture per tes (tiap tes membuat pengguna dan datanya sendiri)                                                                                                                                                           | n/a                                                | di dalam tes                  |
+| **demo**       | 25 akun contoh, histori harga, EWS, intervensi, brief, tugas, prediksi, KPI, audit, cold storage (lot dan suhu), siklus ekonomi, neraca pangan                                                                            | **Tidak.** Menolak jalan bila `APP_ENV=production` | `make db/seed/demo`      |
+| **test**       | fixture per tes (tiap tes membuat pengguna dan datanya sendiri atau memakai `seed.SeedReference`/`seed.SeedDemo`)                                                                                                        | n/a                                                | di dalam tes                  |
 
-- [ ] Ubah `cmd/seed` menjadi subperintah (`reference|admin|demo|all`) dengan guard `APP_ENV`. Ubah Makefile (`db/seed`, `db/seed/demo`) dan dokumentasi.
-- [ ] Data demo diberi penanda (kolom `sumber = 'DEMO'`, atau kolom `is_demo`) agar bisa disaring atau dibersihkan, dan UI menampilkan banner "Data demo".
-- [ ] **Angka yang tampak resmi** (inflasi BPS, neraca pangan, ruang fiskal DJPb) tidak pernah di-seed di produksi; hanya masuk lewat impor dari sumbernya ([05](05-sumber-data.md)).
-- [ ] Seed demo meniru bentuk `lib/api/mock.ts` dan `lib/data/generators.ts` sehingga UI tampil sama dengan mode mock. Tambahkan tes yang membandingkan jumlah/ID kunci.
-- [ ] `cmd/seed-analytics` (MongoDB): jadikan idempoten (upsert atau hapus-lalu-isi per koleksi) dan masukkan ke subperintah yang sama, atau hapus bila D4 memutuskan tanpa Mongo.
-
-**Urutan dependensi seed demo:** referensi → pengguna → harga → (refresh agregat/MV) → EWS → intervensi → tugas → prediksi → policy brief → KPI → audit → cold storage.
+- [x] Seluruh 16 folder Go seeder di `apps/api/internal/<modul>/seeder/` dihapus total.
+- [x] CLI runner `apps/api/cmd/seed` mengeksekusi subperintah (`reference|admin|demo|all`) dengan membaca direktori `db/seeds/` (atau env `SEEDS_DIR`).
+- [x] Guard keamanan produksi: `APP_ENV=production` menolak keras eksekusi tier `demo` atau `all`.
+- [x] Idempoten: seluruh berkas SQL menerapkan `ON CONFLICT DO NOTHING` / `DO UPDATE`, dan penyesuaian nilai sequence identity (`setval`).
+- [x] Urutan Foreign Key dijamin terpenuhi melalui penomoran terurut pada nama berkas.
 
 ## 5. Tugas fondasi
 
@@ -135,12 +172,12 @@ Urutan semua task (Fase P/F) ada di [00 §6](00-cara-kerja.md). Berikut rincian 
 - [x] Tes gagal bila modul di `belumSelaras` ternyata sudah cocok (agar daftar tidak basi).
 - [x] `up → down → up` pada DB kosong diuji (`TestMigrationsApplyUpDownUp`); berkas CI sendiri belum ada ([18 §F](18-platform-lintas-fitur.md)).
 
-### F0-4 — Seeder kit
-- [x] Paket `internal/seedkit`: antarmuka `Seeder { Name; Tier; DependsOn; Run(ctx, db, now) }`, registry, pengurut topologis, ringkasan hasil.
-- [x] `cmd/seed` menerima subperintah `reference | admin | demo | all` dan menolak `demo` bila `APP_ENV=production`.
-- [x] Pindahkan seeder cold-storage ke registry (fasilitas = `reference`, lot = `demo`; lihat [13](13-cold-storage.md)).
+### F0-4 — Direct SQL Seeder (`db/seeds/`)
+- [x] Arsitektur seeder direfaktor penuh ke berkas SQL deklaratif di `db/seeds/{reference,admin,demo}/`.
+- [x] Seluruh 16 folder Go seeder di `apps/api/internal/<modul>/seeder/` dihapus total.
+- [x] Runner `apps/api/cmd/seed` (dan paket `internal/seed`) mengeksekusi berkas `.sql` per tier, mendukung guard produksi `APP_ENV=production`, resolusi lokasi `SEEDS_DIR`, dan idempoten.
 - [x] `cmd/seed-analytics` dihapus bersama modul `analytics` dan MongoDB (D4: Postgres saja).
-- [x] Tes: menjalankan seeder dua kali tidak menambah baris; `demo` menolak produksi.
+- [x] Tes: verifikasi idempoten (eksekusi berkas SQL dua kali tidak menambah baris), serta penolakan tier `demo` pada mode produksi.
 
 ### F0-5 — Tes asap seed
 - [x] Kerangka selesai (`internal/platform/smoketest`, kasus cold storage sebagai contoh). Daftar endpoint bertambah satu per slice `-A`: tiap slice menambah `smoke_<modul>_test.go`.

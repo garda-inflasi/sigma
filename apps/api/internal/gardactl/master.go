@@ -16,14 +16,14 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/garda-inflasi/api/internal/master"
 	"github.com/garda-inflasi/api/internal/master/domain"
-	"github.com/garda-inflasi/api/internal/master/seeder"
 )
 
 const (
 	bawaanBase    = "https://sig.bps.go.id/rest-bridging/getwilayah"
 	bawaanPeriode = "2024_1.2022"
-	bawaanOut     = "internal/master/seeder/kecamatan_aceh.csv"
+	bawaanOut     = "internal/master/kecamatan_aceh.csv"
 	userAgent     = "garda-inflasi-impor-kecamatan/1.0"
 	maksBadan     = 4 << 20
 )
@@ -73,7 +73,7 @@ func runImporKecamatan(ctx context.Context, args []string, opts Options) error {
 
 func impor(ctx context.Context, cfg konfig, client *http.Client, out io.Writer) error {
 	var semua []domain.Kecamatan
-	kabupaten := seeder.Kabupaten()
+	kabupaten := master.Kabupaten()
 	for i, kab := range kabupaten {
 		if i > 0 {
 			if err := tidur(ctx, cfg.jeda); err != nil {
@@ -92,7 +92,7 @@ func impor(ctx context.Context, cfg konfig, client *http.Client, out io.Writer) 
 		semua = append(semua, rows...)
 	}
 
-	meta := seeder.MetaKecamatan{
+	meta := master.MetaKecamatan{
 		URL:          polaURL(cfg.base, cfg.periode),
 		PeriodeMerge: cfg.periode,
 		Diambil:      cfg.sekarang().UTC().Format("2006-01-02"),
@@ -108,15 +108,15 @@ func impor(ctx context.Context, cfg konfig, client *http.Client, out io.Writer) 
 	return nil
 }
 
-func susunCSV(meta seeder.MetaKecamatan, rows []domain.Kecamatan) ([]byte, error) {
-	if err := seeder.ValidasiKecamatan(rows, seeder.KodeKabupaten()); err != nil {
+func susunCSV(meta master.MetaKecamatan, rows []domain.Kecamatan) ([]byte, error) {
+	if err := master.ValidasiKecamatan(rows, master.KodeKabupaten()); err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
-	if err := seeder.TulisKecamatanCSV(&buf, meta, rows); err != nil {
+	if err := master.TulisKecamatanCSV(&buf, meta, rows); err != nil {
 		return nil, fmt.Errorf("susun csv: %w", err)
 	}
-	if _, _, err := seeder.BacaKecamatanCSV(bytes.NewReader(buf.Bytes()), seeder.KodeKabupaten()); err != nil {
+	if _, _, err := master.BacaKecamatanCSV(bytes.NewReader(buf.Bytes()), master.KodeKabupaten()); err != nil {
 		return nil, fmt.Errorf("csv hasil tidak lolos pembacaan ulang: %w", err)
 	}
 	return buf.Bytes(), nil
@@ -192,7 +192,7 @@ func ubahKecamatan(kabupaten string, items []wilayahBPS) ([]domain.Kecamatan, er
 		}
 		rows = append(rows, row)
 	}
-	if err := seeder.ValidasiKecamatan(rows, map[string]bool{kabupaten: true}); err != nil {
+	if err := master.ValidasiKecamatan(rows, map[string]bool{kabupaten: true}); err != nil {
 		return nil, err
 	}
 	return rows, nil

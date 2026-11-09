@@ -113,7 +113,9 @@ type Query struct {
 	Cursor string
 }
 
-// List mengembalikan satu halaman audit, terbaru lebih dulu.
+// List mengembalikan satu halaman audit, terbaru lebih dulu. Seperti Get dan Export, baris disamarkan data
+// pribadinya saat disajikan (domain.SamarkanBaris): baris lama yang tersimpan dengan nomor telepon utuh tidak tampil
+// utuh. Data di basis data dan hash rantai tidak berubah.
 func (uc *UseCase) List(ctx context.Context, q Query) (domain.Page, error) {
 	limit := q.Limit
 	if limit < 1 {
@@ -136,11 +138,20 @@ func (uc *UseCase) List(ctx context.Context, q Query) (domain.Page, error) {
 		return domain.Page{}, err
 	}
 	if len(items) <= limit {
-		return domain.Page{Items: items}, nil
+		return domain.Page{Items: samarkanBaris(items)}, nil
 	}
 	items = items[:limit]
 	last := items[len(items)-1]
-	return domain.Page{Items: items, NextCursor: encodeCursor(domain.Cursor{Waktu: last.Waktu, ID: last.ID})}, nil
+	return domain.Page{Items: samarkanBaris(items), NextCursor: encodeCursor(domain.Cursor{Waktu: last.Waktu, ID: last.ID})}, nil
+}
+
+// samarkanBaris menyamarkan data pribadi pada setiap baris (salinan; masukan tidak diubah).
+func samarkanBaris(items []domain.AuditLog) []domain.AuditLog {
+	out := make([]domain.AuditLog, len(items))
+	for i, row := range items {
+		out[i] = domain.SamarkanBaris(row)
+	}
+	return out
 }
 
 // Detail adalah satu entri audit lengkap dengan perubahan sebelum → sesudah.
@@ -150,7 +161,8 @@ type Detail struct {
 }
 
 // Get mengembalikan satu entri beserta diff sebelum/sesudah; domain.ErrNotFound
-// bila ID (atau kode ID lama) tidak ada.
+// bila ID (atau kode ID lama) tidak ada. Selisih dihitung dari data mentah, lalu nilai data pribadinya disamarkan:
+// perubahan nomor telepon tetap tampil sebagai bidang yang berubah tanpa membuka digitnya.
 func (uc *UseCase) Get(ctx context.Context, ref idx.RujukanID) (Detail, error) {
 	row, err := uc.repo.Get(ctx, ref)
 	if err != nil {
@@ -160,7 +172,7 @@ func (uc *UseCase) Get(ctx context.Context, ref idx.RujukanID) (Detail, error) {
 	if err != nil {
 		return Detail{}, fmt.Errorf("diff audit %s: %w", row.ID, err)
 	}
-	return Detail{Row: *row, Perubahan: changes}, nil
+	return Detail{Row: domain.SamarkanBaris(*row), Perubahan: domain.SamarkanPerubahan(row.Entitas, changes)}, nil
 }
 
 // Export menyerahkan baris yang cocok dengan filter ke emit, terbaru lebih dulu,
@@ -180,7 +192,7 @@ func (uc *UseCase) Export(ctx context.Context, filter domain.Filter, emit func(d
 			items = items[:batch]
 		}
 		for _, row := range items {
-			if err := emit(row); err != nil {
+			if err := emit(domain.SamarkanBaris(row)); err != nil {
 				return n, false, err
 			}
 			n++

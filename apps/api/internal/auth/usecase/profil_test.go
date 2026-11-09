@@ -202,8 +202,10 @@ func TestUpdateProfil_UbahNamaSaja(t *testing.T) {
 	entry, ok := recorder.Last()
 	require.True(t, ok)
 	assert.Equal(t, "UPDATE_PROFIL", entry.Aksi)
-	assert.Equal(t, "+6281200000001", *entry.Sebelum.(map[string]any)["telepon"].(*string))
-	assert.Equal(t, "+6281200000001", *entry.Sesudah.(map[string]any)["telepon"].(*string), "telepon tidak berubah")
+	// Snapshot audit menyamarkan telepon (UU PDP): audit_log append-only dan dibaca banyak pihak.
+	assert.Equal(t, "+62********001", *entry.Sebelum.(map[string]any)["telepon"].(*string))
+	assert.Equal(t, "+62********001", *entry.Sesudah.(map[string]any)["telepon"].(*string), "telepon tidak berubah")
+	assert.NotContains(t, entry.Metadata, "telepon_diubah", "nomor tidak berganti, tidak ada penanda")
 }
 
 func TestUpdateProfil_UbahTeleponSaja(t *testing.T) {
@@ -399,8 +401,10 @@ func TestUpdateProfil_AuditMemuatSebelumDanSesudahDenganTelepon(t *testing.T) {
 	assert.Equal(t, "Test User", sebelum["nama"])
 	assert.Equal(t, "Nama Baru", sesudah["nama"])
 	require.IsType(t, (*string)(nil), sebelum["telepon"])
-	assert.Equal(t, "+6281200000001", *sebelum["telepon"].(*string))
-	assert.Equal(t, "+6285712345678", *sesudah["telepon"].(*string))
+	// Nomor di snapshot audit tersamar (UU PDP); perubahannya ditandai metadata telepon_diubah.
+	assert.Equal(t, "+62********001", *sebelum["telepon"].(*string))
+	assert.Equal(t, "+62********678", *sesudah["telepon"].(*string))
+	assert.Equal(t, true, e.Metadata["telepon_diubah"], "nomor berganti, ditandai di metadata audit")
 	// Kolom lain tidak berubah antara sebelum dan sesudah.
 	for _, kolom := range []string{"email", "peran", "lapis", "lembaga", "status"} {
 		assert.Equal(t, sebelum[kolom], sesudah[kolom], kolom)

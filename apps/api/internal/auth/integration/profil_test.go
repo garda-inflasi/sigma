@@ -21,6 +21,9 @@ import (
 const (
 	namaAwalBiasa = "Pengguna Biasa"
 	teleponBaru   = "+6281234567890"
+	// teleponBaruTersamar adalah bentuk teleponBaru di audit_log: snapshot audit menyamarkan nomor (UU PDP), hanya
+	// respons ke pemilik akun yang memuatnya utuh.
+	teleponBaruTersamar = "+62********890"
 )
 
 // patchMe mengirim PATCH /v1/auth/me dengan badan JSON.
@@ -125,7 +128,7 @@ func TestProfil_PatchMengubahNamaDanTeleponLaluGetMemuatNilaiBaru(t *testing.T) 
 			  AND sebelum->>'nama' = ? AND jsonb_typeof(sebelum->'telepon') = 'null'
 			  AND sesudah->>'nama' = 'Nama Baru Biasa' AND sesudah->>'telepon' = ?
 			  AND sesudah->>'email' = ? AND sesudah->>'peran' = 'OPS_MAHASISWA'`,
-			userBiasa, userBiasa, namaAwalBiasa, teleponBaru, emailBiasa))
+			userBiasa, userBiasa, namaAwalBiasa, teleponBaruTersamar, emailBiasa))
 		assert.EqualValues(t, 1, s.jumlahAuditProfil(t))
 	})
 
@@ -203,7 +206,7 @@ func TestProfil_HapusTeleponMenyimpanNULLBukanStringKosong(t *testing.T) {
 	assert.Zero(t, s.count(t, "SELECT count(*) FROM pengguna WHERE telepon = ''"), "tidak pernah string kosong")
 	assert.EqualValues(t, 1, s.count(t, `SELECT count(*) FROM audit_log
 		WHERE aksi = 'UPDATE_PROFIL' AND entitas_id = ? AND sebelum->>'telepon' = ? AND jsonb_typeof(sesudah->'telepon') = 'null'`,
-		userBiasa, teleponBaru))
+		userBiasa, teleponBaruTersamar))
 
 	t.Run("menghapus lagi saat sudah kosong tidak menulis", func(t *testing.T) {
 		sebelumTs := s.diupdatePada(t, userBiasa)

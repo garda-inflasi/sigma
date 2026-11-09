@@ -32,7 +32,7 @@ func jawabGalatAkunMenunggu(c *gin.Context, err error) bool {
 
 func undanganResponse(h *usecase.HasilUndangan) dto.UndanganResponse {
 	return dto.UndanganResponse{
-		User:          dto.ToUserResponse(h.User),
+		User:          dto.ToUserResponseTersamar(h.User),
 		BerlakuSampai: h.BerlakuSampai.UTC(),
 		EmailTerkirim: h.EmailTerkirim,
 	}

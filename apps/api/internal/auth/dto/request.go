@@ -39,6 +39,10 @@ type CreateUserRequest struct {
 	Lembaga  string `json:"lembaga" binding:"required"`
 }
 
+// UpdateUserRequest adalah badan PATCH /v1/users/:id (admin). Telepon bersifat tulis-saja: nil (tidak dikirim atau
+// null) tidak mengubah, "" menghapus nomor, selain itu dinormalkan ke E.164 (usecase.NormalisasiTelepon, galat 400
+// "Nomor telepon tidak valid"). Admin tidak pernah membaca nomor lama utuh. Batas max hanya pagar atas masukan
+// mentah, sama dengan UpdateProfilRequest.
 type UpdateUserRequest struct {
 	Nama          *string `json:"nama"`
 	Email         *string `json:"email" binding:"omitempty,email"`
@@ -46,6 +50,7 @@ type UpdateUserRequest struct {
 	Lapis         *string `json:"lapis"`
 	Lembaga       *string `json:"lembaga"`
 	KabupatenKode *string `json:"kabupaten_kode"`
+	Telepon       *string `json:"telepon" binding:"omitempty,max=100"`
 	Status        *string `json:"status" binding:"omitempty,oneof=AKTIF NONAKTIF MENUNGGU"`
 }
 

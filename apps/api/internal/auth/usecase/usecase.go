@@ -18,6 +18,7 @@ import (
 	"github.com/garda-inflasi/api/pkg/crypto"
 	"github.com/garda-inflasi/api/pkg/email"
 	"github.com/garda-inflasi/api/pkg/logger"
+	"github.com/garda-inflasi/api/pkg/pii"
 	"github.com/garda-inflasi/api/pkg/token"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -457,6 +458,9 @@ type UserPatch struct {
 	Lembaga       *string
 	KabupatenKode *string
 	Status        *string
+	// Telepon adalah masukan mentah admin: UpdateUser menormalkannya (NormalisasiTelepon) dan "" menghapus nomor.
+	// Tulis-saja: nomor yang tersimpan tidak pernah dikembalikan utuh kepada admin.
+	Telepon *string
 }
 
 // RoleInfo describes a role and the permissions granted to it. Bawaan adalah izin dari matriks bawaan di kode
@@ -541,8 +545,19 @@ func (uc *UseCase) GetUser(ctx context.Context, id string) (*domain.Pengguna, er
 	return uc.muatPengguna(ctx, id)
 }
 
-// UpdateUser applies a partial update to an existing user.
+// UpdateUser applies a partial update to an existing user. Telepon diganti atau dihapus ("") dengan aturan yang
+// sama seperti profil mandiri (NormalisasiTelepon; galat ErrTeleponTidakValid sebelum menyentuh basis data), dan
+// seperti di sana nomor yang sama dengan yang tersimpan tidak ditulis.
 func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, actorID string) (*domain.Pengguna, error) {
+	var teleponBaru *string
+	if patch.Telepon != nil {
+		t, err := NormalisasiTelepon(*patch.Telepon)
+		if err != nil {
+			return nil, err
+		}
+		teleponBaru = &t
+	}
+
 	user, err := uc.muatPengguna(ctx, id)
 	if err != nil {
 		return nil, err
@@ -579,6 +594,9 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 	ubah.Lembaga = patch.Lembaga
 	ubah.KabupatenKode = patch.KabupatenKode
 	ubah.Status = patch.Status
+	if teleponBaru != nil && teleponBerubah(user.Telepon, *teleponBaru) {
+		ubah.Telepon = teleponBaru
+	}
 
 	sebelum, sesudah, err := uc.repo.PatchUser(ctx, id, ubah)
 	if err != nil {
@@ -609,7 +627,7 @@ func (uc *UseCase) UpdateUser(ctx context.Context, id string, patch UserPatch, a
 	uc.writeAudit(ctx, audit.Entry{
 		AktorID: actorID, Aksi: "UPDATE_USER", Entitas: "pengguna", EntitasID: sesudah.ID,
 		Hasil: audit.HasilBerhasil, Sebelum: userSnapshot(sebelum), Sesudah: userSnapshot(sesudah),
-		Metadata: metadataSesiGagal(revokeErr),
+		Metadata: metadataPerubahanAkun(sebelum, sesudah, revokeErr),
 	})
 	if revokeErr != nil {
 		return nil, revokeErr
@@ -808,12 +826,52 @@ func metadataSesiGagal(revokeErr error) map[string]any {
 	return map[string]any{"pencabutan_sesi_gagal": true}
 }
 
-// userSnapshot adalah keadaan pengguna yang aman disimpan di audit (tanpa rahasia).
+// metadataPerubahanAkun adalah metadata audit perubahan profil akun (nil bila tidak ada yang perlu dicatat):
+// telepon_diubah menandai nomor yang berganti, karena snapshot menyamarkan nomor dan perubahan yang hanya menyentuh
+// digit tengahnya tidak terlihat dari selisih sebelum/sesudah; pencabutan_sesi_gagal menandai sesi yang gagal dicabut.
+func metadataPerubahanAkun(sebelum, sesudah *domain.Pengguna, revokeErr error) map[string]any {
+	metadata := metadataSesiGagal(revokeErr)
+	if teleponBerubahDi(sebelum, sesudah) {
+		if metadata == nil {
+			metadata = map[string]any{}
+		}
+		metadata["telepon_diubah"] = true
+	}
+	return metadata
+}
+
+// teleponBerubahDi true bila nomor telepon pada baris sebelum dan sesudah penulisan berbeda (dibaca PatchUser
+// dalam satu transaksi, jadi mencerminkan apa yang benar-benar tertulis).
+func teleponBerubahDi(sebelum, sesudah *domain.Pengguna) bool {
+	if sebelum == nil || sesudah == nil {
+		return false
+	}
+	lama, baru := "", ""
+	if sebelum.Telepon != nil {
+		lama = *sebelum.Telepon
+	}
+	if sesudah.Telepon != nil {
+		baru = *sesudah.Telepon
+	}
+	return lama != baru
+}
+
+// userSnapshot adalah keadaan pengguna yang aman disimpan di audit (tanpa rahasia). Telepon disamarkan (UU PDP):
+// audit_log append-only dan dibaca banyak pihak, jadi nomor utuh tidak boleh masuk ke dalamnya.
 func userSnapshot(u *domain.Pengguna) map[string]any {
 	return map[string]any{
 		"nama": u.Nama, "email": u.Email, "peran": u.Peran, "lapis": u.Lapis,
-		"lembaga": u.Lembaga, "kabupaten_kode": u.KabupatenKode, "telepon": u.Telepon, "status": u.Status,
+		"lembaga": u.Lembaga, "kabupaten_kode": u.KabupatenKode, "telepon": teleponSnapshot(u.Telepon), "status": u.Status,
 	}
+}
+
+// teleponSnapshot menyamarkan nomor untuk snapshot audit; nil (tidak ada nomor) tetap nil, tercatat sebagai null.
+func teleponSnapshot(telepon *string) *string {
+	if telepon == nil || *telepon == "" {
+		return nil
+	}
+	tersamar := pii.TeleponTersamar(*telepon)
+	return &tersamar
 }
 
 // issueSession menerbitkan access token (membawa penanda wajib ganti kata sandi

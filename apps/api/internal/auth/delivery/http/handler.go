@@ -344,6 +344,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		Lapis:         req.Lapis,
 		Lembaga:       req.Lembaga,
 		KabupatenKode: req.KabupatenKode,
+		Telepon:       req.Telepon,
 		Status:        req.Status,
 	}, actorID)
 	if err != nil {
@@ -357,6 +358,8 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 			response.Conflict(c, "Email sudah terdaftar")
 		case usecase.ErrRoleNotFound:
 			response.BadRequest(c, "Peran tidak dikenal")
+		case usecase.ErrTeleponTidakValid:
+			response.BadRequest(c, pesanTeleponTakValid)
 		case usecase.ErrPemegangTerakhir:
 			jawabPemegangTerakhir(c)
 		default:
@@ -365,7 +368,8 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.ToUserResponse(user))
+	// Telepon tersamar: admin menulis nomor, tidak pernah membacanya utuh (hanya pemilik, lewat /auth/me).
+	response.Success(c, dto.ToUserResponseTersamar(user))
 }
 
 // DELETE /v1/users/:id
@@ -463,7 +467,7 @@ func (h *Handler) AssignRole(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.ToUserResponse(user))
+	response.Success(c, dto.ToUserResponseTersamar(user))
 }
 
 // GET /v1/roles

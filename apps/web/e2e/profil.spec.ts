@@ -318,6 +318,8 @@ test("Edit Profil: ubah nama dan telepon → toast, menu akun berubah tanpa masu
   const namaBaru = "Cut Mutia Ramadhani";
   const teleponKetik = "0812-3456-7890";
   const teleponE164 = "+6281234567890";
+  // Snapshot audit menyamarkan telepon (UU PDP); hanya respons ke pemilik akun yang memuatnya utuh.
+  const teleponTersamar = "+62********890";
   const pesanNama = "Nama minimal 3 karakter";
   const pesanTelepon = "Nomor telepon tidak valid";
 
@@ -448,7 +450,8 @@ test("Edit Profil: ubah nama dan telepon → toast, menu akun berubah tanpa masu
       const sesudah = JSON.stringify(entri[0].sesudah);
       expect(sebelum).toContain(namaAwal);
       expect(sesudah).toContain(namaBaru);
-      expect(sesudah).toContain(teleponE164);
+      expect(sesudah).toContain(teleponTersamar);
+      expect(sesudah, "nomor utuh tidak boleh masuk audit").not.toContain(teleponE164);
     } finally {
       await admin.dispose();
     }

@@ -28,7 +28,7 @@ func masukan() domain.Masukan {
 		URLDasar: "https://api.bmkg.go.id/",
 		Pemetaan: domain.NewPemetaan([]domain.PemetaanSumber{
 			{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "11.71.01.2001", KodeMaster: new("1171")},
-			{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "11.74.01.2001", KodeMaster: new("1174")},
+			{SumberID: idSumber, Jenis: domain.JenisWilayah, Alias: "11.73.01.2002", KodeMaster: new("1174")},
 		}, nil),
 	}
 }

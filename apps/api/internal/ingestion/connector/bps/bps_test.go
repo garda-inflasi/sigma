@@ -181,3 +181,23 @@ func TestGabungkan_MenolakKunciAsingDanNilaiLiar(t *testing.T) {
 	assert.Len(t, hasil.Inflasi, 2, "ACEH September gugur karena yoy liar")
 	assert.Equal(t, 2, hasil.TidakValid[alasanTakLengkap])
 }
+
+func TestPeriksaKonfigurasi(t *testing.T) {
+	k := New("k")
+	assert.ElementsMatch(t, []string{"domain", "variabel", "wilayah_andil", "tahun_surut"}, k.KunciKonfigurasi())
+	assert.NoError(t, k.PeriksaKonfigurasi(json.RawMessage(konfigLengkap)))
+
+	err := k.PeriksaKonfigurasi(json.RawMessage(`{"domain":"1100","variabel":{"ihk":"1","inflasi_mom":"2","inflasi_mtm":"2","inflasi_yoy":"3","inflasi_ytd":"4"}}`))
+	if assert.Error(t, err, "nama metrik salah ketik tidak boleh lolos diam-diam") {
+		assert.Contains(t, err.Error(), "inflasi_mom")
+		assert.Contains(t, err.Error(), "inflasi_mtm", "menyebut nama yang dikenal")
+	}
+
+	for nama, konf := range map[string]string{
+		"tanpa domain":    `{}`,
+		"variabel kosong": `{"domain":"1100"}`,
+		"andil sepihak":   `{"domain":"1100","variabel":{"ihk":"1","inflasi_mtm":"2","inflasi_yoy":"3","inflasi_ytd":"4","andil":"5"}}`,
+	} {
+		assert.Error(t, k.PeriksaKonfigurasi(json.RawMessage(konf)), nama)
+	}
+}

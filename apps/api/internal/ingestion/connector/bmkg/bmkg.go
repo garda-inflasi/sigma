@@ -2,10 +2,14 @@
 // prakiraan 3-jaman per desa/kelurahan (kode adm4) diringkas menjadi satu baris per hari per
 // kabupaten/kota di cuaca_harian.
 //
-// BELUM TERVERIFIKASI TERHADAP ENDPOINT NYATA. Bentuk respons (data[].cuaca[][] dengan
-// local_datetime, t, hu, tp) ditulis dari dokumentasi publik tanpa akses jaringan saat dibuat;
-// perilakunya dikunci dengan fixture di testdata/. Bandingkan payload bronze dengan fixture
-// sebelum dipakai di produksi. Kode adm4 titik pantau di pemetaan_sumber juga belum terverifikasi.
+// Terverifikasi terhadap endpoint nyata (2026-11-10): bentuk respons (data[].cuaca[][] dengan local_datetime, t, hu,
+// tp) sama dengan fixture di testdata/. Jendela prakiraan mencakup tiga hari kalender; hari pertama dan terakhir
+// hampir selalu parsial dan ditolak, jadi satu pengambilan biasanya menghasilkan satu hari penuh per titik.
+// Perilakunya dikunci dengan fixture. Bandingkan payload bronze dengan fixture bila BMKG mengubah API.
+//
+// Kode adm4 memakai kode Kemendagri, BUKAN kode BPS master: urutan kabupaten berbeda (Simeulue BPS 1101 =
+// Kemendagri 11.09; Langsa dan Lhokseumawe tertukar), jadi awalan adm4 tidak boleh diturunkan dari kode master.
+// Titik pantau bawaan seed (domain.wilayahBMKG) sudah dicoba satu per satu ke BMKG dan namanya cocok dengan master.
 //
 // Titik pantau adalah baris pemetaan_sumber jenis WILAYAH sumber ini: alias = kode adm4,
 // kode_master = kabupaten/kota BPS. Tidak ada konfigurasi lain.

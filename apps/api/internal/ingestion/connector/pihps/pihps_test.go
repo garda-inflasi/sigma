@@ -151,3 +151,27 @@ func hasilSatuan(h domain.Hasil, kode string) string {
 	}
 	return ""
 }
+
+func TestPeriksaKonfigurasi(t *testing.T) {
+	k := New()
+	assert.ElementsMatch(t, []string{"province_id", "hari", "price_type_id", "comcat_id"}, k.KunciKonfigurasi())
+
+	assert.NoError(t, k.PeriksaKonfigurasi(json.RawMessage(`{"province_id":"7"}`)))
+	assert.NoError(t, k.PeriksaKonfigurasi(json.RawMessage(`{"province_id":7,"hari":31}`)), "angka JSON diterima, seperti Permintaan")
+
+	for nama, konf := range map[string]string{
+		"belum diisi":       `{}`,
+		"bukan angka":       `{"province_id":"Aceh"}`,
+		"id berspasi":       `{"province_id":" 7"}`,
+		"hari di luar":      `{"province_id":"7","hari":32}`,
+		"hari negatif":      `{"province_id":"7","hari":-1}`,
+		"json rusak":        `{"province_id":`,
+		"tipe tak didukung": `{"province_id":[7]}`,
+	} {
+		assert.Error(t, k.PeriksaKonfigurasi(json.RawMessage(konf)), nama)
+		// Permintaan menolak hal yang sama: pemeriksa tidak boleh lebih longgar daripada run.
+		_, err := k.Permintaan(masukan(t, konf))
+		assert.Error(t, err, "Permintaan "+nama)
+	}
+	assert.ErrorContains(t, k.PeriksaKonfigurasi(json.RawMessage(`{"province_id":"Aceh"}`)), "bukan id angka")
+}

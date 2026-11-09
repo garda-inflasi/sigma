@@ -6,7 +6,7 @@
 // turtahun, datacontent dengan kunci gabungan vervar+var+turvar+tahun+turtahun) ditulis dari
 // dokumentasi publik tanpa akses jaringan saat dibuat; perilakunya dikunci dengan fixture di
 // testdata/. Id variabel BPS tidak diketahui dan TIDAK ditebak: operator wajib mengisinya lewat
-// `cmd/ingest konfigurasi SRC-BPS ...`. Tanpa itu run gagal dengan pesan yang menyebut apa yang kurang.
+// `gardactl ingest konfigurasi SRC-BPS ...`. Tanpa itu run gagal dengan pesan yang menyebut apa yang kurang.
 //
 // Konfigurasi sumber (sumber_data.konfigurasi):
 //
@@ -76,6 +76,34 @@ type Konektor struct {
 func New(kunciAPI string) *Konektor { return &Konektor{kunci: kunciAPI} }
 
 func (*Konektor) Kode() string { return Kode }
+
+// kunciKonfigurasi adalah kunci konfigurasi yang dibaca konektor ini.
+var kunciKonfigurasi = []string{"domain", "variabel", "wilayah_andil", "tahun_surut"}
+
+// KunciKonfigurasi dan PeriksaKonfigurasi memenuhi domain.PemeriksaKonfigurasi. Selain aturan yang dipakai run,
+// pemeriksa menolak nama metrik asing di variabel: bacaKonfigurasi mengabaikannya diam-diam, sehingga salah ketik
+// seperti "inflasi_mom" baru tampak sebagai "belum lengkap" tanpa petunjuk.
+func (*Konektor) KunciKonfigurasi() []string { return slices.Clone(kunciKonfigurasi) }
+
+func (*Konektor) PeriksaKonfigurasi(raw json.RawMessage) error {
+	cfg, err := bacaKonfigurasi(raw)
+	if err != nil {
+		return err
+	}
+	dikenal := slices.Concat(metrikInflasi, metrikAndil)
+	var asing []string
+	for nama := range cfg.Variabel {
+		if !slices.Contains(dikenal, nama) {
+			asing = append(asing, nama)
+		}
+	}
+	if len(asing) > 0 {
+		slices.Sort(asing)
+		return fmt.Errorf("konfigurasi.variabel %s memuat nama metrik yang tidak dikenal: %s (dikenal: %s)",
+			Kode, strings.Join(asing, ", "), strings.Join(dikenal, ", "))
+	}
+	return nil
+}
 
 func bacaKonfigurasi(raw json.RawMessage) (konfigurasi, error) {
 	var cfg konfigurasi

@@ -11,13 +11,15 @@
 //
 // Konfigurasi sumber (sumber_data.konfigurasi), semua teks atau angka:
 //
-//	province_id   wajib: id provinsi menurut PIHPS (bukan kode BPS)
+//	province_id   wajib: id provinsi menurut PIHPS (bukan kode BPS), bilangan bulat; Aceh = 1 (daftar resmi
+//	              WebSite/Home/GetProvinceAll). Isi lewat `gardactl ingest konfigurasi SRC-BI '{"province_id":"1"}'`
 //	hari          jendela tanggal ke belakang (bawaan 7)
 //	price_type_id jenis pasar PIHPS (bawaan 1 = pasar tradisional)
 //	comcat_id     filter komoditas PIHPS (bawaan kosong = semua)
 //
 // Wilayah yang diambil adalah semua baris pemetaan_sumber jenis WILAYAH sumber ini:
-// alias = regency_id PIHPS, kode_master = kode kabupaten/kota BPS.
+// alias = regency_id PIHPS (bilangan bulat), kode_master = kode kabupaten/kota BPS. Id kota tidak ditebak dan tidak
+// ada di seed: isi lewat `gardactl ingest pemetaan SRC-BI WILAYAH <regency_id> <kode>` setelah melihat daftarnya di PIHPS.
 package pihps
 
 import (
@@ -60,15 +62,46 @@ func New() *Konektor { return &Konektor{} }
 
 func (*Konektor) Kode() string { return Kode }
 
-func (*Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
+// kunciKonfigurasi adalah kunci konfigurasi yang dibaca konektor ini.
+var kunciKonfigurasi = []string{"province_id", "hari", "price_type_id", "comcat_id"}
+
+// KunciKonfigurasi dan PeriksaKonfigurasi memenuhi domain.PemeriksaKonfigurasi.
+func (*Konektor) KunciKonfigurasi() []string { return slices.Clone(kunciKonfigurasi) }
+
+func (*Konektor) PeriksaKonfigurasi(raw json.RawMessage) error {
+	_, err := bacaKonfigurasi(raw)
+	return err
+}
+
+// bacaKonfigurasi membaca dan memeriksa konfigurasi sumber (tanpa URL dan pemetaan, yang diperiksa Permintaan).
+func bacaKonfigurasi(raw json.RawMessage) (konfigurasi, error) {
 	var cfg konfigurasi
-	if len(in.Konfigurasi) > 0 {
-		if err := json.Unmarshal(in.Konfigurasi, &cfg); err != nil {
-			return nil, fmt.Errorf("konfigurasi %s tidak valid: %w", Kode, err)
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return cfg, fmt.Errorf("konfigurasi %s tidak valid: %w", Kode, err)
 		}
 	}
 	if cfg.ProvinceID == "" {
-		return nil, fmt.Errorf("konfigurasi.province_id %s belum diisi (id provinsi menurut PIHPS)", Kode)
+		return cfg, fmt.Errorf("konfigurasi.province_id %s belum diisi (id provinsi menurut PIHPS)", Kode)
+	}
+	if !angkaSaja(string(cfg.ProvinceID)) {
+		return cfg, fmt.Errorf("konfigurasi.province_id %s %q bukan id angka PIHPS", Kode, cfg.ProvinceID)
+	}
+	if cfg.Hari != 0 && (cfg.Hari < 1 || cfg.Hari > hariMaks) {
+		return cfg, fmt.Errorf("konfigurasi.hari %d di luar 1-%d", cfg.Hari, hariMaks)
+	}
+	return cfg, nil
+}
+
+// angkaSaja benar bila s tidak kosong dan hanya berisi digit (id PIHPS selalu bilangan bulat).
+func angkaSaja(s string) bool {
+	return s != "" && strings.Trim(s, "0123456789") == ""
+}
+
+func (*Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
+	cfg, err := bacaKonfigurasi(in.Konfigurasi)
+	if err != nil {
+		return nil, err
 	}
 	if in.URLDasar == "" {
 		return nil, fmt.Errorf("url_dasar %s belum diisi", Kode)
@@ -76,9 +109,6 @@ func (*Konektor) Permintaan(in domain.Masukan) ([]domain.Permintaan, error) {
 	hari := cfg.Hari
 	if hari == 0 {
 		hari = hariBawaan
-	}
-	if hari < 1 || hari > hariMaks {
-		return nil, fmt.Errorf("konfigurasi.hari %d di luar 1-%d", hari, hariMaks)
 	}
 	jenisPasar := string(cfg.PriceTypeID)
 	if jenisPasar == "" {

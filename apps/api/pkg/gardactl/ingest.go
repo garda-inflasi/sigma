@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -33,7 +34,10 @@ Pemakaian:
   gardactl ingest daftar                                       daftar sumber beserta status konektornya
   gardactl ingest pemetaan <sumber> <KOMODITAS|WILAYAH> <alias> <kode|->
                                                                petakan alias sumber ke kode master ("-" = abaikan alias)
-  gardactl ingest konfigurasi <sumber> <json>                  ganti konfigurasi permintaan sumber (objek JSON)`)
+  gardactl ingest konfigurasi [-ganti] <sumber> <json>         isi konfigurasi permintaan sumber (objek JSON)
+                                                               digabung ke konfigurasi yang ada; nilai null menghapus kunci;
+                                                               -ganti mengganti seluruh konfigurasi
+                                                               mis. SRC-BI '{"province_id":"7"}'; SRC-BPS '{"variabel":{"ihk":"..."}}'`)
 		return nil
 	}
 
@@ -178,23 +182,103 @@ func kodeMasterAda(ctx context.Context, db *gorm.DB, jenis, kode string) (bool, 
 	return ada, nil
 }
 
+// ingestKonfigurasi mengisi sumber_data.konfigurasi. Bawaannya menggabungkan kunci tingkat atas ke konfigurasi yang
+// ada (seed mengisi sebagian, mis. {"domain":"1100"} pada SRC-BPS, dan operator hanya menambah sisanya); nilai null
+// menghapus kunci; -ganti mengganti seluruhnya. Nilai tidak pernah dicatat ke audit atau keluaran, hanya nama kunci.
 func ingestKonfigurasi(ctx context.Context, db *gorm.DB, args []string, out io.Writer, getenv func(string) string) error {
-	if len(args) != 2 {
-		return errors.New("konfigurasi: ingest konfigurasi <sumber> <json>")
+	const pakai = "konfigurasi: ingest konfigurasi [-ganti] <sumber> <json>"
+	fs := flag.NewFlagSet("konfigurasi", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	ganti := fs.Bool("ganti", false, "ganti seluruh konfigurasi, bukan menggabungkan")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("%s: %w", pakai, err)
 	}
-	var objek map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(args[1]), &objek); err != nil {
+	args = fs.Args()
+	if len(args) != 2 {
+		return errors.New(pakai)
+	}
+	var patch map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(args[1]), &patch); err != nil {
 		return fmt.Errorf("konfigurasi harus objek JSON: %w", err)
+	}
+	if patch == nil {
+		return errors.New("konfigurasi harus objek JSON, bukan null")
 	}
 	s, err := postgres.New(db).Sumber(ctx, args[0])
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).Exec(`UPDATE sumber_data SET konfigurasi = ?::jsonb WHERE id = ?`, args[1], s.ID).Error; err != nil {
-		return fmt.Errorf("simpan konfigurasi: %w", err)
+
+	pemeriksa, _ := cariKonektor(s.Kode).(domain.PemeriksaKonfigurasi)
+	if pemeriksa != nil {
+		// Kunci asing pasti salah ketik (konektor mengabaikannya diam-diam). null tetap boleh: membersihkan sisa.
+		dikenal := pemeriksa.KunciKonfigurasi()
+		var asing []string
+		for k, v := range patch {
+			if string(v) != "null" && !slices.Contains(dikenal, k) {
+				asing = append(asing, k)
+			}
+		}
+		if len(asing) > 0 {
+			slices.Sort(asing)
+			return fmt.Errorf("kunci konfigurasi %s tidak dikenal: %s (dikenal: %s)", s.Kode, strings.Join(asing, ", "), strings.Join(dikenal, ", "))
+		}
 	}
-	catatAudit(ctx, db, "UBAH_KONFIGURASI_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "kunci": sortedKeys(objek)}, getenv)
-	fmt.Fprintf(out, "konfigurasi %s diperbarui (%d kunci)\n", s.Kode, len(objek))
+
+	var baru map[string]json.RawMessage
+	var tersimpan []byte
+	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		baru = map[string]json.RawMessage{}
+		if !*ganti {
+			var lama string
+			if err := tx.Raw(`SELECT COALESCE(konfigurasi::text, '{}') FROM sumber_data WHERE id = ? FOR UPDATE`, s.ID).Scan(&lama).Error; err != nil {
+				return fmt.Errorf("baca konfigurasi: %w", err)
+			}
+			if err := json.Unmarshal([]byte(lama), &baru); err != nil || baru == nil {
+				baru = map[string]json.RawMessage{} // bukan objek (mis. null): mulai dari kosong
+			}
+		}
+		for k, v := range patch {
+			if string(v) == "null" {
+				delete(baru, k)
+			} else {
+				baru[k] = v
+			}
+		}
+		var err error
+		if tersimpan, err = json.Marshal(baru); err != nil {
+			return fmt.Errorf("susun konfigurasi: %w", err)
+		}
+		if err := tx.Exec(`UPDATE sumber_data SET konfigurasi = ?::jsonb WHERE id = ?`, string(tersimpan), s.ID).Error; err != nil {
+			return fmt.Errorf("simpan konfigurasi: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	mode := "gabung"
+	if *ganti {
+		mode = "ganti"
+	}
+	catatAudit(ctx, db, "UBAH_KONFIGURASI_SUMBER", s.ID, map[string]any{"sumber": s.Kode, "kunci": sortedKeys(patch), "mode": mode}, getenv)
+	fmt.Fprintf(out, "konfigurasi %s diperbarui (%d kunci: %s)\n", s.Kode, len(baru), strings.Join(sortedKeys(baru), ", "))
+	if pemeriksa != nil {
+		if err := pemeriksa.PeriksaKonfigurasi(tersimpan); err != nil {
+			fmt.Fprintf(out, "peringatan: %v\n  konfigurasi tersimpan, tetapi run %s belum akan berhasil sampai dilengkapi\n", err, s.Kode)
+		}
+	}
+	return nil
+}
+
+// cariKonektor mengembalikan konektor terdaftar untuk kode sumber, atau nil bila tidak ada.
+func cariKonektor(kode string) domain.Konektor {
+	for _, k := range ingestion.Konektor() {
+		if k.Kode() == kode {
+			return k
+		}
+	}
 	return nil
 }
 

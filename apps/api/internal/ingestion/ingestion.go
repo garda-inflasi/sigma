@@ -1,5 +1,5 @@
 // Package ingestion merakit engine ingestion untuk proses nyata (cmd/api, cmd/worker,
-// dan cmd/ingest): konektor terdaftar, Fetcher HTTP berlapis (batas laju, robots.txt,
+// dan gardactl ingest): konektor terdaftar, Fetcher HTTP berlapis (batas laju, robots.txt,
 // retry, circuit breaker), dan penyegaran agregat gold setelah data masuk.
 package ingestion
 

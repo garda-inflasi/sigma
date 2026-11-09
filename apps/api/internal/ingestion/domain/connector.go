@@ -133,6 +133,18 @@ type Konektor interface {
 	Normalisasi(in Masukan, dok Dokumen) (Hasil, error)
 }
 
+// PemeriksaKonfigurasi adalah Konektor yang dapat memeriksa sumber_data.konfigurasi tanpa jaringan, supaya
+// operator yang mengisinya lewat `gardactl ingest konfigurasi` langsung tahu kunci yang salah ketik atau
+// yang masih kurang, bukan baru saat run pertama gagal.
+type PemeriksaKonfigurasi interface {
+	// KunciKonfigurasi adalah kunci tingkat atas yang dikenal konektor. Kunci lain pasti salah ketik
+	// (konektor mengabaikannya diam-diam).
+	KunciKonfigurasi() []string
+	// PeriksaKonfigurasi galat, dengan pesan yang menyebut apa yang kurang, bila konfigurasi (utuh, sesudah
+	// digabung) belum cukup untuk Permintaan. Galat ini tidak berarti konfigurasi ditolak: pengisian boleh bertahap.
+	PeriksaKonfigurasi(raw json.RawMessage) error
+}
+
 // Penggabung adalah Konektor yang barisnya baru lengkap setelah semua dokumen sebuah run
 // terkumpul (mis. beberapa variabel yang membentuk satu baris). Engine tetap menyimpan tiap
 // dokumen ke bronze dan memanggil Normalisasi per dokumen untuk memeriksanya; baris silver

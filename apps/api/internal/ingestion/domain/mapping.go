@@ -57,17 +57,42 @@ var abaikanPIHPS = []struct{ Alias, Catatan string }{
 	{"gula pasir kualitas premium", catVarian},
 }
 
-var wilayahBMKG = func() []alias {
-	kab := []string{
-		"1101", "1102", "1103", "1104", "1105", "1106", "1107", "1108", "1109", "1110", "1111", "1112",
-		"1113", "1114", "1115", "1116", "1117", "1118", "1171", "1172", "1173", "1174", "1175",
-	}
-	res := make([]alias, len(kab))
-	for i, k := range kab {
-		res[i] = alias{k[:2] + "." + k[2:] + ".01.2001", k}
-	}
-	return res
-}()
+// catatanTitikBMKG menandai baris titik pantau BMKG bawaan seed. Operator yang mengubahnya lewat
+// `gardactl ingest pemetaan` menimpa catatan ini. Seed membuang baris tebakan lama hanya bila catatannya masih
+// "titik pantau awal, belum terverifikasi" (lihat db/seeds/reference/05_ingestion_mapping.sql).
+const catatanTitikBMKG = "titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)"
+
+// wilayahBMKG adalah satu titik pantau (desa/kelurahan) per kabupaten/kota. Kode adm4 memakai kode Kemendagri,
+// BUKAN kode BPS master: urutan kabupaten berbeda (mis. Simeulue BPS 1101 = Kemendagri 11.09; Langsa dan
+// Lhokseumawe tertukar: BPS 1173/1174 = Kemendagri 11.74/11.73). Awalan adm4 karena itu tidak boleh diturunkan
+// dari kode master. Setiap kode sudah dicoba ke api.bmkg.go.id; adm2 dan nama kabupatennya cocok dengan master.
+// Titik dipilih sah, bukan wakil terbaik: ganti dengan kelurahan yang lebih representatif lewat
+// `gardactl ingest pemetaan SRC-BMKG WILAYAH <adm4> <kode>`.
+var wilayahBMKG = []alias{
+	{"11.09.02.2001", "1101"}, // Simeulue: Salang / Ujung Salang
+	{"11.10.01.2001", "1102"}, // Aceh Singkil: Pulau Banyak / Pulau Balai
+	{"11.01.01.2001", "1103"}, // Aceh Selatan: Bakongan / Keude Bakongan
+	{"11.02.01.2001", "1104"}, // Aceh Tenggara: Lawe Alas / Engkeran
+	{"11.03.01.2001", "1105"}, // Aceh Timur: Darul Aman / Alue Luddin Sa
+	{"11.04.02.2001", "1106"}, // Aceh Tengah: Silih Nara / Arul Gele
+	{"11.05.01.2001", "1107"}, // Aceh Barat: Johan Pahlawan / Suak Indrapuri
+	{"11.06.01.2001", "1108"}, // Aceh Besar: Lhoong / Meunasah Krueng Kala
+	{"11.07.03.2001", "1109"}, // Pidie: Batee / Dayah Tuha
+	{"11.11.01.2001", "1110"}, // Bireuen: Samalanga / Keude Aceh
+	{"11.08.01.2001", "1111"}, // Aceh Utara: Baktiya / Keude Alue Ie Puteh
+	{"11.12.02.2001", "1112"}, // Aceh Barat Daya: Tangan-Tangan / Adan
+	{"11.13.01.2001", "1113"}, // Gayo Lues: Blangkejeren / Blangkejeren
+	{"11.16.01.2001", "1114"}, // Aceh Tamiang: Manyak Payed / Simpang Lhee
+	{"11.15.02.2001", "1115"}, // Nagan Raya: Seunagan / Jeuram
+	{"11.14.01.2001", "1116"}, // Aceh Jaya: Teunom / Keude Teunom
+	{"11.17.01.2001", "1117"}, // Bener Meriah: Pintu Rime Gayo / Blang Rakal
+	{"11.18.01.2001", "1118"}, // Pidie Jaya: Meureudu / Meunasah Balek
+	{"11.71.01.2001", "1171"}, // Kota Banda Aceh: Baiturrahman / Kampung Baru
+	{"11.72.03.2001", "1172"}, // Kota Sabang: Sukamakmue / Iboih
+	{"11.74.03.2001", "1173"}, // Kota Langsa: Langsa Kota / Teungoh
+	{"11.73.01.2002", "1174"}, // Kota Lhokseumawe: Muara Dua / Alue Awe
+	{"11.75.01.2001", "1175"}, // Kota Subulussalam: Simpang Kiri / Subulussalam
+}
 
 var wilayahBPS = []alias{
 	{"aceh", "11"}, {"provinsi aceh", "11"},
@@ -148,7 +173,7 @@ func SemuaPemetaan() []PemetaanSumber {
 		c := a.Catatan
 		rows = append(rows, PemetaanSumber{SumberID: SumberBI, Jenis: JenisKomoditas, Alias: a.Alias, Diabaikan: true, Catatan: &c})
 	}
-	tambah(SumberBMKG, JenisWilayah, wilayahBMKG, "titik pantau awal, belum terverifikasi")
+	tambah(SumberBMKG, JenisWilayah, wilayahBMKG, catatanTitikBMKG)
 	tambah(SumberBPS, JenisWilayah, wilayahBPS, "label wilayah tabel IHK/inflasi BPS")
 	tambah(SumberBPS, JenisKomoditas, komoditasBPS, "label komoditas tabel andil inflasi BPS")
 	tambah(SumberOWM, JenisWilayah, wilayahOWM, "alias wilayah OpenWeather")

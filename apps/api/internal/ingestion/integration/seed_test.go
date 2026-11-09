@@ -113,6 +113,42 @@ func TestSeed_ReferensiIdempotenDanTidakMenimpaKeadaanOperasional(t *testing.T) 
 	assert.EqualValues(t, 1, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE alias = 'beras kualitas medium i' AND kode_master = 'TLR'`), "pemetaan operator tidak ditimpa")
 }
 
+// Titik pantau BMKG lama adalah tebakan: alias adm4 memakai awalan kode BPS (11.01.01.2001 -> 1101), padahal BMKG
+// memakai kode Kemendagri (11.01 = Aceh Selatan, bukan Simeulue). Basis data yang sudah ter-seed menyimpan baris itu
+// (seed memakai ON CONFLICT DO NOTHING), jadi seed ulang harus membuangnya, tanpa menyentuh titik pilihan operator.
+func TestSeed_TitikBMKGTebakanLamaDibersihkanTanpaMenyentuhPilihanOperator(t *testing.T) {
+	db := seedIngestion(t, "ingest_seed_bmkg_lama", berkasReferensi...)
+	const bmkg = "(SELECT id FROM sumber_data WHERE kode = 'SRC-BMKG')"
+
+	// Keadaan basis data lama: 23 titik tebakan (awalan BPS), satu di antaranya sudah dipilih ulang operator.
+	require.NoError(t, db.Exec(`DELETE FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND jenis = 'WILAYAH'`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master, diabaikan, catatan)
+		SELECT `+bmkg+`, 'WILAYAH', substr(kode, 1, 2) || '.' || substr(kode, 3) || '.01.2001', kode, FALSE,
+		       'titik pantau awal, belum terverifikasi' FROM kabupaten WHERE kode <> '11'`).Error)
+	require.EqualValues(t, 23, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND jenis = 'WILAYAH'`))
+	require.NoError(t, db.Exec(`UPDATE pemetaan_sumber SET alias = '11.71.01.1002', catatan = 'diatur lewat gardactl ingest'
+		WHERE sumber_id = `+bmkg+` AND alias = '11.71.01.2001'`).Error)
+
+	require.NoError(t, seed.SeedFiles(t.Context(), db, "reference/05_ingestion_mapping.sql"))
+
+	assert.EqualValues(t, 24, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND jenis = 'WILAYAH'`),
+		"23 titik terverifikasi + 1 titik operator (titik tebakan Banda Aceh digantikan pilihan operator tetapi alias bawaannya kembali dari seed)")
+	assert.Zero(t, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE catatan = 'titik pantau awal, belum terverifikasi'`),
+		"tidak ada baris tebakan yang tersisa")
+	assert.EqualValues(t, 1, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE alias = '11.71.01.1002' AND kode_master = '1171' AND catatan = 'diatur lewat gardactl ingest'`),
+		"pilihan operator tidak disentuh")
+
+	// Contoh yang salah di data lama sekarang benar: Simeulue (1101) tidak lagi dipetakan dari 11.01.* (Aceh Selatan).
+	assert.EqualValues(t, 1, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND alias = '11.09.02.2001' AND kode_master = '1101'`))
+	assert.Zero(t, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND alias = '11.01.01.2001' AND kode_master = '1101'`))
+	assert.EqualValues(t, 1, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND alias = '11.74.03.2001' AND kode_master = '1173'`), "Langsa")
+	assert.EqualValues(t, 1, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND alias = '11.73.01.2002' AND kode_master = '1174'`), "Lhokseumawe")
+
+	// Seed ulang lagi tidak mengubah apa pun.
+	require.NoError(t, seed.SeedFiles(t.Context(), db, "reference/05_ingestion_mapping.sql"))
+	assert.EqualValues(t, 24, hitungSeed(t, db, `SELECT count(*) FROM pemetaan_sumber WHERE sumber_id = `+bmkg+` AND jenis = 'WILAYAH'`))
+}
+
 // hariIniWIB adalah tanggal hari ini menurut WIB, patokan seed demo ingestion.
 func hariIniWIB(t *testing.T, db *gorm.DB) time.Time {
 	t.Helper()

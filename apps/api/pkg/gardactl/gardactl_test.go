@@ -354,3 +354,94 @@ func TestImpor_BerhentiBilaKonteksDibatalkan(t *testing.T) {
 	err := impor(ctx, konfigUji(t, srv.URL), srv.Client(), &bytes.Buffer{})
 	assert.Error(t, err)
 }
+
+// konfigurasiTersimpan membaca sumber_data.konfigurasi sebagai peta kunci -> JSON mentah.
+func konfigurasiTersimpan(t *testing.T, db *gorm.DB, kode string) map[string]json.RawMessage {
+	t.Helper()
+	var teks string
+	require.NoError(t, db.Raw(`SELECT konfigurasi::text FROM sumber_data WHERE kode = ?`, kode).Scan(&teks).Error)
+	var m map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(teks), &m))
+	return m
+}
+
+func TestIngest_KonfigurasiMenggabungBukanMengganti(t *testing.T) {
+	db, jalan, _ := siapkanDBIngest(t, "cmd_gardactl_ingest_gabung")
+
+	// Seed mengisi SRC-BPS dengan {"domain":"1100"}. Operator hanya menambah id variabel dan domain harus bertahan.
+	awal := konfigurasiTersimpan(t, db, "SRC-BPS")
+	require.JSONEq(t, `"1100"`, string(awal["domain"]))
+
+	out, err := jalan("konfigurasi", "SRC-BPS", `{"variabel":{"ihk":"1","inflasi_mtm":"2"}}`)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "2 kunci: domain, variabel")
+	assert.Contains(t, out, "peringatan:", "variabel belum lengkap: operator diberi tahu apa yang kurang")
+	assert.Contains(t, out, "inflasi_yoy")
+	got := konfigurasiTersimpan(t, db, "SRC-BPS")
+	assert.JSONEq(t, `"1100"`, string(got["domain"]), "domain dari seed tidak hilang")
+
+	out, err = jalan("konfigurasi", "SRC-BPS", `{"variabel":{"ihk":"1","inflasi_mtm":"2","inflasi_yoy":"3","inflasi_ytd":"4"},"tahun_surut":2}`)
+	require.NoError(t, err, out)
+	assert.NotContains(t, out, "peringatan", "konfigurasi sudah lengkap")
+	got = konfigurasiTersimpan(t, db, "SRC-BPS")
+	assert.JSONEq(t, `"1100"`, string(got["domain"]))
+	assert.JSONEq(t, `{"ihk":"1","inflasi_mtm":"2","inflasi_yoy":"3","inflasi_ytd":"4"}`, string(got["variabel"]))
+	assert.JSONEq(t, `2`, string(got["tahun_surut"]))
+
+	t.Run("null menghapus kunci", func(t *testing.T) {
+		out, err := jalan("konfigurasi", "SRC-BPS", `{"tahun_surut":null}`)
+		require.NoError(t, err, out)
+		got := konfigurasiTersimpan(t, db, "SRC-BPS")
+		assert.NotContains(t, got, "tahun_surut")
+		assert.Contains(t, got, "variabel")
+	})
+
+	t.Run("-ganti mengganti seluruhnya", func(t *testing.T) {
+		out, err := jalan("konfigurasi", "-ganti", "SRC-BPS", `{"domain":"1100"}`)
+		require.NoError(t, err, out)
+		got := konfigurasiTersimpan(t, db, "SRC-BPS")
+		assert.Len(t, got, 1)
+		assert.Contains(t, out, "peringatan:", "variabel hilang lagi")
+	})
+
+	t.Run("audit mencatat nama kunci dan mode, tanpa nilai", func(t *testing.T) {
+		var meta string
+		require.NoError(t, db.Raw(`SELECT metadata::text FROM audit_log WHERE aksi = 'UBAH_KONFIGURASI_SUMBER' ORDER BY waktu, id LIMIT 1`).Scan(&meta).Error)
+		assert.Contains(t, meta, `"mode": "gabung"`)
+		assert.Contains(t, meta, "variabel")
+		assert.NotContains(t, meta, "1100", "nilai konfigurasi tidak boleh masuk audit")
+	})
+}
+
+func TestIngest_KonfigurasiMenolakKunciSalahKetik(t *testing.T) {
+	db, jalan, _ := siapkanDBIngest(t, "cmd_gardactl_ingest_kunci_asing")
+	_, err := jalan("konfigurasi", "SRC-BI", `{"province_id":"7"}`)
+	require.NoError(t, err)
+
+	_, err = jalan("konfigurasi", "SRC-BI", `{"provinsi_id":"9"}`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "provinsi_id")
+	assert.Contains(t, err.Error(), "province_id", "menyebut kunci yang dikenal")
+	assert.JSONEq(t, `"7"`, string(konfigurasiTersimpan(t, db, "SRC-BI")["province_id"]), "konfigurasi tidak berubah")
+
+	out, err := jalan("konfigurasi", "SRC-BI", `{"province_id":"Aceh"}`)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "bukan id angka", "id PIHPS harus angka; disimpan tetapi dengan peringatan")
+
+	for nama, args := range map[string][]string{
+		"null di puncak":     {"konfigurasi", "SRC-BI", `null`},
+		"tanpa argumen":      {"konfigurasi"},
+		"flag tak dikenal":   {"konfigurasi", "-x", "SRC-BI", `{}`},
+		"metrik BPS asing":   {"konfigurasi", "SRC-BPS", `{"varibel":{}}`},
+		"sumber tanpa objek": {"konfigurasi", "SRC-BI", `"7"`},
+	} {
+		_, err := jalan(args...)
+		assert.Error(t, err, nama)
+	}
+
+	t.Run("nama metrik asing di variabel BPS diberi peringatan", func(t *testing.T) {
+		out, err := jalan("konfigurasi", "SRC-BPS", `{"variabel":{"ihk":"1","inflasi_mom":"2","inflasi_yoy":"3","inflasi_ytd":"4","inflasi_mtm":"5"}}`)
+		require.NoError(t, err, out)
+		assert.Contains(t, out, "inflasi_mom")
+	})
+}

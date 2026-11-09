@@ -1,4 +1,11 @@
 -- GARDA INFLASI - Pemetaan Alias Sumber ke Kode Master
+--
+-- Titik pantau BMKG: alias adm4 memakai kode Kemendagri, bukan kode BPS master (urutan kabupaten berbeda; mis.
+-- Simeulue BPS 1101 = 11.09 dan Langsa/Lhokseumawe BPS 1173/1174 = 11.74/11.73). Baris tebakan lama
+-- ("belum terverifikasi", alias = awalan kode BPS) menunjuk kabupaten lain di BMKG, jadi dibuang di sini. Baris yang
+-- sudah diubah operator lewat gardactl (catatan lain) tidak disentuh.
+DELETE FROM pemetaan_sumber
+ WHERE sumber_id = '45586311-7d7f-3312-ac86-f004956548be' AND jenis = 'WILAYAH' AND catatan = 'titik pantau awal, belum terverifikasi';
 
 -- =====================================================================
 -- Tabel: pemetaan_sumber (127 baris)
@@ -35,29 +42,29 @@ INSERT INTO pemetaan_sumber (sumber_id, jenis, alias, kode_master, diabaikan, ca
   ('40745615-f152-32aa-b1e3-f54add179514', 'KOMODITAS', 'minyak goreng kemasan bermerk 2', NULL, TRUE, 'varian tidak dipakai; master memakai satu varian utama per komoditas'),
   ('40745615-f152-32aa-b1e3-f54add179514', 'KOMODITAS', 'telur ayam', NULL, TRUE, 'baris induk kategori, tanpa harga sendiri'),
   ('40745615-f152-32aa-b1e3-f54add179514', 'KOMODITAS', 'telur ayam ras segar', 'TLR', FALSE, 'nama baris tabel harga PIHPS'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.01.01.2001', '1101', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.02.01.2001', '1102', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.03.01.2001', '1103', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.04.01.2001', '1104', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.05.01.2001', '1105', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.06.01.2001', '1106', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.07.01.2001', '1107', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.08.01.2001', '1108', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.09.01.2001', '1109', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.10.01.2001', '1110', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.11.01.2001', '1111', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.12.01.2001', '1112', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.13.01.2001', '1113', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.14.01.2001', '1114', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.15.01.2001', '1115', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.16.01.2001', '1116', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.17.01.2001', '1117', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.18.01.2001', '1118', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.71.01.2001', '1171', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.72.01.2001', '1172', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.73.01.2001', '1173', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.74.01.2001', '1174', FALSE, 'titik pantau awal, belum terverifikasi'),
-  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.75.01.2001', '1175', FALSE, 'titik pantau awal, belum terverifikasi'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.01.01.2001', '1103', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.02.01.2001', '1104', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.03.01.2001', '1105', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.04.02.2001', '1106', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.05.01.2001', '1107', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.06.01.2001', '1108', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.07.03.2001', '1109', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.08.01.2001', '1111', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.09.02.2001', '1101', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.10.01.2001', '1102', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.11.01.2001', '1110', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.12.02.2001', '1112', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.13.01.2001', '1113', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.14.01.2001', '1116', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.15.02.2001', '1115', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.16.01.2001', '1114', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.17.01.2001', '1117', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.18.01.2001', '1118', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.71.01.2001', '1171', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.72.03.2001', '1172', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.73.01.2002', '1174', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.74.03.2001', '1173', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
+  ('45586311-7d7f-3312-ac86-f004956548be', 'WILAYAH', '11.75.01.2001', '1175', FALSE, 'titik pantau awal; adm4 diverifikasi ke api.bmkg.go.id (2026-11-10)'),
   ('5a2dfe7a-a025-389a-81f9-04db72abc477', 'WILAYAH', 'aceh barat', '1105', FALSE, 'alias wilayah OpenWeather'),
   ('5a2dfe7a-a025-389a-81f9-04db72abc477', 'WILAYAH', 'aceh besar', '1106', FALSE, 'alias wilayah OpenWeather'),
   ('5a2dfe7a-a025-389a-81f9-04db72abc477', 'WILAYAH', 'aceh selatan', '1101', FALSE, 'alias wilayah OpenWeather'),

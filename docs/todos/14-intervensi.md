@@ -89,5 +89,5 @@ Rujukan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md) (matriks "000112") dan `db/mig
 - [x] Definisi alur sebagai data (tabel, bukan kode). Antarmuka mengubah alur: belum (lewat basis data).
 - [x] FE: referensi alur persetujuan (`GET /v1/intervensi/alur`) di panel "Alur persetujuan", lembar detail kartu, dan label gembok kolom.
 - [x] FE: antrean "Menunggu persetujuan" di `/intervensi` (rantai langkah, setujui/tolak dengan catatan), tombol "Ajukan persetujuan" saat drop ditolak karena izin.
-- [ ] Pemicu siklus otomatis (siklus aktif berubah menurut indikator, kembali Normal bila pulih): siklus aktif dihitung modul 08, belum dipicu workflow.
+- [x] Pemicu siklus otomatis (siklus aktif berubah menurut indikator, kembali Normal bila pulih): mesin `internal/siklus/engine` ([08-B](08-dashboard-operasional.md)) menentukan siklus dari alert EWS aktif dan utilisasi stok dengan histeresis, terjadwal dan dipicu setelah evaluasi EWS; pemetaan jenis alert → siklus sama dengan kartu otomatis di atas (dikunci tes).
 - [ ] Pengingat tenggat, simulasi what-if, rekomendasi AI + validasi manusia, integrasi ke APBD/TPID lewat policy brief, `checklist_item`.

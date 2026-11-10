@@ -65,6 +65,7 @@ Dark mode tersedia (`.dark`, via next-themes) dengan token kaca terpisah.
 | `BulkActionBar` | aksi difilter izin, `enabled()` per pilihan, konfirmasi destruktif, overflow menu |
 | `Segmented` | pill aktif meluncur (layoutId) — tab, filter, tipe harga |
 | `GlassCard`, `PageHeader`, `PanelTitle`, `StatusBadge`, `KomoditasIcon` | primitif tampilan |
+| `PanelGalat` | galat query di dalam widget: pesan server berbahasa Indonesia (atau "Periksa sambungan internet" untuk galat jaringan) + tombol "Coba lagi"; data yang sudah tampil tidak dihapus bila polling berikutnya gagal |
 | `CommandPalette` | ⌘K / Ctrl+K / `/`; aksi cepat, navigasi, komoditas, wilayah — difilter izin |
 | `notifyEws()` | toast kustom Sonner; Kritis menetap, lainnya berbilah waktu |
 | `DiagramAlur` | diagram alur beranimasi (garis tergambar + paket data) |

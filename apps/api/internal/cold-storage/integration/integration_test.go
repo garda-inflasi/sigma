@@ -140,6 +140,11 @@ var (
 // Koneksinya hidup sampai container dibuang di akhir TestMain.
 func sharedSuite(t *testing.T) *suite {
 	t.Helper()
+	// Tanpa Docker (go test -short) pg nil. Skip harus terjadi sebelum Once: t.Skip di dalam Do menghentikan goroutine
+	// lewat Goexit, Once menganggapnya selesai, dan semua tes berikutnya gagal pada NotNil di bawah.
+	if pg == nil {
+		t.Skip("tes integrasi dilewati (-short, tanpa Docker)")
+	}
 	sharedOnce.Do(func() {
 		shared = newSuite(t, pg.CreateDatabase(t, "garda_shared"))
 	})

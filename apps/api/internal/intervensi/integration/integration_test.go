@@ -80,6 +80,11 @@ func newSuite(t *testing.T, name string) *suite {
 
 func sharedSuite(t *testing.T) *suite {
 	t.Helper()
+	// Tanpa Docker (go test -short) pg nil. Skip harus terjadi sebelum Once: t.Skip di dalam Do menghentikan
+	// goroutine lewat Goexit, Once menganggapnya selesai, dan tes berikutnya gagal pada NotNil.
+	if pg == nil {
+		t.Skip("tes integrasi dilewati (-short, tanpa Docker)")
+	}
 	once.Do(func() { shared = newSuite(t, "intervensi_shared") })
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
 	return shared

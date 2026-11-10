@@ -122,6 +122,11 @@ var (
 // shared membuat satu stack untuk semua tes yang hanya membaca.
 func shared(t *testing.T) *stack {
 	t.Helper()
+	// Tanpa Docker (go test -short) pg nil. Skip harus terjadi sebelum Once: t.Skip di dalam Do menghentikan goroutine
+	// lewat Goexit, Once menganggapnya selesai, dan semua tes berikutnya gagal pada NotNil di bawah.
+	if pg == nil {
+		t.Skip("tes integrasi dilewati (-short, tanpa Docker)")
+	}
 	sharedOnce.Do(func() {
 		sharedStack = newStack(t, pg.CreateDatabase(t, "smoke_shared"), "smoke_shared")
 	})

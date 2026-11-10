@@ -56,6 +56,11 @@ var (
 
 func sharedSuite(t *testing.T) *suite {
 	t.Helper()
+	// Tanpa Docker (go test -short) pg nil. Skip harus terjadi sebelum Once: t.Skip di dalam Do menghentikan
+	// goroutine lewat Goexit, Once menganggapnya selesai, dan tes berikutnya gagal pada NotNil.
+	if pg == nil {
+		t.Skip("tes integrasi dilewati (-short, tanpa Docker)")
+	}
 	once.Do(func() {
 		db := pg.CreateDatabase(t, "lapangan_shared")
 		pgtest.MigrateUp(t, db)

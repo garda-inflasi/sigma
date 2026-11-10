@@ -90,6 +90,11 @@ func bulanLalu(t *testing.T, db *gorm.DB) time.Time {
 
 func sharedSuite(t *testing.T) *suite {
 	t.Helper()
+	// Tanpa Docker (go test -short) pg nil. Skip harus terjadi sebelum Once: t.Skip di dalam Do menghentikan
+	// goroutine lewat Goexit, Once menganggapnya selesai, dan tes berikutnya gagal pada NotNil.
+	if pg == nil {
+		t.Skip("tes integrasi dilewati (-short, tanpa Docker)")
+	}
 	once.Do(func() { shared = seeded(t, "eksekutif_shared", true) })
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
 	return shared

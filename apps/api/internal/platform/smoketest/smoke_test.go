@@ -27,6 +27,7 @@ type smokeCase struct {
 	Method, Path   string
 	Email          string         // akun demo berperan berhak: harus 200
 	MinItems       map[string]int // path larik di data -> jumlah minimal ("" = data itu sendiri)
+	MaxItems       map[string]int // path larik di data -> jumlah maksimal; untuk peran yang jangkauan barisnya dibatasi (02-B)
 	ForbiddenEmail string         // akun demo tak berhak: harus 403; kosong = tidak diuji
 }
 
@@ -60,6 +61,9 @@ func TestSmoke_EndpointsReturnSeededData(t *testing.T) {
 			data := readEnvelope(t, w).Data
 			for path, min := range c.MinItems {
 				assert.GreaterOrEqual(t, countItems(t, data, path), min, "larik %q di data kurang dari %d item", path, min)
+			}
+			for path, max := range c.MaxItems {
+				assert.LessOrEqual(t, countItems(t, data, path), max, "larik %q di data lebih dari %d item", path, max)
 			}
 
 			if c.ForbiddenEmail != "" {

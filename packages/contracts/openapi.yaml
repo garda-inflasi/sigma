@@ -4316,6 +4316,12 @@ paths:
       description: |
         Siklus dominan yang mewarnai seluruh antarmuka. Tanpa `wilayah_kode`, yang dipakai adalah
         provinsi Aceh (`11`). Memerlukan izin `dashboard.operasional`.
+
+        Sejak 08-B siklus ditetapkan mesin penentuan siklus dari aturan (`GET /v1/siklus/aturan`), alert EWS yang
+        belum selesai, dan stok cold storage. `otomatis` menandai baris yang dibuka mesin; `alasan` adalah foto
+        keputusannya (kalimat ringkas, aturan yang memicu, dan aturan lain yang ikut memicu tetapi kalah prioritas)
+        dan `null` untuk siklus dari seed atau penetapan manual. `siklus` dan `sejak` tidak berubah bentuknya.
+        Basis data yang belum pernah dievaluasi dan belum punya siklus menjawab 404.
       operationId: getSiklusAktif
       tags:
         - Dashboard
@@ -4348,19 +4354,117 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/siklus/aturan:
+    get:
+      summary: Aturan penentuan siklus otomatis
+      description: |
+        Memerlukan izin `ews.lihat` (sama dengan `GET /v1/ews/aturan`). Semua aturan, aktif maupun tidak, terurut
+        seperti mesin: prioritas (angka kecil lebih diutamakan), TEKANAN sebelum SURPLUS, lalu ID. Isi awal berasal
+        dari seed reference dan tidak pernah ditimpa seed berikutnya; operator mengubahnya langsung di basis data
+        (menonaktifkan aturan dengan `aktif = false`). Ambang awal harus dikalibrasi bersama BI/BPS.
+      operationId: listSiklusAturan
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar aturan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiklusAturanListResponse"
+        "403":
+          description: Tanpa izin `ews.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/siklus/evaluasi:
+    post:
+      summary: Menjalankan mesin penentuan siklus sekarang
+      description: |
+        Memerlukan izin `ews.atur_ambang` (sama dengan `POST /v1/ews/evaluasi`). Mengukur semua aturan aktif terhadap
+        data nyata untuk provinsi Aceh di luar jadwal (`JOB_SIKLUS_EVALUASI_INTERVAL`) dan menetapkan siklus aktif.
+        Idempoten: bila keputusan sama dengan siklus aktif tidak ada baris baru dan tidak ada audit pergantian.
+        Aman dijalankan bersamaan dengan evaluasi lain (job, pemicu alert, instance lain): evaluasi digilir lewat kunci
+        per wilayah. Tanpa aturan aktif evaluasi dilewati dan siklus tidak diubah (`dilewati`), supaya "tidak ada
+        aturan" tidak dibaca "semuanya normal". Pergantian siklus dicatat di audit atas nama pemanggil
+        (`GANTI_SIKLUS`), dan permintaan itu sendiri sebagai `EVALUASI`.
+      operationId: evaluateSiklus
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Hasil satu putaran evaluasi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiklusEvaluasiResponse"
+        "403":
+          description: Tanpa izin `ews.atur_ambang`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Evaluasi lain masih berjalan dan tidak selesai dalam batas waktu tunggu; coba lagi sebentar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/dashboard/operasional/kpi:
     get:
       summary: Kartu KPI dashboard operasional
       description: |
-        Empat kartu (entri harga hari ini, tingkat validasi, komoditas di atas ambang, utilisasi
-        cold storage) dari materialized view `mv_kpi_operasional`, yang disegarkan berkala dan setelah
-        harga divalidasi atau dipublikasi. `tren` memuat 14 hari terakhir. `tone` mengikuti pencapaian
-        target (`target_kpi`); kartu tanpa target bernada `data`. Memerlukan izin `dashboard.operasional`.
+        Empat kartu (entri harga, tingkat validasi, komoditas di atas ambang, utilisasi cold storage) yang dihitung
+        dari fakta harian per kabupaten dan komoditas di materialized view `mv_kpi_operasional` (riwayat 120 hari), yang
+        disegarkan berkala dan setelah harga divalidasi atau dipublikasi. Memerlukan izin `dashboard.operasional`.
+
+        Filter (semuanya opsional): `kabupaten_kode`, `komoditas_kode`, dan periode `dari`..`sampai`. Tanpa parameter,
+        hasilnya sama dengan sebelum filter ada: seluruh Aceh, 14 hari berakhir hari ini. `sampai` adalah tanggal acuan:
+        `nilai` dan `delta` dihitung per tanggal itu dan `tren` memuat nilai harian `dari`..`sampai` (terlama lebih dulu).
+        `delta` selalu dibandingkan terhadap tanggal acuan, bukan terhadap awal periode, jadi tidak berubah bila periode
+        dipendekkan.
+
+        Arti tiap kartu di bawah filter. Persentase selalu dihitung dari pembilang dan penyebut yang dijumlahkan lebih
+        dulu, bukan dengan merata-ratakan persentase kabupaten atau hari:
+        - `entri`: jumlah entri harga (selain DRAF) pada tanggal acuan.
+        - `validasi`: 100 x entri DIVALIDASI atau DIPUBLIKASI / seluruh entri (selain DRAF) dalam jendela 7 hari yang
+          berakhir pada tanggal acuan; 0 bila tak ada entri.
+        - `waspada`: jumlah komoditas berbeda yang harga konsumennya di kabupaten yang dicakup naik lebih dari 7%
+          terhadap rata-rata tertimbang 7 hari sebelumnya; komoditas yang melampaui di dua kabupaten dihitung satu kali.
+          Dengan filter komoditas nilainya 0 atau 1.
+        - `cs`: 100 x volume lot yang berlaku pada tanggal acuan / kapasitas fasilitas OPERASIONAL di kabupaten yang
+          dicakup. Dengan filter komoditas, pembilangnya hanya volume komoditas itu sedangkan penyebutnya tetap kapasitas
+          seluruh fasilitas (porsi kapasitas yang diisi komoditas itu). Kabupaten tanpa fasilitas operasional bernilai 0.
+
+        `tone` mengikuti pencapaian target (`target_kpi`) hanya untuk seluruh Aceh tanpa filter kabupaten maupun
+        komoditas, karena target itu adalah target provinsi: kartu hitungan satu kabupaten tidak sebanding dengan
+        target provinsi, dan utilisasi satu komoditas atau satu kabupaten tanpa fasilitas akan selalu tampak defisit.
+        Tampilan terfilter, dan tampilan cakupan satu kabupaten (Koordinator, Agregator), bernada `data`; kartu tanpa
+        target juga `data`. `label` kartu `entri` memuat tanggal acuan bila bukan hari ini ("Entri harga 5 Nov 2026").
+        Basis data kosong, cakupan tertutup, atau filter kabupaten di luar cakupan menghasilkan empat kartu bernilai nol.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat kabupaten tugasnya (`pengguna.kabupaten_kode`,
+        dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat provinsi ke atas (strategis,
+        manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten tugas, dan peran yang belum
+        dikenal, mendapat hasil kosong, bukan seluruh Aceh. Hasil agregasi disimpan beberapa detik (cache) per cakupan
+        dan parameter, dan dibuang setiap kali agregat disegarkan.
       operationId: getKpiOperasional
       tags:
         - Dashboard
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/DashboardKabupatenKode"
+        - $ref: "#/components/parameters/DashboardKomoditasKode"
+        - $ref: "#/components/parameters/DashboardDari"
+        - $ref: "#/components/parameters/DashboardSampai"
       responses:
         "200":
           description: Kartu KPI
@@ -4368,6 +4472,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/KpiOperasionalListResponse"
+        "400":
+          description: |
+            Parameter tidak valid: kode bukan 4 digit (kabupaten) atau huruf besar-angka-hubung (komoditas), tanggal
+            bukan YYYY-MM-DD, `dari` atau `sampai` di masa depan, `dari` setelah `sampai`, rentang lebih dari 90 hari,
+            atau periode di luar 90 hari terakhir
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tanpa izin `dashboard.operasional`
           content:
@@ -4379,17 +4492,34 @@ paths:
     get:
       summary: Peta panas harga konsumen
       description: |
-        Perubahan harga konsumen terakhir terhadap rata-rata tertimbang tujuh hari sebelumnya,
-        per komoditas dan kabupaten/kota, dari `mv_heatmap_harga` (entri lapangan tervalidasi).
-        Sel yang belum punya data lapangan dilengkapi dari harga eksternal hasil ingestion
-        (`gold_harga_harian`) dan ditandai `sumber: EKSTERNAL`; sel dengan data lapangan tidak
-        pernah digantikan. Hanya kabupaten dan komoditas yang punya data yang dikembalikan.
-        Memerlukan izin `dashboard.operasional`.
+        Perubahan harga konsumen terakhir (dalam 3 hari sampai tanggal acuan) terhadap rata-rata tertimbang tujuh hari
+        sebelum tanggal harga itu, per komoditas dan kabupaten/kota. Memerlukan izin `dashboard.operasional`.
+
+        Tanpa `dari` dan `sampai`, sel dibaca dari `mv_heatmap_harga` (entri lapangan tervalidasi, relatif terhadap hari
+        ini). Dengan salah satunya, sel dihitung langsung dari agregat harian untuk tanggal acuan `sampai` (bawaan hari
+        ini) dengan rumus yang sama; `dari` membatasi sel pada yang harga terakhirnya jatuh pada atau setelah tanggal
+        itu (jendela 3 hari tidak pernah dilebarkan). Filter `kabupaten_kode` dan `komoditas_kode` bersifat opsional.
+
+        Sel yang belum punya data lapangan dilengkapi dari harga eksternal hasil ingestion (`gold_harga_harian`, juga
+        per tanggal acuan, cakupan, dan filter yang sama) dan ditandai `sumber: EKSTERNAL`; sel dengan data lapangan tidak
+        pernah digantikan. Hanya kabupaten dan komoditas yang punya sel yang dikembalikan; cakupan tertutup atau filter
+        kabupaten di luar cakupan menghasilkan daftar kosong.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat kabupaten tugasnya (`pengguna.kabupaten_kode`,
+        dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat provinsi ke atas (strategis,
+        manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten tugas, dan peran yang belum
+        dikenal, mendapat hasil kosong, bukan seluruh Aceh. Hasil agregasi disimpan beberapa detik (cache) per cakupan
+        dan parameter, dan dibuang setiap kali agregat disegarkan.
       operationId: getHeatmapHarga
       tags:
         - Dashboard
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/DashboardKabupatenKode"
+        - $ref: "#/components/parameters/DashboardKomoditasKode"
+        - $ref: "#/components/parameters/DashboardDari"
+        - $ref: "#/components/parameters/DashboardSampai"
       responses:
         "200":
           description: Kabupaten, komoditas, dan sel peta panas
@@ -4397,6 +4527,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HeatmapResponse"
+        "400":
+          description: |
+            Parameter tidak valid (aturan sama dengan KPI): kode salah bentuk, tanggal bukan YYYY-MM-DD atau di masa
+            depan, `dari` setelah `sampai`, rentang lebih dari 90 hari, atau periode di luar 90 hari terakhir
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tanpa izin `dashboard.operasional`
           content:
@@ -4410,6 +4548,13 @@ paths:
       description: |
         Entri harga konsumen (selain DRAF) hari ini menurut waktu Aceh terhadap target harian:
         jumlah petugas lapangan aktif kali jumlah komoditas aktif. Memerlukan izin `dashboard.operasional`.
+        Hanya kabupaten dalam cakupan baris pemanggil.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat kabupaten tugasnya (`pengguna.kabupaten_kode`,
+        dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat provinsi ke atas (strategis,
+        manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten tugas, dan peran yang belum
+        dikenal, mendapat hasil kosong, bukan seluruh Aceh. Hasil agregasi disimpan beberapa detik (cache) per cakupan
+        dan parameter, dan dibuang setiap kali agregat disegarkan.
       operationId: getAktivitasLapangan
       tags:
         - Dashboard
@@ -4436,7 +4581,14 @@ paths:
         Pasangan terbaru (7 hari terakhir, waktu Aceh) harga konsumen lapangan tervalidasi dan
         harga eksternal hasil ingestion (PIHPS) per komoditas dan kabupaten/kota, dari
         `gold_harga_harian`. Sepakat bila selisih paling banyak `batas_pct` (10%).
-        Memerlukan izin `dashboard.operasional`.
+        Memerlukan izin `dashboard.operasional`. `pasangan` dan `sepakat` dihitung atas pasangan di kabupaten dalam
+        cakupan baris pemanggil saja.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat kabupaten tugasnya (`pengguna.kabupaten_kode`,
+        dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat provinsi ke atas (strategis,
+        manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten tugas, dan peran yang belum
+        dikenal, mendapat hasil kosong, bukan seluruh Aceh. Hasil agregasi disimpan beberapa detik (cache) per cakupan
+        dan parameter, dan dibuang setiap kali agregat disegarkan.
       operationId: getPembandingHarga
       tags:
         - Dashboard
@@ -4462,7 +4614,13 @@ paths:
       description: |
         Cuaca harian terbaru (hari ini atau sampai 3 hari ke belakang, waktu Aceh) hasil
         ingestion BMKG dari `cuaca_harian`. Prakiraan hari-hari mendatang tidak dipakai.
-        Memerlukan izin `dashboard.operasional`.
+        Memerlukan izin `dashboard.operasional`. Hanya kabupaten dalam cakupan baris pemanggil.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat kabupaten tugasnya (`pengguna.kabupaten_kode`,
+        dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat provinsi ke atas (strategis,
+        manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten tugas, dan peran yang belum
+        dikenal, mendapat hasil kosong, bukan seluruh Aceh. Hasil agregasi disimpan beberapa detik (cache) per cakupan
+        dan parameter, dan dibuang setiap kali agregat disegarkan.
       operationId: getCuacaWilayah
       tags:
         - Dashboard
@@ -4475,6 +4633,247 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CuacaWilayahListResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/aktivitas-petugas:
+    get:
+      summary: Ringkasan aktivitas per petugas lapangan
+      description: |
+        Satu baris per petugas lapangan aktif (mahasiswa agen: peran `OPS_MAHASISWA`, status `AKTIF`) yang punya kabupaten
+        tugas, urut menurut nama kabupaten, nama petugas, lalu ID. Memerlukan izin `dashboard.operasional` dan juga
+        `harga.lihat`: nama dan ID petugas hanya boleh dilihat yang boleh melihat entri harga, yang memuat petugas yang
+        sama. Seluruh peran bawaan pemegang `dashboard.operasional` sudah memegang `harga.lihat`, jadi syarat tambahan itu
+        hanya menutup peran kustom atau izin langsung yang punya yang pertama saja.
+
+        Hanya nama tampilan dan ID publik (UUID pengguna) yang dikembalikan; email, telepon, dan data pribadi lain tidak.
+        Koordinator dan Agregator tidak ada di daftar karena tidak punya target pencatatan harian (target
+        `aktivitas-lapangan` juga hanya menghitung mahasiswa); entri yang mereka catat tetap terhitung pada
+        `aktivitas-lapangan` per kabupaten. Petugas tanpa aktivitas tetap tampil dengan nilai nol.
+
+        Arti angka (hari menurut waktu Aceh):
+        - `entri_hari_ini`: entri harga KONSUMEN (selain DRAF) yang dicatat petugas hari ini, di pasar mana pun.
+          `target_harian`: jumlah komoditas aktif, sebab tiap petugas diharapkan mencatat tiap komoditas sekali sehari
+          (definisi yang sama dengan `aktivitas-lapangan`).
+        - `menunggu_validasi`: entri petugas yang saat ini berstatus DIAJUKAN, seusia apa pun.
+        - `ditolak_jendela`: entri petugas yang dicatat dalam `jendela_hari` hari terakhir (hari ini termasuk) dan
+          berstatus DITOLAK. DITOLAK adalah status akhir, sehingga hitungan seumur hidup hanya akan menumpuk.
+        - `entri_terakhir_pada`: waktu entri terakhir (selain DRAF, semua tipe dan umur); null bila belum pernah mencatat.
+        - `tugas_aktif`, `tugas_selesai`, `tugas_terlambat`: tugas lapangan yang tenggatnya jatuh dalam `jendela_hari`
+          hari terakhir atau di masa depan, menurut status efektif tugas (aturan modul tugas lapangan): SELESAI;
+          belum selesai dan lewat tenggat = terlambat; selebihnya (belum mulai atau berjalan) = aktif.
+
+        Filter `kabupaten_kode` (opsional) menyaring menurut kabupaten tugas petugas. Parameter lain diabaikan.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat petugas yang bertugas di kabupaten tugasnya
+        (`pengguna.kabupaten_kode`, dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat
+        provinsi ke atas (strategis, manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten
+        tugas, dan peran yang belum dikenal, mendapat daftar kosong, bukan seluruh Aceh. Data dibaca langsung dari tabel
+        dan hasilnya disimpan 20 detik (cache) per cakupan dan parameter; UI memuat ulang tiap 30 detik.
+      operationId: getAktivitasPetugas
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/DashboardKabupatenKode"
+      responses:
+        "200":
+          description: Aktivitas tiap petugas lapangan aktif (kosong bila tidak ada)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AktivitasPetugasResponse"
+        "400":
+          description: '`kabupaten_kode` bukan 4 digit'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional` atau tanpa `harga.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/stok:
+    get:
+      summary: Stok cold storage real-time per komoditas
+      description: |
+        Stok cold storage yang berlaku saat ini per komoditas, beserta kapasitas dan utilisasinya, untuk fasilitas di
+        kabupaten dalam cakupan. Memerlukan izin `dashboard.operasional`.
+
+        Definisi stok berlaku (sama dengan kartu KPI `cs`, migrasi 000124, dan modul cold storage): lot yang belum HABIS
+        (AKTIF dan PRIORITAS_JUAL) di fasilitas berstatus OPERASIONAL yang tanggal masuknya paling lambat hari ini dan
+        tanggal kedaluwarsanya setelah hari ini, menurut tanggal Aceh. `ringkasan.utilisasi_pct` = 100 x `total_ton` /
+        `kapasitas_ton`, dengan `kapasitas_ton` kapasitas seluruh fasilitas OPERASIONAL dalam cakupan (0 bila tak ada); angkanya
+        sama dengan kartu `cs` pada filter yang sama. Dengan filter komoditas, `total_ton` hanya komoditas itu sedangkan
+        `kapasitas_ton` tetap seluruh fasilitas (porsi kapasitas yang diisi komoditas itu).
+
+        `mendekati_kedaluwarsa_ton`: bagian stok berlaku yang tanggal kedaluwarsanya paling lambat
+        `ambang_kedaluwarsa_hari` hari setelah hari ini. `risiko_tinggi_ton`: bagian stok berlaku yang risiko food loss-nya
+        di ATAS `ambang_risiko` (sama dengan ringkasan halaman cold storage). Keduanya bisa beririsan.
+
+        Tiga angka berikut membuat halaman ini dapat direkonsiliasi dengan halaman cold storage, yang menghitung semua lot
+        yang belum habis di semua fasilitas: `kedaluwarsa_lot` dan `kedaluwarsa_ton` (lot di fasilitas OPERASIONAL yang
+        tanggal kedaluwarsanya hari ini atau sebelumnya tetapi belum dikeluarkan) dan `di_luar_operasional_ton` (lot di
+        fasilitas yang sedang perawatan). `total_ton + kedaluwarsa_ton + di_luar_operasional_ton` sama dengan total volume
+        lot yang belum habis di halaman itu (lot yang tanggal masuknya setelah hari ini tidak ada pada data wajar dan tidak
+        dihitung).
+
+        `komoditas` hanya memuat komoditas yang punya stok berlaku, terbesar lebih dulu. Tonase dijumlahkan dulu lalu
+        dibulatkan satu desimal sekali, jadi jumlah baris yang tampil boleh berselisih 0,1 dari `total_ton`. Filter
+        `kabupaten_kode` dan `komoditas_kode` bersifat opsional; kode yang tidak ada menghasilkan stok nol.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat fasilitas di kabupaten tugasnya
+        (`pengguna.kabupaten_kode`, dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat
+        provinsi ke atas (strategis, manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten
+        tugas, dan peran yang belum dikenal, mendapat stok nol, bukan seluruh Aceh. Data dibaca langsung dari tabel
+        (bukan view) dan hasilnya disimpan 20 detik (cache) per cakupan dan parameter; dengan jeda muat ulang UI 30
+        detik, angka paling tua sekitar 50 detik.
+      operationId: getStokOperasional
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/DashboardKabupatenKode"
+        - $ref: "#/components/parameters/DashboardKomoditasKode"
+      responses:
+        "200":
+          description: Ringkasan dan stok berlaku per komoditas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StokResponse"
+        "400":
+          description: '`kabupaten_kode` bukan 4 digit atau `komoditas_kode` bukan huruf besar-angka-hubung 2-30 karakter'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/produsen:
+    get:
+      summary: Agregasi harga dan produksi di tingkat produsen
+      description: |
+        Per komoditas: harga produsen sepekan terakhir (`dari`..`sampai` pada respons: tujuh hari kalender Aceh yang berakhir
+        hari ini), harga konsumen pembanding pada jendela yang sama, margin keduanya, dan produksi neraca pangan periode
+        terakhir. Memerlukan izin `dashboard.operasional`.
+
+        Harga: hanya entri DIVALIDASI dan DIPUBLIKASI (sama dengan `agregat_harga_harian`), dirata-rata tertimbang jumlah
+        entri sepanjang jendela dan dibulatkan ke rupiah penuh. Harga konsumen hanya dari kabupaten yang juga punya harga
+        produsen komoditas itu pada jendela yang sama, supaya margin membandingkan wilayah yang sama (seperti KPI
+        `EKO-MARGIN`); `jumlah_kabupaten` pada tiap sisi menunjukkan bila cakupan keduanya tidak sama. Agregat harian
+        menyimpan kabupaten, bukan pasar, jadi pelapor dihitung per kabupaten.
+
+        `margin` hanya ada bila harga produsen dan harga konsumen sama-sama ada. `selisih` = harga konsumen - harga produsen
+        (dari harga yang sudah dibulatkan, jadi angka yang tampil saling menjumlah). `persen_produsen` = selisih terhadap
+        harga produsen (markup); `persen_konsumen` = selisih terhadap harga konsumen, yaitu bagian harga konsumen yang bukan
+        diterima produsen (definisi `EKO-MARGIN` di modul KPI). Nilainya negatif bila harga konsumen di bawah harga produsen.
+
+        `produksi` dari `neraca_pangan` periode terakhir untuk SATU wilayah: baris provinsi (kode 11) pada tampilan seluruh
+        Aceh tanpa filter kabupaten, baris kabupaten itu pada tampilan satu kabupaten (Koordinator, Agregator, atau filter
+        `kabupaten_kode`). Baris provinsi dan kabupaten tidak pernah dijumlahkan, dan tanpa baris wilayah itu `produksi`
+        null (bukan nol). Seperti dashboard eksekutif, angka resmi (BPS, BI, DJPb, Bapanas) lebih diutamakan daripada
+        contoh (`demo: true`): begitu ada angka resmi untuk wilayah itu, baris DEMO tidak dipakai.
+
+        `komoditas` memuat komoditas yang punya harga produsen atau produksi; komoditas pilot lebih dulu, lalu menurut
+        nama. Filter `kabupaten_kode` dan `komoditas_kode` bersifat opsional; kode yang tidak ada menghasilkan daftar kosong.
+
+        Cakupan baris (02-B): Koordinator dan Agregator hanya melihat kabupaten tugasnya (`pengguna.kabupaten_kode`,
+        dibaca dari basis data pada tiap permintaan, bukan dari klaim token); peran tingkat provinsi ke atas (strategis,
+        manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator tanpa kabupaten tugas, dan peran yang belum
+        dikenal, mendapat daftar kosong, bukan seluruh Aceh. Hasil disimpan 20 detik (cache) per cakupan dan parameter,
+        dan dibuang setiap kali agregat disegarkan.
+      operationId: getProdusenOperasional
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/DashboardKabupatenKode"
+        - $ref: "#/components/parameters/DashboardKomoditasKode"
+      responses:
+        "200":
+          description: Harga produsen, konsumen pembanding, margin, dan produksi per komoditas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProdusenResponse"
+        "400":
+          description: '`kabupaten_kode` bukan 4 digit atau `komoditas_kode` bukan huruf besar-angka-hubung 2-30 karakter'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `dashboard.operasional`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/dashboard/operasional/logistik:
+    get:
+      summary: Pergerakan logistik sepekan terakhir
+      description: |
+        Dalam tujuh hari kalender Aceh yang berakhir hari ini (hari ini termasuk; `dari`..`sampai`): jumlah dan tonase
+        transaksi stok (MASUK, KELUAR, PINDAH) per jenis dan komoditas, transaksi terbaru, dan rute distribusi aktif.
+        Memerlukan izin `dashboard.operasional`.
+
+        `ringkasan` dan `komoditas` memuat ketiga jenis selalu (nol bila tak ada transaksi). Satu PINDAH dihitung satu kali
+        sebagai pindah, bukan sebagai keluar dan masuk. Tonase agregat dibulatkan satu desimal dari jumlah yang belum
+        dibulatkan; `komoditas` terbesar dulu menurut tonase seluruh jenis. `terbaru` memuat paling banyak 10 transaksi
+        dalam jendela yang sama (waktu menurun, lalu ID menurun) dengan nama, kode, dan kabupaten fasilitas asal dan
+        tujuan: `asal` null untuk MASUK, `tujuan` null untuk KELUAR. Tonase satu transaksi memakai ketelitian kilogram (3
+        desimal). Pelaku transaksi dan alasannya tidak pernah dikembalikan.
+
+        `rute` adalah rute distribusi aktif, yaitu semua rute berstatus selain DIGANTIKAN (aturan modul spasial). `jumlah`,
+        `volume_ton`, dan `biaya` dihitung atas SEMUA rute aktif dalam cakupan, `items` hanya 10 yang terbesar biayanya
+        (biaya menurun, lalu ID, seperti daftar rute di modul spasial). Rute menghubungkan kabupaten, bukan fasilitas.
+
+        Cakupan baris (02-B): pergerakan masuk cakupan bila fasilitas asal ATAU tujuannya berada di kabupaten dalam cakupan;
+        rute bila kabupaten asal ATAU tujuannya di sana. Jadi Koordinator di kabupaten tujuan melihat kiriman yang datang,
+        dan yang di kabupaten asal melihat kiriman yang pergi (nama dan kabupaten ujung satunya ikut tampil); satu PINDAH
+        antarkabupaten tampak di kedua kabupaten dan satu kali pada tampilan seluruh Aceh. Koordinator dan Agregator hanya
+        melihat kabupaten tugasnya (`pengguna.kabupaten_kode`, dibaca dari basis data pada tiap permintaan, bukan dari klaim
+        token); peran tingkat provinsi ke atas (strategis, manajerial) melihat seluruh Aceh. Akun Koordinator atau Agregator
+        tanpa kabupaten tugas, dan peran yang belum dikenal, mendapat hasil kosong, bukan seluruh Aceh. Filter
+        `kabupaten_kode` dan `komoditas_kode` bersifat opsional (komoditas pada lot transaksi dan pada rute). Data dibaca
+        langsung dari tabel dan hasilnya disimpan 20 detik (cache) per cakupan dan parameter; UI memuat ulang tiap 30 detik.
+      operationId: getLogistikOperasional
+      tags:
+        - Dashboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/DashboardKabupatenKode"
+        - $ref: "#/components/parameters/DashboardKomoditasKode"
+      responses:
+        "200":
+          description: Ringkasan transaksi stok, transaksi terbaru, dan rute aktif
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogistikResponse"
+        "400":
+          description: '`kabupaten_kode` bukan 4 digit atau `komoditas_kode` bukan huruf besar-angka-hubung 2-30 karakter'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Tanpa izin `dashboard.operasional`
           content:
@@ -7070,6 +7469,46 @@ components:
       description: Kode komoditas
       schema:
         type: string
+    DashboardKabupatenKode:
+      name: kabupaten_kode
+      in: query
+      description: |
+        Kode BPS 4 digit kabupaten/kota (mis. `1171`). Digabung (AND) dengan cakupan baris pemanggil: kabupaten di luar
+        cakupan menghasilkan hasil kosong, bukan 403. Kode yang tidak ada juga menghasilkan hasil kosong.
+      schema:
+        type: string
+        pattern: "^[0-9]{4}$"
+        example: "1171"
+    DashboardKomoditasKode:
+      name: komoditas_kode
+      in: query
+      description: |
+        Kode komoditas (mis. `CBM-KRT`): huruf besar, angka, dan tanda hubung, 2 sampai 30 karakter. Kode yang tidak ada
+        menghasilkan hasil kosong.
+      schema:
+        type: string
+        pattern: "^[A-Z0-9][A-Z0-9-]{1,29}$"
+        example: CBM-KRT
+    DashboardDari:
+      name: dari
+      in: query
+      description: |
+        Awal periode, YYYY-MM-DD tanggal waktu Aceh (inklusif). KPI: tanggal pertama tren, bawaan 13 hari sebelum `sampai`
+        (periode 14 hari). Heatmap: batas awal tanggal harga terakhir sebuah sel. Periode `dari`..`sampai` paling lama
+        90 hari dan harus berada dalam 90 hari terakhir (hari ini termasuk); `dari` tidak boleh setelah `sampai`.
+      schema:
+        type: string
+        format: date
+    DashboardSampai:
+      name: sampai
+      in: query
+      description: |
+        Tanggal acuan, YYYY-MM-DD waktu Aceh (inklusif); bawaan hari ini, tidak boleh di masa depan. KPI: `nilai` dan
+        `delta` dihitung per tanggal ini dan tren berakhir di sini. Heatmap: sel dihitung relatif terhadap tanggal ini
+        (harga terakhir dalam 3 hari sampai tanggal ini terhadap rata-rata 7 hari sebelumnya).
+      schema:
+        type: string
+        format: date
 
     KomoditasKode:
       name: kode
@@ -9848,6 +10287,209 @@ components:
               type: string
               format: date
               description: Tanggal mulai siklus, waktu Aceh
+            otomatis:
+              type: boolean
+              description: true bila siklus dibuka mesin penentuan siklus; false untuk seed atau penetapan manual
+            alasan:
+              allOf:
+                - $ref: "#/components/schemas/SiklusAlasan"
+              nullable: true
+              description: Foto keputusan mesin saat siklus dibuka; null untuk siklus yang tidak otomatis
+
+    SiklusAlasan:
+      type: object
+      properties:
+        ringkasan:
+          type: string
+          description: 'Kalimat ringkas keputusan, mis. "Berpindah dari NORMAL ke TEKANAN: 3 alert LONJAKAN_HARGA ≥ SIAGA."'
+        pemicu:
+          type: array
+          description: Aturan yang memicu siklus terpilih (kosong untuk NORMAL)
+          items:
+            $ref: "#/components/schemas/SiklusPemicu"
+        ditekan:
+          type: array
+          description: Aturan siklus lain yang ikut memicu tetapi kalah prioritas
+          items:
+            $ref: "#/components/schemas/SiklusPemicu"
+
+    SiklusPemicu:
+      type: object
+      properties:
+        aturan:
+          type: string
+          description: Kode aturan (`SKL-...`)
+          example: SKL-TKN-LONJAKAN-HARGA
+        siklus:
+          type: string
+          enum: [tekanan, surplus]
+        indikator:
+          type: string
+          enum: [ALERT_EWS, UTILISASI_STOK]
+        nilai:
+          type: number
+          description: Hasil ukur (jumlah alert, atau persen terisi)
+        ambang:
+          type: number
+          description: Jumlah alert minimum (`ALERT_EWS`) atau persen (`UTILISASI_STOK`) yang membuat aturan memicu
+        satuan:
+          type: string
+          enum: [alert, "%"]
+        prioritas:
+          type: integer
+          description: Angka kecil lebih diutamakan
+        rujukan:
+          type: array
+          description: Kode alert contoh (paling parah dan terbaru lebih dulu, maksimal lima); hanya `ALERT_EWS`
+          items:
+            type: string
+        rincian:
+          type: string
+          description: Keterangan angka, mis. "855 dari 950 ton" (`UTILISASI_STOK`); kosong bila tidak ada
+
+    SiklusAturan:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          type: string
+          example: SKL-TKN-LONJAKAN-HARGA
+        siklus:
+          type: string
+          enum: [tekanan, surplus]
+          description: Siklus yang dipicu aturan ini (NORMAL adalah keadaan tanpa pemicu)
+        indikator:
+          type: string
+          enum: [ALERT_EWS, UTILISASI_STOK]
+          description: |
+            `ALERT_EWS`: jumlah alert yang belum SELESAI di wilayah menurut `jenis_ews` dan `severity_min`, memicu bila
+            >= `jumlah_min`. `UTILISASI_STOK`: persen terisi cold storage OPERASIONAL, memicu bila >= `ambang`.
+        jenis_ews:
+          type: string
+          nullable: true
+          enum: [LONJAKAN_HARGA, KELANGKAAN_STOK, ANOMALI_CUACA, OVER_SUPPLY, ANOMALI_DATA]
+          description: Hanya `ALERT_EWS`
+        severity_min:
+          type: string
+          nullable: true
+          enum: [INFO, WASPADA, SIAGA, KRITIS]
+          description: Hanya `ALERT_EWS`
+        jumlah_min:
+          type: integer
+          nullable: true
+          description: Hanya `ALERT_EWS`; minimal 1
+        ambang:
+          type: number
+          nullable: true
+          description: Hanya `UTILISASI_STOK`; persen (0 sampai 100]
+        prioritas:
+          type: integer
+          description: Angka kecil lebih diutamakan saat aturan TEKANAN dan SURPLUS memicu bersamaan; bila sama, TEKANAN menang
+        pulih_jam:
+          type: integer
+          description: Lama (jam) tidak ada aturan siklus ini yang memicu sebelum siklus dilepas (histeresis); yang terbesar di antara aturan aktif satu siklus berlaku
+        aktif:
+          type: boolean
+        keterangan:
+          type: string
+
+    SiklusAturanListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiklusAturan"
+
+    SiklusEvaluasiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: OK
+        data:
+          type: object
+          properties:
+            wilayah_kode:
+              type: string
+              example: "11"
+            dilewati:
+              type: boolean
+              description: true bila evaluasi tidak dijalankan (lihat `sebab_dilewati`); tidak ada yang berubah
+            sebab_dilewati:
+              type: string
+              nullable: true
+              enum: [tanpa_aturan, wilayah_tak_dikenal]
+            berubah:
+              type: boolean
+              description: true bila siklus aktif diganti (atau dibuka pertama kali) pada putaran ini
+            sebelumnya:
+              type: string
+              nullable: true
+              enum: [normal, tekanan, surplus]
+              description: Siklus aktif sebelum putaran; null bila belum ada
+            siklus:
+              type: string
+              nullable: true
+              enum: [normal, tekanan, surplus]
+              description: Siklus aktif sesudah putaran; null bila dilewati dan belum ada siklus
+            sejak:
+              type: string
+              format: date
+              nullable: true
+              description: Tanggal mulai siklus aktif, waktu Aceh
+            otomatis:
+              type: boolean
+            ringkasan:
+              type: string
+              description: Kalimat penjelas keputusan putaran ini (juga bila siklus tidak berubah)
+            aturan:
+              type: array
+              description: Hasil ukur tiap aturan aktif (kosong bila dilewati)
+              items:
+                $ref: "#/components/schemas/SiklusHasilAturan"
+
+    SiklusHasilAturan:
+      type: object
+      properties:
+        kode:
+          type: string
+        siklus:
+          type: string
+          enum: [tekanan, surplus]
+        indikator:
+          type: string
+          enum: [ALERT_EWS, UTILISASI_STOK]
+        terukur:
+          type: boolean
+          description: false bila datanya tidak ada (mis. tidak ada fasilitas operasional); aturan tidak memicu
+        nilai:
+          type: number
+        ambang:
+          type: number
+        satuan:
+          type: string
+          enum: [alert, "%"]
+        memicu:
+          type: boolean
+        prioritas:
+          type: integer
+        rujukan:
+          type: array
+          items:
+            type: string
+        rincian:
+          type: string
 
     KpiOperasional:
       type: object
@@ -9857,8 +10499,10 @@ components:
           enum: [entri, validasi, waspada, cs]
         label:
           type: string
+          description: Judul kartu; kartu `entri` memuat tanggal acuan bila bukan hari ini (mis. "Entri harga 5 Nov 2026")
         nilai:
           type: number
+          description: Nilai pada tanggal acuan (`sampai`), dibulatkan satu desimal
         format:
           type: string
           enum: [angka, persen]
@@ -9871,10 +10515,13 @@ components:
           type: array
           items:
             type: number
-          description: Nilai harian 14 hari terakhir, terlama lebih dulu
+          description: Nilai harian `dari`..`sampai` (14 hari berakhir hari ini bila tanpa periode), terlama lebih dulu
         tone:
           type: string
           enum: [data, normal, waspada, defisit]
+          description: |
+            Pencapaian terhadap target provinsi, hanya untuk tampilan seluruh Aceh tanpa filter kabupaten dan komoditas;
+            `data` (netral) untuk kartu tanpa target dan untuk semua tampilan terfilter atau berskala kabupaten
         href:
           type: string
 
@@ -10051,6 +10698,408 @@ components:
                 type: integer
               target:
                 type: integer
+
+    AktivitasPetugasItem:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/IdUuid"
+        nama:
+          type: string
+          description: Nama tampilan petugas (satu-satunya data pribadi yang dikembalikan)
+        kabupaten_kode:
+          type: string
+          description: Kabupaten tugas petugas
+        kabupaten_nama:
+          type: string
+        entri_hari_ini:
+          type: integer
+          description: Entri harga KONSUMEN (selain DRAF) yang dicatat petugas hari ini waktu Aceh, di pasar mana pun
+        target_harian:
+          type: integer
+          description: Jumlah komoditas aktif; tiap petugas diharapkan mencatat tiap komoditas sekali sehari
+        menunggu_validasi:
+          type: integer
+          description: Entri petugas berstatus DIAJUKAN saat ini, seusia apa pun
+        ditolak_jendela:
+          type: integer
+          description: Entri petugas berstatus DITOLAK yang dicatat dalam `jendela_hari` hari terakhir
+        entri_terakhir_pada:
+          type: string
+          format: date-time
+          nullable: true
+          description: Waktu entri terakhir (selain DRAF, semua tipe dan umur); null bila belum pernah mencatat
+        tugas_aktif:
+          type: integer
+          description: Tugas belum selesai dan belum lewat tenggat (BELUM atau BERJALAN menurut status efektif)
+        tugas_selesai:
+          type: integer
+        tugas_terlambat:
+          type: integer
+          description: Tugas belum selesai yang lewat tenggat (status efektif TERLAMBAT)
+
+    AktivitasPetugasResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            tanggal:
+              type: string
+              format: date
+              description: Hari ini menurut waktu Aceh
+            jendela_hari:
+              type: integer
+              example: 7
+              description: Panjang jendela (hari, hari ini termasuk) untuk `ditolak_jendela` dan tugas
+            petugas:
+              type: array
+              description: Urut menurut nama kabupaten, nama petugas, lalu ID
+              items:
+                $ref: "#/components/schemas/AktivitasPetugasItem"
+
+    StokRingkasan:
+      type: object
+      properties:
+        total_ton:
+          type: number
+          description: Stok berlaku (lot belum HABIS di fasilitas OPERASIONAL, masuk <= hari ini < kedaluwarsa), satu desimal
+        jumlah_lot:
+          type: integer
+        jumlah_fasilitas:
+          type: integer
+          description: Fasilitas berbeda yang menyimpan stok berlaku
+        kapasitas_ton:
+          type: integer
+          description: Kapasitas seluruh fasilitas OPERASIONAL dalam cakupan (tidak dipengaruhi filter komoditas)
+        fasilitas_operasional:
+          type: integer
+        utilisasi_pct:
+          type: number
+          description: 100 x total_ton / kapasitas_ton, satu desimal; 0 tanpa kapasitas. Sama dengan kartu KPI `cs`.
+        mendekati_kedaluwarsa_ton:
+          type: number
+          description: Bagian stok berlaku yang tanggal kedaluwarsanya paling lambat `ambang_kedaluwarsa_hari` hari lagi
+        risiko_tinggi_ton:
+          type: number
+          description: Bagian stok berlaku dengan risiko food loss di atas `ambang_risiko`
+        kedaluwarsa_lot:
+          type: integer
+          description: Lot di fasilitas OPERASIONAL yang tanggal kedaluwarsanya hari ini atau sebelumnya tetapi belum dikeluarkan
+        kedaluwarsa_ton:
+          type: number
+        di_luar_operasional_ton:
+          type: number
+          description: Lot di fasilitas yang tidak OPERASIONAL (perawatan)
+
+    StokKomoditas:
+      type: object
+      properties:
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        total_ton:
+          type: number
+        jumlah_lot:
+          type: integer
+        jumlah_fasilitas:
+          type: integer
+        mendekati_kedaluwarsa_ton:
+          type: number
+        risiko_tinggi_ton:
+          type: number
+
+    StokResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            tanggal:
+              type: string
+              format: date
+              description: Hari ini menurut waktu Aceh (acuan lot berlaku)
+            ambang_kedaluwarsa_hari:
+              type: integer
+              example: 7
+            ambang_risiko:
+              type: number
+              example: 0.6
+              description: Pecahan 0-1; lot berisiko tinggi bila risiko di ATAS nilai ini
+            ringkasan:
+              $ref: "#/components/schemas/StokRingkasan"
+            komoditas:
+              type: array
+              description: Komoditas yang punya stok berlaku, terbesar lebih dulu
+              items:
+                $ref: "#/components/schemas/StokKomoditas"
+
+    ProdusenSisiHarga:
+      type: object
+      nullable: true
+      description: Harga rata-rata satu sisi pada jendela, tertimbang jumlah entri, rupiah penuh; null bila tak ada data
+      properties:
+        harga:
+          type: number
+          description: Rupiah per satuan komoditas
+        jumlah_entri:
+          type: integer
+        jumlah_kabupaten:
+          type: integer
+          description: 'Kabupaten yang melapor (konsumen: hanya yang juga punya harga produsen)'
+
+    ProdusenMargin:
+      type: object
+      nullable: true
+      description: Hanya ada bila harga produsen dan konsumen sama-sama ada
+      properties:
+        selisih:
+          type: number
+          description: Harga konsumen - harga produsen (rupiah per satuan); negatif bila konsumen di bawah produsen
+        persen_produsen:
+          type: number
+          description: Selisih terhadap harga produsen (markup), satu desimal
+        persen_konsumen:
+          type: number
+          description: Selisih terhadap harga konsumen (definisi EKO-MARGIN), satu desimal
+
+    ProdusenProduksi:
+      type: object
+      nullable: true
+      description: Produksi neraca pangan periode terakhir untuk wilayah yang relevan; null bila tidak ada
+      properties:
+        ton:
+          type: number
+        periode:
+          type: string
+          format: date
+          description: Tanggal 1 bulan neraca
+        sumber:
+          type: string
+          enum: [BPS, BI, DJPB, BAPANAS, DEMO]
+        demo:
+          type: boolean
+          description: Benar bila angkanya contoh (sumber DEMO), bukan data resmi
+
+    ProdusenKomoditas:
+      type: object
+      properties:
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        satuan:
+          type: string
+          example: kg
+        produsen:
+          $ref: "#/components/schemas/ProdusenSisiHarga"
+        konsumen:
+          $ref: "#/components/schemas/ProdusenSisiHarga"
+        margin:
+          $ref: "#/components/schemas/ProdusenMargin"
+        produksi:
+          $ref: "#/components/schemas/ProdusenProduksi"
+
+    ProdusenResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            dari:
+              type: string
+              format: date
+              description: Awal jendela harga (tanggal Aceh, inklusif)
+            sampai:
+              type: string
+              format: date
+              description: Akhir jendela harga, hari ini (tanggal Aceh, inklusif)
+            komoditas:
+              type: array
+              description: Komoditas yang punya harga produsen atau produksi; pilot lebih dulu, lalu menurut nama
+              items:
+                $ref: "#/components/schemas/ProdusenKomoditas"
+
+    LogistikJenis:
+      type: object
+      properties:
+        jumlah:
+          type: integer
+        volume_ton:
+          type: number
+
+    LogistikRingkasan:
+      type: object
+      properties:
+        masuk:
+          $ref: "#/components/schemas/LogistikJenis"
+        keluar:
+          $ref: "#/components/schemas/LogistikJenis"
+        pindah:
+          $ref: "#/components/schemas/LogistikJenis"
+
+    LogistikKomoditas:
+      type: object
+      properties:
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        masuk:
+          $ref: "#/components/schemas/LogistikJenis"
+        keluar:
+          $ref: "#/components/schemas/LogistikJenis"
+        pindah:
+          $ref: "#/components/schemas/LogistikJenis"
+
+    LogistikFasilitas:
+      type: object
+      nullable: true
+      description: Fasilitas cold storage pada sebuah pergerakan; null bila jenisnya tidak punya ujung itu
+      properties:
+        id:
+          $ref: "#/components/schemas/IdUuid"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
+        nama:
+          type: string
+        kabupaten_kode:
+          type: string
+        kabupaten_nama:
+          type: string
+
+    LogistikPergerakan:
+      type: object
+      description: Satu transaksi stok. Tidak memuat pelaku maupun alasan.
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        waktu:
+          type: string
+          format: date-time
+        jenis:
+          type: string
+          enum: [MASUK, KELUAR, PINDAH]
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        volume_ton:
+          type: number
+          description: Ketelitian kilogram (3 desimal)
+        asal:
+          $ref: "#/components/schemas/LogistikFasilitas"
+        tujuan:
+          $ref: "#/components/schemas/LogistikFasilitas"
+
+    LogistikRute:
+      type: object
+      description: Satu rute distribusi aktif; bentuknya sama dengan rute di modul spasial
+      properties:
+        id:
+          $ref: "#/components/schemas/IdBigint"
+        kode:
+          $ref: "#/components/schemas/KodeTampilan"
+        asal_kode:
+          type: string
+        asal:
+          type: string
+          description: Nama kabupaten asal
+        tujuan_kode:
+          type: string
+        tujuan:
+          type: string
+          description: Nama kabupaten tujuan
+        komoditas_kode:
+          type: string
+        komoditas_nama:
+          type: string
+        volume_ton:
+          type: number
+        jarak_km:
+          type: integer
+        jam_tempuh:
+          type: number
+        biaya:
+          type: integer
+          format: int64
+          description: Rupiah
+        status:
+          type: string
+          example: USULAN
+        sumber:
+          type: string
+          example: OPTIMASI
+        dibuat_pada:
+          type: string
+          format: date-time
+
+    LogistikRuteRingkas:
+      type: object
+      properties:
+        jumlah:
+          type: integer
+          description: Semua rute aktif dalam cakupan (bukan hanya items)
+        volume_ton:
+          type: number
+        biaya:
+          type: integer
+          format: int64
+        items:
+          type: array
+          description: Paling banyak 10 rute aktif dengan biaya terbesar (biaya menurun, lalu ID)
+          items:
+            $ref: "#/components/schemas/LogistikRute"
+
+    LogistikResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            dari:
+              type: string
+              format: date
+              description: Awal jendela (tanggal Aceh, inklusif)
+            sampai:
+              type: string
+              format: date
+              description: Akhir jendela, hari ini (tanggal Aceh, inklusif)
+            ringkasan:
+              $ref: "#/components/schemas/LogistikRingkasan"
+            komoditas:
+              type: array
+              description: Komoditas yang punya transaksi dalam jendela, tonase terbesar lebih dulu
+              items:
+                $ref: "#/components/schemas/LogistikKomoditas"
+            terbaru:
+              type: array
+              description: Paling banyak 10 transaksi terbaru dalam jendela
+              items:
+                $ref: "#/components/schemas/LogistikPergerakan"
+            rute:
+              $ref: "#/components/schemas/LogistikRuteRingkas"
 
     CreateIntervensiRequest:
       type: object

@@ -48,9 +48,12 @@ x-notifikasi-env: &notifikasi-env
   APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost}"
 
 # EWS dan workflow intervensi. Job berkalanya (evaluasi, notifikasi, SLA) dijalankan worker;
-# api memakai nilai yang sama untuk evaluasi manual dan kartu otomatis.
+# api memakai nilai yang sama untuk evaluasi manual dan kartu otomatis. Penentuan siklus ekonomi otomatis (08-B)
+# ikut di sini: worker menjadwalkannya, api memakai nilai yang sama untuk memutuskan apakah alert dari evaluasi
+# manual EWS memicu evaluasi siklus (off mematikan keduanya).
 x-ews-env: &ews-env
   EWS_EVAL_INTERVAL: "${EWS_EVAL_INTERVAL:-15m}"
+  JOB_SIKLUS_EVALUASI_INTERVAL: "${JOB_SIKLUS_EVALUASI_INTERVAL:-5m}"
   EWS_NOTIF_INTERVAL: "${EWS_NOTIF_INTERVAL:-30s}"
   EWS_ESKALASI_MENIT: "${EWS_ESKALASI_MENIT:-0}"
   INTERVENSI_KARTU_OTOMATIS_MIN: "${INTERVENSI_KARTU_OTOMATIS_MIN:-SIAGA}"

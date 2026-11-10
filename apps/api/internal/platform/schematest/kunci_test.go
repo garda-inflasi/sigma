@@ -98,6 +98,7 @@ var kategoriPK = map[string]KategoriPK{
 	"neraca_wilayah":         PKBigint,
 	"ruang_fiskal":           PKBigint,
 	"siklus_ekonomi":         PKBigint,
+	"aturan_siklus":          PKBigint, // aturan penentuan siklus otomatis (000125); kode (SKL-...) UNIQUE, kunci seed reference
 	"kpi_nilai":              PKBigint,
 	"kpi_target":             PKBigint,
 	"target_kpi":             PKBigint,

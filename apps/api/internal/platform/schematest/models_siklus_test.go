@@ -5,5 +5,5 @@ import (
 )
 
 func init() {
-	registerModels("siklus", &siklusdomain.SiklusEkonomi{})
+	registerModels("siklus", &siklusdomain.SiklusEkonomi{}, &siklusdomain.AturanSiklus{})
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -23,6 +24,9 @@ const refreshTimeout = 2 * time.Minute
 type Refresher struct {
 	db  *gorm.DB
 	log *logger.Logger
+
+	// epoch naik setiap penyegaran selesai; cache hasil dashboard memakainya sebagai tanda data sudah berubah.
+	epoch atomic.Uint64
 
 	mu      sync.Mutex
 	running bool
@@ -47,8 +51,18 @@ func Shared(db *gorm.DB, log *logger.Logger) *Refresher {
 	return r
 }
 
+// Epoch adalah "versi data" agregat dashboard di proses ini: naik setiap kali Refresh selesai (juga bila gagal di
+// tengah jalan, karena view yang sudah disegarkan sebelum galat sudah berubah). Cache hasil dashboard
+// (internal/dashboard/cache) membuang entri yang dimuat pada epoch lama, sehingga data sesudah publikasi harga
+// langsung tampil. Epoch hanya melihat penyegaran di proses ini; penyegaran oleh proses lain (mis. worker) baru
+// terlihat setelah TTL cache.
+func (r *Refresher) Epoch() uint64 { return r.epoch.Load() }
+
 // Refresh menyegarkan semua view dan menunggu selesai.
 func (r *Refresher) Refresh(ctx context.Context) error {
+	// Dinaikkan setelah view terakhir: pemuat cache yang mulai sebelum ini menyimpan hasilnya pada epoch lama, jadi
+	// tidak pernah menyajikan data campuran lama dan baru sesudah penyegaran selesai.
+	defer r.epoch.Add(1)
 	for _, view := range Views {
 		// Lewat fungsi SECURITY DEFINER (migrasi 000119): REFRESH butuh pemilik view, sedangkan pengguna DB aplikasi
 		// sengaja bukan pemilik (hak minimum).

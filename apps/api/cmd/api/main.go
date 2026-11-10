@@ -15,6 +15,7 @@ import (
 	intervensiworkflow "github.com/garda-inflasi/api/internal/intervensi/workflow"
 	"github.com/garda-inflasi/api/internal/modules"
 	"github.com/garda-inflasi/api/internal/platform/prodcheck"
+	siklusjobs "github.com/garda-inflasi/api/internal/siklus/jobs"
 	"github.com/garda-inflasi/api/pkg/database"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/garda-inflasi/api/pkg/middleware"
@@ -136,6 +137,18 @@ func main() {
 	ews := ewsjobs.Shared(db, log)
 	workflow := intervensiworkflow.Shared(db, log)
 	ews.Engine.AddObserver(workflow)
+	// Siklus ekonomi (08-B): alert dari evaluasi manual EWS ikut memicu penentuan siklus, dengan mesin yang sama
+	// dengan POST /v1/siklus/evaluasi. Mati bersama jobnya (JOB_SIKLUS_EVALUASI_INTERVAL=off).
+	siklus := siklusjobs.Shared(db, log)
+	siklusInterval, err := siklusjobs.IntervalFromEnv(os.Getenv)
+	if err != nil {
+		log.Warn("JOB_SIKLUS_EVALUASI_INTERVAL tidak valid, memakai bawaan", map[string]interface{}{"error": err.Error()})
+		siklusInterval = siklusjobs.DefaultInterval
+	}
+	if siklusInterval > 0 {
+		ews.Engine.AddObserver(siklus.Pemicu)
+		go siklus.Pemicu.Run(bgCtx)
+	}
 	// Penerima sinyal SSE selalu di API karena API yang melayani koneksi /v1/ews/stream.
 	go ews.RunStream(bgCtx)
 
@@ -146,6 +159,7 @@ func main() {
 		go refresher.Shared(db, log).Run(bgCtx, dashboardRefreshInterval)
 		go ews.RunBerkala(bgCtx)
 		go workflow.Run(bgCtx)
+		go siklus.RunBerkala(bgCtx, siklusInterval)
 	} else {
 		log.Info("job berkala dinonaktifkan di API (dimiliki cmd/worker)")
 	}

@@ -11,4 +11,6 @@ var ErrNotFound = errors.New("siklus aktif tidak ditemukan")
 // Repository defines the data access interface for siklus.
 type Repository interface {
 	GetActiveByWilayah(ctx context.Context, wilayahKode string) (*SiklusEkonomi, error)
+	// ListAturan mengembalikan semua aturan penentuan siklus (aktif maupun tidak), terurut menurut prioritas.
+	ListAturan(ctx context.Context) ([]AturanSiklus, error)
 }

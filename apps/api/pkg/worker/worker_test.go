@@ -28,7 +28,7 @@ func quiet() *logger.Logger { return logger.New(logger.ERROR, os.Stderr) }
 func TestBuildSchedulerRegistersDefaultJobs(t *testing.T) {
 	s, err := buildScheduler(deps{log: quiet(), getenv: env(nil)})
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"auth_pembersihan", "dashboard_refresh", "kpi_hitung", "audit_partisi", "audit_verifikasi"}, s.Names())
+	assert.ElementsMatch(t, []string{"auth_pembersihan", "dashboard_refresh", "kpi_hitung", "audit_partisi", "audit_verifikasi", "siklus_evaluasi"}, s.Names())
 	for _, st := range s.Statuses() {
 		assert.NotEqual(t, "0s", st.Interval, st.Name)
 	}
@@ -41,7 +41,7 @@ func TestBuildDaemonsIngestionOnlyWhenEnabled(t *testing.T) {
 		return len(daemons)
 	}
 	dasar := jumlah("")
-	assert.Equal(t, 1, dasar, "job berkala EWS dan intervensi selalu terdaftar")
+	assert.Equal(t, 2, dasar, "job berkala EWS dan intervensi serta pemicu siklus selalu terdaftar")
 	for _, nilai := range []string{"off", "false", "0"} {
 		assert.Equal(t, dasar, jumlah(nilai), "INGEST_SCHEDULER=%q tidak boleh menyalakan penjadwal", nilai)
 	}
@@ -54,6 +54,7 @@ func TestBuildSchedulerReadsIntervalsFromEnv(t *testing.T) {
 	s, err := buildScheduler(deps{log: quiet(), getenv: env(map[string]string{
 		"JOB_DASHBOARD_REFRESH_INTERVAL": "30s",
 		"JOB_KPI_HITUNG_INTERVAL":        "off",
+		"JOB_SIKLUS_EVALUASI_INTERVAL":   "45s",
 	})})
 	require.NoError(t, err)
 	got := map[string]string{}
@@ -62,6 +63,40 @@ func TestBuildSchedulerReadsIntervalsFromEnv(t *testing.T) {
 	}
 	assert.Equal(t, "30s", got["dashboard_refresh"])
 	assert.Equal(t, "0s", got["kpi_hitung"])
+	assert.Equal(t, "45s", got["siklus_evaluasi"])
+}
+
+// Penentuan siklus otomatis: bawaan 5 menit, dan "off" mematikan job terjadwal sekaligus pemicu setelah alert EWS
+// (siklus tidak berubah sendiri sama sekali; POST /v1/siklus/evaluasi tetap tersedia).
+func TestSiklusEvaluasi_BawaanDanOffMematikanJobDanPemicu(t *testing.T) {
+	interval := func(kv map[string]string) string {
+		s, err := buildScheduler(deps{log: quiet(), getenv: env(kv)})
+		require.NoError(t, err)
+		for _, st := range s.Statuses() {
+			if st.Name == "siklus_evaluasi" {
+				return st.Interval
+			}
+		}
+		t.Fatal("job siklus_evaluasi tidak terdaftar")
+		return ""
+	}
+	daemons := func(kv map[string]string) int {
+		d, err := buildDaemons(deps{log: quiet(), getenv: env(kv)})
+		require.NoError(t, err)
+		return len(d)
+	}
+
+	assert.Equal(t, "5m0s", interval(nil))
+	nyala := daemons(nil)
+	for _, off := range []string{"off", "OFF", "0", "false"} {
+		kv := map[string]string{"JOB_SIKLUS_EVALUASI_INTERVAL": off}
+		assert.Equal(t, "0s", interval(kv), off)
+		assert.Equal(t, nyala-1, daemons(kv), "pemicu siklus ikut mati bersama jobnya (%q)", off)
+	}
+	assert.Equal(t, nyala, daemons(map[string]string{"JOB_SIKLUS_EVALUASI_INTERVAL": "30s"}))
+
+	_, err := buildDaemons(deps{log: quiet(), getenv: env(map[string]string{"JOB_SIKLUS_EVALUASI_INTERVAL": "sering"})})
+	assert.Error(t, err, "nilai salah menggagalkan start worker, tidak diam-diam memakai bawaan")
 }
 
 func TestBuildSchedulerRejectsBadEnv(t *testing.T) {
@@ -70,6 +105,7 @@ func TestBuildSchedulerRejectsBadEnv(t *testing.T) {
 		"JOB_KPI_HITUNG_BULAN":           "0",
 		"AUDIT_PARTISI_KE_DEPAN":         "25",
 		"AUDIT_RETENSI_BULAN":            "11",
+		"JOB_SIKLUS_EVALUASI_INTERVAL":   "10ms",
 	} {
 		_, err := buildScheduler(deps{log: quiet(), getenv: env(map[string]string{k: v})})
 		assert.Error(t, err, k)
@@ -102,7 +138,8 @@ func TestHealthAddr(t *testing.T) {
 }
 
 // Menjalankan job sungguhan terhadap skema hasil migrasi: refresh matview
-// dashboard dan perhitungan KPI selesai tanpa galat, dan /healthz melaporkannya.
+// dashboard dan perhitungan KPI selesai tanpa galat, dan /healthz melaporkannya. Basis data baru tanpa seed apa pun
+// (tanpa provinsi dan aturan) membuat penentuan siklus melewati putarannya tanpa galat dan tanpa menulis apa pun.
 func TestRunJobsAgainstMigratedDatabase(t *testing.T) {
 	db := pg.NewDatabase(t, "worker_jobs")
 	pgtest.MigrateUp(t, db)
@@ -112,11 +149,14 @@ func TestRunJobsAgainstMigratedDatabase(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	for _, name := range []string{"dashboard_refresh", "kpi_hitung", "auth_pembersihan", "audit_partisi", "audit_verifikasi"} {
+	for _, name := range []string{"dashboard_refresh", "kpi_hitung", "auth_pembersihan", "audit_partisi", "audit_verifikasi", "siklus_evaluasi"} {
 		ran, err := s.RunOnce(ctx, name)
 		require.NoError(t, err, name)
 		assert.True(t, ran, name)
 	}
+	var siklus int64
+	require.NoError(t, db.Raw(`SELECT count(*) FROM siklus_ekonomi`).Scan(&siklus).Error)
+	assert.Zero(t, siklus, "basis data kosong: evaluasi siklus dilewati, bukan galat dan bukan menanam siklus")
 
 	rec := httptest.NewRecorder()
 	healthHandler(db, s).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))

@@ -57,7 +57,7 @@ func TestSQLSeedFilesExistenceAndNonEmpty(t *testing.T) {
 			"01_master.sql", "02_kecamatan.sql", "03_auth_rbac.sql", "04_sumber_data.sql",
 			"05_ingestion_mapping.sql", "06_harga_pasar.sql", "07_ews_aturan.sql",
 			"08_intervensi_tahap.sql", "09_cold_storage.sql", "10_spasial_geometri.sql",
-			"11_prediksi_model.sql", "12_policy_brief_tpl.sql", "13_kpi_definisi.sql",
+			"11_prediksi_model.sql", "12_policy_brief_tpl.sql", "13_kpi_definisi.sql", "14_siklus_aturan.sql",
 		},
 		"admin": {
 			"01_admin_user.sql",

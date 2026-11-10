@@ -201,6 +201,7 @@ CADDY_TLS=admin@garda.id
 # COMPOSE_PROFILES=backup              # nyalakan container backup terjadwal (§10)
 # JOB_DASHBOARD_REFRESH_INTERVAL=5m    # interval job worker (off = nonaktif)
 # JOB_KPI_HITUNG_INTERVAL=1h
+# JOB_SIKLUS_EVALUASI_INTERVAL=5m      # penentuan siklus ekonomi otomatis (08-B); off = siklus tidak berubah sendiri
 # JOB_AUTH_PEMBERSIHAN_INTERVAL=1h     # pembersihan baris auth kedaluwarsa (lihat tabel di bawah)
 # AUDIT_RETENSI_BULAN=60               # retensi audit ke arsip (§10b); kosong = mati
 

@@ -22,11 +22,21 @@ const (
 	ArahTurun = "TURUN"
 )
 
-// TitikKpi adalah nilai satu indikator pada satu hari (waktu Aceh).
+// TitikKpi adalah pembilang dan penyebut satu indikator pada satu hari (waktu Aceh), sudah dijumlahkan atas semua
+// kabupaten dan komoditas yang lolos cakupan dan filter. Nilai kartu SELALU dihitung dari keduanya (lihat
+// usecase.RakitKpi), tidak pernah dengan merata-ratakan nilai jadi, supaya persentase gabungan tepat:
+//   - entri:    Pembilang jumlah entri hari itu; Penyebut tak dipakai.
+//   - validasi: Pembilang entri tervalidasi, Penyebut seluruh entri, harian (jendela 7 hari disusun usecase).
+//   - waspada:  Pembilang jumlah komoditas berbeda yang melampaui ambang; Penyebut tak dipakai.
+//   - cs:       Pembilang volume stok (ton), Penyebut kapasitas fasilitas operasional (ton). Di view, kapasitas
+//     adalah baris tersendiri per kabupaten dengan komoditas_kode kosong (kolom itu ikut kunci unik, jadi tidak boleh NULL).
+//
+// Hari tanpa baris berarti nol (tak ada entri, stok, atau kapasitas); usecase mengisinya.
 type TitikKpi struct {
 	Indikator string    `gorm:"column:indikator"`
 	Tanggal   time.Time `gorm:"column:tanggal"`
-	Nilai     float64   `gorm:"column:nilai"`
+	Pembilang float64   `gorm:"column:pembilang"`
+	Penyebut  float64   `gorm:"column:penyebut"`
 }
 
 // TargetKpi adalah target indikator yang berlaku.

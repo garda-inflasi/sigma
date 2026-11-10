@@ -132,5 +132,23 @@ func TestSeedDashboard_RefreshFillsAggregatesFromPriceData(t *testing.T) {
 	assert.Positive(t, jumlah(t, s.db, "agregat_harga_harian"), "agregat dihitung dari entri harga")
 	assert.Positive(t, jumlah(t, s.db, "mv_heatmap_harga"))
 	assert.Positive(t, jumlah(t, s.db, "gold_harga_harian"))
-	assert.EqualValues(t, 4*14, jumlah(t, s.db, "mv_kpi_operasional"), "empat indikator kali empat belas hari")
+
+	// mv_kpi_operasional menyimpan fakta harian per kabupaten dan komoditas (migrasi 000124), bukan nilai jadi 14 hari.
+	for _, indikator := range []string{"entri", "validasi", "waspada", "cs"} {
+		var n int64
+		require.NoError(t, s.db.Raw(`SELECT count(*) FROM mv_kpi_operasional WHERE indikator = ?`, indikator).Scan(&n).Error)
+		assert.Positive(t, n, "fakta indikator %s", indikator)
+	}
+	var diLuarRiwayat int64
+	require.NoError(t, s.db.Raw(`
+		SELECT count(*) FROM mv_kpi_operasional
+		 WHERE tanggal < (now() AT TIME ZONE 'Asia/Jakarta')::date - 119 OR tanggal > (now() AT TIME ZONE 'Asia/Jakarta')::date + 1`).Scan(&diLuarRiwayat).Error)
+	assert.Zero(t, diLuarRiwayat, "riwayat 120 hari ditambah satu hari ke depan untuk cs")
+
+	// Baris kapasitas: satu per kabupaten berfasilitas OPERASIONAL untuk tiap hari dalam riwayat (121 hari).
+	var kapasitas, kabupatenBerfasilitas int64
+	require.NoError(t, s.db.Raw(`SELECT count(*) FROM mv_kpi_operasional WHERE indikator = 'cs' AND komoditas_kode = ''`).Scan(&kapasitas).Error)
+	require.NoError(t, s.db.Raw(`SELECT count(DISTINCT kabupaten_kode) FROM cold_storage WHERE status = 'OPERASIONAL'`).Scan(&kabupatenBerfasilitas).Error)
+	require.Positive(t, kabupatenBerfasilitas)
+	assert.EqualValues(t, 121*kabupatenBerfasilitas, kapasitas)
 }

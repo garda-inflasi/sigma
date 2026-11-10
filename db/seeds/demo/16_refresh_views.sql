@@ -9,11 +9,19 @@
 -- Tabel: siklus_ekonomi (1 baris)
 -- Kunci idempotensi = kode (UNIQUE): menjalankan ulang menggeser mulai_pada mengikuti waktu eksekusi, tanpa
 -- menggandakan baris maupun mengganti ID identity-nya.
+--
+-- Sejak 08-B mesin penentuan siklus (internal/siklus/engine) yang berhak mengganti siklus aktif, jadi seed ini tidak
+-- boleh melawannya: siklus demo hanya ditanam bila Aceh belum punya baris siklus selain SE-11-DEMO sendiri, dan hanya
+-- digeser selagi SE-11-DEMO masih aktif. Setelah mesin menutupnya (dan membuka siklus baru), menjalankan ulang seed ini
+-- tidak berbuat apa-apa: tidak membuka kembali SE-11-DEMO (yang akan melanggar uq_siklus_ekonomi_aktif atau menumpuk
+-- sejarah), dan tidak menggandakan baris. Keadaan demo disusul mesin sendiri: alert demo (seed 06) memicu TEKANAN.
 -- =====================================================================
-INSERT INTO siklus_ekonomi (kode, wilayah_kode, siklus, mulai_pada, akhir_pada) VALUES
-  ('SE-11-DEMO', '11', 'TEKANAN', date_trunc('second', now()) - interval '6 days', NULL)
+INSERT INTO siklus_ekonomi (kode, wilayah_kode, siklus, mulai_pada, akhir_pada)
+SELECT 'SE-11-DEMO', '11', CAST('TEKANAN' AS siklus), date_trunc('second', now()) - interval '6 days', CAST(NULL AS timestamptz)
+ WHERE NOT EXISTS (SELECT 1 FROM siklus_ekonomi WHERE wilayah_kode = '11' AND kode IS DISTINCT FROM 'SE-11-DEMO')
 ON CONFLICT (kode) DO UPDATE
-   SET wilayah_kode = EXCLUDED.wilayah_kode, siklus = EXCLUDED.siklus, mulai_pada = EXCLUDED.mulai_pada, akhir_pada = EXCLUDED.akhir_pada;
+   SET siklus = EXCLUDED.siklus, mulai_pada = EXCLUDED.mulai_pada, pulih_sejak = NULL
+ WHERE siklus_ekonomi.akhir_pada IS NULL;
 
 -- =====================================================================
 -- Penyegaran materialized view (urutan menurut ketergantungan: agregat lebih dulu, lalu turunannya)

@@ -43,6 +43,20 @@ func TestMain(m *testing.M) {
 	os.Exit(pgtest.Main(m, &pg))
 }
 
+// perluDocker melewati tes yang membutuhkan PostgreSQL sungguhan bila container tidak dijalankan: pgtest.Main
+// membiarkan pg nil pada `go test -short`.
+//
+// Wajib dipanggil SEBELUM sync.Once pada setiap penyedia suite bersama (sharedSuite, ingestionSuite, kontrakSuite).
+// t.Skip menghentikan goroutine pemanggil dengan runtime.Goexit, dan sync.Once menganggap fungsinya selesai walau
+// berhenti seperti itu. Tanpa pemeriksaan di depan, tes pertama yang memakai suite bersama di-skip, suite-nya tetap
+// nil, dan SETIAP tes berikutnya gagal pada require.NotNil alih-alih ikut di-skip.
+func perluDocker(t *testing.T) {
+	t.Helper()
+	if pg == nil {
+		t.Skip("tes integrasi dilewati (-short)")
+	}
+}
+
 type suite struct {
 	db     *gorm.DB
 	router *gin.Engine
@@ -64,6 +78,7 @@ var berkasDemoDashboard = []string{
 // newSuite menyiapkan basis data berisi referensi dan akun demo; withSeed true menambah data demo dashboard.
 func newSuite(t *testing.T, name string, withSeed bool) *suite {
 	t.Helper()
+	perluDocker(t)
 	db := pg.CreateDatabase(t, name)
 	pgtest.MigrateUp(t, db)
 	require.NoError(t, seed.SeedReference(t.Context(), db))
@@ -89,6 +104,7 @@ var (
 
 func sharedSuite(t *testing.T) *suite {
 	t.Helper()
+	perluDocker(t)
 	once.Do(func() { shared = newSuite(t, "dashboard_shared", true) })
 	require.NotNil(t, shared, "suite bersama gagal dibuat")
 	return shared

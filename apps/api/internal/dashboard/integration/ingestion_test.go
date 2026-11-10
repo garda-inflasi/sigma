@@ -31,6 +31,7 @@ var berkasDemoIngestion = []string{
 // ingestionSuite menambah data hasil ingestion contoh (harga eksternal, cuaca) di atas suite bersama.
 func ingestionSuite(t *testing.T) *suite {
 	t.Helper()
+	perluDocker(t)
 	onceIngestion.Do(func() {
 		s := newSuite(t, "dashboard_ingestion", true)
 		require.NoError(t, seed.SeedFiles(t.Context(), s.db, berkasDemoIngestion...))

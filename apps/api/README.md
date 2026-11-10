@@ -10,7 +10,7 @@ Konfigurasi lewat env (lihat `env.example` di akar repo). Alur lokal ada di [REA
 | `cmd/api`                              | server HTTP                                                  |
 | `cmd/migrate up\|down\|version`        | migrasi goose dari `MIGRATIONS_DIR` (bawaan `db/migrations`) |
 | `cmd/seed reference\|admin\|demo\|all` | seeder; `demo` ditolak bila `APP_ENV=production`             |
-| `cmd/worker [list\|run <job>]`        | job berkala di luar API (refresh dashboard, KPI); lihat §6   |
+| `cmd/worker [list\|run <job>]`         | job berkala di luar API (refresh dashboard, KPI); lihat §6   |
 | `cmd/gardactl <ingest\|kpi\|master>`   | CLI utilitas terpadu: ingestion, kalkulasi KPI, impor BPS    |
 
 ## Menambah modul
@@ -110,6 +110,26 @@ harga divalidasi atau dipublikasi. Seeder `dashboard.demo` menyegarkannya setela
 Menambah view baru berarti menambahkannya ke `refresher.Views` (urut menurut ketergantungan).
 Penyegaran berkala dijalankan `cmd/worker` (§6); penyegaran setelah harga berubah tetap di `cmd/api`.
 
+`mv_kpi_operasional` menyimpan fakta harian per kabupaten dan komoditas (pembilang dan penyebut, riwayat 120 hari;
+migrasi 000124), bukan nilai jadi: `usecase.RakitKpi` menyusun kartu sesuai filter `kabupaten_kode`, `komoditas_kode`,
+`dari`, `sampai`, dan persentase selalu dari jumlah pembilang/penyebut. Semua endpoint `/v1/dashboard/operasional/*`
+dibatasi cakupan baris peran (02-B): `domain.Cakupan` dari `harga/domain.CakupanPeran`, dibaca dari basis data pada tiap
+request (`handler.cakupan`, galat jadi 500, nilai nol tertutup). Hasilnya disimpan di cache memori per instance
+(`internal/dashboard/cache`; TTL 20 detik, kunci `usecase.Kunci` memuat cakupan, filter, dan hari) dan dibuang saat
+`refresher.Epoch` naik; instance lain baru melihatnya setelah TTL. Endpoint dashboard baru: terima `domain.Cakupan`,
+jadikan SQL lewat `kondisiKabupaten` di repository, dan bungkus pemuatan dengan `cache.Ambil` memakai `kunciCakupan` atau
+`kunciFilter`.
+
+Ringkasan operasional 08-B (`aktivitas-petugas`, `stok`, `produsen`, `logistik`) memakai `kunciSaringan` (kabupaten dan
+komoditas, tanpa periode: jendela tujuh harinya relatif terhadap hari ini WIB). Definisi angkanya meminjam modul pemiliknya
+(`domain/operasional.go`): lot, fasilitas operasional, dan ambang risiko dari cold-storage; status efektif tugas dari lapangan;
+rute aktif dari spasial; wilayah dan sumber neraca dari eksekutif. Stok dan logistik dibaca langsung dari tabel (bukan view),
+jadi keterkiniannya dibatasi TTL cache 20 detik ditambah jeda muat ulang UI 30 detik (paling tua sekitar 50 detik); produsen
+membaca `agregat_harga_harian` dan ikut dibuang saat penyegaran. Bacaan beberapa query (stok, logistik) berjalan dalam satu
+snapshot `REPEATABLE READ` hanya-baca supaya ringkasan dan rinciannya tidak saling bertentangan. Baris yang punya dua ujung
+wilayah (pergerakan stok, rute) masuk cakupan bila salah satu ujungnya di kabupaten itu (`kondisiAsalAtauTujuan`).
+`aktivitas-petugas` memuat nama petugas, jadi di samping `dashboard.operasional` ia memerlukan `harga.lihat`.
+
 ### 6. Penjadwal job (`cmd/worker`)
 
 Job berkala berjalan di proses terpisah (`cmd/worker`, service compose `worker`), bukan di `cmd/api`,
@@ -122,6 +142,8 @@ supaya API bisa diskalakan tanpa menggandakan job dan job berat tidak mengganggu
   menjalankan job yang sama bersamaan; yang kalah melewati putaran itu. Lock lepas otomatis bila proses mati.
 - **Interval dari env:** `JOB_<NAMA>_INTERVAL` (durasi Go: `30s`, `5m`, `1h`; `off` menonaktifkan).
   Bawaan: `JOB_DASHBOARD_REFRESH_INTERVAL=5m`, `JOB_KPI_HITUNG_INTERVAL=1h`, `JOB_KPI_HITUNG_BULAN=2`,
+  `JOB_SIKLUS_EVALUASI_INTERVAL=5m` (penentuan siklus ekonomi otomatis, 08-B; `internal/siklus/engine`, aturan di tabel
+  `aturan_siklus`; `off` juga mematikan pemicu setelah alert EWS; evaluasi manual `POST /v1/siklus/evaluasi`),
   `JOB_AUTH_PEMBERSIHAN_INTERVAL=1h` (+ `JOB_AUTH_PEMBERSIHAN_{LOGIN_HARI=90,RESET_HARI=7,BATCH=1000}`; lihat `cmd/worker/register_auth.go`).
   Integritas audit (03-C, `cmd/worker/register_audit.go`): `audit_partisi` (`JOB_AUDIT_PARTISI_INTERVAL=24h`) menyiapkan
   `AUDIT_PARTISI_KE_DEPAN=3` partisi bulanan ke depan lalu menjalankan retensi bila `AUDIT_RETENSI_BULAN` dan

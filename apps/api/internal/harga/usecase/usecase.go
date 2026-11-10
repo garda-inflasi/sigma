@@ -52,7 +52,34 @@ func New(repo domain.Repository, auditWriter audit.Writer, refresh AgregatRefres
 	return &UseCase{repo: repo, audit: auditWriter, refresh: refresh, log: log, now: time.Now}
 }
 
-// ListHarga mengembalikan satu halaman entri beserta jumlah seluruh hasil filter.
+// Cakupan menurunkan jangkauan baris pemanggil dari perannya dan kabupaten tugasnya (02-B), dibaca dari basis data
+// pada tiap permintaan, bukan dari klaim token: klaim `kab` hanya untuk tampilan dan bisa basi sampai access token
+// habis setelah admin mengubah kabupaten seseorang. Gagal-tutup: galat basis data dikembalikan sebagai galat
+// (tidak pernah dijawab dengan cakupan yang lebih luas), dan akun yang tidak ada mendapat cakupan tertutup.
+func (uc *UseCase) Cakupan(ctx context.Context, penggunaID string) (domain.Cakupan, error) {
+	pengguna, err := uc.repo.PenggunaCakupan(ctx, penggunaID)
+	if err != nil {
+		if errors.Is(err, domain.ErrPenggunaTidakAda) {
+			return domain.Cakupan{}, nil
+		}
+		uc.log.Error("baca cakupan pengguna failed", map[string]interface{}{"error": err.Error()})
+		return domain.Cakupan{}, fmt.Errorf("baca cakupan pengguna: %w", err)
+	}
+	return domain.CakupanPeran(pengguna.Peran, pengguna.KabupatenKode, penggunaID), nil
+}
+
+// CakupanBaca adalah cakupan untuk membuka satu entri (detail, riwayat, versi, lineage). Pemegang harga.lihat
+// memakai cakupan perannya; tanpa harga.lihat (mis. petugas yang hanya punya harga.input) hanya entri yang ia
+// catat sendiri, apa pun perannya.
+func (uc *UseCase) CakupanBaca(ctx context.Context, penggunaID string, lihat bool) (domain.Cakupan, error) {
+	if !lihat {
+		return domain.CakupanMilik(penggunaID), nil
+	}
+	return uc.Cakupan(ctx, penggunaID)
+}
+
+// ListHarga mengembalikan satu halaman entri beserta jumlah seluruh hasil filter. Hanya entri dalam
+// filter.Cakupan yang dimuat; cakupan nol (tertutup) menghasilkan daftar kosong.
 func (uc *UseCase) ListHarga(ctx context.Context, filter domain.ListFilter) ([]domain.EntriView, int64, error) {
 	if filter.Status != "" && !domain.StatusValid(filter.Status) {
 		return nil, 0, fmt.Errorf("%w: status %q", ErrValidasi, filter.Status)
@@ -71,8 +98,10 @@ func (uc *UseCase) ListHarga(ctx context.Context, filter domain.ListFilter) ([]d
 	return items, total, nil
 }
 
-// GetHargaByID mengembalikan satu entri menurut ID BIGINT atau kode lama (alias tautan lama).
-func (uc *UseCase) GetHargaByID(ctx context.Context, ref idx.RujukanID) (*domain.EntriView, error) {
+// GetHargaByID mengembalikan satu entri menurut ID BIGINT atau kode lama (alias tautan lama) bila masuk cakupan.
+// Entri di luar cakupan dijawab ErrNotFound, sama dengan entri yang tidak ada (jawabannya tidak membocorkan
+// keberadaan entri).
+func (uc *UseCase) GetHargaByID(ctx context.Context, ref idx.RujukanID, cakupan domain.Cakupan) (*domain.EntriView, error) {
 	entri, err := uc.repo.GetByID(ctx, ref)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -81,16 +110,19 @@ func (uc *UseCase) GetHargaByID(ctx context.Context, ref idx.RujukanID) (*domain
 		uc.log.Error("get harga failed", map[string]interface{}{"id": ref.ID.String(), "kode": ref.Kode, "error": err.Error()})
 		return nil, fmt.Errorf("get harga: %w", err)
 	}
+	if !cakupan.Mengizinkan(entri.KabupatenKode, entri.PetugasID) {
+		return nil, ErrNotFound
+	}
 	return entri, nil
 }
 
-// Ringkasan menghitung entri per status pada hari terakhir.
-func (uc *UseCase) Ringkasan(ctx context.Context, hari int) (domain.Ringkasan, error) {
+// Ringkasan menghitung entri per status pada hari terakhir, hanya yang masuk cakupan.
+func (uc *UseCase) Ringkasan(ctx context.Context, hari int, cakupan domain.Cakupan) (domain.Ringkasan, error) {
 	if hari <= 0 {
 		hari = DefaultRingkasanHari
 	}
 	sejak := uc.now().AddDate(0, 0, -min(hari, MaxHari))
-	ringkasan, err := uc.repo.Ringkasan(ctx, sejak)
+	ringkasan, err := uc.repo.Ringkasan(ctx, sejak, cakupan)
 	if err != nil {
 		uc.log.Error("ringkasan harga failed", map[string]interface{}{"error": err.Error()})
 		return domain.Ringkasan{}, fmt.Errorf("ringkasan harga: %w", err)
@@ -258,9 +290,10 @@ type HasilBulk struct {
 }
 
 // BulkAction menjalankan aksi massal sesuai state machine domain.Evaluasi. Entri yang tidak ditemukan,
-// statusnya tidak memenuhi syarat aksi, atau yang melanggar pemisahan tugas dilewati dan dilaporkan di
-// Rincian. Alasan wajib untuk tolak dan tampil bagi penginput. Pemeriksaan izin aktor ada di delivery.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, aksi, aktorID, alasan string) (HasilBulk, error) {
+// di luar cakupan aktor (dilaporkan tidak_ditemukan, sama dengan id yang tidak ada), statusnya tidak memenuhi
+// syarat aksi, atau yang melanggar pemisahan tugas dilewati dan dilaporkan di Rincian. Alasan wajib untuk tolak
+// dan tampil bagi penginput. Pemeriksaan izin aktor ada di delivery.
+func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, aksi, aktorID, alasan string, cakupan domain.Cakupan) (HasilBulk, error) {
 	action := domain.BulkAction(aksi)
 	if !action.Valid() {
 		return HasilBulk{}, ErrInvalidAction
@@ -274,7 +307,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, aksi, aktorID, 
 		return HasilBulk{}, fmt.Errorf("%w: alasan %s", ErrValidasi, syaratAlasan(action))
 	}
 
-	hasil, err := uc.repo.Transisi(ctx, unik, action, aktorID, alasan, uc.now())
+	hasil, err := uc.repo.Transisi(ctx, unik, action, aktorID, alasan, uc.now(), cakupan)
 	if err != nil {
 		uc.log.Error("bulk action failed", map[string]interface{}{"action": aksi, "count": len(unik), "error": err.Error()})
 		return HasilBulk{}, fmt.Errorf("bulk action: %w", err)
@@ -313,24 +346,10 @@ func syaratAlasan(action domain.BulkAction) string {
 	return fmt.Sprintf("maksimal %d karakter", MaxAlasan)
 }
 
-// bukaEntri mengembalikan entri (ID BIGINT atau kode lama) bila pemanggil boleh melihatnya: pemanggil dengan hak
-// melihat semua entri (semua true) boleh membuka entri mana pun, selain itu hanya entri yang ia catat sendiri.
-// Entri yang tidak boleh dibuka dijawab ErrNotFound, sama dengan entri yang tidak ada.
-func (uc *UseCase) bukaEntri(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) (*domain.EntriView, error) {
-	entri, err := uc.GetHargaByID(ctx, ref)
-	if err != nil {
-		return nil, err
-	}
-	if !semua && (entri.PetugasID == nil || *entri.PetugasID != pemanggilID) {
-		return nil, ErrNotFound
-	}
-	return entri, nil
-}
-
-// Riwayat mengembalikan perpindahan status entri (ID BIGINT atau kode lama). Pemanggil tanpa hak melihat semua
-// entri (semua false) hanya boleh membuka entri yang ia catat sendiri.
-func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) ([]domain.RiwayatView, error) {
-	entri, err := uc.bukaEntri(ctx, ref, pemanggilID, semua)
+// Riwayat mengembalikan perpindahan status entri (ID BIGINT atau kode lama) bila entri masuk cakupan; di luar
+// cakupan dijawab ErrNotFound, sama dengan entri yang tidak ada.
+func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, cakupan domain.Cakupan) ([]domain.RiwayatView, error) {
+	entri, err := uc.GetHargaByID(ctx, ref, cakupan)
 	if err != nil {
 		return nil, err
 	}
@@ -343,8 +362,8 @@ func (uc *UseCase) Riwayat(ctx context.Context, ref idx.RujukanID, pemanggilID s
 }
 
 // Versi mengembalikan seluruh versi isi entri, yang terlama lebih dulu. Aturan akses sama dengan Riwayat.
-func (uc *UseCase) Versi(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) ([]domain.VersiView, error) {
-	entri, err := uc.bukaEntri(ctx, ref, pemanggilID, semua)
+func (uc *UseCase) Versi(ctx context.Context, ref idx.RujukanID, cakupan domain.Cakupan) ([]domain.VersiView, error) {
+	entri, err := uc.GetHargaByID(ctx, ref, cakupan)
 	if err != nil {
 		return nil, err
 	}
@@ -358,8 +377,8 @@ func (uc *UseCase) Versi(ctx context.Context, ref idx.RujukanID, pemanggilID str
 
 // Lineage mengembalikan jejak asal entri harga (PRD §1.4): pencatat, validasi otomatis, validasi, publikasi,
 // penolakan, versi, riwayat status, dan rujukan audit. Aturan akses sama dengan Riwayat.
-func (uc *UseCase) Lineage(ctx context.Context, ref idx.RujukanID, pemanggilID string, semua bool) (domain.Lineage, error) {
-	entri, err := uc.bukaEntri(ctx, ref, pemanggilID, semua)
+func (uc *UseCase) Lineage(ctx context.Context, ref idx.RujukanID, cakupan domain.Cakupan) (domain.Lineage, error) {
+	entri, err := uc.GetHargaByID(ctx, ref, cakupan)
 	if err != nil {
 		return domain.Lineage{}, err
 	}

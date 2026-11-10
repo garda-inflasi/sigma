@@ -63,7 +63,7 @@ func TestPK_TautanLamaBerkodeTetapBerlaku(t *testing.T) {
 	require.NotEmpty(t, id, "baris seed %s ada", kode)
 
 	t.Run("detail", func(t *testing.T) {
-		w := s.call(t, http.MethodGet, "/v1/harga/"+kode, emailKoordinator, nil)
+		w := s.call(t, http.MethodGet, "/v1/harga/"+kode, emailLihatSaja, nil)
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		got := data[entriBerkode](t, w)
 		assert.Equal(t, id, got.ID, "kode lama menunjuk baris yang sama dengan ID baru")
@@ -71,9 +71,9 @@ func TestPK_TautanLamaBerkodeTetapBerlaku(t *testing.T) {
 		assert.Equal(t, kode, *got.Kode)
 	})
 	t.Run("riwayat", func(t *testing.T) {
-		lewatKode := s.call(t, http.MethodGet, "/v1/harga/"+kode+"/riwayat", emailKoordinator, nil)
+		lewatKode := s.call(t, http.MethodGet, "/v1/harga/"+kode+"/riwayat", emailLihatSaja, nil)
 		require.Equal(t, http.StatusOK, lewatKode.Code, lewatKode.Body.String())
-		lewatID := s.call(t, http.MethodGet, "/v1/harga/"+id+"/riwayat", emailKoordinator, nil)
+		lewatID := s.call(t, http.MethodGet, "/v1/harga/"+id+"/riwayat", emailLihatSaja, nil)
 		require.Equal(t, http.StatusOK, lewatID.Code)
 		assert.JSONEq(t, lewatID.Body.String(), lewatKode.Body.String())
 		assert.NotEmpty(t, data[[]riwayat](t, lewatKode))
@@ -82,7 +82,7 @@ func TestPK_TautanLamaBerkodeTetapBerlaku(t *testing.T) {
 		const uuidLama = "3f2b8c1e-9d4a-4e6f-8a21-5c7d9e0b1a34"
 		require.NoError(t, s.db.Exec("UPDATE entri_harga SET kode = ? WHERE id = ?", uuidLama, id).Error)
 		t.Cleanup(func() { s.db.Exec("UPDATE entri_harga SET kode = ? WHERE id = ?", kode, id) })
-		w := s.call(t, http.MethodGet, "/v1/harga/"+uuidLama, emailKoordinator, nil)
+		w := s.call(t, http.MethodGet, "/v1/harga/"+uuidLama, emailLihatSaja, nil)
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		assert.Equal(t, id, data[entriBerkode](t, w).ID)
 	})

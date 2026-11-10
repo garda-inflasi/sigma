@@ -2149,6 +2149,11 @@ paths:
       description: |
         Entri terbaru lebih dulu, disaring dan dipaginasi di server. Memerlukan izin `harga.lihat`.
         Jumlah seluruh hasil filter ada di header `X-Total-Count`.
+
+        Hanya entri dalam cakupan baris peran pemanggil: Koordinator dan Agregator melihat entri di pasar kabupaten
+        tugasnya (`pengguna.kabupaten_kode`, dibaca dari basis data pada tiap permintaan) ditambah entri yang ia catat
+        sendiri; peran tingkat provinsi ke atas (strategis, manajerial, admin sistem) melihat seluruh Aceh. Filter
+        `wilayah` bekerja di dalam cakupan itu, dan `X-Total-Count` menghitung entri dalam cakupan saja.
       operationId: listHarga
       tags:
         - Harga
@@ -2311,6 +2316,9 @@ paths:
   /v1/harga/ringkasan:
     get:
       summary: Jumlah entri harga per status
+      description: |
+        Hanya entri dalam cakupan baris pemanggil, sama dengan `GET /v1/harga`: ringkasan Koordinator tidak memuat
+        entri kabupaten lain.
       operationId: getHargaRingkasan
       tags:
         - Harga
@@ -2402,6 +2410,9 @@ paths:
         (hanya petugas pencatat), `harga.validasi` untuk validasi, tolak, dan kembalikan, `harga.publikasi`
         untuk publikasi. Validator dan penerbit tidak boleh sama dengan petugas pencatat (pemisahan tugas,
         juga dijaga CHECK di basis data). Entri yang dilewati dilaporkan di `rincian` beserta sebabnya.
+        Entri di luar cakupan baris aktor (Koordinator dan Agregator: di luar kabupaten tugasnya dan bukan
+        catatannya; Mahasiswa: bukan catatannya) tidak dikunci dan tidak diubah, dan dilaporkan `tidak_ditemukan`,
+        sama dengan ID yang tidak ada, sehingga keberadaannya tidak bocor.
         Alasan wajib untuk tolak (3 sampai 1000 karakter) dan tampil bagi petugas pencatat. Setiap
         perpindahan tercatat di riwayat status dan audit trail.
 
@@ -2458,8 +2469,10 @@ paths:
     get:
       summary: Riwayat perpindahan status entri harga
       description: |
-        Yang terlama lebih dulu. `harga.lihat` membuka semua entri; petugas dengan `harga.input` hanya
-        entri yang ia catat sendiri (entri lain tampil sebagai 404).
+        Yang terlama lebih dulu. Pemegang `harga.lihat` membuka entri dalam cakupan barisnya: Koordinator dan
+        Agregator entri di kabupaten tugasnya atau yang ia catat sendiri, peran tingkat provinsi ke atas seluruh
+        Aceh. Petugas dengan `harga.input` saja hanya entri yang ia catat sendiri. Entri di luar cakupan dijawab
+        404 dengan isi yang sama dengan entri yang tidak ada, jadi keberadaannya tidak bocor.
       operationId: getHargaRiwayat
       tags:
         - Harga
@@ -2519,8 +2532,7 @@ paths:
         pertama). `data` adalah salinan lengkap baris entri pada versi itu apa adanya dari basis data
         (nama kolom basis data; ID dan angka berupa angka JSON, bukan string).
 
-        Akses sama dengan `/v1/harga/{id}/riwayat`: `harga.lihat` membuka semua entri; petugas dengan
-        `harga.input` hanya entri yang ia catat sendiri (entri lain tampil sebagai 404).
+        Akses sama dengan `/v1/harga/{id}/riwayat`: entri dalam cakupan baris pemanggil; di luar cakupan 404.
       operationId: getHargaVersi
       tags:
         - Harga
@@ -2579,8 +2591,7 @@ paths:
         memuat ID entri di `metadata.ids`), yang terlama lebih dulu; rincian lengkap ada di halaman audit trail
         (`/audit?entitas=entri_harga&entitas_id={id}`).
 
-        Akses sama dengan `/v1/harga/{id}/riwayat`: `harga.lihat` membuka semua entri; petugas dengan
-        `harga.input` hanya entri yang ia catat sendiri (entri lain tampil sebagai 404).
+        Akses sama dengan `/v1/harga/{id}/riwayat`: entri dalam cakupan baris pemanggil; di luar cakupan 404.
       operationId: getHargaLineage
       tags:
         - Harga
@@ -2629,6 +2640,9 @@ paths:
   /v1/harga/{id}:
     get:
       summary: Mendapatkan detail entri harga
+      description: |
+        Memerlukan izin `harga.lihat`. Entri di luar cakupan baris pemanggil (lihat `GET /v1/harga`) dijawab 404
+        dengan isi yang sama dengan entri yang tidak ada.
       operationId: getHarga
       tags:
         - Harga

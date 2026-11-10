@@ -151,7 +151,8 @@ func total(t *testing.T, w *httptest.ResponseRecorder) int {
 func TestList_ReturnsJoinedRowsWithTotal(t *testing.T) {
 	s := sharedSuite(t)
 
-	w := s.call(t, http.MethodGet, "/v1/harga?limit=50", emailKoordinator, nil)
+	// Peran lihat-saja tingkat provinsi (strategis) melihat seluruh Aceh; jangkauan Koordinator diuji di cakupan_test.go.
+	w := s.call(t, http.MethodGet, "/v1/harga?limit=50", emailLihatSaja, nil)
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	rows := data[[]entri](t, w)

@@ -175,8 +175,9 @@ func TestVersi_EntriBerkodeLamaDanBackfillSeed(t *testing.T) {
 	require.NoError(t, s.db.Raw("SELECT id::text FROM entri_harga WHERE kode = ?", kode).Scan(&id).Error)
 	require.NotEmpty(t, id)
 
-	lewatKode := s.call(t, http.MethodGet, "/v1/harga/"+kode+"/versi", emailKoordinator, nil)
-	lewatID := s.call(t, http.MethodGet, "/v1/harga/"+id+"/versi", emailKoordinator, nil)
+	// Entri seed ini bisa di kabupaten mana pun: dibuka peran seluruh Aceh (Koordinator hanya kabupatennya).
+	lewatKode := s.call(t, http.MethodGet, "/v1/harga/"+kode+"/versi", emailLihatSaja, nil)
+	lewatID := s.call(t, http.MethodGet, "/v1/harga/"+id+"/versi", emailLihatSaja, nil)
 
 	require.Equal(t, http.StatusOK, lewatKode.Code, lewatKode.Body.String())
 	assert.JSONEq(t, lewatID.Body.String(), lewatKode.Body.String(), "alias kode lama menunjuk entri yang sama")
@@ -283,7 +284,7 @@ func TestLineage_EntriDitolakMemuatAlasanDanEntriBerkodeLama(t *testing.T) {
 	const kode = "HRG-D05-00-02-K"
 	var idSeed string
 	require.NoError(t, s.db.Raw("SELECT id::text FROM entri_harga WHERE kode = ?", kode).Scan(&idSeed).Error)
-	lewatKode := data[lineage](t, s.call(t, http.MethodGet, "/v1/harga/"+kode+"/lineage", emailKoordinator, nil))
+	lewatKode := data[lineage](t, s.call(t, http.MethodGet, "/v1/harga/"+kode+"/lineage", emailLihatSaja, nil))
 	assert.Equal(t, idSeed, lewatKode.Entri.ID)
 	require.NotNil(t, lewatKode.Entri.Kode)
 	assert.Equal(t, kode, *lewatKode.Entri.Kode)

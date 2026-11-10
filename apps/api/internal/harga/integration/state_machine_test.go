@@ -96,9 +96,15 @@ func TestBulk_AjukanDraftOnlyByOwner(t *testing.T) {
 	require.Equal(t, 1, s.bulk(t, emailKoordinator, map[string]any{"action": "kembalikan", "ids": []string{id}}).Berhasil)
 	require.Equal(t, "DRAF", s.status(t, id))
 
-	// Mahasiswa lain memegang harga.input tetapi bukan pencatatnya.
+	// Mahasiswa lain memegang harga.input tetapi bukan pencatatnya, dan cakupannya hanya entrinya sendiri (02-B):
+	// entri ini baginya sama dengan tidak ada, bukan "bukan_pemilik" (yang akan membocorkan keberadaannya).
 	lain := s.bulk(t, "mahasiswa.2@gardainflasi.id", map[string]any{"action": "ajukan", "ids": []string{id}})
-	assert.Equal(t, hasilBulkRincian{Gagal: 1, Rincian: []rincianBulk{{ID: id, Sebab: "bukan_pemilik"}}}, *lain)
+	assert.Equal(t, hasilBulkRincian{Gagal: 1, Rincian: []rincianBulk{{ID: id, Sebab: "tidak_ditemukan"}}}, *lain)
+
+	// Koordinator di kabupaten yang sama menjangkau entri ini (di dalam cakupan) tetapi bukan pencatatnya.
+	koordinator := s.bulk(t, emailKoordinator, map[string]any{"action": "ajukan", "ids": []string{id}})
+	assert.Equal(t, hasilBulkRincian{Gagal: 1, Rincian: []rincianBulk{{ID: id, Sebab: "bukan_pemilik"}}}, *koordinator)
+	require.Equal(t, "DRAF", s.status(t, id))
 
 	pemilik := s.bulk(t, emailMahasiswa, map[string]any{"action": "ajukan", "ids": []string{id}})
 	assert.Equal(t, hasilBulkRincian{Berhasil: 1, Rincian: []rincianBulk{}}, *pemilik)

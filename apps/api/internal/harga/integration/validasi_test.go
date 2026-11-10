@@ -169,7 +169,8 @@ func TestValidasiOtomatis_SeededDetailExposesFlags(t *testing.T) {
 	require.NoError(t, s.db.Raw("SELECT id FROM entri_harga WHERE kode LIKE 'HRG-D%' AND (flag_validasi->>'outlier')::boolean LIMIT 1").Scan(&id).Error)
 	require.NotEmpty(t, id, "histori demo memuat outlier bertanda")
 
-	cek := data[hasilCek](t, s.call(t, http.MethodGet, "/v1/harga/"+id, emailKoordinator, nil))
+	// Outlier seed ini bisa di kabupaten mana pun: dibuka peran seluruh Aceh.
+	cek := data[hasilCek](t, s.call(t, http.MethodGet, "/v1/harga/"+id, emailLihatSaja, nil))
 
 	assert.True(t, cek.Flag.Outlier)
 }

@@ -21,6 +21,13 @@ type mockRepository struct {
 	// konteks dan konteksErr adalah jawaban KonteksValidasi; nol berarti tanpa pembanding.
 	konteks    domain.KonteksValidasi
 	konteksErr error
+	// pengguna dan penggunaErr adalah jawaban PenggunaCakupan.
+	pengguna    domain.PenggunaCakupan
+	penggunaErr error
+}
+
+func (m *mockRepository) PenggunaCakupan(_ context.Context, _ string) (domain.PenggunaCakupan, error) {
+	return m.pengguna, m.penggunaErr
 }
 
 func (m *mockRepository) KonteksValidasi(_ context.Context, _ *domain.EntriHarga) (domain.KonteksValidasi, error) {
@@ -39,8 +46,8 @@ func (m *mockRepository) GetByID(ctx context.Context, ref idx.RujukanID) (*domai
 	return entri, args.Error(1)
 }
 
-func (m *mockRepository) Ringkasan(ctx context.Context, sejak time.Time) (domain.Ringkasan, error) {
-	args := m.Called(ctx, sejak)
+func (m *mockRepository) Ringkasan(ctx context.Context, sejak time.Time, cakupan domain.Cakupan) (domain.Ringkasan, error) {
+	args := m.Called(ctx, sejak, cakupan)
 	return args.Get(0).(domain.Ringkasan), args.Error(1)
 }
 
@@ -66,8 +73,8 @@ func (m *mockRepository) Simpan(ctx context.Context, kirim domain.Pengiriman) (d
 	return hasil, args.Error(1)
 }
 
-func (m *mockRepository) Transisi(ctx context.Context, ids []idx.ID, aksi domain.BulkAction, aktor, alasan string, waktu time.Time) ([]domain.HasilTransisi, error) {
-	args := m.Called(ctx, ids, aksi, aktor, alasan, waktu)
+func (m *mockRepository) Transisi(ctx context.Context, ids []idx.ID, aksi domain.BulkAction, aktor, alasan string, waktu time.Time, cakupan domain.Cakupan) ([]domain.HasilTransisi, error) {
+	args := m.Called(ctx, ids, aksi, aktor, alasan, waktu, cakupan)
 	hasil, _ := args.Get(0).([]domain.HasilTransisi)
 	return hasil, args.Error(1)
 }
@@ -165,29 +172,29 @@ func TestGetHargaByID(t *testing.T) {
 	repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: kode}).Return(&domain.EntriView{ID: 7, Kode: &kode}, nil)
 	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 99}).Return(nil, domain.ErrNotFound)
 
-	got, err := uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 7})
+	got, err := uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 7}, domain.CakupanSemua())
 	require.NoError(t, err)
 	assert.Equal(t, idx.ID(7), got.ID)
 
-	alias, err := uc.GetHargaByID(t.Context(), idx.RujukanID{Kode: kode})
+	alias, err := uc.GetHargaByID(t.Context(), idx.RujukanID{Kode: kode}, domain.CakupanSemua())
 	require.NoError(t, err)
 	assert.Equal(t, idx.ID(7), alias.ID, "kode lama menunjuk entri yang sama")
 
-	_, err = uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 99})
+	_, err = uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 99}, domain.CakupanSemua())
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestRingkasan_WindowDefaultsAndCaps(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
-	repo.On("Ringkasan", mock.Anything, fixedNow.AddDate(0, 0, -DefaultRingkasanHari)).Return(domain.Ringkasan{Diajukan: 3}, nil)
-	repo.On("Ringkasan", mock.Anything, fixedNow.AddDate(0, 0, -MaxHari)).Return(domain.Ringkasan{}, nil)
+	repo.On("Ringkasan", mock.Anything, fixedNow.AddDate(0, 0, -DefaultRingkasanHari), domain.CakupanSemua()).Return(domain.Ringkasan{Diajukan: 3}, nil)
+	repo.On("Ringkasan", mock.Anything, fixedNow.AddDate(0, 0, -MaxHari), domain.CakupanSemua()).Return(domain.Ringkasan{}, nil)
 
-	r, err := uc.Ringkasan(t.Context(), 0)
+	r, err := uc.Ringkasan(t.Context(), 0, domain.CakupanSemua())
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, r.Diajukan)
 
-	_, err = uc.Ringkasan(t.Context(), 10_000)
+	_, err = uc.Ringkasan(t.Context(), 10_000, domain.CakupanSemua())
 	require.NoError(t, err)
 	repo.AssertExpectations(t)
 }
@@ -350,10 +357,10 @@ func TestBulkAction_ReportsChangedAndSkippedWithReasons(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	// id ganda dan nol disaring: tiga id unik, dua berubah.
-	repo.On("Transisi", mock.Anything, []idx.ID{1, 2, 3}, domain.BulkValidasi, "koordinator", "", fixedNow).
+	repo.On("Transisi", mock.Anything, []idx.ID{1, 2, 3}, domain.BulkValidasi, "koordinator", "", fixedNow, domain.CakupanSemua()).
 		Return([]domain.HasilTransisi{lolos(1), lewat(2, domain.SebabStatus), lolos(3)}, nil)
 
-	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1, 2, 1, 0, 3}, "validasi", "koordinator", "")
+	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1, 2, 1, 0, 3}, "validasi", "koordinator", "", domain.CakupanSemua())
 
 	require.NoError(t, err)
 	assert.Equal(t, HasilBulk{Berhasil: 2, Gagal: 1, Rincian: []RincianBulk{{ID: 2, Sebab: domain.SebabStatus}}}, hasil)
@@ -370,13 +377,13 @@ func TestBulkAction_TolakRequiresReasonAndAuditsIt(t *testing.T) {
 	uc, recorder := newTestUseCase(repo)
 
 	for _, alasan := range []string{"", "  ", "ab"} {
-		_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "tolak", "u", alasan)
+		_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "tolak", "u", alasan, domain.CakupanSemua())
 		require.ErrorIs(t, err, ErrValidasi, "alasan %q", alasan)
 	}
 	repo.AssertNotCalled(t, "Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
-	repo.On("Transisi", mock.Anything, []idx.ID{1}, domain.BulkTolak, "u", "harga tidak wajar", fixedNow).Return([]domain.HasilTransisi{lolos(1)}, nil)
-	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "tolak", "u", "  harga tidak wajar ")
+	repo.On("Transisi", mock.Anything, []idx.ID{1}, domain.BulkTolak, "u", "harga tidak wajar", fixedNow, domain.CakupanSemua()).Return([]domain.HasilTransisi{lolos(1)}, nil)
+	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "tolak", "u", "  harga tidak wajar ", domain.CakupanSemua())
 	require.NoError(t, err)
 	entry, _ := recorder.Last()
 	assert.Equal(t, "harga tidak wajar", entry.Metadata["alasan"])
@@ -385,9 +392,9 @@ func TestBulkAction_TolakRequiresReasonAndAuditsIt(t *testing.T) {
 func TestBulkAction_ReasonIsOptionalForOtherActions(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
-	repo.On("Transisi", mock.Anything, []idx.ID{1}, domain.BulkKembalikan, "u", "", fixedNow).Return([]domain.HasilTransisi{lolos(1)}, nil)
+	repo.On("Transisi", mock.Anything, []idx.ID{1}, domain.BulkKembalikan, "u", "", fixedNow, domain.CakupanSemua()).Return([]domain.HasilTransisi{lolos(1)}, nil)
 
-	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "kembalikan", "u", "")
+	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "kembalikan", "u", "", domain.CakupanSemua())
 
 	require.NoError(t, err)
 }
@@ -396,7 +403,7 @@ func TestBulkAction_InvalidAction(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
 
-	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "hapus", "u", "")
+	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "hapus", "u", "", domain.CakupanSemua())
 
 	assert.ErrorIs(t, err, ErrInvalidAction)
 	repo.AssertNotCalled(t, "Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
@@ -405,23 +412,23 @@ func TestBulkAction_InvalidAction(t *testing.T) {
 func TestBulkAction_RejectsEmptyAndOversizedIDs(t *testing.T) {
 	uc, _ := newTestUseCase(new(mockRepository))
 
-	_, err := uc.BulkAction(t.Context(), []idx.ID{0, 0}, "validasi", "u", "")
+	_, err := uc.BulkAction(t.Context(), []idx.ID{0, 0}, "validasi", "u", "", domain.CakupanSemua())
 	assert.ErrorIs(t, err, ErrValidasi)
 
 	banyak := make([]idx.ID, MaxBulkIDs+1)
 	for i := range banyak {
 		banyak[i] = idx.ID(i + 1)
 	}
-	_, err = uc.BulkAction(t.Context(), banyak, "validasi", "u", "")
+	_, err = uc.BulkAction(t.Context(), banyak, "validasi", "u", "", domain.CakupanSemua())
 	assert.ErrorIs(t, err, ErrValidasi)
 }
 
 func TestBulkAction_RepoErrorSkipsAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
-	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("db mati"))
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("db mati"))
 
-	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "validasi", "u", "")
+	_, err := uc.BulkAction(t.Context(), []idx.ID{1}, "validasi", "u", "", domain.CakupanSemua())
 
 	require.Error(t, err)
 	assert.Empty(t, recorder.Entries())
@@ -431,9 +438,9 @@ func TestBulkAction_AuditFailureDoesNotUndoAction(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	recorder.Err = errors.New("audit mati")
-	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]domain.HasilTransisi{lolos(1)}, nil)
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]domain.HasilTransisi{lolos(1)}, nil)
 
-	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1}, "publikasi", "u", "")
+	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1}, "publikasi", "u", "", domain.CakupanSemua())
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, hasil.Berhasil)
@@ -442,10 +449,10 @@ func TestBulkAction_AuditFailureDoesNotUndoAction(t *testing.T) {
 func TestBulkAction_NothingChangedIsNotAuditedOrRefreshed(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder, refresh := newTestUseCaseWithRefresher(repo)
-	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]domain.HasilTransisi{lewat(1, domain.SebabTidakDitemukan)}, nil)
 
-	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1}, "validasi", "u", "")
+	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1}, "validasi", "u", "", domain.CakupanSemua())
 
 	require.NoError(t, err)
 	assert.Equal(t, HasilBulk{Gagal: 1, Rincian: []RincianBulk{{ID: 1, Sebab: domain.SebabTidakDitemukan}}}, hasil)
@@ -456,36 +463,46 @@ func TestBulkAction_NothingChangedIsNotAuditedOrRefreshed(t *testing.T) {
 func TestBulkAction_RefreshesDashboardWhenRowsChanged(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _, refresh := newTestUseCaseWithRefresher(repo)
-	repo.On("Transisi", mock.Anything, []idx.ID{2}, domain.BulkValidasi, "u", "", fixedNow).Return([]domain.HasilTransisi{lolos(2)}, nil)
+	repo.On("Transisi", mock.Anything, []idx.ID{2}, domain.BulkValidasi, "u", "", fixedNow, domain.CakupanSemua()).Return([]domain.HasilTransisi{lolos(2)}, nil)
 
-	_, err := uc.BulkAction(t.Context(), []idx.ID{2}, "validasi", "u", "")
+	_, err := uc.BulkAction(t.Context(), []idx.ID{2}, "validasi", "u", "", domain.CakupanSemua())
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, refresh.triggers)
 }
 
-func TestRiwayat_OnlyOwnEntryWithoutViewPermission(t *testing.T) {
+func TestRiwayat_HanyaEntriDalamCakupan(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _ := newTestUseCase(repo)
 	pemilik := uid("mahasiswa_1")
 	kode := "HRG-D00-00-01-K"
-	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 5}).Return(&domain.EntriView{ID: 5, PetugasID: &pemilik}, nil)
-	repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: kode}).Return(&domain.EntriView{ID: 5, Kode: &kode, PetugasID: &pemilik}, nil)
+	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 5}).Return(&domain.EntriView{ID: 5, KabupatenKode: "1171", PetugasID: &pemilik}, nil)
+	repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: kode}).Return(&domain.EntriView{ID: 5, Kode: &kode, KabupatenKode: "1171", PetugasID: &pemilik}, nil)
 	// Riwayat dibaca menurut ID hasil resolusi, juga ketika rujukannya kode lama.
 	repo.On("Riwayat", mock.Anything, idx.ID(5)).Return([]domain.RiwayatView{{Ke: domain.StatusDiajukan}}, nil)
 
-	items, err := uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, uid("mahasiswa_1"), false)
+	items, err := uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanMilik(pemilik))
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
 
-	items, err = uc.Riwayat(t.Context(), idx.RujukanID{Kode: kode}, uid("mahasiswa_1"), false)
+	items, err = uc.Riwayat(t.Context(), idx.RujukanID{Kode: kode}, domain.CakupanMilik(pemilik))
 	require.NoError(t, err)
 	assert.Len(t, items, 1, "alias kode lama")
 
-	_, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, uid("mahasiswa_2"), false)
+	_, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanMilik(uid("mahasiswa_2")))
 	assert.ErrorIs(t, err, ErrNotFound, "entri petugas lain tampil sebagai tidak ada")
 
-	items, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, "koordinator", true)
+	items, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, domain.Cakupan{KabupatenKode: "1171"})
+	require.NoError(t, err, "pasar di kabupaten tugas")
+	assert.Len(t, items, 1)
+
+	_, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, domain.Cakupan{KabupatenKode: "1108"})
+	assert.ErrorIs(t, err, ErrNotFound, "pasar di kabupaten lain")
+
+	_, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, domain.Cakupan{})
+	assert.ErrorIs(t, err, ErrNotFound, "cakupan nol tertutup")
+
+	items, err = uc.Riwayat(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanSemua())
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
 }
@@ -495,26 +512,119 @@ func TestVersiDanLineage_AturanAksesSamaDenganRiwayat(t *testing.T) {
 	uc, _ := newTestUseCase(repo)
 	pemilik := uid("mahasiswa_1")
 	kode := "HRG-D00-00-01-K"
-	entri := domain.EntriView{ID: 5, Kode: &kode, PetugasID: &pemilik}
+	entri := domain.EntriView{ID: 5, Kode: &kode, KabupatenKode: "1171", PetugasID: &pemilik}
 	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 5}).Return(&entri, nil)
 	repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: kode}).Return(&entri, nil)
 	repo.On("Versi", mock.Anything, idx.ID(5)).Return([]domain.VersiView{{Versi: 1, Aksi: "INPUT"}}, nil)
 	repo.On("Lineage", mock.Anything, entri).Return(domain.Lineage{Entri: entri, VersiTerkini: 1}, nil)
 
-	versi, err := uc.Versi(t.Context(), idx.RujukanID{Kode: kode}, pemilik, false)
+	versi, err := uc.Versi(t.Context(), idx.RujukanID{Kode: kode}, domain.CakupanMilik(pemilik))
 	require.NoError(t, err)
 	assert.Len(t, versi, 1, "alias kode lama")
-	lineage, err := uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, pemilik, false)
+	lineage, err := uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanMilik(pemilik))
 	require.NoError(t, err)
 	assert.Equal(t, 1, lineage.VersiTerkini)
 
-	_, err = uc.Versi(t.Context(), idx.RujukanID{ID: 5}, uid("mahasiswa_2"), false)
+	_, err = uc.Versi(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanMilik(uid("mahasiswa_2")))
 	assert.ErrorIs(t, err, ErrNotFound, "entri petugas lain tampil sebagai tidak ada")
-	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, uid("mahasiswa_2"), false)
+	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanMilik(uid("mahasiswa_2")))
 	assert.ErrorIs(t, err, ErrNotFound)
+	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, domain.Cakupan{KabupatenKode: "1108"})
+	assert.ErrorIs(t, err, ErrNotFound, "kabupaten lain")
 
-	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, "koordinator", true)
-	require.NoError(t, err, "pemegang harga.lihat membuka entri siapa pun")
+	_, err = uc.Lineage(t.Context(), idx.RujukanID{ID: 5}, domain.CakupanSemua())
+	require.NoError(t, err, "cakupan seluruh Aceh membuka entri siapa pun")
+}
+
+func TestGetHargaByID_LuarCakupanSamaDenganTidakAda(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	pemilik := uid("mahasiswa_1")
+	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 7}).Return(&domain.EntriView{ID: 7, KabupatenKode: "1108", PetugasID: &pemilik}, nil)
+	repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 99}).Return(nil, domain.ErrNotFound)
+
+	koordinator1171 := domain.Cakupan{KabupatenKode: "1171", PemilikID: uid("koordinator")}
+	_, errLuar := uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 7}, koordinator1171)
+	_, errTakAda := uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 99}, koordinator1171)
+	require.ErrorIs(t, errLuar, ErrNotFound)
+	assert.Equal(t, errTakAda, errLuar, "galat yang sama persis: keberadaan entri tidak bocor")
+
+	_, err := uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 7}, domain.Cakupan{KabupatenKode: "1108"})
+	assert.NoError(t, err, "kabupaten cocok")
+	_, err = uc.GetHargaByID(t.Context(), idx.RujukanID{ID: 7}, domain.Cakupan{KabupatenKode: "1171", PemilikID: pemilik})
+	assert.NoError(t, err, "entri yang ia catat sendiri tetap terlihat walau pasarnya di kabupaten lain")
+}
+
+func TestCakupan_DariPeranDanKabupatenDiBasisData(t *testing.T) {
+	uid1 := uid("koordinator")
+	kasus := map[string]struct {
+		pengguna domain.PenggunaCakupan
+		want     domain.Cakupan
+	}{
+		"koordinator":              {domain.PenggunaCakupan{Peran: "OPS_KOORDINATOR", KabupatenKode: "1171"}, domain.Cakupan{KabupatenKode: "1171", PemilikID: uid1}},
+		"agregator":                {domain.PenggunaCakupan{Peran: "OPS_AGREGATOR", KabupatenKode: "1108"}, domain.Cakupan{KabupatenKode: "1108", PemilikID: uid1}},
+		"koordinator tanpa kab":    {domain.PenggunaCakupan{Peran: "OPS_KOORDINATOR"}, domain.Cakupan{PemilikID: uid1}},
+		"mahasiswa":                {domain.PenggunaCakupan{Peran: "OPS_MAHASISWA", KabupatenKode: "1171"}, domain.Cakupan{PemilikID: uid1}},
+		"manajer":                  {domain.PenggunaCakupan{Peran: "MANAJER_DATA"}, domain.Cakupan{Semua: true}},
+		"strategis":                {domain.PenggunaCakupan{Peran: "STRATEGIS_BI"}, domain.Cakupan{Semua: true}},
+		"peran asing tidak semua":  {domain.PenggunaCakupan{Peran: "PERAN_BARU"}, domain.Cakupan{PemilikID: uid1}},
+		"peran kosong tidak semua": {domain.PenggunaCakupan{}, domain.Cakupan{PemilikID: uid1}},
+	}
+	for nama, k := range kasus {
+		repo := &mockRepository{pengguna: k.pengguna}
+		uc, _ := newTestUseCase(repo)
+		got, err := uc.Cakupan(t.Context(), uid1)
+		require.NoError(t, err, nama)
+		assert.Equal(t, k.want, got, nama)
+	}
+
+	t.Run("akun tidak ada: tertutup, bukan seluruh Aceh", func(t *testing.T) {
+		uc, _ := newTestUseCase(&mockRepository{penggunaErr: domain.ErrPenggunaTidakAda})
+		got, err := uc.Cakupan(t.Context(), uid1)
+		require.NoError(t, err)
+		assert.Equal(t, domain.Cakupan{}, got)
+	})
+
+	t.Run("galat basis data: galat, tidak pernah cakupan yang lebih luas", func(t *testing.T) {
+		uc, _ := newTestUseCase(&mockRepository{penggunaErr: errors.New("db mati")})
+		got, err := uc.Cakupan(t.Context(), uid1)
+		require.Error(t, err)
+		assert.Equal(t, domain.Cakupan{}, got)
+	})
+}
+
+func TestCakupanBaca_TanpaHargaLihatHanyaEntriSendiri(t *testing.T) {
+	// Pemanggil tanpa harga.lihat tidak memicu pencarian peran: hanya entri miliknya, apa pun perannya.
+	repo := &mockRepository{pengguna: domain.PenggunaCakupan{Peran: "MANAJER_DATA"}, penggunaErr: errors.New("tidak boleh dibaca")}
+	uc, _ := newTestUseCase(repo)
+	got, err := uc.CakupanBaca(t.Context(), "u1", false)
+	require.NoError(t, err)
+	assert.Equal(t, domain.CakupanMilik("u1"), got)
+
+	repo = &mockRepository{pengguna: domain.PenggunaCakupan{Peran: "MANAJER_DATA"}}
+	uc, _ = newTestUseCase(repo)
+	got, err = uc.CakupanBaca(t.Context(), "u1", true)
+	require.NoError(t, err)
+	assert.Equal(t, domain.CakupanSemua(), got, "dengan harga.lihat mengikuti peran")
+}
+
+func TestCakupan_DiteruskanKeRepository(t *testing.T) {
+	repo := new(mockRepository)
+	uc, _ := newTestUseCase(repo)
+	cakupan := domain.Cakupan{KabupatenKode: "1171", PemilikID: "u1"}
+	repo.On("List", mock.Anything, domain.ListFilter{Page: 1, Limit: DefaultLimit, Cakupan: cakupan}).Return([]domain.EntriView{}, int64(0), nil)
+	repo.On("Ringkasan", mock.Anything, fixedNow.AddDate(0, 0, -DefaultRingkasanHari), cakupan).Return(domain.Ringkasan{}, nil)
+	repo.On("Transisi", mock.Anything, []idx.ID{1}, domain.BulkValidasi, "u1", "", fixedNow, cakupan).
+		Return([]domain.HasilTransisi{lewat(1, domain.SebabTidakDitemukan)}, nil)
+
+	_, _, err := uc.ListHarga(t.Context(), domain.ListFilter{Cakupan: cakupan})
+	require.NoError(t, err)
+	_, err = uc.Ringkasan(t.Context(), 0, cakupan)
+	require.NoError(t, err)
+	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1}, "validasi", "u1", "", cakupan)
+	require.NoError(t, err)
+	assert.Equal(t, []RincianBulk{{ID: 1, Sebab: domain.SebabTidakDitemukan}}, hasil.Rincian)
+	repo.AssertExpectations(t)
 }
 
 func TestCreateHarga_StoresAutomaticValidationResult(t *testing.T) {

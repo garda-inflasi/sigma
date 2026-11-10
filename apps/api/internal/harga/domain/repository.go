@@ -13,6 +13,8 @@ var (
 	ErrNotFound = errors.New("entri harga tidak ditemukan")
 	// ErrReferensiTidakAda dikembalikan bila komoditas atau pasar yang dirujuk tidak ada.
 	ErrReferensiTidakAda = errors.New("komoditas atau pasar tidak ditemukan")
+	// ErrPenggunaTidakAda dikembalikan bila akun pemanggil tidak ada di basis data.
+	ErrPenggunaTidakAda = errors.New("pengguna tidak ditemukan")
 )
 
 // JendelaBentrok adalah selisih waktu pencatatan terjauh antara dua entri petugas
@@ -36,10 +38,20 @@ type ListFilter struct {
 	Urut  string
 	Page  int
 	Limit int
+	// Cakupan membatasi baris yang boleh dilihat pemanggil (02-B), digabung (AND) dengan penyaring di atas. Nilai nol
+	// tertutup: daftar kosong.
+	Cakupan Cakupan
 }
 
 // Urutan daftar entri.
 const UrutSkor = "skor"
+
+// PenggunaCakupan adalah peran dan kabupaten tugas pengguna yang menentukan Cakupan-nya.
+type PenggunaCakupan struct {
+	Peran string
+	// KabupatenKode kosong untuk pengguna tingkat provinsi.
+	KabupatenKode string
+}
 
 // Pengiriman adalah entri baru beserta cara menanganinya.
 type Pengiriman struct {
@@ -98,7 +110,8 @@ type Repository interface {
 	List(ctx context.Context, filter ListFilter) ([]EntriView, int64, error)
 	// GetByID mencari entri menurut ID BIGINT atau kode lama (alias tautan lama); ErrNotFound bila tidak ada.
 	GetByID(ctx context.Context, ref idx.RujukanID) (*EntriView, error)
-	Ringkasan(ctx context.Context, sejak time.Time) (Ringkasan, error)
+	// Ringkasan menghitung entri di dalam cakupan sejak waktu tertentu.
+	Ringkasan(ctx context.Context, sejak time.Time, cakupan Cakupan) (Ringkasan, error)
 	// Tren merata-ratakan entri berstatus DIVALIDASI atau DIPUBLIKASI di satu kabupaten.
 	Tren(ctx context.Context, komoditasKode, kabupatenKode string, sejak time.Time, interval string) ([]TitikTren, error)
 	// SatuanKomoditas mengembalikan satuan komoditas dan memastikan pasar aktif ada.
@@ -110,8 +123,12 @@ type Repository interface {
 	// menolak penyimpanan kecuali Pengiriman.Pertahankan.
 	Simpan(ctx context.Context, kirim Pengiriman) (HasilSimpan, error)
 	// Transisi menerapkan aksi dalam satu transaksi pada id yang memenuhi Evaluasi dan
-	// mencatat riwayat statusnya. Hasilnya satu per id, urut seperti ids.
-	Transisi(ctx context.Context, ids []idx.ID, aksi BulkAction, aktorID, alasan string, waktu time.Time) ([]HasilTransisi, error)
+	// mencatat riwayat statusnya. Hasilnya satu per id, urut seperti ids. Entri di luar cakupan tidak dikunci
+	// dan tidak diubah; dilaporkan SebabTidakDitemukan, sama dengan entri yang tidak ada.
+	Transisi(ctx context.Context, ids []idx.ID, aksi BulkAction, aktorID, alasan string, waktu time.Time, cakupan Cakupan) ([]HasilTransisi, error)
+	// PenggunaCakupan membaca peran dan kabupaten tugas pengguna dari basis data (bukan dari klaim token, yang bisa
+	// basi sampai access token habis); ErrPenggunaTidakAda bila akunnya tidak ada.
+	PenggunaCakupan(ctx context.Context, penggunaID string) (PenggunaCakupan, error)
 	// Riwayat mengembalikan perpindahan status entri, yang terlama lebih dulu.
 	Riwayat(ctx context.Context, entriID idx.ID) ([]RiwayatView, error)
 	// Versi mengembalikan seluruh versi isi entri (tabel entri_harga_versi), nomor terkecil lebih dulu.

@@ -1,0 +1,55 @@
+{
+  "pasangan": 4,
+  "sepakat": 2,
+  "batas_pct": 10,
+  "items": [
+    {
+      "komoditas_kode": "CBM-KRT",
+      "komoditas_nama": "Cabai merah keriting",
+      "kabupaten_kode": "1171",
+      "kabupaten_nama": "KOTA BANDA ACEH",
+      "tanggal": "2026-11-08",
+      "harga_lapangan": 62400,
+      "harga_eksternal": 52400,
+      "selisih_pct": 19.1,
+      "sepakat": false,
+      "demo": true
+    },
+    {
+      "komoditas_kode": "BWM",
+      "komoditas_nama": "Bawang merah",
+      "kabupaten_kode": "1171",
+      "kabupaten_nama": "KOTA BANDA ACEH",
+      "tanggal": "2026-11-08",
+      "harga_lapangan": 48000,
+      "harga_eksternal": 41500,
+      "selisih_pct": 15.7,
+      "sepakat": false,
+      "demo": true
+    },
+    {
+      "komoditas_kode": "TLR",
+      "komoditas_nama": "Telur ayam ras",
+      "kabupaten_kode": "1171",
+      "kabupaten_nama": "KOTA BANDA ACEH",
+      "tanggal": "2026-11-08",
+      "harga_lapangan": 29900,
+      "harga_eksternal": 30400,
+      "selisih_pct": -1.6,
+      "sepakat": true,
+      "demo": true
+    },
+    {
+      "komoditas_kode": "BRS-MED",
+      "komoditas_nama": "Beras medium",
+      "kabupaten_kode": "1171",
+      "kabupaten_nama": "KOTA BANDA ACEH",
+      "tanggal": "2026-11-08",
+      "harga_lapangan": 14300,
+      "harga_eksternal": 14500,
+      "selisih_pct": -1.4,
+      "sepakat": true,
+      "demo": true
+    }
+  ]
+}

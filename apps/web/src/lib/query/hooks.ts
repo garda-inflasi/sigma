@@ -6,6 +6,7 @@ import { api, bulk } from "@/lib/api/endpoints";
 import { penggunaApi, type BulkAksi, type CreatePenggunaInput, type UpdatePenggunaInput } from "@/lib/api/pengguna";
 import type { AksiModel, SimulasiInput } from "@/lib/api/prediksi";
 import type { UbahAturanInput } from "@/lib/api/ews";
+import { bersihkanFilter, type FilterOperasional, type SaringanOperasional } from "@/lib/api/dashboard";
 import { labelKode } from "@/lib/kode";
 import { ringkasHasilKartu, type AksiKartu, type BuatIntervensiInput, type KeputusanPersetujuan } from "@/lib/api/intervensi";
 import type { SumberBulkAksi } from "@/lib/api/sumber";
@@ -14,7 +15,7 @@ import { ringkasSebab, type HargaParams } from "@/lib/api/harga";
 import { MASTER_BULK_LABEL, ringkasDitolak, type KecamatanParams, type MasterBulkAksi, type PedagangParams } from "@/lib/api/master";
 import { ENTITAS_LABEL, pesanGalatMaster, type EntitasPerubahan, type PerubahanParams, type UsulanBody } from "@/lib/api/master-perubahan";
 import { useOptionalSession } from "@/lib/auth/session-context";
-import { MODE_MOCK, mockDelay } from "@/lib/api/client";
+import { ApiError, MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { PembacaanManualPayload, TransaksiPayload, UbahFasilitasPayload } from "@/lib/api/cold-storage";
 import type { OptimasiParams } from "@/lib/api/spasial";
@@ -35,9 +36,46 @@ const LIVE = 30_000;
  */
 export const useSiklusAktif = (enabled = true) =>
   useQuery({ queryKey: qk.siklus(), queryFn: api.siklus.aktif, staleTime: 5 * 60_000, enabled });
-export const useKpiOperasional = () => useQuery({ queryKey: qk.operasional.kpi(), queryFn: api.operasional.kpi, refetchInterval: LIVE });
-export const useHeatmap = () => useQuery({ queryKey: qk.operasional.heatmap(), queryFn: api.operasional.heatmap, refetchInterval: LIVE * 2 });
+/** Kartu KPI; filter opsional (kabupaten, komoditas, periode), tanpa filter seluruh Aceh 14 hari terakhir. */
+export const useKpiOperasional = (filter?: FilterOperasional) => {
+  const f = bersihkanFilter(filter);
+  return useQuery({ queryKey: qk.operasional.kpi(f), queryFn: () => api.operasional.kpi(f), refetchInterval: LIVE });
+};
+/** Peta panas harga; filter opsional seperti KPI. */
+export const useHeatmap = (filter?: FilterOperasional) => {
+  const f = bersihkanFilter(filter);
+  return useQuery({ queryKey: qk.operasional.heatmap(f), queryFn: () => api.operasional.heatmap(f), refetchInterval: LIVE * 2 });
+};
 export const useAktivitasLapangan = () => useQuery({ queryKey: qk.operasional.aktivitas(), queryFn: api.operasional.aktivitas, refetchInterval: LIVE });
+/**
+ * Aktivitas per petugas. `enabled` menunda permintaan sampai rinciannya diminta (daftar bisa ratusan petugas).
+ * 403 (peran kustom tanpa `harga.lihat`) bersifat tetap: tidak diulang dan tidak dimuat ulang berkala.
+ */
+export const useAktivitasPetugas = (opsi: { kabupatenKode?: string; enabled?: boolean } = {}) => {
+  const { kabupatenKode, enabled = true } = opsi;
+  return useQuery({
+    queryKey: qk.operasional.petugas(kabupatenKode),
+    queryFn: () => api.operasional.aktivitasPetugas(kabupatenKode),
+    enabled,
+    retry: false,
+    refetchInterval: (q) => (q.state.error instanceof ApiError && q.state.error.status === 403 ? false : LIVE),
+  });
+};
+/** Stok cold storage real-time per komoditas. Belum dipakai kartu UI. */
+export const useStokOperasional = (saringan?: SaringanOperasional) => {
+  const f = bersihkanFilter(saringan);
+  return useQuery({ queryKey: qk.operasional.stok(f), queryFn: () => api.operasional.stok(f), refetchInterval: LIVE });
+};
+/** Harga dan produksi di tingkat produsen. Belum dipakai kartu UI. */
+export const useProdusenOperasional = (saringan?: SaringanOperasional) => {
+  const f = bersihkanFilter(saringan);
+  return useQuery({ queryKey: qk.operasional.produsen(f), queryFn: () => api.operasional.produsen(f), refetchInterval: LIVE * 2 });
+};
+/** Pergerakan logistik dan rute aktif sepekan terakhir. Belum dipakai kartu UI. */
+export const useLogistikOperasional = (saringan?: SaringanOperasional) => {
+  const f = bersihkanFilter(saringan);
+  return useQuery({ queryKey: qk.operasional.logistik(f), queryFn: () => api.operasional.logistik(f), refetchInterval: LIVE });
+};
 export const usePembandingHarga = () => useQuery({ queryKey: qk.operasional.pembanding(), queryFn: api.operasional.pembandingHarga, refetchInterval: LIVE * 2 });
 export const useCuacaTerbaru = () => useQuery({ queryKey: qk.operasional.cuaca(), queryFn: api.operasional.cuaca, refetchInterval: LIVE * 10 });
 export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });

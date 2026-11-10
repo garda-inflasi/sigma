@@ -1,0 +1,20 @@
+{
+  "tanggal": "2026-11-10",
+  "jendela_hari": 7,
+  "petugas": [
+    {
+      "id": "03dc79aa-484b-322e-a0ae-3937fb4f3a23",
+      "nama": "Aulia Rahman",
+      "kabupaten_kode": "1171",
+      "kabupaten_nama": "KOTA BANDA ACEH",
+      "entri_hari_ini": 10,
+      "target_harian": 14,
+      "menunggu_validasi": 19,
+      "ditolak_jendela": 11,
+      "entri_terakhir_pada": "2026-11-10T14:26:21.480678+07:00",
+      "tugas_aktif": 3,
+      "tugas_selesai": 1,
+      "tugas_terlambat": 1
+    }
+  ]
+}

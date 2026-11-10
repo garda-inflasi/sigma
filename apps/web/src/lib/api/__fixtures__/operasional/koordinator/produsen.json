@@ -1,0 +1,90 @@
+{
+  "dari": "2026-11-04",
+  "sampai": "2026-11-10",
+  "komoditas": [
+    {
+      "komoditas_kode": "BWM",
+      "komoditas_nama": "Bawang merah",
+      "satuan": "kg",
+      "produsen": {
+        "harga": 33700,
+        "jumlah_entri": 4,
+        "jumlah_kabupaten": 1
+      },
+      "konsumen": {
+        "harga": 46850,
+        "jumlah_entri": 6,
+        "jumlah_kabupaten": 1
+      },
+      "margin": {
+        "selisih": 13150,
+        "persen_produsen": 39,
+        "persen_konsumen": 28.1
+      },
+      "produksi": null
+    },
+    {
+      "komoditas_kode": "CBM-KRT",
+      "komoditas_nama": "Cabai merah keriting",
+      "satuan": "kg",
+      "produsen": {
+        "harga": 42900,
+        "jumlah_entri": 5,
+        "jumlah_kabupaten": 1
+      },
+      "konsumen": {
+        "harga": 58225,
+        "jumlah_entri": 4,
+        "jumlah_kabupaten": 1
+      },
+      "margin": {
+        "selisih": 15325,
+        "persen_produsen": 35.7,
+        "persen_konsumen": 26.3
+      },
+      "produksi": null
+    },
+    {
+      "komoditas_kode": "KTG",
+      "komoditas_nama": "Kentang",
+      "satuan": "kg",
+      "produsen": {
+        "harga": 9820,
+        "jumlah_entri": 5,
+        "jumlah_kabupaten": 1
+      },
+      "konsumen": {
+        "harga": 13520,
+        "jumlah_entri": 5,
+        "jumlah_kabupaten": 1
+      },
+      "margin": {
+        "selisih": 3700,
+        "persen_produsen": 37.7,
+        "persen_konsumen": 27.4
+      },
+      "produksi": null
+    },
+    {
+      "komoditas_kode": "TMT",
+      "komoditas_nama": "Tomat",
+      "satuan": "kg",
+      "produsen": {
+        "harga": 7575,
+        "jumlah_entri": 4,
+        "jumlah_kabupaten": 1
+      },
+      "konsumen": {
+        "harga": 10460,
+        "jumlah_entri": 5,
+        "jumlah_kabupaten": 1
+      },
+      "margin": {
+        "selisih": 2885,
+        "persen_produsen": 38.1,
+        "persen_konsumen": 27.6
+      },
+      "produksi": null
+    }
+  ]
+}

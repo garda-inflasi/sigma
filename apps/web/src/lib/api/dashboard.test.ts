@@ -3,8 +3,11 @@ import { describe, it } from "node:test";
 import type { EntriHarga } from "@/lib/data/types";
 import {
   aktivitasMock,
+  bersihkanFilter,
   capaianPct,
+  namaRingkas,
   toAktivitasLapangan,
+  toFilterQuery,
   toHeatmap,
   toCuacaWilayah,
   toKpiOperasional,
@@ -210,5 +213,38 @@ describe("toCuacaWilayah", () => {
         demo: false,
       },
     );
+  });
+});
+
+describe("toFilterQuery", () => {
+  it("tanpa isian kueri kosong (perilaku bawaan tidak berubah)", () => {
+    assert.equal(toFilterQuery(), "");
+    assert.equal(toFilterQuery({}), "");
+    assert.equal(toFilterQuery({ kabupatenKode: undefined, komoditasKode: "", dari: "  " }), "");
+  });
+
+  it("memakai nama kueri API dengan urutan tetap, apa pun urutan isiannya", () => {
+    assert.equal(
+      toFilterQuery({ sampai: "2026-11-05", dari: "2026-11-01", komoditasKode: "CBM-KRT", kabupatenKode: "1171" }),
+      "?kabupaten_kode=1171&komoditas_kode=CBM-KRT&dari=2026-11-01&sampai=2026-11-05",
+    );
+  });
+
+  it("hanya isian yang terisi, spasi tepi dibuang, nilai di-encode", () => {
+    assert.equal(toFilterQuery({ komoditasKode: " BRS-MED " }), "?komoditas_kode=BRS-MED");
+    assert.equal(toFilterQuery({ kabupatenKode: "11 71" }), "?kabupaten_kode=11+71");
+  });
+
+  it("bersihkanFilter membuang isian kosong sehingga filter setara berbagi kunci cache", () => {
+    assert.deepEqual(bersihkanFilter(undefined), {});
+    assert.deepEqual(bersihkanFilter({ kabupatenKode: " 1171 ", komoditasKode: "", dari: undefined }), { kabupatenKode: "1171" });
+    assert.equal(JSON.stringify(bersihkanFilter({ dari: "2026-11-01", kabupatenKode: "1171" })), JSON.stringify(bersihkanFilter({ kabupatenKode: "1171", dari: "2026-11-01" })));
+  });
+});
+
+describe("namaRingkas", () => {
+  it("memakai nama referensi bila kode dikenal, selain itu label dari nama resmi", () => {
+    assert.equal(namaRingkas("1171", "KOTA BANDA ACEH"), "Banda Aceh");
+    assert.equal(namaRingkas("9999", "KABUPATEN BARU"), "Kab. Baru");
   });
 });

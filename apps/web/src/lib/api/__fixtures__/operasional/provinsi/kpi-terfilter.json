@@ -1,0 +1,70 @@
+[
+  {
+    "id": "entri",
+    "label": "Entri harga 5 Nov 2026",
+    "nilai": 2,
+    "format": "angka",
+    "delta": 0,
+    "keterangan_delta": "dari 7 hari sebelumnya",
+    "tren": [
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    "tone": "data",
+    "href": "/data/harga"
+  },
+  {
+    "id": "validasi",
+    "label": "Tingkat validasi",
+    "nilai": 100,
+    "format": "persen",
+    "delta": 0,
+    "keterangan_delta": "poin dari pekan lalu",
+    "tren": [
+      100,
+      100,
+      100,
+      100,
+      100
+    ],
+    "tone": "data",
+    "href": "/data/harga?status=DIAJUKAN"
+  },
+  {
+    "id": "waspada",
+    "label": "Komoditas di atas ambang",
+    "nilai": 0,
+    "format": "angka",
+    "delta": 0,
+    "keterangan_delta": "komoditas sejak kemarin",
+    "tren": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "tone": "data",
+    "href": "/ews"
+  },
+  {
+    "id": "cs",
+    "label": "Utilisasi cold storage",
+    "nilai": 0,
+    "format": "persen",
+    "delta": 0,
+    "keterangan_delta": "poin dari pekan lalu",
+    "tren": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "tone": "data",
+    "href": "/cold-storage"
+  }
+]

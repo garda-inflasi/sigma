@@ -1,0 +1,180 @@
+{
+  "kabupaten": [
+    {
+      "kode": "1171",
+      "nama": "KOTA BANDA ACEH"
+    }
+  ],
+  "komoditas": [
+    {
+      "kode": "BWM",
+      "nama": "Bawang merah",
+      "pilot": true
+    },
+    {
+      "kode": "BRS-MED",
+      "nama": "Beras medium",
+      "pilot": true
+    },
+    {
+      "kode": "CBM-KRT",
+      "nama": "Cabai merah keriting",
+      "pilot": true
+    },
+    {
+      "kode": "BWP",
+      "nama": "Bawang putih",
+      "pilot": false
+    },
+    {
+      "kode": "BRS-PRM",
+      "nama": "Beras premium",
+      "pilot": false
+    },
+    {
+      "kode": "CBR-RWT",
+      "nama": "Cabai rawit merah",
+      "pilot": false
+    },
+    {
+      "kode": "DAG-AYM",
+      "nama": "Daging ayam ras",
+      "pilot": false
+    },
+    {
+      "kode": "DAG-SPI",
+      "nama": "Daging sapi",
+      "pilot": false
+    },
+    {
+      "kode": "GLA",
+      "nama": "Gula pasir",
+      "pilot": false
+    },
+    {
+      "kode": "IKN-TGK",
+      "nama": "Ikan tongkol",
+      "pilot": false
+    },
+    {
+      "kode": "KTG",
+      "nama": "Kentang",
+      "pilot": false
+    },
+    {
+      "kode": "MYK",
+      "nama": "Minyak goreng curah",
+      "pilot": false
+    },
+    {
+      "kode": "TLR",
+      "nama": "Telur ayam ras",
+      "pilot": false
+    },
+    {
+      "kode": "TMT",
+      "nama": "Tomat",
+      "pilot": false
+    }
+  ],
+  "sel": [
+    {
+      "komoditas_kode": "BRS-MED",
+      "kabupaten_kode": "1171",
+      "delta": 1,
+      "harga": 14300,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "BRS-PRM",
+      "kabupaten_kode": "1171",
+      "delta": -1.3,
+      "harga": 16000,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "BWM",
+      "kabupaten_kode": "1171",
+      "delta": 1.8,
+      "harga": 47300,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "BWP",
+      "kabupaten_kode": "1171",
+      "delta": 1.3,
+      "harga": 39500,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "CBM-KRT",
+      "kabupaten_kode": "1171",
+      "delta": 12.5,
+      "harga": 62400,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "CBR-RWT",
+      "kabupaten_kode": "1171",
+      "delta": 12.4,
+      "harga": 68800,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "DAG-AYM",
+      "kabupaten_kode": "1171",
+      "delta": -1,
+      "harga": 37000,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "DAG-SPI",
+      "kabupaten_kode": "1171",
+      "delta": -0.1,
+      "harga": 151800,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "GLA",
+      "kabupaten_kode": "1171",
+      "delta": -2.9,
+      "harga": 18000,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "IKN-TGK",
+      "kabupaten_kode": "1171",
+      "delta": -1.2,
+      "harga": 38200,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "KTG",
+      "kabupaten_kode": "1171",
+      "delta": -2.8,
+      "harga": 13300,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "MYK",
+      "kabupaten_kode": "1171",
+      "delta": 2.3,
+      "harga": 18300,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "TLR",
+      "kabupaten_kode": "1171",
+      "delta": -1.9,
+      "harga": 29900,
+      "sumber": "LAPANGAN"
+    },
+    {
+      "komoditas_kode": "TMT",
+      "kabupaten_kode": "1171",
+      "delta": -10.8,
+      "harga": 9700,
+      "sumber": "LAPANGAN"
+    }
+  ]
+}

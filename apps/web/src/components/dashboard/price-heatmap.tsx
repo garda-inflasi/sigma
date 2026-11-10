@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PanelTitle } from "@/components/garda/page-header";
+import { PanelGalat } from "@/components/garda/panel-galat";
 import { Segmented } from "@/components/garda/segmented";
 import { Shimmer } from "@/components/garda/shimmer";
 import type { SelHeatmap } from "@/lib/data/types";
@@ -17,9 +18,13 @@ import { cn } from "@/lib/utils";
 
 const LEGENDA = [-10, -5, 0, 5, 9, 14].map((v) => heatTone(v));
 
-/** Heatmap Δ% harga konsumen (komoditas × wilayah) vs rata-rata 7 hari. */
+/**
+ * Heatmap Δ% harga konsumen (komoditas × wilayah) vs rata-rata 7 hari. Server hanya mengirim kabupaten dan komoditas
+ * yang punya sel, jadi cakupan tanpa data (mis. Koordinator di kabupaten yang belum punya harga tervalidasi) berupa
+ * daftar kosong: itu keadaan kosong, bukan galat, dan tidak boleh menyisakan grid tanpa kolom.
+ */
 export function PriceHeatmap({ className }: { className?: string } = {}) {
-  const { data, isLoading } = useHeatmap();
+  const { data, isLoading, error, refetch } = useHeatmap();
   const router = useRouter();
   const [mode, setMode] = useState<"semua" | "pilot">("semua");
   const [hover, setHover] = useState<SelHeatmap | null>(null);
@@ -51,6 +56,16 @@ export function PriceHeatmap({ className }: { className?: string } = {}) {
       <div className="scrollbar-thin mt-3 overflow-x-auto pb-1">
         {isLoading ? (
           <Shimmer className="h-[420px] w-full rounded-xl" />
+        ) : !data ? (
+          <PanelGalat judul="Peta panas harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-[420px]" />
+        ) : kab.length === 0 || data.komoditas.length === 0 ? (
+          <p className="grid h-[420px] place-items-center rounded-xl bg-mist-50/50 px-6 text-center text-sm text-muted-foreground dark:bg-white/5">
+            Belum ada harga tervalidasi untuk dipetakan di wilayah ini.
+          </p>
+        ) : komoditas.length === 0 ? (
+          <p className="grid h-[420px] place-items-center rounded-xl bg-mist-50/50 px-6 text-center text-sm text-muted-foreground dark:bg-white/5">
+            Tidak ada komoditas pilot pada data ini.
+          </p>
         ) : (
           <motion.div
             initial="hidden"

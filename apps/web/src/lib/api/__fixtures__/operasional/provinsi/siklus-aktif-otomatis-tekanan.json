@@ -1,0 +1,57 @@
+{
+  "siklus": "tekanan",
+  "sejak": "2026-11-10",
+  "otomatis": true,
+  "alasan": {
+    "ringkasan": "Siklus awal TEKANAN: 6 alert LONJAKAN_HARGA ≥ SIAGA; 5 alert ANOMALI_CUACA ≥ SIAGA. Aturan SURPLUS ikut memicu (utilisasi stok 82,1% ≥ 50%) tetapi tidak diutamakan karena prioritasnya lebih rendah.",
+    "pemicu": [
+      {
+        "aturan": "SKL-TKN-LONJAKAN-HARGA",
+        "siklus": "tekanan",
+        "indikator": "ALERT_EWS",
+        "nilai": 6,
+        "ambang": 1,
+        "satuan": "alert",
+        "prioritas": 10,
+        "rujukan": [
+          "EWS-1000",
+          "EWS-1001",
+          "EWS-1002",
+          "EWS-1003",
+          "EWS-1009"
+        ],
+        "rincian": ""
+      },
+      {
+        "aturan": "SKL-TKN-ANOMALI-CUACA",
+        "siklus": "tekanan",
+        "indikator": "ALERT_EWS",
+        "nilai": 5,
+        "ambang": 1,
+        "satuan": "alert",
+        "prioritas": 10,
+        "rujukan": [
+          "EWS-2016",
+          "EWS-2012",
+          "EWS-2007",
+          "EWS-2003",
+          "EWS-0901"
+        ],
+        "rincian": ""
+      }
+    ],
+    "ditekan": [
+      {
+        "aturan": "SKL-SRP-UTILISASI-STOK",
+        "siklus": "surplus",
+        "indikator": "UTILISASI_STOK",
+        "nilai": 82.10526315789473,
+        "ambang": 50,
+        "satuan": "%",
+        "prioritas": 20,
+        "rujukan": [],
+        "rincian": "780 dari 950 ton"
+      }
+    ]
+  }
+}

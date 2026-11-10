@@ -1,0 +1,24 @@
+{
+  "kabupaten": [
+    {
+      "kode": "1171",
+      "nama": "KOTA BANDA ACEH"
+    }
+  ],
+  "komoditas": [
+    {
+      "kode": "CBM-KRT",
+      "nama": "Cabai merah keriting",
+      "pilot": true
+    }
+  ],
+  "sel": [
+    {
+      "komoditas_kode": "CBM-KRT",
+      "kabupaten_kode": "1171",
+      "delta": 1.7,
+      "harga": 54900,
+      "sumber": "LAPANGAN"
+    }
+  ]
+}

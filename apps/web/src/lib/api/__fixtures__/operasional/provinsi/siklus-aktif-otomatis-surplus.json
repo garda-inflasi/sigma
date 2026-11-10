@@ -1,0 +1,22 @@
+{
+  "siklus": "surplus",
+  "sejak": "2026-11-10",
+  "otomatis": true,
+  "alasan": {
+    "ringkasan": "Siklus awal SURPLUS: utilisasi stok 82,1% ≥ 50%.",
+    "pemicu": [
+      {
+        "aturan": "SKL-SRP-UTILISASI-STOK",
+        "siklus": "surplus",
+        "indikator": "UTILISASI_STOK",
+        "nilai": 82.10526315789473,
+        "ambang": 50,
+        "satuan": "%",
+        "prioritas": 20,
+        "rujukan": [],
+        "rincian": "780 dari 950 ton"
+      }
+    ],
+    "ditekan": []
+  }
+}

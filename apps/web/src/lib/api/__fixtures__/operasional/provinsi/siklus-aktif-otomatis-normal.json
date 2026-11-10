@@ -1,0 +1,10 @@
+{
+  "siklus": "normal",
+  "sejak": "2026-11-10",
+  "otomatis": true,
+  "alasan": {
+    "ringkasan": "Siklus awal NORMAL: tidak ada aturan yang memicu.",
+    "pemicu": [],
+    "ditekan": []
+  }
+}

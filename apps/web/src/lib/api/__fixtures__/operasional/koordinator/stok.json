@@ -1,0 +1,19 @@
+{
+  "tanggal": "2026-11-10",
+  "ambang_kedaluwarsa_hari": 7,
+  "ambang_risiko": 0.6,
+  "ringkasan": {
+    "total_ton": 0,
+    "jumlah_lot": 0,
+    "jumlah_fasilitas": 0,
+    "kapasitas_ton": 0,
+    "fasilitas_operasional": 0,
+    "utilisasi_pct": 0,
+    "mendekati_kedaluwarsa_ton": 0,
+    "risiko_tinggi_ton": 0,
+    "kedaluwarsa_lot": 0,
+    "kedaluwarsa_ton": 0,
+    "di_luar_operasional_ton": 0
+  },
+  "komoditas": []
+}

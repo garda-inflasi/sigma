@@ -1,4 +1,5 @@
 import type { AuditFilter } from "@/lib/api/audit";
+import type { FilterOperasional, SaringanOperasional } from "@/lib/api/dashboard";
 import type { HargaParams } from "@/lib/api/harga";
 import type { ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { KecamatanParams, PedagangParams } from "@/lib/api/master";
@@ -9,9 +10,14 @@ export const qk = {
   siklus: () => ["siklus"] as const,
   operasional: {
     all: ["operasional"] as const,
-    kpi: () => ["operasional", "kpi"] as const,
-    heatmap: () => ["operasional", "heatmap"] as const,
+    // Filter dibersihkan pemanggil (bersihkanFilter) supaya filter yang sama maknanya berbagi cache.
+    kpi: (filter: FilterOperasional = {}) => ["operasional", "kpi", filter] as const,
+    heatmap: (filter: FilterOperasional = {}) => ["operasional", "heatmap", filter] as const,
     aktivitas: () => ["operasional", "aktivitas"] as const,
+    petugas: (kabupatenKode = "") => ["operasional", "petugas", kabupatenKode] as const,
+    stok: (saringan: SaringanOperasional = {}) => ["operasional", "stok", saringan] as const,
+    produsen: (saringan: SaringanOperasional = {}) => ["operasional", "produsen", saringan] as const,
+    logistik: (saringan: SaringanOperasional = {}) => ["operasional", "logistik", saringan] as const,
     pembanding: () => ["operasional", "pembanding-harga"] as const,
     cuaca: () => ["operasional", "cuaca"] as const,
     marker: () => ["operasional", "marker"] as const,

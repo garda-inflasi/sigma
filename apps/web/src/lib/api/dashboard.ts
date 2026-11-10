@@ -1,11 +1,60 @@
 /**
  * Pemetaan dashboard operasional dari representasi API Go (snake_case) ke model UI.
- * Endpoint: GET /v1/dashboard/operasional/{kpi,heatmap,aktivitas-lapangan}.
+ * Endpoint: GET /v1/dashboard/operasional/{kpi,heatmap,aktivitas-lapangan,pembanding-harga,cuaca}.
+ * Aktivitas per petugas, stok, produsen, dan logistik ada di dashboard-operasional.ts.
  */
 
 import { kabupatenByKode } from "@/lib/data/reference";
 import type { EntriHarga, KpiOperasional, SelHeatmap } from "@/lib/data/types";
 import { formatWilayah } from "./cold-storage";
+
+/**
+ * Isian opsional kueri KPI dan heatmap. Tanggal berformat YYYY-MM-DD (waktu Aceh), rentang paling lama 90 hari dan
+ * tidak boleh di masa depan; server menolak yang salah dengan 400 berpesan jelas. Tanpa isian, hasilnya seluruh Aceh,
+ * 14 hari berakhir hari ini. Koordinator dan Agregator selalu dibatasi ke kabupaten tugasnya oleh server.
+ */
+export interface FilterOperasional {
+  kabupatenKode?: string;
+  komoditasKode?: string;
+  dari?: string;
+  sampai?: string;
+}
+
+/** Isian opsional kueri stok, produsen, dan logistik (jendela waktunya ditetapkan server). */
+export type SaringanOperasional = Pick<FilterOperasional, "kabupatenKode" | "komoditasKode">;
+
+/** Urutan dan nama kueri API untuk tiap isian filter. */
+const KUERI_FILTER: readonly [keyof FilterOperasional, string][] = [
+  ["kabupatenKode", "kabupaten_kode"],
+  ["komoditasKode", "komoditas_kode"],
+  ["dari", "dari"],
+  ["sampai", "sampai"],
+];
+
+/**
+ * Membuang isian kosong (undefined, "", spasi) dan merapikan spasi tepi. Dua filter yang sama maknanya menghasilkan
+ * kunci cache dan kueri yang sama.
+ */
+export function bersihkanFilter<T extends FilterOperasional>(filter?: T): T {
+  const bersih: FilterOperasional = {};
+  for (const [kunci] of KUERI_FILTER) {
+    const nilai = filter?.[kunci]?.trim();
+    if (nilai) bersih[kunci] = nilai;
+  }
+  return bersih as T;
+}
+
+/** Kueri URL dari filter ("" bila tidak ada isian, selain itu diawali "?"). */
+export function toFilterQuery(filter?: FilterOperasional): string {
+  const bersih = bersihkanFilter(filter);
+  const kueri = new URLSearchParams();
+  for (const [kunci, nama] of KUERI_FILTER) {
+    const nilai = bersih[kunci];
+    if (nilai) kueri.set(nama, nilai);
+  }
+  const teks = kueri.toString();
+  return teks ? `?${teks}` : "";
+}
 
 export interface KpiResponse {
   id: string;
@@ -69,7 +118,7 @@ export function toKpiOperasional(k: KpiResponse): KpiOperasional {
 }
 
 /** Nama ringkas kabupaten/kota ("Aceh Besar"); bila kode tak dikenal, label dari nama resmi. */
-const namaRingkas = (kode: string, namaResmi: string) =>
+export const namaRingkas = (kode: string, namaResmi: string) =>
   kabupatenByKode[kode]?.nama ?? formatWilayah(namaResmi);
 
 export function toHeatmap(h: HeatmapResponse): Heatmap {

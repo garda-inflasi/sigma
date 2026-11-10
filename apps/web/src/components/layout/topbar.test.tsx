@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import type { ReactNode } from "react";
+import { muatFixture } from "@/lib/api/__fixtures__/muat";
+import type { SiklusAktifResponse } from "@/lib/api/siklus";
 import {
+  amplop,
+  galatApi,
   pasangFetchPalsu,
   penggunaSesi,
   renderHalaman,
@@ -156,5 +160,65 @@ describe("itemMenuProfil", () => {
       itemMenuProfil(true).map((i) => i.tab),
       ["profil"],
     );
+  });
+});
+
+describe("Topbar: siklus ekonomi aktif", () => {
+  const SIKLUS = "GET /v1/siklus/aktif";
+  // Peran dengan dashboard.operasional: tajuk memuat siklus aktif dari API.
+  const strategis = penggunaSesi({ role: "STRATEGIS_FMIPA", nama: "Ani Strategis", lembaga: "FMIPA USK" });
+  const pil = () => screen.findByRole("link", { name: /Tekanan harga \/ defisit|Siklus normal|Surplus pangan/ });
+
+  function renderDenganSiklus(jawaban: unknown) {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu({ [SIKLUS]: jawaban });
+    return renderHalaman(
+      <PathnameContext.Provider value="/operasional">
+        <Topbar />
+      </PathnameContext.Provider>,
+      { url: "/operasional", sesi: strategis },
+    );
+  }
+
+  it("siklus dari seed (tidak otomatis, alasan null): label siklus dan keterangan sejak kapan saja", async () => {
+    renderDenganSiklus(amplop(muatFixture<SiklusAktifResponse>("provinsi", "siklus-aktif")));
+    const pill = await pil();
+    assert.equal(pill.textContent?.trim(), "Tekanan harga / defisit");
+    assert.equal(pill.getAttribute("title"), "Sejak 4 Nov 2026");
+    assert.equal(pill.getAttribute("href"), "/intervensi?siklus=tekanan");
+  });
+
+  it("siklus otomatis: keterangan menyebut penentuan otomatis dan ringkasan alasan dari mesin", async () => {
+    const nyata = muatFixture<SiklusAktifResponse>("provinsi", "siklus-aktif-otomatis-tekanan");
+    renderDenganSiklus(amplop(nyata));
+    const pill = await pil();
+    assert.equal(pill.getAttribute("title"), `Ditentukan otomatis sejak 10 Nov 2026. ${nyata.alasan!.ringkasan}`);
+    assert.match(pill.getAttribute("title") ?? "", /^Ditentukan otomatis sejak 10 Nov 2026\. Siklus awal TEKANAN: 6 alert LONJAKAN_HARGA/);
+  });
+
+  it("siklus otomatis NORMAL dan SURPLUS: label mengikuti siklus, alasan tetap dipakai", async () => {
+    renderDenganSiklus(amplop(muatFixture<SiklusAktifResponse>("provinsi", "siklus-aktif-otomatis-normal")));
+    let pill = await pil();
+    assert.equal(pill.textContent?.trim(), "Siklus normal");
+    assert.match(pill.getAttribute("title") ?? "", /Siklus awal NORMAL: tidak ada aturan yang memicu\./);
+    document.body.innerHTML = "";
+
+    renderDenganSiklus(amplop(muatFixture<SiklusAktifResponse>("provinsi", "siklus-aktif-otomatis-surplus")));
+    pill = await pil();
+    assert.equal(pill.textContent?.trim(), "Surplus pangan");
+    assert.match(pill.getAttribute("title") ?? "", /utilisasi stok 82,1% ≥ 50%/);
+  });
+
+  it("siklus belum ada (404 pada basis data yang belum pernah dievaluasi): tajuk tetap tampil tanpa label siklus", async () => {
+    renderDenganSiklus(galatApi(404, "Siklus aktif tidak ditemukan untuk wilayah ini"));
+    assert.ok(await screen.findByRole("button", { name: "Menu akun" }));
+    await waitFor(() => assert.equal(fetchPalsu.ke("GET", "/v1/siklus/aktif").length >= 1, true));
+    assert.equal(screen.queryByRole("link", { name: /Tekanan harga|Siklus normal|Surplus pangan/ }), null);
+  });
+
+  it("peran tanpa dashboard.operasional tidak memanggil siklus sama sekali", async () => {
+    renderTopbar();
+    assert.ok(screen.getByRole("button", { name: "Menu akun" }));
+    assert.equal(fetchPalsu.ke("GET", "/v1/siklus/aktif").length, 0);
   });
 });

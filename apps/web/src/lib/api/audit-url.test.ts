@@ -60,4 +60,15 @@ describe("AUDIT_AKSI", () => {
   it("memuat aksi reset MFA", () => {
     assert.ok((AUDIT_AKSI as readonly string[]).includes("RESET_MFA"));
   });
+
+  it("memuat aksi penentuan siklus: GANTI_SIKLUS dan EVALUASI (entitas siklus_ekonomi)", () => {
+    assert.ok((AUDIT_AKSI as readonly string[]).includes("GANTI_SIKLUS"));
+    assert.ok((AUDIT_AKSI as readonly string[]).includes("EVALUASI"));
+  });
+
+  it("tanpa duplikat, dan aksi siklus bisa dipakai sebagai filter lewat kueri URL", () => {
+    assert.equal(new Set(AUDIT_AKSI).size, AUDIT_AKSI.length);
+    assert.match(toAuditQuery(dariQuery("aksi=GANTI_SIKLUS&entitas=siklus_ekonomi")), /aksi=GANTI_SIKLUS/);
+    assert.match(toAuditQuery(dariQuery("aksi=GANTI_SIKLUS&entitas=siklus_ekonomi")), /entitas=siklus_ekonomi/);
+  });
 });

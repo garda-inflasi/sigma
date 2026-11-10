@@ -2,6 +2,7 @@
 
 import { CloudRain } from "lucide-react";
 import { PanelTitle } from "@/components/garda/page-header";
+import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import {
@@ -15,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 /** Validasi silang: harga lapangan tervalidasi dibandingkan dengan harga eksternal (PIHPS) pada hari yang sama. */
 export function PembandingHargaCard() {
-  const { data, isLoading } = usePembandingHarga();
+  const { data, isLoading, error, refetch } = usePembandingHarga();
   const demo = data?.items.some((i) => i.demo) ?? false;
 
   return (
@@ -31,7 +32,9 @@ export function PembandingHargaCard() {
       <div className="mt-4 overflow-x-auto">
         {isLoading ? (
           <Shimmer className="h-40 w-full" />
-        ) : !data || data.items.length === 0 ? (
+        ) : !data ? (
+          <PanelGalat judul="Validasi silang gagal dimuat" error={error} onCoba={() => void refetch()} />
+        ) : data.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Belum ada pasangan harga lapangan dan eksternal pada hari yang sama.
             Jalankan ingestion PIHPS di halaman Sumber data.
@@ -84,7 +87,7 @@ export function PembandingHargaCard() {
 
 /** Cuaca harian terbaru per kabupaten/kota (BMKG); yang hujan lebat di depan. */
 export function CuacaWilayahCard() {
-  const { data, isLoading } = useCuacaTerbaru();
+  const { data, isLoading, error, refetch } = useCuacaTerbaru();
   const anomali = data?.filter((c) => c.anomali).length ?? 0;
   const demo = data?.some((c) => c.demo) ?? false;
 
@@ -103,7 +106,11 @@ export function CuacaWilayahCard() {
           Array.from({ length: 5 }).map((_, i) => (
             <Shimmer key={i} className="h-9 w-full" />
           ))
-        ) : !data || data.length === 0 ? (
+        ) : !data ? (
+          <li>
+            <PanelGalat judul="Cuaca wilayah gagal dimuat" error={error} onCoba={() => void refetch()} />
+          </li>
+        ) : data.length === 0 ? (
           <li className="text-sm text-muted-foreground">
             Belum ada data cuaca. Jalankan ingestion BMKG di halaman Sumber
             data.

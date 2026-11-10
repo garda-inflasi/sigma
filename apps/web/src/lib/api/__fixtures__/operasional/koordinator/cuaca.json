@@ -1,0 +1,13 @@
+[
+  {
+    "kabupaten_kode": "1171",
+    "kabupaten_nama": "KOTA BANDA ACEH",
+    "tanggal": "2026-11-10",
+    "curah_hujan_mm": 55,
+    "suhu_c": 27.6,
+    "kelembapan": 80,
+    "anomali": true,
+    "sumber": "BMKG",
+    "demo": true
+  }
+]

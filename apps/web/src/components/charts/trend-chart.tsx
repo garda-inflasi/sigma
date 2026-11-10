@@ -3,6 +3,7 @@
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PanelTitle } from "@/components/garda/page-header";
+import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { garda } from "@/lib/design/tokens";
 import { KOMODITAS, kabupatenByKode } from "@/lib/data/reference";
@@ -16,7 +17,7 @@ import { GlassTooltip } from "./glass-tooltip";
 export function TrendChart() {
   const [kode, setKode] = useState("CBM-KRT");
   const [kab, setKab] = useState("1171");
-  const { data, isLoading } = useTrenHarga(kode, kab);
+  const { data, isLoading, error, refetch } = useTrenHarga(kode, kab);
   const kom = KOMODITAS.find((k) => k.kode === kode);
   const namaWilayah = kabupatenByKode[kab]?.nama ?? "Aceh";
   const satuan = kom?.satuan ?? "kg";
@@ -37,7 +38,10 @@ export function TrendChart() {
       <div className="mt-4 min-h-[240px] flex-1">
         {isLoading && !data ? (
           <Shimmer className="h-[240px] w-full rounded-xl" />
-        ) : !data || data.length === 0 ? (
+        ) : !data ? (
+          // Selesai memuat tetapi tanpa data berarti gagal: bukan "belum ada data" yang menyesatkan.
+          <PanelGalat judul="Tren harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-[240px]" />
+        ) : data.length === 0 ? (
           <div className="grid h-[240px] place-items-center rounded-xl bg-mist-50/50 text-xs text-muted-foreground dark:bg-white/5">
             Belum ada data tren harga tervalidasi untuk kombinasi ini.
           </div>

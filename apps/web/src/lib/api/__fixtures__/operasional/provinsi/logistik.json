@@ -1,0 +1,210 @@
+{
+  "dari": "2026-11-04",
+  "sampai": "2026-11-10",
+  "ringkasan": {
+    "masuk": {
+      "jumlah": 4,
+      "volume_ton": 122.2
+    },
+    "keluar": {
+      "jumlah": 0,
+      "volume_ton": 0
+    },
+    "pindah": {
+      "jumlah": 0,
+      "volume_ton": 0
+    }
+  },
+  "komoditas": [
+    {
+      "komoditas_kode": "CBM-KRT",
+      "komoditas_nama": "Cabai merah keriting",
+      "masuk": {
+        "jumlah": 2,
+        "volume_ton": 74.2
+      },
+      "keluar": {
+        "jumlah": 0,
+        "volume_ton": 0
+      },
+      "pindah": {
+        "jumlah": 0,
+        "volume_ton": 0
+      }
+    },
+    {
+      "komoditas_kode": "CBR-RWT",
+      "komoditas_nama": "Cabai rawit merah",
+      "masuk": {
+        "jumlah": 2,
+        "volume_ton": 48
+      },
+      "keluar": {
+        "jumlah": 0,
+        "volume_ton": 0
+      },
+      "pindah": {
+        "jumlah": 0,
+        "volume_ton": 0
+      }
+    }
+  ],
+  "terbaru": [
+    {
+      "id": "6",
+      "waktu": "2026-11-07T14:55:54.69624+07:00",
+      "jenis": "MASUK",
+      "komoditas_kode": "CBM-KRT",
+      "komoditas_nama": "Cabai merah keriting",
+      "volume_ton": 36,
+      "asal": null,
+      "tujuan": {
+        "id": "aef12e36-fce3-3252-8c8a-ccdf9bd9dfcd",
+        "kode": "CS-01",
+        "nama": "Cold Storage Lambaro",
+        "kabupaten_kode": "1108",
+        "kabupaten_nama": "KABUPATEN ACEH BESAR"
+      }
+    },
+    {
+      "id": "5",
+      "waktu": "2026-11-07T14:55:54.69624+07:00",
+      "jenis": "MASUK",
+      "komoditas_kode": "CBR-RWT",
+      "komoditas_nama": "Cabai rawit merah",
+      "volume_ton": 18.6,
+      "asal": null,
+      "tujuan": {
+        "id": "aef12e36-fce3-3252-8c8a-ccdf9bd9dfcd",
+        "kode": "CS-01",
+        "nama": "Cold Storage Lambaro",
+        "kabupaten_kode": "1108",
+        "kabupaten_nama": "KABUPATEN ACEH BESAR"
+      }
+    },
+    {
+      "id": "4",
+      "waktu": "2026-11-05T14:55:54.69624+07:00",
+      "jenis": "MASUK",
+      "komoditas_kode": "CBM-KRT",
+      "komoditas_nama": "Cabai merah keriting",
+      "volume_ton": 38.2,
+      "asal": null,
+      "tujuan": {
+        "id": "aef12e36-fce3-3252-8c8a-ccdf9bd9dfcd",
+        "kode": "CS-01",
+        "nama": "Cold Storage Lambaro",
+        "kabupaten_kode": "1108",
+        "kabupaten_nama": "KABUPATEN ACEH BESAR"
+      }
+    },
+    {
+      "id": "2",
+      "waktu": "2026-11-04T14:55:54.69624+07:00",
+      "jenis": "MASUK",
+      "komoditas_kode": "CBR-RWT",
+      "komoditas_nama": "Cabai rawit merah",
+      "volume_ton": 29.4,
+      "asal": null,
+      "tujuan": {
+        "id": "aef12e36-fce3-3252-8c8a-ccdf9bd9dfcd",
+        "kode": "CS-01",
+        "nama": "Cold Storage Lambaro",
+        "kabupaten_kode": "1108",
+        "kabupaten_nama": "KABUPATEN ACEH BESAR"
+      }
+    }
+  ],
+  "rute": {
+    "jumlah": 5,
+    "volume_ton": 166,
+    "biaya": 137905543,
+    "items": [
+      {
+        "id": "1",
+        "kode": "RT-1106-1171",
+        "asal_kode": "1106",
+        "asal": "KABUPATEN ACEH TENGAH",
+        "tujuan_kode": "1171",
+        "tujuan": "KOTA BANDA ACEH",
+        "komoditas_kode": "CBM-KRT",
+        "komoditas_nama": "Cabai merah keriting",
+        "volume_ton": 42,
+        "jarak_km": 268,
+        "jam_tempuh": 6,
+        "biaya": 47275123,
+        "status": "USULAN",
+        "sumber": "DEMO",
+        "dibuat_pada": "2026-11-10T14:55:54.678602+07:00"
+      },
+      {
+        "id": "2",
+        "kode": "RT-1117-1108",
+        "asal_kode": "1117",
+        "asal": "KABUPATEN BENER MERIAH",
+        "tujuan_kode": "1108",
+        "tujuan": "KABUPATEN ACEH BESAR",
+        "komoditas_kode": "CBM-KRT",
+        "komoditas_nama": "Cabai merah keriting",
+        "volume_ton": 39,
+        "jarak_km": 204,
+        "jam_tempuh": 4.5,
+        "biaya": 33450682,
+        "status": "USULAN",
+        "sumber": "DEMO",
+        "dibuat_pada": "2026-11-10T14:55:54.678602+07:00"
+      },
+      {
+        "id": "3",
+        "kode": "RT-1109-1174",
+        "asal_kode": "1109",
+        "asal": "KABUPATEN PIDIE",
+        "tujuan_kode": "1174",
+        "tujuan": "KOTA LHOKSEUMAWE",
+        "komoditas_kode": "BWM",
+        "komoditas_nama": "Bawang merah",
+        "volume_ton": 34,
+        "jarak_km": 180,
+        "jam_tempuh": 4,
+        "biaya": 25760039,
+        "status": "USULAN",
+        "sumber": "DEMO",
+        "dibuat_pada": "2026-11-10T14:55:54.678602+07:00"
+      },
+      {
+        "id": "5",
+        "kode": "RT-1117-1109",
+        "asal_kode": "1117",
+        "asal": "KABUPATEN BENER MERIAH",
+        "tujuan_kode": "1109",
+        "tujuan": "KABUPATEN PIDIE",
+        "komoditas_kode": "CBM-KRT",
+        "komoditas_nama": "Cabai merah keriting",
+        "volume_ton": 23,
+        "jarak_km": 167,
+        "jam_tempuh": 3.7,
+        "biaya": 16174627,
+        "status": "USULAN",
+        "sumber": "DEMO",
+        "dibuat_pada": "2026-11-10T14:55:54.678602+07:00"
+      },
+      {
+        "id": "4",
+        "kode": "RT-1106-1107",
+        "asal_kode": "1106",
+        "asal": "KABUPATEN ACEH TENGAH",
+        "tujuan_kode": "1107",
+        "tujuan": "KABUPATEN ACEH BARAT",
+        "komoditas_kode": "CBM-KRT",
+        "komoditas_nama": "Cabai merah keriting",
+        "volume_ton": 28,
+        "jarak_km": 130,
+        "jam_tempuh": 2.9,
+        "biaya": 15245072,
+        "status": "USULAN",
+        "sumber": "DEMO",
+        "dibuat_pada": "2026-11-10T14:55:54.678602+07:00"
+      }
+    ]
+  }
+}

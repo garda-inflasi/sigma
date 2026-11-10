@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import Link from "next/link";
 import { CountUp } from "@/components/motion/count-up";
 import { Sparkline } from "@/components/motion/sparkline";
@@ -16,11 +16,22 @@ const toneHex = { data: garda.data[500], normal: garda.status.normal.base, waspa
 const fmt = (f: KpiOperasional["format"]) => (n: number) =>
   f === "persen" ? `${n.toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : f === "rupiah" ? formatRupiah(n, { compact: true }) : Math.round(n).toLocaleString("id-ID");
 
+/**
+ * Satuan di belakang angka delta. `keterangan_delta` dari server sudah memuat satuan untuk indikator persentase
+ * ("poin dari pekan lalu"), jadi " poin" tidak ditambahkan lagi agar tidak terbaca "poin poin".
+ */
+function satuanDelta(kpi: KpiOperasional): string {
+  if (kpi.format === "persen") return /^poin\b/i.test(kpi.keteranganDelta) ? "" : " poin";
+  return kpi.id === "waspada" ? "" : "%";
+}
+
 /** Kartu KPI: angka countUp, delta bermakna (naik belum tentu baik), sparkline tergambar. */
 export function KpiCard({ kpi, naikBaik = true }: { kpi: KpiOperasional; naikBaik?: boolean }) {
+  // Tanpa perubahan (setelah dibulatkan satu desimal seperti tampilannya): netral, bukan "naik" yang dinilai baik/buruk.
+  const datar = Math.abs(kpi.delta) < 0.05;
   const naik = kpi.delta >= 0;
   const baik = naik === naikBaik;
-  const Arrow = naik ? ArrowUpRight : ArrowDownRight;
+  const Arrow = datar ? Minus : naik ? ArrowUpRight : ArrowDownRight;
   return (
     <Link href={kpi.href} className="block rounded-xl focus-visible:outline-offset-4">
       <GlassCard interactive variants={fadeUp} className="h-full p-5">
@@ -31,10 +42,10 @@ export function KpiCard({ kpi, naikBaik = true }: { kpi: KpiOperasional; naikBai
         <CountUp value={kpi.nilai} format={fmt(kpi.format)} className="mt-3 block text-[2.125rem] leading-none font-semibold text-navy-900 dark:text-white" />
         <div className="mt-4 flex items-end justify-between gap-3">
           <p className="text-xs leading-snug">
-            <span className={cn("num inline-flex items-center font-semibold", baik ? "text-normal-ink dark:text-emerald-300" : "text-defisit-ink dark:text-rose-300")}>
+            <span className={cn("num inline-flex items-center font-semibold", datar ? "text-muted-foreground" : baik ? "text-normal-ink dark:text-emerald-300" : "text-defisit-ink dark:text-rose-300")}>
               <Arrow className="size-3.5" />
               {Math.abs(kpi.delta).toLocaleString("id-ID", { maximumFractionDigits: 1 })}
-              {kpi.format === "persen" ? " poin" : kpi.id === "waspada" ? "" : "%"}
+              {satuanDelta(kpi)}
             </span>{" "}
             <span className="text-muted-foreground">{kpi.keteranganDelta}</span>
           </p>

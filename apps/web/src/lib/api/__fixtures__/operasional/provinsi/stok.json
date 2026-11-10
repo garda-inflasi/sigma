@@ -1,0 +1,74 @@
+{
+  "tanggal": "2026-11-10",
+  "ambang_kedaluwarsa_hari": 7,
+  "ambang_risiko": 0.6,
+  "ringkasan": {
+    "total_ton": 780,
+    "jumlah_lot": 21,
+    "jumlah_fasilitas": 3,
+    "kapasitas_ton": 950,
+    "fasilitas_operasional": 3,
+    "utilisasi_pct": 82.1,
+    "mendekati_kedaluwarsa_ton": 114.4,
+    "risiko_tinggi_ton": 172.7,
+    "kedaluwarsa_lot": 0,
+    "kedaluwarsa_ton": 0,
+    "di_luar_operasional_ton": 33
+  },
+  "komoditas": [
+    {
+      "komoditas_kode": "IKN-TGK",
+      "komoditas_nama": "Ikan tongkol",
+      "total_ton": 240,
+      "jumlah_lot": 5,
+      "jumlah_fasilitas": 1,
+      "mendekati_kedaluwarsa_ton": 0,
+      "risiko_tinggi_ton": 106.8
+    },
+    {
+      "komoditas_kode": "BWM",
+      "komoditas_nama": "Bawang merah",
+      "total_ton": 162.1,
+      "jumlah_lot": 3,
+      "jumlah_fasilitas": 1,
+      "mendekati_kedaluwarsa_ton": 0,
+      "risiko_tinggi_ton": 0
+    },
+    {
+      "komoditas_kode": "CBM-KRT",
+      "komoditas_nama": "Cabai merah keriting",
+      "total_ton": 151.3,
+      "jumlah_lot": 5,
+      "jumlah_fasilitas": 2,
+      "mendekati_kedaluwarsa_ton": 34.9,
+      "risiko_tinggi_ton": 34.9
+    },
+    {
+      "komoditas_kode": "KTG",
+      "komoditas_nama": "Kentang",
+      "total_ton": 99.1,
+      "jumlah_lot": 3,
+      "jumlah_fasilitas": 1,
+      "mendekati_kedaluwarsa_ton": 0,
+      "risiko_tinggi_ton": 0
+    },
+    {
+      "komoditas_kode": "TMT",
+      "komoditas_nama": "Tomat",
+      "total_ton": 79.5,
+      "jumlah_lot": 3,
+      "jumlah_fasilitas": 1,
+      "mendekati_kedaluwarsa_ton": 79.5,
+      "risiko_tinggi_ton": 31
+    },
+    {
+      "komoditas_kode": "CBR-RWT",
+      "komoditas_nama": "Cabai rawit merah",
+      "total_ton": 48,
+      "jumlah_lot": 2,
+      "jumlah_fasilitas": 1,
+      "mendekati_kedaluwarsa_ton": 0,
+      "risiko_tinggi_ton": 0
+    }
+  ]
+}

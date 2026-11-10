@@ -1,0 +1,44 @@
+{
+  "dari": "2026-11-04",
+  "sampai": "2026-11-10",
+  "ringkasan": {
+    "masuk": {
+      "jumlah": 0,
+      "volume_ton": 0
+    },
+    "keluar": {
+      "jumlah": 0,
+      "volume_ton": 0
+    },
+    "pindah": {
+      "jumlah": 0,
+      "volume_ton": 0
+    }
+  },
+  "komoditas": [],
+  "terbaru": [],
+  "rute": {
+    "jumlah": 1,
+    "volume_ton": 42,
+    "biaya": 47275123,
+    "items": [
+      {
+        "id": "1",
+        "kode": "RT-1106-1171",
+        "asal_kode": "1106",
+        "asal": "KABUPATEN ACEH TENGAH",
+        "tujuan_kode": "1171",
+        "tujuan": "KOTA BANDA ACEH",
+        "komoditas_kode": "CBM-KRT",
+        "komoditas_nama": "Cabai merah keriting",
+        "volume_ton": 42,
+        "jarak_km": 268,
+        "jam_tempuh": 6,
+        "biaya": 47275123,
+        "status": "USULAN",
+        "sumber": "DEMO",
+        "dibuat_pada": "2026-11-10T14:55:54.678602+07:00"
+      }
+    ]
+  }
+}

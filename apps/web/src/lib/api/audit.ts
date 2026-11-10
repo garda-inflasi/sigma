@@ -130,6 +130,10 @@ export const AUDIT_AKSI = [
   "PINDAH_TAHAP",
   "SETUJUI_INTERVENSI",
   "UBAH_AMBANG_EWS",
+  // Penentuan siklus ekonomi (08-B): GANTI_SIKLUS (entitas siklus_ekonomi) saat siklus berganti; EVALUASI saat evaluasi
+  // dijalankan manual (entitas siklus_ekonomi, atau ews_alert untuk evaluasi rule engine EWS).
+  "GANTI_SIKLUS",
+  "EVALUASI",
   "EKSPOR_DATA",
   "AJUKAN_MASTER",
   "AJUKAN_PERUBAHAN_MASTER",

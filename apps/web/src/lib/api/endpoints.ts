@@ -13,10 +13,16 @@ import {
 import { masterApi, type AktorMock } from "./master-api";
 import { mockBulkKomoditas, mockKomoditasList, mockPasarList, mockWilayahList } from "./master-mock";
 import {
-  aktivitasMock, toAktivitasLapangan, toHeatmap, toKpiOperasional,
-  type AktivitasLapangan, type AktivitasLapanganResponse, type CuacaResponse, type CuacaWilayah, type Heatmap, type HeatmapResponse, type KpiResponse,
-  type PembandingHarga, type PembandingHargaResponse, toCuacaWilayah, toPembandingHarga,
+  toAktivitasLapangan, toFilterQuery, toHeatmap, toKpiOperasional,
+  type AktivitasLapangan, type AktivitasLapanganResponse, type CuacaResponse, type CuacaWilayah, type FilterOperasional, type Heatmap, type HeatmapResponse, type KpiResponse,
+  type PembandingHarga, type PembandingHargaResponse, type SaringanOperasional, toCuacaWilayah, toPembandingHarga,
 } from "./dashboard";
+import {
+  toAktivitasPetugas, toLogistik, toProdusen, toStok,
+  type AktivitasPetugas, type AktivitasPetugasResponse, type LogistikOperasional, type LogistikResponse, type ProdusenOperasional, type ProdusenResponse, type StokOperasional, type StokResponse,
+} from "./dashboard-operasional";
+import { mockAktivitasLapangan, mockAktivitasPetugas, mockLogistik, mockProdusen, mockStok } from "./dashboard-operasional-mock";
+import { toSiklusAktif, type SiklusAktif, type SiklusAktifResponse } from "./siklus";
 import {
   filterMockEntri, ringkasanDariEntri, toEntriHarga, toHargaQuery, toRiwayatStatus, toDetailHarga,
   type DetailHarga, type EntriHargaResponse, type HargaDetailResponse, type HargaParams, type RincianBulk, type RiwayatStatus, type RiwayatStatusResponse, type RingkasanHarga,
@@ -56,7 +62,6 @@ import { penggunaApi, type KatalogAkses, type PenggunaDetail } from "./pengguna"
 import { mockPenggunaDetail, queryMockPengguna } from "./pengguna-mock";
 import type { StateTabelPengguna } from "@/lib/pengguna/tabel";
 import { toRiwayatPeran, type RiwayatPeran } from "@/lib/pengguna/riwayat-peran";
-import { USERS } from "@/lib/data/reference";
 import { toEksekusi, toPipeline, toSampel, toSumberData, toSumberDetail, type SumberDetailData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
 import type {
@@ -65,13 +70,6 @@ import type {
 } from "@/lib/data/types";
 
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string; rincian?: RincianBulk[] };
-
-/** Jumlah petugas lapangan mock per kabupaten, untuk target aktivitas harian. */
-const petugasPerKabupatenMock = () => {
-  const n = new Map<string, number>();
-  for (const u of USERS) if (u.role === "OPS_MAHASISWA" && u.kabupatenKode) n.set(u.kabupatenKode, (n.get(u.kabupatenKode) ?? 0) + 1);
-  return n;
-};
 
 const get = <T,>(path: string, mock: () => T) => (MODE_MOCK ? mockDelay(mock) : apiFetch<T>(path));
 
@@ -86,11 +84,26 @@ const listColdStorage = (params: ColdStorageParams = {}): Promise<ColdStorageVie
   MODE_MOCK ? mockDelay(() => queryMockColdStorage(m.mockColdStorage(), params)) : coldStorageClient.list(params);
 
 export const api = {
-  /** Siklus ekonomi dominan wilayah — menggerakkan warna ambient seluruh UI */
-  siklus: { aktif: () => get<{ siklus: "normal" | "tekanan" | "surplus"; sejak: string }>("/v1/siklus/aktif", () => ({ siklus: "tekanan", sejak: "2026-09-27" })) },
+  /** Siklus ekonomi dominan wilayah — menggerakkan warna ambient seluruh UI; sejak 08-B memuat apakah mesin yang menetapkannya dan alasannya. */
+  siklus: {
+    aktif: (): Promise<SiklusAktif> =>
+      MODE_MOCK
+        ? mockDelay<SiklusAktif>({
+            siklus: "tekanan",
+            sejak: "2026-09-27",
+            otomatis: true,
+            alasan: {
+              ringkasan: "Berpindah dari NORMAL ke TEKANAN: 3 alert LONJAKAN_HARGA ≥ SIAGA.",
+              pemicu: [{ aturan: "SKL-TKN-LONJAKAN-HARGA", siklus: "tekanan", indikator: "ALERT_EWS", nilai: 3, ambang: 1, satuan: "alert", prioritas: 10, rujukan: ["EWS-1000", "EWS-1001", "EWS-1002"], rincian: "" }],
+              ditekan: [],
+            },
+          })
+        : apiFetch<SiklusAktifResponse>("/v1/siklus/aktif").then(toSiklusAktif),
+  },
   operasional: {
-    kpi: (): Promise<KpiOperasional[]> =>
-      MODE_MOCK ? mockDelay(m.mockKpi) : apiFetch<KpiResponse[]>("/v1/dashboard/operasional/kpi").then((rows) => rows.map(toKpiOperasional)),
+    /** Filter opsional (kabupaten, komoditas, periode); mode mock selalu mengembalikan data seluruh Aceh. */
+    kpi: (filter: FilterOperasional = {}): Promise<KpiOperasional[]> =>
+      MODE_MOCK ? mockDelay(m.mockKpi) : apiFetch<KpiResponse[]>(`/v1/dashboard/operasional/kpi${toFilterQuery(filter)}`).then((rows) => rows.map(toKpiOperasional)),
     /** Validasi silang harga lapangan vs eksternal (hasil ingestion). */
     pembandingHarga: (): Promise<PembandingHarga> =>
       MODE_MOCK
@@ -99,12 +112,35 @@ export const api = {
     /** Cuaca harian terbaru per kabupaten/kota (BMKG). */
     cuaca: (): Promise<CuacaWilayah[]> =>
       MODE_MOCK ? mockDelay([]) : apiFetch<CuacaResponse[]>("/v1/dashboard/operasional/cuaca").then((rows) => rows.map(toCuacaWilayah)),
-    heatmap: (): Promise<Heatmap> =>
-      MODE_MOCK ? mockDelay(m.mockHeatmap) : apiFetch<HeatmapResponse>("/v1/dashboard/operasional/heatmap").then(toHeatmap),
+    heatmap: (filter: FilterOperasional = {}): Promise<Heatmap> =>
+      MODE_MOCK ? mockDelay(m.mockHeatmap) : apiFetch<HeatmapResponse>(`/v1/dashboard/operasional/heatmap${toFilterQuery(filter)}`).then(toHeatmap),
     aktivitas: (): Promise<AktivitasLapangan[]> =>
       MODE_MOCK
-        ? mockDelay(() => aktivitasMock(m.mockEntri(), petugasPerKabupatenMock()))
+        ? mockDelay(mockAktivitasLapangan)
         : apiFetch<AktivitasLapanganResponse[]>("/v1/dashboard/operasional/aktivitas-lapangan").then((rows) => rows.map(toAktivitasLapangan)),
+    /**
+     * Aktivitas tiap petugas lapangan hari ini. Perlu izin `dashboard.operasional` DAN `harga.lihat` (nama dan ID
+     * petugas): 403 (ApiError) bagi peran kustom yang hanya punya yang pertama; pemanggil menampilkannya sebagai keterangan.
+     */
+    aktivitasPetugas: (kabupatenKode?: string): Promise<AktivitasPetugas> =>
+      MODE_MOCK
+        ? mockDelay(() => toAktivitasPetugas(mockAktivitasPetugas(kabupatenKode)))
+        : apiFetch<AktivitasPetugasResponse>(`/v1/dashboard/operasional/aktivitas-petugas${toFilterQuery({ kabupatenKode })}`).then(toAktivitasPetugas),
+    /** Stok cold storage real-time per komoditas (belum ada kartu UI). */
+    stok: (saringan: SaringanOperasional = {}): Promise<StokOperasional> =>
+      MODE_MOCK
+        ? mockDelay(() => toStok(mockStok(saringan)))
+        : apiFetch<StokResponse>(`/v1/dashboard/operasional/stok${toFilterQuery(saringan)}`).then(toStok),
+    /** Harga dan produksi di tingkat produsen sepekan terakhir (belum ada kartu UI). */
+    produsen: (saringan: SaringanOperasional = {}): Promise<ProdusenOperasional> =>
+      MODE_MOCK
+        ? mockDelay(() => toProdusen(mockProdusen(saringan)))
+        : apiFetch<ProdusenResponse>(`/v1/dashboard/operasional/produsen${toFilterQuery(saringan)}`).then(toProdusen),
+    /** Pergerakan stok, transaksi terbaru, dan rute aktif sepekan terakhir (belum ada kartu UI). */
+    logistik: (saringan: SaringanOperasional = {}): Promise<LogistikOperasional> =>
+      MODE_MOCK
+        ? mockDelay(() => toLogistik(mockLogistik(saringan)))
+        : apiFetch<LogistikResponse>(`/v1/dashboard/operasional/logistik${toFilterQuery(saringan)}`).then(toLogistik),
     marker: (): Promise<MarkerWilayah[]> =>
       MODE_MOCK ? mockDelay(m.mockMapMarkers) : apiFetch<MarkerResponse[]>("/v1/spasial/wilayah").then((rows) => rows.map(toMarker)),
     tren: (kode: string, kab: string) =>

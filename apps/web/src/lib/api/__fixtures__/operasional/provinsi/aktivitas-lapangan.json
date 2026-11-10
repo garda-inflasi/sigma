@@ -1,0 +1,72 @@
+[
+  {
+    "kabupaten_kode": "1107",
+    "kabupaten_nama": "KABUPATEN ACEH BARAT",
+    "jumlah_petugas": 1,
+    "entri": 6,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1108",
+    "kabupaten_nama": "KABUPATEN ACEH BESAR",
+    "jumlah_petugas": 1,
+    "entri": 9,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1103",
+    "kabupaten_nama": "KABUPATEN ACEH SELATAN",
+    "jumlah_petugas": 1,
+    "entri": 3,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1106",
+    "kabupaten_nama": "KABUPATEN ACEH TENGAH",
+    "jumlah_petugas": 1,
+    "entri": 8,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1104",
+    "kabupaten_nama": "KABUPATEN ACEH TENGGARA",
+    "jumlah_petugas": 1,
+    "entri": 3,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1105",
+    "kabupaten_nama": "KABUPATEN ACEH TIMUR",
+    "jumlah_petugas": 1,
+    "entri": 2,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1109",
+    "kabupaten_nama": "KABUPATEN PIDIE",
+    "jumlah_petugas": 1,
+    "entri": 10,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1171",
+    "kabupaten_nama": "KOTA BANDA ACEH",
+    "jumlah_petugas": 1,
+    "entri": 10,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1173",
+    "kabupaten_nama": "KOTA LANGSA",
+    "jumlah_petugas": 1,
+    "entri": 11,
+    "target": 14
+  },
+  {
+    "kabupaten_kode": "1174",
+    "kabupaten_nama": "KOTA LHOKSEUMAWE",
+    "jumlah_petugas": 1,
+    "entri": 10,
+    "target": 14
+  }
+]

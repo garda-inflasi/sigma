@@ -31,6 +31,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Kbd } from "@/components/command/command-palette";
 import { PulseRing } from "@/components/motion/pulse-ring";
 import { MODE_MOCK } from "@/lib/api/client";
+import { keteranganSiklus } from "@/lib/api/siklus";
 import { keluarDariSesi } from "@/lib/auth/logout-client";
 import { useSession } from "@/lib/auth/session-context";
 import { siklusMeta, toneClass } from "@/lib/design/tokens";
@@ -140,6 +141,7 @@ export function Topbar() {
                 ? `/intervensi?siklus=${siklus!.siklus}`
                 : "#"
             }
+            title={keteranganSiklus(siklus!) || undefined}
             className={cn(
               "hidden h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium sm:inline-flex",
               toneClass[meta.tone].soft,

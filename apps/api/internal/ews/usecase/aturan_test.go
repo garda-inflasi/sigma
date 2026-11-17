@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -131,7 +132,7 @@ func TestListRiwayat(t *testing.T) {
 		uc, _ := newTestUseCase(repo)
 		repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 99}).Return(nil, gorm.ErrRecordNotFound)
 
-		_, err := uc.ListRiwayat(context.Background(), idx.RujukanID{ID: 99})
+		_, err := uc.ListRiwayat(context.Background(), idx.RujukanID{ID: 99}, hargadomain.CakupanSemua())
 
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
@@ -142,7 +143,7 @@ func TestListRiwayat(t *testing.T) {
 		repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: "EWS-1000"}).Return(&alert, nil)
 		repo.On("ListRiwayat", mock.Anything, idx.ID(1000)).Return([]domain.Riwayat{{EwsRiwayat: domain.EwsRiwayat{Ke: "BARU"}}}, nil)
 
-		items, err := uc.ListRiwayat(context.Background(), idx.RujukanID{Kode: "EWS-1000"})
+		items, err := uc.ListRiwayat(context.Background(), idx.RujukanID{Kode: "EWS-1000"}, hargadomain.CakupanSemua())
 
 		require.NoError(t, err)
 		assert.Len(t, items, 1)

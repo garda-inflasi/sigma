@@ -38,6 +38,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	{
 		prediksi.GET("", handler.List)
 		prediksi.GET("/registri", handler.Registri)
+		prediksi.GET("/registri/:id/promosi", mlops.RiwayatPromosi)
 		prediksi.GET("/ml", mlops.Status)
 		prediksi.GET("/:kode", handler.GetByKode)
 		prediksi.GET("/:kode/export", handler.Export)

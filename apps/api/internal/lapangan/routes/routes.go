@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"os"
+
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/dashboard/refresher"
 	hargahttp "github.com/garda-inflasi/api/internal/harga/delivery/http"
@@ -25,7 +27,7 @@ type Dependencies struct {
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	auditWriter := audit.NewWriter(deps.DB)
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, auditWriter, deps.Logger)
+	uc := usecase.New(repo, auditWriter, deps.Logger).WithStorageDir(os.Getenv("LAPANGAN_UPLOAD_DIR"))
 	handler := http.New(uc)
 
 	hargaUC := hargausecase.New(hargapostgres.New(deps.DB), auditWriter, refresher.Shared(deps.DB, deps.Logger), deps.Logger)
@@ -43,8 +45,15 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 			tugas.POST("/bulk", handler.Bulk)
 		}
 
-		// Kiriman harga dan data acuan offline untuk sync engine PWA.
+		// Kiriman harga, lampiran foto, dan data acuan offline untuk sync engine PWA.
 		lapangan.POST("/harga", middleware.RequirePermission("harga.input"), hargaHandler.KirimLapangan)
+		lapangan.POST("/harga/:id/foto", middleware.RequirePermission("harga.input"), handler.UploadFoto)
+		lapangan.GET("/harga/:id/foto", middleware.RequireAnyPermission("harga.input", "harga.lihat", "harga.validasi"), handler.GetFoto)
 		lapangan.GET("/acuan", middleware.RequirePermission("harga.input"), handler.Acuan)
+
+		// Kode etik pencacah & kinerja petugas (07-C).
+		lapangan.GET("/kode-etik", middleware.RequireAnyPermission("harga.input", "tugas.lihat_sendiri", "tugas.kelola"), handler.GetKodeEtik)
+		lapangan.POST("/kode-etik/setuju", middleware.RequireAnyPermission("harga.input", "tugas.lihat_sendiri", "tugas.kelola"), handler.SetujuiKodeEtik)
+		lapangan.GET("/kinerja", middleware.RequireAnyPermission("tugas.lihat_sendiri", "tugas.kelola", "dashboard.operasional"), handler.ListKinerja)
 	}
 }

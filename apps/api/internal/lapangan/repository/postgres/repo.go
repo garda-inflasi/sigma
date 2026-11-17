@@ -2,12 +2,16 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/internal/lapangan/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Repository struct {
@@ -27,11 +31,51 @@ func (r *Repository) tugasView(ctx context.Context) *gorm.DB {
 		Select(viewColumns)
 }
 
-// ListSaya mengembalikan tugas milik petugas; yang sudah SELESAI di urutan akhir.
-func (r *Repository) ListSaya(ctx context.Context, petugasID string) ([]domain.TugasView, error) {
+func kondisiCakupan(c hargadomain.Cakupan, kabExpr, pemilikExpr string) (string, []any) {
+	if c.Semua {
+		return "TRUE", nil
+	}
+	var clauses []string
+	var args []any
+	if c.KabupatenKode != "" && kabExpr != "" {
+		clauses = append(clauses, kabExpr+" = ?")
+		args = append(args, c.KabupatenKode)
+	}
+	if c.PemilikID != "" && pemilikExpr != "" {
+		clauses = append(clauses, pemilikExpr+" = ?")
+		args = append(args, c.PemilikID)
+	}
+	if len(clauses) == 0 {
+		return "FALSE", nil
+	}
+	return "(" + strings.Join(clauses, " OR ") + ")", args
+}
+
+// PenggunaCakupan membaca peran dan kabupaten tugas pengguna langsung dari DB per request (02-B).
+func (r *Repository) PenggunaCakupan(ctx context.Context, userID string) (string, string, bool, error) {
+	var rows []struct {
+		Peran         string `gorm:"column:peran"`
+		KabupatenKode string `gorm:"column:kabupaten_kode"`
+	}
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT peran::text AS peran, COALESCE(kabupaten_kode, '') AS kabupaten_kode FROM pengguna WHERE id = ?`,
+		userID,
+	).Scan(&rows).Error
+	if err != nil {
+		return "", "", false, fmt.Errorf("baca peran pengguna: %w", err)
+	}
+	if len(rows) == 0 {
+		return "", "", false, nil
+	}
+	return rows[0].Peran, rows[0].KabupatenKode, true, nil
+}
+
+// ListSaya mengembalikan tugas sesuai cakupan baris pemanggil; yang sudah SELESAI di urutan akhir.
+func (r *Repository) ListSaya(ctx context.Context, cakupan hargadomain.Cakupan) ([]domain.TugasView, error) {
+	kondisi, args := kondisiCakupan(cakupan, "p.kabupaten_kode", "t.petugas_id")
 	var items []domain.TugasView
 	err := r.tugasView(ctx).
-		Where("t.petugas_id = ?", petugasID).
+		Where(kondisi, args...).
 		Order("(t.status = 'SELESAI'), t.tenggat, t.id").
 		Scan(&items).Error
 	if err != nil {
@@ -40,14 +84,11 @@ func (r *Repository) ListSaya(ctx context.Context, petugasID string) ([]domain.T
 	return items, nil
 }
 
-// GetByID mengembalikan satu tugas milik petugas, atau milik siapa saja bila semua true. ref berisi ID BIGINT atau
-// kode lama (TGS-...).
-func (r *Repository) GetByID(ctx context.Context, ref idx.RujukanID, petugasID string, semua bool) (*domain.TugasView, error) {
+// GetByID mengembalikan satu tugas menurut ID BIGINT atau kode lama (TGS-...) sesuai cakupan baris.
+func (r *Repository) GetByID(ctx context.Context, ref idx.RujukanID, cakupan hargadomain.Cakupan) (*domain.TugasView, error) {
 	kondisi, nilai := ref.Kondisi("t.id", "t.kode")
-	q := r.tugasView(ctx).Where(kondisi, nilai)
-	if !semua {
-		q = q.Where("t.petugas_id = ?", petugasID)
-	}
+	cakKondisi, cakArgs := kondisiCakupan(cakupan, "p.kabupaten_kode", "t.petugas_id")
+	q := r.tugasView(ctx).Where(kondisi, nilai).Where(cakKondisi, cakArgs...)
 	var items []domain.TugasView
 	if err := q.Limit(1).Scan(&items).Error; err != nil {
 		return nil, fmt.Errorf("get tugas lapangan: %w", err)
@@ -91,12 +132,14 @@ func pisahRujukan(refs []idx.RujukanID) (ids []idx.ID, kode []string) {
 }
 
 // Aksesibel menyaring refs ke baris tugas yang ada dan boleh disentuh pemanggil.
-func (r *Repository) Aksesibel(ctx context.Context, refs []idx.RujukanID, petugasID string, semua bool) ([]domain.TugasRef, error) {
+func (r *Repository) Aksesibel(ctx context.Context, refs []idx.RujukanID, cakupan hargadomain.Cakupan) ([]domain.TugasRef, error) {
 	ids, kode := pisahRujukan(refs)
-	q := r.db.WithContext(ctx).Table("tugas_lapangan").Select("id, kode").Where("(id IN ? OR kode IN ?)", ids, kode)
-	if !semua {
-		q = q.Where("petugas_id = ?", petugasID)
-	}
+	cakKondisi, cakArgs := kondisiCakupan(cakupan, "p.kabupaten_kode", "t.petugas_id")
+	q := r.db.WithContext(ctx).Table("tugas_lapangan AS t").
+		Joins("JOIN pasar p ON p.kode = t.pasar_id").
+		Select("t.id, t.kode").
+		Where("(t.id IN ? OR t.kode IN ?)", ids, kode).
+		Where(cakKondisi, cakArgs...)
 	var found []domain.TugasRef
 	if err := q.Scan(&found).Error; err != nil {
 		return nil, fmt.Errorf("cek akses tugas lapangan: %w", err)
@@ -105,18 +148,23 @@ func (r *Repository) Aksesibel(ctx context.Context, refs []idx.RujukanID, petuga
 }
 
 // TandaiSelesai menutup tugas yang belum selesai dan targetnya sudah terpenuhi.
-func (r *Repository) TandaiSelesai(ctx context.Context, refs []idx.RujukanID, petugasID string, semua bool, waktu time.Time) ([]domain.TugasRef, error) {
+func (r *Repository) TandaiSelesai(ctx context.Context, refs []idx.RujukanID, cakupan hargadomain.Cakupan, waktu time.Time) ([]domain.TugasRef, error) {
 	ids, kode := pisahRujukan(refs)
 	var changed []domain.TugasRef
 	err := r.db.WithContext(ctx).Raw(`
-		UPDATE tugas_lapangan
+		UPDATE tugas_lapangan AS t
 		   SET status = 'SELESAI', selesai_pada = @waktu
-		 WHERE (id IN @ids OR kode IN @kode)
-		   AND status <> 'SELESAI'
-		   AND jumlah_selesai >= target
-		   AND (@semua OR petugas_id = @petugas)
-		RETURNING id, kode`,
-		map[string]any{"ids": ids, "kode": kode, "waktu": waktu, "semua": semua, "petugas": petugasID},
+		  FROM pasar p
+		 WHERE p.kode = t.pasar_id
+		   AND (t.id IN @ids OR t.kode IN @kode)
+		   AND t.status <> 'SELESAI'
+		   AND t.jumlah_selesai >= t.target
+		   AND (@semua OR (@kab <> '' AND p.kabupaten_kode = @kab) OR (@petugas <> '' AND t.petugas_id::text = @petugas))
+		RETURNING t.id, t.kode`,
+		map[string]any{
+			"ids": ids, "kode": kode, "waktu": waktu,
+			"semua": cakupan.Semua, "kab": cakupan.KabupatenKode, "petugas": cakupan.PemilikID,
+		},
 	).Scan(&changed).Error
 	if err != nil {
 		return nil, fmt.Errorf("tandai tugas selesai: %w", err)
@@ -150,4 +198,135 @@ func (r *Repository) Acuan(ctx context.Context, sejak time.Time, minSampel int) 
 		return data, fmt.Errorf("baca median acuan: %w", err)
 	}
 	return data, nil
+}
+
+// EntriMilikPetugas memeriksa keberadaan entri_harga dan mengembalikan petugas_id serta kabupaten_kode pasarnya.
+func (r *Repository) EntriMilikPetugas(ctx context.Context, entriID idx.ID) (string, string, bool, error) {
+	var row struct {
+		PetugasID     string `gorm:"column:petugas_id"`
+		KabupatenKode string `gorm:"column:kabupaten_kode"`
+	}
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT COALESCE(e.petugas_id::text, '') AS petugas_id,
+		       COALESCE(p.kabupaten_kode, '') AS kabupaten_kode
+		  FROM entri_harga e
+		  LEFT JOIN pasar p ON p.kode = e.pasar_id
+		 WHERE e.id = ?`,
+		entriID,
+	).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", "", false, nil
+		}
+		return "", "", false, fmt.Errorf("cek pemilik entri: %w", err)
+	}
+	return row.PetugasID, row.KabupatenKode, true, nil
+}
+
+// SimpanLampiranEntri menyimpan baris lampiran_entri dan memperbarui foto_url di entri_harga dalam satu transaksi.
+func (r *Repository) SimpanLampiranEntri(ctx context.Context, lampiran *domain.LampiranEntri, fotoURL string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(lampiran).Error; err != nil {
+			return fmt.Errorf("simpan lampiran entri: %w", err)
+		}
+		if err := tx.Exec(`UPDATE entri_harga SET foto_url = ? WHERE id = ?`, fotoURL, lampiran.EntriID).Error; err != nil {
+			return fmt.Errorf("perbarui foto_url entri: %w", err)
+		}
+		return nil
+	})
+}
+
+// LampiranTerbaru mengambil lampiran terbaru milik entri tertentu.
+func (r *Repository) LampiranTerbaru(ctx context.Context, entriID idx.ID) (*domain.LampiranEntri, error) {
+	var out domain.LampiranEntri
+	err := r.db.WithContext(ctx).
+		Where("entri_id = ?", entriID).
+		Order("dibuat_pada DESC, id DESC").
+		First(&out).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("baca lampiran entri: %w", err)
+	}
+	return &out, nil
+}
+
+// KodeEtikAktif mengembalikan kode etik aktif beserta status persetujuan untuk userID.
+func (r *Repository) KodeEtikAktif(ctx context.Context, userID string) (*domain.KodeEtikStatus, error) {
+	var ke domain.KodeEtik
+	err := r.db.WithContext(ctx).
+		Where("aktif = true").
+		Order("dibuat_pada DESC").
+		First(&ke).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("baca kode etik aktif: %w", err)
+	}
+
+	out := &domain.KodeEtikStatus{
+		Versi: ke.Versi,
+		Judul: ke.Judul,
+		Isi:   ke.Isi,
+	}
+
+	var p domain.PersetujuanKodeEtik
+	err = r.db.WithContext(ctx).
+		Where("user_id = ? AND versi = ?", userID, ke.Versi).
+		First(&p).Error
+	if err == nil {
+		out.SudahSetuju = true
+		t := p.DisetujuiPada
+		out.DisetujuiPada = &t
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("baca persetujuan kode etik: %w", err)
+	}
+	return out, nil
+}
+
+// SetujuiKodeEtik mencatat persetujuan pengguna terhadap versi kode etik tertentu secara idempoten.
+func (r *Repository) SetujuiKodeEtik(ctx context.Context, userID, versi string) (*domain.PersetujuanKodeEtik, error) {
+	var ke domain.KodeEtik
+	if err := r.db.WithContext(ctx).Where("versi = ?", versi).First(&ke).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("cek versi kode etik: %w", err)
+	}
+
+	rec := domain.PersetujuanKodeEtik{
+		UserID: userID,
+		Versi:  versi,
+	}
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "versi"}},
+			DoNothing: true,
+		}).
+		Create(&rec).Error
+	if err != nil {
+		return nil, fmt.Errorf("simpan persetujuan kode etik: %w", err)
+	}
+
+	var saved domain.PersetujuanKodeEtik
+	if err := r.db.WithContext(ctx).Where("user_id = ? AND versi = ?", userID, versi).First(&saved).Error; err != nil {
+		return nil, fmt.Errorf("baca persetujuan tersimpan: %w", err)
+	}
+	return &saved, nil
+}
+
+// ListKinerja membaca view kinerja_petugas sesuai cakupan baris pemanggil.
+func (r *Repository) ListKinerja(ctx context.Context, cakupan hargadomain.Cakupan) ([]domain.KinerjaPetugas, error) {
+	kondisi, args := kondisiCakupan(cakupan, "kabupaten_kode", "petugas_id")
+	var out []domain.KinerjaPetugas
+	err := r.db.WithContext(ctx).Table("kinerja_petugas").
+		Where(kondisi, args...).
+		Order("total_entri DESC, nama_petugas ASC").
+		Scan(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("baca kinerja petugas: %w", err)
+	}
+	return out, nil
 }

@@ -38,6 +38,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	engine.GET("/cold-storage/fasilitas/:id", auth, middleware.RequirePermission("coldstorage.lihat"), handler.Detail)
 	engine.PATCH("/cold-storage/fasilitas/:id", auth, middleware.RequirePermission("coldstorage.kelola"), handler.UbahFasilitas)
 	engine.POST("/cold-storage/telemetri", auth, middleware.RequirePermission("coldstorage.kelola"), handler.IngestTelemetri)
+	engine.POST("/cold-storage/telemetri/batch", auth, middleware.RequirePermission("coldstorage.kelola"), handler.IngestTelemetri)
 	// Pindah stok boleh dilakukan pemegang logistik.kelola; jenis lain diperiksa di handler.
 	engine.POST("/cold-storage/transaksi", auth, middleware.RequireAnyPermission("coldstorage.kelola", "logistik.kelola"), handler.Transaksi)
 }

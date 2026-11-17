@@ -60,6 +60,7 @@ const WARNA_STATUS: Record<MarkerWilayah["status"], string> = {
 
 function SkemaAceh({ markers, geometri, selected, onSelect, onKlikPeta }: { markers: MarkerWilayah[]; geometri?: GeometriWilayah[]; selected?: string; onSelect?: (kode: string) => void; onKlikPeta?: (lat: number, lng: number) => void }) {
   const [aktif, setAktif] = useState<MarkerWilayah | null>(null);
+  const markerMap = new Map(markers.map((m) => [m.kode, m]));
   const status = new Map(markers.map((m) => [m.kode, m.status]));
   return (
     <div
@@ -77,19 +78,33 @@ function SkemaAceh({ markers, geometri, selected, onSelect, onKlikPeta }: { mark
         <polygon points={poly(DARAT)} className="fill-white/80 stroke-navy-300 dark:fill-white/5 dark:stroke-white/15" strokeWidth={0.35} strokeLinejoin="round" />
         <ellipse cx={px(96.1)} cy={py(2.62)} rx={3.6} ry={1.5} transform={`rotate(-28 ${px(96.1)} ${py(2.62)})`} className="fill-white/80 stroke-navy-300 dark:fill-white/5 dark:stroke-white/15" strokeWidth={0.35} />
         <ellipse cx={px(95.32)} cy={py(5.86)} rx={0.9} ry={0.6} className="fill-white/80 stroke-navy-300 dark:fill-white/5 dark:stroke-white/15" strokeWidth={0.35} />
-        {geometri?.map((g) =>
-          g.cincinLuar.map((cincin, i) => (
+        {geometri?.map((g) => {
+          const m = markerMap.get(g.kode);
+          return g.cincinLuar.map((cincin, i) => (
             <polygon
               key={`${g.kode}-${i}`}
               points={poly(cincin)}
-              className={cn(WARNA_STATUS[status.get(g.kode) ?? "normal"], selected === g.kode && "stroke-[0.8]")}
+              className={cn(
+                "cursor-pointer transition-opacity hover:opacity-80",
+                WARNA_STATUS[status.get(g.kode) ?? "normal"],
+                selected === g.kode && "stroke-[0.8]",
+              )}
               strokeWidth={0.3}
               strokeLinejoin="round"
+              onMouseEnter={() => { if (m) setAktif(m); }}
+              onMouseLeave={() => setAktif((prev) => (prev?.kode === g.kode ? null : prev))}
+              onClick={(e) => {
+                if (m) {
+                  e.stopPropagation();
+                  setAktif(m);
+                  onSelect?.(g.kode);
+                }
+              }}
             >
               <title>{g.perkiraan ? `${g.nama} (batas perkiraan)` : g.nama}</title>
             </polygon>
-          )),
-        )}
+          ));
+        })}
       </svg>
       {markers.map((m, i) => (
         <div key={m.kode} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${px(m.lng)}%`, top: `${py(m.lat)}%` }}>

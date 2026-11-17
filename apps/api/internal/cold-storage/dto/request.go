@@ -41,8 +41,10 @@ type PembacaanRequest struct {
 	Sumber        string    `json:"sumber" binding:"omitempty,oneof=SENSOR MANUAL"`
 }
 
-// IngestTelemetriRequest adalah isi POST /v1/cold-storage/telemetri.
+// IngestTelemetriRequest adalah isi POST /v1/cold-storage/telemetri dan /telemetri/batch.
 type IngestTelemetriRequest struct {
+	GatewayID string             `json:"gateway_id" binding:"omitempty,max=64"`
+	Topic     string             `json:"topic" binding:"omitempty,max=128"`
 	Pembacaan []PembacaanRequest `json:"pembacaan" binding:"required,min=1,max=500,dive"`
 }
 

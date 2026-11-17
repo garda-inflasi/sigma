@@ -3,12 +3,16 @@ package domain
 import (
 	"context"
 
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 )
 
 // Repository adalah akses data alert dan aturan EWS. Rujukan alert dan aturan boleh berupa ID BIGINT atau
 // kode tampilan lama (EWS-..., ATR-...), sehingga tautan lama di notifikasi dan email tetap berlaku.
 type Repository interface {
+	// PenggunaCakupan membaca peran dan kabupaten tugas pengguna langsung dari DB per request (02-B).
+	PenggunaCakupan(ctx context.Context, userID string) (peran, kabupatenKode string, ditemukan bool, err error)
+
 	List(ctx context.Context, q ListQuery) (items []Alert, total int64, err error)
 	// GetByID mencari alert menurut ID atau kode (gorm.ErrRecordNotFound bila tidak ada).
 	GetByID(ctx context.Context, ref idx.RujukanID) (*Alert, error)
@@ -21,7 +25,7 @@ type Repository interface {
 	// (ErrVersiUsang bila tidak, ErrAturanNotFound bila aturan tak ada), serta
 	// mencatat foto versi baru di riwayat. Mengembalikan aturan terbaru.
 	UpdateAturan(ctx context.Context, id idx.ID, upd AturanUpdate, userID string) (*Aturan, error)
-	// BulkAction menerapkan aksi pada alert yang statusnya boleh bertransisi dan
-	// mengembalikan id yang benar-benar berubah.
-	BulkAction(ctx context.Context, ids []idx.ID, action BulkAction, userID string) ([]idx.ID, error)
+	// BulkAction menerapkan aksi pada alert yang statusnya boleh bertransisi dan berada dalam cakupan pemanggil,
+	// lalu mengembalikan id yang benar-benar berubah.
+	BulkAction(ctx context.Context, ids []idx.ID, action BulkAction, userID string, cakupan hargadomain.Cakupan) ([]idx.ID, error)
 }

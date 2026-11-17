@@ -40,10 +40,13 @@ type Client interface {
 	Health(ctx context.Context) (*Health, error)
 }
 
-// Titik adalah harga rata-rata satu hari.
+// Titik adalah harga rata-rata satu hari beserta fitur eksogen cuaca dan hari libur (opsional).
 type Titik struct {
-	Tanggal string `json:"tanggal"`
-	Nilai   int    `json:"nilai"`
+	Tanggal      string  `json:"tanggal"`
+	Nilai        int     `json:"nilai"`
+	HujanLebat   bool    `json:"hujan_lebat,omitempty"`
+	CurahHujanMM float64 `json:"curah_hujan_mm,omitempty"`
+	HariLibur    bool    `json:"hari_libur,omitempty"`
 }
 
 // Seri adalah deret harga satu wilayah.

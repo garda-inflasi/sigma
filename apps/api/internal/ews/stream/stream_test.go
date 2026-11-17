@@ -344,3 +344,44 @@ func TestPublisher_NotifiesBusOnAlertWritten(t *testing.T) {
 		t.Fatal("publisher harus membangunkan pelanggan")
 	}
 }
+
+func TestServeScoped_FiltersByKabupaten(t *testing.T) {
+	store := &fakeStore{}
+	store.add(1, "EWS-1171", "WASPADA")
+	store.events[0].Alert.KabupatenKode = "1171"
+	store.add(2, "EWS-1108", "KRITIS")
+	store.events[1].Alert.KabupatenKode = "1108"
+	store.add(3, "EWS-1171-B", "SIAGA")
+	store.events[2].Alert.KabupatenKode = "1171"
+
+	s, _ := newStreamer(store)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		defer pw.Close()
+		done <- s.ServeScoped(ctx, pw, func() {}, 0, func(a domain.Alert) bool {
+			return a.KabupatenKode == "1171"
+		})
+	}()
+
+	lines := make(chan string, 32)
+	go func() {
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+
+	assert.Equal(t, map[string]string{"retry": "5000"}, frame(t, lines))
+	f1 := frame(t, lines)
+	f2 := frame(t, lines)
+	assert.Equal(t, "1", f1["id"])
+	assert.Equal(t, "3", f2["id"], "event id 2 milik kabupaten 1108 harus dilewati")
+
+	cancel()
+	require.NoError(t, <-done)
+}

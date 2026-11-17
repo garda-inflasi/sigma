@@ -23,8 +23,9 @@ type stubOps struct {
 	saved     []domain.TelemetriSuhu
 	trx       []domain.TransaksiInput
 	trxErr    map[idx.ID]error
-	diubah    []string
-	cariKode  []string
+	diubah       []string
+	cariKode     []string
+	risikoDiubah map[string]float64
 }
 
 func (s *stubOps) IDFasilitasDariKode(_ context.Context, kode string) (string, error) {
@@ -56,6 +57,14 @@ func (s *stubOps) UpdateFasilitas(_ context.Context, id string, _ domain.Fasilit
 func (s *stubOps) SimpanTelemetri(_ context.Context, rows []domain.TelemetriSuhu) (int64, error) {
 	s.saved = append(s.saved, rows...)
 	return int64(len(rows)), nil
+}
+
+func (s *stubOps) PerbaruiRisikoAnomali(_ context.Context, fasilitasID string, kenaikan float64) (int64, error) {
+	if s.risikoDiubah == nil {
+		s.risikoDiubah = map[string]float64{}
+	}
+	s.risikoDiubah[fasilitasID] = kenaikan
+	return 2, nil
 }
 
 func (s *stubOps) CatatTransaksi(_ context.Context, in domain.TransaksiInput) (domain.TransaksiHasil, error) {
@@ -410,4 +419,42 @@ func TestUbahFasilitas_AliasResolvedAndAuditUsesUUID(t *testing.T) {
 	_, err = ops.UbahFasilitas(context.Background(), idx.RujukanUUID{Kode: "CS-99"}, domain.FasilitasPatch{KapasitasTon: &kapasitas}, uid("u1"))
 	assert.ErrorIs(t, err, domain.ErrFasilitasTidakAda)
 	assert.Len(t, repo.diubah, 1, "kode yang tidak ada tidak sampai ke UPDATE")
+}
+
+func TestDeviasiDanKenaikanRisikoSuhu(t *testing.T) {
+	assert.Equal(t, 0.0, domain.DeviasiSuhu(4.0, 2.0, 6.0))
+	assert.InDelta(t, 2.5, domain.DeviasiSuhu(8.5, 2.0, 6.0), 0.001)
+	assert.InDelta(t, 3.0, domain.DeviasiSuhu(-1.0, 2.0, 6.0), 0.001)
+
+	assert.Equal(t, 0.0, domain.KenaikanRisikoSuhu(0))
+	assert.Equal(t, 0.15, domain.KenaikanRisikoSuhu(3.0))
+	assert.Equal(t, 0.45, domain.KenaikanRisikoSuhu(20.0), "kenaikan risiko dibatasi maks 0.45")
+}
+
+func TestIngestBatch_AnomaliSuhuMemicuEvaluasiRisiko(t *testing.T) {
+	minC, maxC := 2.0, 6.0
+	repo := repoFasilitas(map[string]domain.FasilitasView{
+		"CS-01": {Status: domain.StatusFasilitasOperasional, KapasitasTon: 100, SuhuMinC: &minC, SuhuMaksC: &maxC},
+	})
+	ops, rec := newOps(repo)
+
+	out, err := ops.Ingest(context.Background(), IngestInput{
+		ActorID:   uid("gateway-1"),
+		GatewayID: "gw-mqtt-01",
+		Topic:     "mqtt/coldstorage/CS-01/suhu",
+		Pembacaan: []Pembacaan{
+			{FasilitasID: "CS-01", Waktu: fixedNow.Add(-2 * time.Minute), SuhuC: 4.5, Sumber: domain.SumberSensor},
+			{FasilitasID: "CS-01", Waktu: fixedNow.Add(-1 * time.Minute), SuhuC: 10.0, Sumber: domain.SumberSensor}, // deviasi 4.0°C -> +0.20 risiko
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, out.Diterima)
+	assert.Equal(t, 2, out.LotRisikoDiperbarui)
+	assert.Len(t, out.DiLuarRentang, 1)
+	assert.Equal(t, 0.20, repo.risikoDiubah[fas("CS-01")])
+
+	last, ok := rec.Last()
+	require.True(t, ok)
+	assert.Equal(t, "gw-mqtt-01", last.Metadata["gateway_id"])
+	assert.Equal(t, "mqtt/coldstorage/CS-01/suhu", last.Metadata["topic"])
 }

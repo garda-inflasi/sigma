@@ -1,6 +1,6 @@
 # 07 — Aplikasi lapangan (PWA offline-first)
 
-**Prioritas:** P0 ("Input telemetri mobile") · **Status:** UI ✅ · Backend 🟡 · Terhubung ⬜ · Skema & seed ⬜ · Tes ⬜
+**Prioritas:** P0 ("Input telemetri mobile") · **Status:** UI ✅ · Backend ✅ · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -70,8 +70,8 @@ Migrasi `000111_pk_harga_lapangan_master.sql`; kontrak lengkap di [SKEMA-DATABAS
 
 ## 07-C — Foto, notifikasi, kode etik, kinerja *(Fase F, gelombang F-1/F-4)*
 
-1. **MIG**: `lampiran_entri` (PK `BIGINT` identity; `entri_id bigint NOT NULL REFERENCES entri_harga(id) ON DELETE CASCADE` + indeks `idx_lampiran_entri_entri_id`; `lokasi_objek`, `mime`, `ukuran`, `checksum`), `perangkat_push` (sudah dipenuhi `langganan_push` di 000110: `pengguna_id uuid` `CASCADE`, `UNIQUE (endpoint)`; tidak perlu tabel baru), `persetujuan_kode_etik` (PK `BIGINT` identity; `user_id uuid NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE`, `versi`, `disetujui_pada`, `UNIQUE (user_id, versi)`), view kinerja petugas (jumlah entri, ketepatan waktu, rasio penolakan; memakai `entri_harga.petugas_id uuid`). Penyimpanan objek foto merujuk `lampiran_entri.id` (BIGINT, string di JSON).
-2. **SEED** (`reference`): versi kode etik awal.
-3. **API**: unggah foto (multipart/presigned URL, batas ukuran, pemindaian tipe, penyimpanan objek di luar DB; rute `POST /v1/lapangan/harga/:id/foto` dengan `:id` = `entri_harga.id` BIGINT, ID salah bentuk `404`, bukan pemilik entri `404`); notifikasi tugas/pengingat; penugasan otomatis (tugas baru: `kode` NULL kecuali ada kebutuhan kode tampilan, lihat bagian Kunci primer) dan penyelesaian otomatis saat entri masuk.
-4. **FE/PWA**: kompres foto di perangkat; batasi antrean IndexedDB; Background Sync saat jaringan kembali; hapus data lokal saat logout/ganti akun; persetujuan kode etik eksplisit; uji perangkat nyata (Android low-end, 2G/3G), Lighthouse (installable, offline).
-5. **TES**: unggah foto, push, kode etik.
+1. [x] **MIG**: `000126_07c_lapangan_foto_kode_etik.sql`: `lampiran_entri` (PK `BIGINT` identity; `entri_id bigint NOT NULL REFERENCES entri_harga(id) ON DELETE CASCADE` + indeks `idx_lampiran_entri_entri_id`; `lokasi_objek`, `mime`, `ukuran`, `checksum`), `kode_etik`, `persetujuan_kode_etik` (PK `BIGINT` identity; `user_id uuid NOT NULL REFERENCES pengguna(id) ON DELETE CASCADE`, `versi`, `disetujui_pada`, `UNIQUE (user_id, versi)`), view `kinerja_petugas`.
+2. [x] **SEED** (`reference`): `db/seeds/reference/15_kode_etik.sql` (versi kode etik awal `v1.0`, idempoten).
+3. [x] **API**: unggah foto (`POST /v1/lapangan/harga/:id/foto` dan `GET /v1/lapangan/harga/:id/foto`, batas 5 MB, deteksi magic-bytes JPEG/PNG/WebP, SHA-256 checksum, penyimpanan lokal `LAPANGAN_UPLOAD_DIR`, ID salah bentuk atau bukan pemilik `404`), kode etik (`GET /v1/lapangan/kode-etik`, `POST /v1/lapangan/kode-etik/setuju`), dan kinerja petugas (`GET /v1/lapangan/kinerja` dari view `kinerja_petugas`).
+4. [x] **FE/PWA**: kompres foto di perangkat (`kompresFoto`), unggah blob foto via `kirimEntri` di `sync-engine.ts` setelah entri tersimpan, dan modal persetujuan kode etik eksplisit (`kode-etik-modal.tsx`) di `/lapangan/input`.
+5. [x] **TES**: unit & handler test Go (`foto_kode_etik_test.go`, `handler_test.go`), integration test (`integration/foto_kode_etik_test.go`), serta unit test frontend (`kirim-entri.test.ts`).

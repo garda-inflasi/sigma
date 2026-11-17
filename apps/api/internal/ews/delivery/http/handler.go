@@ -38,6 +38,12 @@ func New(uc *usecase.UseCase, streamer *stream.Streamer, notif *notifikasi.Servi
 // Stream handles GET /v1/ews/stream (Server-Sent Events, event `alert`).
 // Klien yang menyambung ulang mengirim Last-Event-ID dan melanjutkan tanpa celah atau duplikat.
 func (h *Handler) Stream(c *gin.Context) {
+	cakupan, err := h.uc.Cakupan(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal memulai aliran peringatan")
+		return
+	}
+
 	// JWTAuth memeriksa token hanya saat koneksi dibuka. Aliran ditutup saat access token kedaluwarsa supaya
 	// sesi yang dicabut tidak menerima alert tanpa batas; EventSource menyambung ulang lewat pemeriksaan penuh.
 	ctx, cancel := middleware.TokenLifetimeContext(c)
@@ -58,7 +64,17 @@ func (h *Handler) Stream(c *gin.Context) {
 	header.Set("X-Accel-Buffering", "no") // cegah buffering oleh proxy
 	c.Status(nethttp.StatusOK)
 
-	_ = h.stream.Serve(ctx, c.Writer, c.Writer.Flush, start)
+	var allow func(domain.Alert) bool
+	if !cakupan.Semua {
+		if cakupan.KabupatenKode == "" {
+			allow = func(domain.Alert) bool { return false }
+		} else {
+			kab := cakupan.KabupatenKode
+			allow = func(a domain.Alert) bool { return a.KabupatenKode == kab }
+		}
+	}
+
+	_ = h.stream.ServeScoped(ctx, c.Writer, c.Writer.Flush, start, allow)
 }
 
 // List handles GET /v1/ews?status=&severity=&jenis=&kabupaten_kode=&page=&limit=
@@ -69,10 +85,16 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
+	cakupan, err := h.uc.Cakupan(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil data EWS")
+		return
+	}
+
 	items, total, err := h.uc.List(c.Request.Context(), domain.ListQuery{
 		Status: req.Status, Severity: req.Severity, Jenis: req.Jenis, KabupatenKode: req.KabupatenKode,
 		Page: req.Page, Limit: req.Limit,
-	})
+	}, cakupan)
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data EWS")
 		return
@@ -87,7 +109,12 @@ func (h *Handler) GetByID(c *gin.Context) {
 	if !ok {
 		return
 	}
-	alert, err := h.uc.GetByID(c.Request.Context(), ref)
+	cakupan, err := h.uc.Cakupan(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil alert EWS")
+		return
+	}
+	alert, err := h.uc.GetByID(c.Request.Context(), ref, cakupan)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Alert EWS tidak ditemukan")
@@ -155,7 +182,12 @@ func (h *Handler) ListRiwayat(c *gin.Context) {
 	if !ok {
 		return
 	}
-	items, err := h.uc.ListRiwayat(c.Request.Context(), ref)
+	cakupan, err := h.uc.Cakupan(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil riwayat alert")
+		return
+	}
+	items, err := h.uc.ListRiwayat(c.Request.Context(), ref, cakupan)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
 			response.NotFound(c, "Alert EWS tidak ditemukan")
@@ -180,7 +212,13 @@ func (h *Handler) Bulk(c *gin.Context) {
 		return
 	}
 
-	res, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Action, c.GetString("user_id"))
+	cakupan, err := h.uc.Cakupan(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		response.InternalError(c, "Gagal memproses aksi massal")
+		return
+	}
+
+	res, err := h.uc.BulkAction(audit.RequestContext(c), req.IDs, req.Action, c.GetString("user_id"), cakupan)
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidAction) {
 			response.BadRequest(c, "Aksi tidak valid")

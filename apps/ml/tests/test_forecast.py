@@ -231,5 +231,23 @@ class TestRingkas(unittest.TestCase):
         self.assertEqual(f.ringkas([{"status": "DILEWATI"}]), {"n_seri_ok": 0, "n_seri_dilewati": 1})
 
 
+class TestEksogenCuacaDanLibur(unittest.TestCase):
+    def test_hujan_lebat_dan_hari_libur_terestimasi_dalam_params_dan_faktor(self):
+        titik = []
+        for i in range(60):
+            tgl = (date(2026, 9, 1) + timedelta(days=i)).isoformat()
+            hujan = i in (10, 20, 30, 59)
+            libur = i in (15, 35, 50)
+            harga = 14000 + (500 if hujan else 0) + (400 if libur else 0)
+            titik.append({"tanggal": tgl, "nilai": harga, "hujan_lebat": hujan, "hari_libur": libur})
+
+        out = f.latih_seri(titik, [1, 7])
+        self.assertGreater(out["params"].get("efek_cuaca", 0), 0)
+        self.assertGreater(out["params"].get("efek_libur", 0), 0)
+        nama_faktor = [x["nama"] for x in out["ramalan"][0]["faktor"]]
+        self.assertIn("Anomali cuaca & hujan lebat", nama_faktor)
+        self.assertIn("Hari besar & libur nasional", nama_faktor)
+
+
 if __name__ == "__main__":
     unittest.main()

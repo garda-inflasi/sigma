@@ -34,6 +34,8 @@ LABEL_FAKTOR = {
     "level": ("Penyesuaian level harga", "Selisih level terpulus dengan harga terakhir"),
     "tren": ("Tren harga", "Kemiringan harga terkini yang diteruskan (teredam)"),
     "musiman": ("Pola musiman mingguan", "Pola harga per hari dalam sepekan"),
+    "cuaca": ("Anomali cuaca & hujan lebat", "Efek historis curah hujan tinggi terhadap harga pangan"),
+    "hari_libur": ("Hari besar & libur nasional", "Pola permintaan musiman hari libur/keagamaan"),
     "tetap": ("Harga terakhir dipertahankan", "Model naif: tidak ada perubahan struktural"),
 }
 
@@ -260,10 +262,85 @@ def faktor(jalur: Jalur, k: int, harga_dasar: float) -> list[dict]:
 # ------------------------------------------------------------------- pelatihan
 
 
+def _ekstrak_eksogen(titik: list[dict], awal: date, n: int) -> tuple[list[bool], list[bool]]:
+    """Mengekstrak penanda hujan lebat dan hari libur nasional yang sejajar dengan deret reguler y[0..n-1]."""
+    hujan = [False] * n
+    libur = [False] * n
+    for t in titik:
+        tgl_raw = t.get("tanggal")
+        if not isinstance(tgl_raw, str):
+            continue
+        try:
+            tgl = date.fromisoformat(tgl_raw[:10])
+        except ValueError:
+            continue
+        idx = (tgl - awal).days
+        if 0 <= idx < n:
+            if bool(t.get("hujan_lebat")):
+                hujan[idx] = True
+            if bool(t.get("hari_libur")):
+                libur[idx] = True
+    return hujan, libur
+
+
+def _estimasi_efek_eksogen(y: list[float], hujan: list[bool], libur: list[bool]) -> tuple[float, float]:
+    """Mengestimasi efek rata-rata hujan lebat dan hari libur terhadap deviasi harga dari rata-rata 7 hari."""
+    n = len(y)
+    if n < 14 or y[-1] <= 0:
+        return 0.0, 0.0
+    batas = 0.05 * y[-1]
+
+    def _rata_dev(flag: list[bool], min_sampel: int) -> float:
+        dev_flag = []
+        dev_normal = []
+        for i in range(7, n):
+            ma7 = sum(y[i - 7 : i]) / 7.0
+            diff = y[i] - ma7
+            if flag[i]:
+                dev_flag.append(diff)
+            else:
+                dev_normal.append(diff)
+        if len(dev_flag) < min_sampel or len(dev_normal) < 3:
+            return 0.0
+        efek = (sum(dev_flag) / len(dev_flag)) - (sum(dev_normal) / len(dev_normal))
+        return max(-batas, min(batas, round(efek, 2)))
+
+    return _rata_dev(hujan, 3), _rata_dev(libur, 2)
+
+
+def _terapkan_eksogen(jalur: Jalur, params: dict, hujan_terakhir: bool, langkah: int) -> Jalur:
+    """Menambahkan komponen efek cuaca dan hari libur bila terestimasi dari pelatihan."""
+    efek_cuaca = float(params.get("efek_cuaca", 0.0) or 0.0)
+    efek_libur = float(params.get("efek_libur", 0.0) or 0.0)
+    if efek_cuaca == 0.0 and efek_libur == 0.0:
+        return jalur
+
+    nilai = list(jalur.nilai)
+    komponen = {k: list(v) for k, v in jalur.komponen.items()}
+    if efek_cuaca != 0.0 and hujan_terakhir:
+        cuaca_vec = [round(efek_cuaca * (0.7**k), 2) if k < 3 else 0.0 for k in range(langkah)]
+        for k in range(langkah):
+            nilai[k] += cuaca_vec[k]
+        komponen["cuaca"] = cuaca_vec
+    if efek_libur != 0.0:
+        # Efek hari libur diterapkan bila ada penanda eksplisit atau sebagai komponen eksogen tetap pada jendela pendek.
+        libur_vec = [round(efek_libur * 0.5, 2) if k < 7 else 0.0 for k in range(langkah)]
+        for k in range(langkah):
+            nilai[k] += libur_vec[k]
+        komponen["hari_libur"] = libur_vec
+    return Jalur(nilai=nilai, komponen=komponen)
+
+
 def _bentuk_ramalan(
-    nama: str, y: list[float], params: dict, galat_rmse: dict[str, float], horizon: list[int], tanggal_dasar: date
+    nama: str,
+    y: list[float],
+    params: dict,
+    galat_rmse: dict[str, float],
+    horizon: list[int],
+    tanggal_dasar: date,
+    hujan_terakhir: bool = False,
 ) -> list[dict]:
-    jalur = ramal(nama, y, params, horizon[-1])
+    jalur = _terapkan_eksogen(ramal(nama, y, params, horizon[-1]), params, hujan_terakhir, horizon[-1])
     hasil = []
     for h in horizon:
         mentah = jalur.nilai[h - 1]
@@ -328,6 +405,13 @@ def latih_seri(titik: list[dict], horizon: list[int]) -> dict:
     mape_base, rmse_base, _ = _skor([kandidat[BASELINE][i] for i in idx_uji], horizon)
 
     params = sesuaikan(terpilih, y)
+    hujan, libur = _ekstrak_eksogen(titik, awal, len(y))
+    efek_cuaca, efek_libur = _estimasi_efek_eksogen(y, hujan, libur)
+    if efek_cuaca != 0.0:
+        params["efek_cuaca"] = efek_cuaca
+    if efek_libur != 0.0:
+        params["efek_libur"] = efek_libur
+
     galat = _galat_rmse(kandidat[terpilih], horizon)
     return {
         "algoritma": terpilih,
@@ -347,7 +431,7 @@ def latih_seri(titik: list[dict], horizon: list[int]) -> dict:
         "harga_dasar": round(y[-1]),
         "tanggal_dasar": tanggal_dasar.isoformat(),
         "n_hari": len(y),
-        "ramalan": _bentuk_ramalan(terpilih, y, params, galat, horizon, tanggal_dasar),
+        "ramalan": _bentuk_ramalan(terpilih, y, params, galat, horizon, tanggal_dasar, hujan[-1] if hujan else False),
     }
 
 
@@ -362,12 +446,13 @@ def prediksi_seri(titik: list[dict], algoritma: str, params: dict, galat_rmse: d
     if algoritma in ("holt", "holt_winters") and not all(_angka(params.get(k)) for k in ("alpha", "beta", "gamma", "phi")):
         raise ValueError("params harus berisi angka alpha, beta, gamma, phi")
     awal, y = regularkan(titik)
+    hujan, _ = _ekstrak_eksogen(titik, awal, len(y))
     tanggal_dasar = awal + timedelta(days=len(y) - 1)
     return {
         "algoritma": algoritma,
         "harga_dasar": round(y[-1]),
         "tanggal_dasar": tanggal_dasar.isoformat(),
-        "ramalan": _bentuk_ramalan(algoritma, y, params, galat_rmse, horizon, tanggal_dasar),
+        "ramalan": _bentuk_ramalan(algoritma, y, params, galat_rmse, horizon, tanggal_dasar, hujan[-1] if hujan else False),
     }
 
 

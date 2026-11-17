@@ -142,4 +142,28 @@ describe("kirimEntri", () => {
     }) as typeof fetch;
     await assert.rejects(() => kirimEntri(entri), /Failed to fetch/);
   });
+
+  it("mengunggah foto terkompresi ke POST /v1/lapangan/harga/:id/foto setelah entri tersimpan", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      calls.push({ url, body: init?.body });
+      if (url.endsWith("/foto")) {
+        return new Response(JSON.stringify({ code: "201", message: "Created", data: { id: "9", foto_url: "/v1/lapangan/harga/42/foto" } }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ code: "201", message: "Created", data: { id: "42", status: "DIAJUKAN" } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const hasil = await kirimEntri({ ...entri, foto: "data:image/jpeg;base64,/9j/4AAQSkZJRg==" });
+    assert.deepEqual(hasil, { ok: true });
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].url, /\/v1\/lapangan\/harga\/42\/foto$/);
+    assert.ok(calls[1].body instanceof FormData);
+  });
 });

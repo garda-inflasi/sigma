@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/audit/audittest"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,11 @@ import (
 
 type mockRepository struct {
 	mock.Mock
+}
+
+func (m *mockRepository) PenggunaCakupan(ctx context.Context, userID string) (string, string, bool, error) {
+	args := m.Called(ctx, userID)
+	return args.String(0), args.String(1), args.Bool(2), args.Error(3)
 }
 
 func (m *mockRepository) List(ctx context.Context, q domain.ListQuery) ([]domain.Alert, int64, error) {
@@ -59,8 +65,8 @@ func (m *mockRepository) UpdateAturan(ctx context.Context, id idx.ID, upd domain
 	return args.Get(0).(*domain.Aturan), args.Error(1)
 }
 
-func (m *mockRepository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction, userID string) ([]idx.ID, error) {
-	args := m.Called(ctx, ids, action, userID)
+func (m *mockRepository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction, userID string, cakupan hargadomain.Cakupan) ([]idx.ID, error) {
+	args := m.Called(ctx, ids, action, userID, cakupan)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -97,7 +103,7 @@ func TestList_AppliesDefaultsAndPassesFilters(t *testing.T) {
 			uc, _ := newTestUseCase(repo)
 			repo.On("List", mock.Anything, tc.want).Return([]domain.Alert{sampleAlert()}, int64(42), nil)
 
-			items, total, err := uc.List(context.Background(), tc.in)
+			items, total, err := uc.List(context.Background(), tc.in, hargadomain.CakupanSemua())
 
 			require.NoError(t, err)
 			assert.Len(t, items, 1)
@@ -112,7 +118,7 @@ func TestList_RepositoryError(t *testing.T) {
 	uc, _ := newTestUseCase(repo)
 	repo.On("List", mock.Anything, mock.Anything).Return([]domain.Alert{}, int64(0), assert.AnError)
 
-	_, _, err := uc.List(context.Background(), domain.ListQuery{})
+	_, _, err := uc.List(context.Background(), domain.ListQuery{}, hargadomain.CakupanSemua())
 
 	assert.ErrorIs(t, err, assert.AnError)
 }
@@ -124,7 +130,7 @@ func TestGetByID(t *testing.T) {
 		alert := sampleAlert()
 		repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 1000}).Return(&alert, nil)
 
-		got, err := uc.GetByID(context.Background(), idx.RujukanID{ID: 1000})
+		got, err := uc.GetByID(context.Background(), idx.RujukanID{ID: 1000}, hargadomain.CakupanSemua())
 
 		require.NoError(t, err)
 		assert.EqualValues(t, 1000, got.ID)
@@ -135,7 +141,7 @@ func TestGetByID(t *testing.T) {
 		alert := sampleAlert()
 		repo.On("GetByID", mock.Anything, idx.RujukanID{Kode: "EWS-1000"}).Return(&alert, nil)
 
-		got, err := uc.GetByID(context.Background(), idx.RujukanID{Kode: "EWS-1000"})
+		got, err := uc.GetByID(context.Background(), idx.RujukanID{Kode: "EWS-1000"}, hargadomain.CakupanSemua())
 
 		require.NoError(t, err)
 		assert.EqualValues(t, 1000, got.ID)
@@ -146,7 +152,7 @@ func TestGetByID(t *testing.T) {
 		uc, _ := newTestUseCase(repo)
 		repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 7}).Return(nil, gorm.ErrRecordNotFound)
 
-		_, err := uc.GetByID(context.Background(), idx.RujukanID{ID: 7})
+		_, err := uc.GetByID(context.Background(), idx.RujukanID{ID: 7}, hargadomain.CakupanSemua())
 
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
@@ -155,7 +161,7 @@ func TestGetByID(t *testing.T) {
 		uc, _ := newTestUseCase(repo)
 		repo.On("GetByID", mock.Anything, idx.RujukanID{ID: 7}).Return(nil, assert.AnError)
 
-		_, err := uc.GetByID(context.Background(), idx.RujukanID{ID: 7})
+		_, err := uc.GetByID(context.Background(), idx.RujukanID{ID: 7}, hargadomain.CakupanSemua())
 
 		assert.ErrorIs(t, err, assert.AnError)
 		assert.NotErrorIs(t, err, ErrNotFound)
@@ -179,10 +185,10 @@ func TestBulkAction_ReportsChangedAndFailedAndWritesAudit(t *testing.T) {
 			repo := new(mockRepository)
 			uc, recorder := newTestUseCase(repo)
 			// id ganda dibuang sebelum ke repository; 3 tidak berubah.
-			repo.On("BulkAction", mock.Anything, []idx.ID{1, 2, 3}, domain.BulkAction(action), uid("user-001")).
+			repo.On("BulkAction", mock.Anything, []idx.ID{1, 2, 3}, domain.BulkAction(action), uid("user-001"), hargadomain.CakupanSemua()).
 				Return([]idx.ID{1, 2}, nil)
 
-			res, err := uc.BulkAction(context.Background(), []idx.ID{1, 2, 1, 3}, action, uid("user-001"))
+			res, err := uc.BulkAction(context.Background(), []idx.ID{1, 2, 1, 3}, action, uid("user-001"), hargadomain.CakupanSemua())
 
 			require.NoError(t, err)
 			assert.Equal(t, BulkResult{Berhasil: 2, Gagal: 1}, res)
@@ -199,9 +205,9 @@ func TestBulkAction_ReportsChangedAndFailedAndWritesAudit(t *testing.T) {
 func TestBulkAction_NothingChangedWritesNoAudit(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
-	repo.On("BulkAction", mock.Anything, []idx.ID{9}, domain.BulkAkui, "u").Return([]idx.ID{}, nil)
+	repo.On("BulkAction", mock.Anything, []idx.ID{9}, domain.BulkAkui, "u", hargadomain.CakupanSemua()).Return([]idx.ID{}, nil)
 
-	res, err := uc.BulkAction(context.Background(), []idx.ID{9}, "akui", "u")
+	res, err := uc.BulkAction(context.Background(), []idx.ID{9}, "akui", "u", hargadomain.CakupanSemua())
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkResult{Gagal: 1}, res)
@@ -211,7 +217,7 @@ func TestBulkAction_NothingChangedWritesNoAudit(t *testing.T) {
 func TestBulkAction_InvalidAction(t *testing.T) {
 	uc, recorder := newTestUseCase(new(mockRepository))
 
-	_, err := uc.BulkAction(context.Background(), []idx.ID{1}, "hapus", "u")
+	_, err := uc.BulkAction(context.Background(), []idx.ID{1}, "hapus", "u", hargadomain.CakupanSemua())
 
 	assert.ErrorIs(t, err, ErrInvalidAction)
 	assert.Empty(t, recorder.Entries())
@@ -220,9 +226,9 @@ func TestBulkAction_InvalidAction(t *testing.T) {
 func TestBulkAction_RepositoryError(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
-	repo.On("BulkAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
+	repo.On("BulkAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
 
-	_, err := uc.BulkAction(context.Background(), []idx.ID{1}, "akui", "u")
+	_, err := uc.BulkAction(context.Background(), []idx.ID{1}, "akui", "u", hargadomain.CakupanSemua())
 
 	assert.ErrorIs(t, err, assert.AnError)
 	assert.Empty(t, recorder.Entries())
@@ -232,10 +238,65 @@ func TestBulkAction_AuditFailureDoesNotFailTheAction(t *testing.T) {
 	repo := new(mockRepository)
 	uc, recorder := newTestUseCase(repo)
 	recorder.Err = errors.New("audit down")
-	repo.On("BulkAction", mock.Anything, []idx.ID{1}, domain.BulkAkui, "u").Return([]idx.ID{1}, nil)
+	repo.On("BulkAction", mock.Anything, []idx.ID{1}, domain.BulkAkui, "u", hargadomain.CakupanSemua()).Return([]idx.ID{1}, nil)
 
-	res, err := uc.BulkAction(context.Background(), []idx.ID{1}, "akui", "u")
+	res, err := uc.BulkAction(context.Background(), []idx.ID{1}, "akui", "u", hargadomain.CakupanSemua())
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Berhasil)
+}
+
+func TestRowScope_EWS(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("koordinator memaksa filter kabupatennya saat List", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		koor := hargadomain.CakupanPeran(hargadomain.PeranKoordinator, "1171", "koor-1")
+		repo.On("List", ctx, domain.ListQuery{KabupatenKode: "1171", Page: 1, Limit: DefaultLimit}).
+			Return([]domain.Alert{sampleAlert()}, int64(1), nil)
+
+		items, total, err := uc.List(ctx, domain.ListQuery{}, koor)
+		require.NoError(t, err)
+		assert.Len(t, items, 1)
+		assert.Equal(t, int64(1), total)
+	})
+
+	t.Run("koordinator meminta kabupaten lain mengembalikan kosong tanpa memanggil repo", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		koor := hargadomain.CakupanPeran(hargadomain.PeranKoordinator, "1171", "koor-1")
+
+		items, total, err := uc.List(ctx, domain.ListQuery{KabupatenKode: "1108"}, koor)
+		require.NoError(t, err)
+		assert.Empty(t, items)
+		assert.Zero(t, total)
+		repo.AssertNotCalled(t, "List")
+	})
+
+	t.Run("GetByID alert kabupaten lain untuk koordinator dijawab ErrNotFound", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		alert := sampleAlert()
+		alert.KabupatenKode = "1108"
+		repo.On("GetByID", ctx, idx.RujukanID{ID: 1000}).Return(&alert, nil)
+		koor := hargadomain.CakupanPeran(hargadomain.PeranKoordinator, "1171", "koor-1")
+
+		_, err := uc.GetByID(ctx, idx.RujukanID{ID: 1000}, koor)
+		assert.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("peran tanpa cakupan wilayah (mahasiswa) ditutup untuk EWS", func(t *testing.T) {
+		repo := new(mockRepository)
+		uc, _ := newTestUseCase(repo)
+		mhs := hargadomain.CakupanPeran(hargadomain.PeranMahasiswa, "1171", "mhs-1")
+
+		items, total, err := uc.List(ctx, domain.ListQuery{}, mhs)
+		require.NoError(t, err)
+		assert.Empty(t, items)
+		assert.Zero(t, total)
+
+		_, err = uc.GetByID(ctx, idx.RujukanID{ID: 1000}, mhs)
+		assert.ErrorIs(t, err, ErrNotFound)
+	})
 }

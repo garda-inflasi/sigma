@@ -155,10 +155,12 @@ type Pembacaan struct {
 	Sumber        string
 }
 
-// IngestInput adalah satu kiriman telemetri.
+// IngestInput adalah satu kiriman telemetri (termasuk batch gateway MQTT / edge IoT).
 type IngestInput struct {
 	Pembacaan []Pembacaan
 	ActorID   string
+	GatewayID string
+	Topic     string
 }
 
 // AlarmSuhu adalah pembacaan yang keluar dari batas alarm fasilitasnya.
@@ -172,9 +174,10 @@ type AlarmSuhu struct {
 
 // IngestOutcome adalah hasil satu kiriman telemetri.
 type IngestOutcome struct {
-	Diterima      int
-	Duplikat      int
-	DiLuarRentang []AlarmSuhu
+	Diterima            int
+	Duplikat            int
+	LotRisikoDiperbarui int
+	DiLuarRentang       []AlarmSuhu
 }
 
 // Ingest memvalidasi dan menyimpan pembacaan. Pembacaan yang sudah ada
@@ -260,6 +263,29 @@ func (o *Operasi) Ingest(ctx context.Context, in IngestInput) (IngestOutcome, er
 	}
 	out := IngestOutcome{Diterima: int(inserted), Duplikat: len(rows) - int(inserted), DiLuarRentang: alarm}
 
+	if out.Diterima > 0 && len(alarm) > 0 {
+		maxDev := map[string]float64{}
+		for _, a := range alarm {
+			dev := domain.DeviasiSuhu(a.SuhuC, a.BatasMinC, a.BatasMaksC)
+			if dev > maxDev[a.FasilitasID] {
+				maxDev[a.FasilitasID] = dev
+			}
+		}
+		for fid, dev := range maxDev {
+			kenaikan := domain.KenaikanRisikoSuhu(dev)
+			if kenaikan > 0 {
+				updated, err := o.repo.PerbaruiRisikoAnomali(ctx, fid, kenaikan)
+				if err != nil {
+					o.log.Warn("cold-storage: gagal evaluasi risiko food loss akibat anomali suhu", map[string]interface{}{
+						"fasilitas_id": fid, "error": err.Error(),
+					})
+				} else {
+					out.LotRisikoDiperbarui += int(updated)
+				}
+			}
+		}
+	}
+
 	ids := make([]string, 0, len(batas))
 	for id := range batas {
 		ids = append(ids, id)
@@ -271,10 +297,23 @@ func (o *Operasi) Ingest(ctx context.Context, in IngestInput) (IngestOutcome, er
 	if len(ids) == 1 {
 		entitasID = ids[0]
 	}
+	meta := map[string]any{
+		"fasilitas_ids":        ids,
+		"diterima":             out.Diterima,
+		"duplikat":             out.Duplikat,
+		"di_luar_rentang":      len(alarm),
+		"lot_risiko_diperbarui": out.LotRisikoDiperbarui,
+	}
+	if strings.TrimSpace(in.GatewayID) != "" {
+		meta["gateway_id"] = strings.TrimSpace(in.GatewayID)
+	}
+	if strings.TrimSpace(in.Topic) != "" {
+		meta["topic"] = strings.TrimSpace(in.Topic)
+	}
 	o.record(ctx, audit.Entry{
 		AktorID: in.ActorID, Aksi: "INGEST_TELEMETRI", Entitas: "cold_storage", EntitasID: entitasID,
 		Hasil:    audit.HasilBerhasil,
-		Metadata: map[string]any{"fasilitas_ids": ids, "diterima": out.Diterima, "duplikat": out.Duplikat, "di_luar_rentang": len(alarm)},
+		Metadata: meta,
 	})
 	return out, nil
 }

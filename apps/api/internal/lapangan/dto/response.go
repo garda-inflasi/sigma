@@ -3,6 +3,7 @@ package dto
 import (
 	"time"
 
+	"github.com/garda-inflasi/api/internal/lapangan/domain"
 	"github.com/garda-inflasi/api/internal/lapangan/usecase"
 	"github.com/garda-inflasi/api/pkg/idx"
 )
@@ -110,4 +111,97 @@ func ToAcuanResponse(d usecase.DataAcuan) AcuanResponse {
 		res.Pasar[i] = AcuanPasarItem{ID: p.ID, Nama: p.Nama, KabupatenKode: p.KabupatenKode, Lat: p.Lat, Lng: p.Lng, RadiusMeter: p.RadiusMeter}
 	}
 	return res
+}
+
+// LampiranFotoResponse adalah balasan POST /v1/lapangan/harga/:id/foto.
+type LampiranFotoResponse struct {
+	ID         idx.ID `json:"id"`
+	EntriID    idx.ID `json:"entri_id"`
+	FotoURL    string `json:"foto_url"`
+	MIME       string `json:"mime"`
+	Ukuran     int    `json:"ukuran"`
+	Checksum   string `json:"checksum"`
+	DibuatPada string `json:"dibuat_pada"`
+}
+
+func ToLampiranFotoResponse(l domain.LampiranEntri, fotoURL string) LampiranFotoResponse {
+	return LampiranFotoResponse{
+		ID:         l.ID,
+		EntriID:    l.EntriID,
+		FotoURL:    fotoURL,
+		MIME:       l.MIME,
+		Ukuran:     l.Ukuran,
+		Checksum:   l.Checksum,
+		DibuatPada: l.DibuatPada.UTC().Format(time.RFC3339),
+	}
+}
+
+// KodeEtikResponse adalah balasan GET /v1/lapangan/kode-etik.
+type KodeEtikResponse struct {
+	Versi         string  `json:"versi"`
+	Judul         string  `json:"judul"`
+	Isi           string  `json:"isi"`
+	SudahSetuju   bool    `json:"sudah_setuju"`
+	DisetujuiPada *string `json:"disetujui_pada,omitempty"`
+}
+
+func ToKodeEtikResponse(k domain.KodeEtikStatus) KodeEtikResponse {
+	var t *string
+	if k.DisetujuiPada != nil {
+		s := k.DisetujuiPada.UTC().Format(time.RFC3339)
+		t = &s
+	}
+	return KodeEtikResponse{
+		Versi:         k.Versi,
+		Judul:         k.Judul,
+		Isi:           k.Isi,
+		SudahSetuju:   k.SudahSetuju,
+		DisetujuiPada: t,
+	}
+}
+
+// PersetujuanKodeEtikResponse adalah balasan POST /v1/lapangan/kode-etik/setuju.
+type PersetujuanKodeEtikResponse struct {
+	ID            idx.ID `json:"id"`
+	Versi         string `json:"versi"`
+	DisetujuiPada string `json:"disetujui_pada"`
+}
+
+func ToPersetujuanKodeEtikResponse(p domain.PersetujuanKodeEtik) PersetujuanKodeEtikResponse {
+	return PersetujuanKodeEtikResponse{
+		ID:            p.ID,
+		Versi:         p.Versi,
+		DisetujuiPada: p.DisetujuiPada.UTC().Format(time.RFC3339),
+	}
+}
+
+// KinerjaPetugasResponse adalah item balasan GET /v1/lapangan/kinerja.
+type KinerjaPetugasResponse struct {
+	PetugasID           string  `json:"petugas_id"`
+	NamaPetugas         string  `json:"nama_petugas"`
+	KabupatenKode       *string `json:"kabupaten_kode,omitempty"`
+	TotalEntri          int     `json:"total_entri"`
+	EntriValid          int     `json:"entri_valid"`
+	EntriDitolak        int     `json:"entri_ditolak"`
+	RasioPenolakanPct   float64 `json:"rasio_penolakan_pct"`
+	TotalTugas          int     `json:"total_tugas"`
+	TugasSelesai        int     `json:"tugas_selesai"`
+	TugasTepatWaktu     int     `json:"tugas_tepat_waktu"`
+	KetepatanTenggatPct float64 `json:"ketepatan_tenggat_pct"`
+}
+
+func ToKinerjaPetugasResponse(k domain.KinerjaPetugas) KinerjaPetugasResponse {
+	return KinerjaPetugasResponse{
+		PetugasID:           k.PetugasID,
+		NamaPetugas:         k.NamaPetugas,
+		KabupatenKode:       k.KabupatenKode,
+		TotalEntri:          k.TotalEntri,
+		EntriValid:          k.EntriValid,
+		EntriDitolak:        k.EntriDitolak,
+		RasioPenolakanPct:   k.RasioPenolakanPct,
+		TotalTugas:          k.TotalTugas,
+		TugasSelesai:        k.TugasSelesai,
+		TugasTepatWaktu:     k.TugasTepatWaktu,
+		KetepatanTenggatPct: k.KetepatanTenggatPct,
+	}
 }

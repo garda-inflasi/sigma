@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/garda-inflasi/api/pkg/idx"
@@ -210,4 +211,28 @@ type OperasiRepository interface {
 	CatatTransaksi(ctx context.Context, in TransaksiInput) (TransaksiHasil, error)
 	// TandaiPrioritasJual menandai lot tidak-habis dan mengembalikan yang berhasil.
 	TandaiPrioritasJual(ctx context.Context, ids []idx.ID) ([]BarisBulk, error)
+	// PerbaruiRisikoAnomali menaikkan risiko_food_loss pada lot aktif (status <> 'HABIS') di fasilitas
+	// saat terjadi anomali suhu, dan mengembalikan jumlah lot yang diperbarui.
+	PerbaruiRisikoAnomali(ctx context.Context, fasilitasID string, kenaikan float64) (int64, error)
+}
+
+// DeviasiSuhu mengembalikan selisih derajat Celsius di luar rentang aman [batasMinC, batasMaksC];
+// 0 bila suhu berada dalam rentang aman.
+func DeviasiSuhu(suhuC, batasMinC, batasMaksC float64) float64 {
+	if suhuC < batasMinC {
+		return batasMinC - suhuC
+	}
+	if suhuC > batasMaksC {
+		return suhuC - batasMaksC
+	}
+	return 0
+}
+
+// KenaikanRisikoSuhu menghitung tambahan risiko food loss (0..0.45) proporsional terhadap deviasi suhu.
+func KenaikanRisikoSuhu(deviasiC float64) float64 {
+	if deviasiC <= 0 {
+		return 0
+	}
+	inc := math.Min(0.45, deviasiC*0.05)
+	return math.Round(inc*100) / 100
 }

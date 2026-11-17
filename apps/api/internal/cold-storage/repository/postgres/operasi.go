@@ -199,6 +199,25 @@ func (r *Repository) SimpanTelemetri(ctx context.Context, rows []domain.Telemetr
 	return inserted, nil
 }
 
+// PerbaruiRisikoAnomali menaikkan risiko_food_loss pada lot aktif di fasilitas ketika terjadi anomali suhu.
+func (r *Repository) PerbaruiRisikoAnomali(ctx context.Context, fasilitasID string, kenaikan float64) (int64, error) {
+	if kenaikan <= 0 {
+		return 0, nil
+	}
+	res := r.db.WithContext(ctx).Exec(`
+		UPDATE stok_cold_storage
+		   SET risiko_food_loss = LEAST(1.0, ROUND((risiko_food_loss + ?)::numeric, 2)::double precision)
+		 WHERE cold_storage_id = ?
+		   AND status <> 'HABIS'
+		   AND risiko_food_loss < 1.0`,
+		kenaikan, fasilitasID,
+	)
+	if res.Error != nil {
+		return 0, fmt.Errorf("perbarui risiko anomali suhu: %w", res.Error)
+	}
+	return res.RowsAffected, nil
+}
+
 func (r *Repository) ListTelemetri(ctx context.Context, fasilitasID string, sejak time.Time, limit int) ([]domain.TelemetriSuhu, error) {
 	var rows []domain.TelemetriSuhu
 	err := r.db.WithContext(ctx).

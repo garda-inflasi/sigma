@@ -182,3 +182,67 @@ type DataAcuan struct {
 	Pasar     []AcuanPasar
 	Median    []MedianHarga
 }
+
+// LampiranEntri memetakan tabel lampiran_entri untuk menyimpan metadata foto bukti pencacahan harga.
+type LampiranEntri struct {
+	ID          idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	EntriID     idx.ID    `gorm:"column:entri_id"`
+	LokasiObjek string    `gorm:"column:lokasi_objek"`
+	MIME        string    `gorm:"column:mime"`
+	Ukuran      int       `gorm:"column:ukuran"`
+	Checksum    string    `gorm:"column:checksum"`
+	DibuatPada  time.Time `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (LampiranEntri) TableName() string {
+	return "lampiran_entri"
+}
+
+// KodeEtik memetakan tabel kode_etik untuk teks dan versi kode etik pencacah lapangan.
+type KodeEtik struct {
+	Versi      string    `gorm:"column:versi;primaryKey"`
+	Judul      string    `gorm:"column:judul"`
+	Isi        string    `gorm:"column:isi"`
+	Aktif      bool      `gorm:"column:aktif;default:true"`
+	DibuatPada time.Time `gorm:"column:dibuat_pada;default:now()"`
+}
+
+func (KodeEtik) TableName() string {
+	return "kode_etik"
+}
+
+// PersetujuanKodeEtik memetakan tabel persetujuan_kode_etik.
+type PersetujuanKodeEtik struct {
+	ID            idx.ID    `gorm:"column:id;primaryKey;autoIncrement"`
+	UserID        string    `gorm:"column:user_id;type:uuid"`
+	Versi         string    `gorm:"column:versi"`
+	DisetujuiPada time.Time `gorm:"column:disetujui_pada;default:now()"`
+}
+
+func (PersetujuanKodeEtik) TableName() string {
+	return "persetujuan_kode_etik"
+}
+
+// KodeEtikStatus menggabungkan kode etik aktif dengan status persetujuan petugas saat ini.
+type KodeEtikStatus struct {
+	Versi         string
+	Judul         string
+	Isi           string
+	SudahSetuju   bool
+	DisetujuiPada *time.Time
+}
+
+// KinerjaPetugas memetakan view kinerja_petugas.
+type KinerjaPetugas struct {
+	PetugasID           string  `gorm:"column:petugas_id"`
+	NamaPetugas         string  `gorm:"column:nama_petugas"`
+	KabupatenKode       *string `gorm:"column:kabupaten_kode"`
+	TotalEntri          int     `gorm:"column:total_entri"`
+	EntriValid          int     `gorm:"column:entri_valid"`
+	EntriDitolak        int     `gorm:"column:entri_ditolak"`
+	RasioPenolakanPct   float64 `gorm:"column:rasio_penolakan_pct"`
+	TotalTugas          int     `gorm:"column:total_tugas"`
+	TugasSelesai        int     `gorm:"column:tugas_selesai"`
+	TugasTepatWaktu     int     `gorm:"column:tugas_tepat_waktu"`
+	KetepatanTenggatPct float64 `gorm:"column:ketepatan_tenggat_pct"`
+}

@@ -287,3 +287,22 @@ func TestPromosi_RujukanBisaIDBigintAtauKode(t *testing.T) {
 	assert.Equal(t, "ARSIP", s.statusModel(t, idKandidat))
 	assert.Equal(t, "ARSIP", s.statusModel(t, kandidat), "ID dan kode menunjuk model yang sama")
 }
+
+func TestRiwayatPromosi_Endpoint(t *testing.T) {
+	s := newMLSuite(t, "prediksi_riwayat_promosi", newFakeML(t).client())
+
+	// Arsipkan kandidat agar ada jejak di model_promosi.
+	hasil, kode := s.bulkModel(t, emailKelola, "arsip", "MDL-CBM-KRT-v2.4.0-rc1")
+	require.Equal(t, http.StatusOK, kode)
+	require.Equal(t, 1, hasil.Berhasil)
+
+	idModel := s.idModel(t, "MDL-CBM-KRT-v2.4.0-rc1")
+	w := s.call(t, "/v1/prediksi/registri/"+idModel+"/promosi", emailBerhak)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	wAlias := s.call(t, "/v1/prediksi/registri/MDL-CBM-KRT-v2.4.0-rc1/promosi", emailBerhak)
+	require.Equal(t, http.StatusOK, wAlias.Code)
+
+	wNotFound := s.call(t, "/v1/prediksi/registri/99999999/promosi", emailBerhak)
+	assert.Equal(t, http.StatusNotFound, wNotFound.Code)
+}

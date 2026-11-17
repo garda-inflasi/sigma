@@ -54,6 +54,12 @@ func (s *Streamer) StartID(ctx context.Context, lastEventID string) (int64, erro
 // Serve mengirim peristiwa dengan id > after ke w sampai ctx selesai (kembali nil)
 // atau penulisan/pembacaan gagal. flush dipanggil setelah tiap kelompok frame.
 func (s *Streamer) Serve(ctx context.Context, w io.Writer, flush func(), after int64) error {
+	return s.ServeScoped(ctx, w, flush, after, nil)
+}
+
+// ServeScoped sama dengan Serve, namun menyaring peristiwa menurut predikat allow (bila tidak nil)
+// untuk penegakan row scope SSE (02-B).
+func (s *Streamer) ServeScoped(ctx context.Context, w io.Writer, flush func(), after int64, allow func(domain.Alert) bool) error {
 	wake, cancel := s.hub.Subscribe()
 	defer cancel()
 
@@ -66,7 +72,7 @@ func (s *Streamer) Serve(ctx context.Context, w io.Writer, flush func(), after i
 	defer poll.Stop()
 	defer heartbeat.Stop()
 	for {
-		if err := s.drain(ctx, w, flush, &after); err != nil {
+		if err := s.drain(ctx, w, flush, &after, allow); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -86,14 +92,19 @@ func (s *Streamer) Serve(ctx context.Context, w io.Writer, flush func(), after i
 	}
 }
 
-// drain menulis semua peristiwa tertunda; *after maju hanya setelah frame tertulis.
-func (s *Streamer) drain(ctx context.Context, w io.Writer, flush func(), after *int64) error {
+// drain menulis semua peristiwa tertunda yang lolos filter; *after maju hanya setelah frame diproses.
+func (s *Streamer) drain(ctx context.Context, w io.Writer, flush func(), after *int64, allow func(domain.Alert) bool) error {
 	for {
 		events, err := s.store.EventsAfter(ctx, *after, batchSize)
 		if err != nil {
 			return err
 		}
+		written := false
 		for _, ev := range events {
+			if allow != nil && !allow(ev.Alert) {
+				*after = ev.ID
+				continue
+			}
 			payload, err := json.Marshal(dto.ToAlertResponse(ev.Alert))
 			if err != nil {
 				return fmt.Errorf("encode alert: %w", err)
@@ -102,8 +113,9 @@ func (s *Streamer) drain(ctx context.Context, w io.Writer, flush func(), after *
 				return err
 			}
 			*after = ev.ID
+			written = true
 		}
-		if len(events) > 0 {
+		if written {
 			flush()
 		}
 		if len(events) < batchSize {

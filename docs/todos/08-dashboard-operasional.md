@@ -1,6 +1,6 @@
 # 08 — Dashboard operasional
 
-**Prioritas:** P0 (Fase 1 "Dashboard dasar") · **Status:** UI ✅ · Backend ✅ · Terhubung 🟡 (kartu stok/produsen/logistik belum ada) · Skema & seed ✅ · Tes ✅
+**Prioritas:** P0 (Fase 1 "Dashboard dasar") · **Status:** UI ✅ · Backend ✅ · Terhubung ✅ · Skema & seed ✅ · Tes ✅
 **Cara kerja & DoD:** [00-cara-kerja.md](00-cara-kerja.md) · **Konteks data:** [19](19-migration-seeder.md)
 
 ## Yang sudah ada
@@ -82,6 +82,6 @@ Dikerjakan di gelombang F-3 (data dari ingestion/gold) dan penyelesaian filter, 
    - [ ] Indeks `transaksi_stok (waktu DESC, id DESC)` (migrasi berikutnya) bila buku besar mendekati 1 juta baris: tanpa indeks, agregat seluruh Aceh 116 ms dan "terbaru" 109 ms pada 1 juta baris (dengan indeks 16 ms dan 0,06 ms); pada skala realistis seq scan ±6–12 ms.
    - [ ] Ubah aturan siklus lewat API/UI (sekarang hanya SQL; matikan dengan `aktif = false`, bukan DELETE, karena seed menanam ulang aturan yang dihapus). Daftar petugas belum berpaginasi (aman sampai ± 1000 petugas). Rute distribusi "aktif" tidak pernah kedaluwarsa sendiri sehingga `rute.jumlah/biaya` menumpuk lintas bulan.
 3. **FE**: kartu "Validasi silang harga" dan "Cuaca wilayah" di `/operasional`; sel heatmap bersumber eksternal diberi garis putus-putus dan keterangan; keadaan kosong/galat untuk tiap kartu lama (`PanelGalat`); panel petugas di `field-activity`; tooltip pil siklus di `Topbar` ("Ditentukan otomatis sejak … " bila `otomatis`); klien, pemeta, hook, dan mock untuk `aktivitas-petugas`, `stok`, `produsen`, `logistik`, serta parameter filter opsional pada `kpi` dan `heatmap`.
-   - [ ] Kartu UI stok, produsen, dan logistik di `/operasional` (klien dan hook `useStokOperasional` dst. sudah siap, belum dipakai komponen mana pun) dan UI filter wilayah/komoditas/periode.
+   - [x] Kartu UI stok (`ops-stock-card.tsx`), produsen (`ops-producer-card.tsx`), dan logistik (`ops-logistics-card.tsx`) di `/operasional` serta bar filter wilayah/komoditas/periode (`ops-filter-bar.tsx` + `useFilterOperasional`) yang tersinkronisasi dengan URL query string, lengkap dengan `PanelGalat` dan uji komponen (`ops-08b-cards.test.tsx`).
    - [ ] Peta Mapbox dan feed EWS via SSE di dashboard ([10-C](10-ews.md)). Tata letak sakelar petugas, mode gelap, dan animasi belum diverifikasi di browser.
 4. **TES**: ✅ usecase (urutan/penghitungan, kunci cache, tabel keputusan siklus), integrasi Postgres dengan seed reference + demo + refresh (nilai hitung-tangan, perbandingan dengan SQL independen, ingestion contoh, otorisasi 401/403, cakupan per peran termasuk kabupaten dibaca dari DB bukan klaim token, DB kosong tidak galat), kontrak OpenAPI, smoke, uji mutasi (predikat cakupan/kunci cache dimatikan → tes gagal), dan tes web (kontrak fixture nyata, komponen). Mode `go test -short` kini melewati (bukan gagal) tes yang butuh Docker di semua paket integrasi.

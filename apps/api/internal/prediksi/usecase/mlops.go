@@ -113,7 +113,7 @@ func (uc *MLOps) Latih(ctx context.Context, aktorID, kode string) (*domain.Model
 		return nil, ErrLayananMLMati
 	}
 	sekarang := uc.now()
-	seri, err := uc.repo.SeriKonsumen(ctx, kode, sekarang.AddDate(0, 0, -riwayatLatihHari))
+	seri, err := uc.seriDenganEksogen(ctx, kode, sekarang.AddDate(0, 0, -riwayatLatihHari))
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func (uc *MLOps) Latih(ctx context.Context, aktorID, kode string) (*domain.Model
 		return nil, ErrDataTidakCukup
 	}
 
-	res, err := uc.ml.Train(ctx, mlclient.TrainRequest{KomoditasKode: kode, Horizon: slices.Clone(horizonLatih), Seri: keSeriML(seri)})
+	res, err := uc.ml.Train(ctx, mlclient.TrainRequest{KomoditasKode: kode, Horizon: slices.Clone(horizonLatih), Seri: seri})
 	if err != nil {
 		return nil, petakanGalatML(err)
 	}
@@ -131,7 +131,7 @@ func (uc *MLOps) Latih(ctx context.Context, aktorID, kode string) (*domain.Model
 
 	diminta := make(map[string]bool, len(seri))
 	for _, s := range seri {
-		diminta[s.KabupatenKode] = true
+		diminta[s.ID] = true
 	}
 	model, proyeksi, err := bangunModel(kode, sekarang, res, diminta)
 	if err != nil {
@@ -174,13 +174,13 @@ func (uc *MLOps) Segarkan(ctx context.Context, aktorID, kode string) (int, error
 	}
 
 	sekarang := uc.now()
-	seri, err := uc.repo.SeriKonsumen(ctx, kode, sekarang.AddDate(0, 0, -riwayatLatihHari))
+	seri, err := uc.seriDenganEksogen(ctx, kode, sekarang.AddDate(0, 0, -riwayatLatihHari))
 	if err != nil {
 		return 0, err
 	}
 	req := mlclient.PredictRequest{KomoditasKode: kode, Horizon: metrik.Horizon}
 	diminta := map[string]bool{}
-	for _, s := range keSeriML(seri) {
+	for _, s := range seri {
 		terlatih, ok := metrik.Seri[s.ID]
 		if !ok {
 			continue // kabupaten yang tak ikut dilatih tidak diramal
@@ -530,4 +530,108 @@ func (uc *MLOps) arsipkan(ctx context.Context, ref idx.RujukanID, aktorID string
 		Metadata: map[string]any{"komoditas": m.KomoditasKode, "kode": m.Kode},
 	})
 	return nil
+}
+
+// seriDenganEksogen menggabungkan deret harga konsumen 180 hari dengan data cuaca harian serta penanda hari libur.
+func (uc *MLOps) seriDenganEksogen(ctx context.Context, kode string, dari time.Time) ([]mlclient.Seri, error) {
+	seri, err := uc.repo.SeriKonsumen(ctx, kode, dari)
+	if err != nil {
+		return nil, err
+	}
+	if len(seri) == 0 {
+		return nil, nil
+	}
+
+	cuacaMap := map[string]domain.CuacaHari{}
+	if cuaca, err := uc.repo.CuacaHarian(ctx, dari); err != nil {
+		uc.log.Warn("prediksi: gagal membaca fitur eksogen cuaca, lanjut tanpa cuaca", map[string]interface{}{"error": err.Error()})
+	} else {
+		for _, c := range cuaca {
+			kunci := c.KabupatenKode + "|" + c.Tanggal.Format("2006-01-02")
+			cuacaMap[kunci] = c
+		}
+	}
+
+	out := make([]mlclient.Seri, len(seri))
+	for i, s := range seri {
+		titik := make([]mlclient.Titik, len(s.Titik))
+		for j, t := range s.Titik {
+			tgl := t.Tanggal.Format("2006-01-02")
+			c := cuacaMap[s.KabupatenKode+"|"+tgl]
+			titik[j] = mlclient.Titik{
+				Tanggal:      tgl,
+				Nilai:        t.Harga,
+				HujanLebat:   c.HujanLebat,
+				CurahHujanMM: c.CurahHujanMM,
+				HariLibur:    AdalahHariLibur(t.Tanggal),
+			}
+		}
+		out[i] = mlclient.Seri{ID: s.KabupatenKode, Titik: titik}
+	}
+	return out, nil
+}
+
+// RiwayatPromosi membaca jejak promosi dan pengarsipan untuk satu model (ID BIGINT atau kode MDL-...).
+func (uc *MLOps) RiwayatPromosi(ctx context.Context, ref idx.RujukanID) ([]domain.ModelPromosiView, error) {
+	items, err := uc.repo.RiwayatPromosi(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// RetrainRingkasan melaporkan hasil satu putaran retraining otomatis semua komoditas aktif.
+type RetrainRingkasan struct {
+	Komoditas       int
+	Dilatih         int
+	Dipromosikan    int
+	DitolakGerbang  int
+	Dilewati        int
+	Gagal           int
+}
+
+// RetrainOtomatis melatih ulang model kandidat untuk seluruh komoditas aktif menggunakan 180 hari data
+// tervalidasi beserta fitur eksogen, lalu mempromosikan hanya model yang mengalahkan baseline MAPE.
+func (uc *MLOps) RetrainOtomatis(ctx context.Context, aktorID string) (RetrainRingkasan, error) {
+	if uc.ml == nil {
+		return RetrainRingkasan{}, ErrLayananMLMati
+	}
+	kodeList, err := uc.repo.KomoditasLatih(ctx)
+	if err != nil {
+		return RetrainRingkasan{}, err
+	}
+	ring := RetrainRingkasan{Komoditas: len(kodeList)}
+	for _, kode := range kodeList {
+		if ctx.Err() != nil {
+			return ring, ctx.Err()
+		}
+		model, err := uc.Latih(ctx, aktorID, kode)
+		if err != nil {
+			if errors.Is(err, ErrDataTidakCukup) {
+				ring.Dilewati++
+				continue
+			}
+			if errors.Is(err, ErrLayananMLMati) {
+				return ring, err
+			}
+			ring.Gagal++
+			uc.log.Warn("prediksi: retraining komoditas gagal", map[string]interface{}{"komoditas": kode, "error": err.Error()})
+			continue
+		}
+		ring.Dilatih++
+		if err := uc.promosikan(ctx, idx.RujukanID{ID: model.ID}, aktorID); err != nil {
+			if errors.Is(err, ErrLebihBurukDariBaseline) || errors.Is(err, domain.ErrModelTanpaProyeksi) {
+				ring.DitolakGerbang++
+				uc.log.Info("prediksi: kandidat ditolak gerbang promosi otomatis", map[string]interface{}{
+					"komoditas": kode, "model_id": model.ID.String(), "alasan": err.Error(),
+				})
+				continue
+			}
+			ring.Gagal++
+			uc.log.Warn("prediksi: promosi otomatis gagal", map[string]interface{}{"komoditas": kode, "error": err.Error()})
+			continue
+		}
+		ring.Dipromosikan++
+	}
+	return ring, nil
 }

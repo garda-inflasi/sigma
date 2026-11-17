@@ -22,6 +22,7 @@ import { useOnline } from "@/lib/offline/use-online";
 import { useFieldQueue } from "@/lib/stores/field-queue-store";
 import { cn } from "@/lib/utils";
 import { FormBff } from "@/components/form/form-bff";
+import { KodeEtikModal } from "@/components/lapangan/kode-etik-modal";
 import { skemaDariValidasi } from "@/lib/form/skema";
 import { useFormBff } from "@/lib/form/use-form-bff";
 
@@ -135,6 +136,7 @@ export function PriceInputForm() {
 
   return (
     <FormBff onKirim={kiriman.kirimDari(() => simpan("ANTRE"))} sibuk={kiriman.pending} aria-label="Entri harga" className="space-y-4">
+      <KodeEtikModal userId={user?.id} online={online} onDisetujui={() => setEtik(true)} />
       {tugasKom?.length ? (
         <p className="rounded-xl bg-data-50/80 px-4 py-2.5 text-sm text-data-800 dark:bg-data-500/10 dark:text-data-200">
           Tugas {params.get("tugas")}: <span className="num font-semibold">{daftarKom.filter((k) => sudahDiisi(k.kode)).length}/{daftarKom.length}</span> komoditas sudah dicatat hari ini.

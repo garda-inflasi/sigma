@@ -4,7 +4,11 @@ import { TrendChart } from "@/components/charts/trend-chart";
 import { FieldActivity } from "@/components/dashboard/field-activity";
 import { CuacaWilayahCard, PembandingHargaCard } from "@/components/dashboard/hasil-ingestion";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
+import { OpsFilterBar } from "@/components/dashboard/ops-filter-bar";
+import { OpsLogisticsCard } from "@/components/dashboard/ops-logistics-card";
 import { OpsMap } from "@/components/dashboard/ops-map";
+import { OpsProducerCard } from "@/components/dashboard/ops-producer-card";
+import { OpsStockCard } from "@/components/dashboard/ops-stock-card";
 import { PriceHeatmap } from "@/components/dashboard/price-heatmap";
 import { EwsLiveFeed } from "@/components/ews/ews-live-feed";
 import { PageHeader } from "@/components/garda/page-header";
@@ -60,6 +64,8 @@ export default async function OperasionalPage() {
           }
         />
 
+        <OpsFilterBar />
+
         <WidgetErrorBoundary fallbackTitle="Indikator KPI operasional">
           <KpiGrid />
         </WidgetErrorBoundary>
@@ -90,6 +96,24 @@ export default async function OperasionalPage() {
           <div className="xl:col-span-5">
             <WidgetErrorBoundary fallbackTitle="Cuaca wilayah">
               <CuacaWilayahCard />
+            </WidgetErrorBoundary>
+          </div>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-12 [content-visibility:auto] [contain-intrinsic-size:auto_360px]">
+          <div className="xl:col-span-4">
+            <WidgetErrorBoundary fallbackTitle="Stok cold storage">
+              <OpsStockCard />
+            </WidgetErrorBoundary>
+          </div>
+          <div className="xl:col-span-4">
+            <WidgetErrorBoundary fallbackTitle="Harga produsen & margin">
+              <OpsProducerCard />
+            </WidgetErrorBoundary>
+          </div>
+          <div className="md:col-span-2 xl:col-span-4">
+            <WidgetErrorBoundary fallbackTitle="Pergerakan logistik">
+              <OpsLogisticsCard />
             </WidgetErrorBoundary>
           </div>
         </div>

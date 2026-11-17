@@ -369,3 +369,61 @@ func (r *Repository) SimpanSkenario(ctx context.Context, s *domain.SkenarioSimul
 	}
 	return nil
 }
+
+// CuacaHarian membaca ringkasan curah hujan & anomali cuaca per kabupaten dan tanggal sejak `dari`.
+func (r *Repository) CuacaHarian(ctx context.Context, dari time.Time) ([]domain.CuacaHari, error) {
+	var rows []domain.CuacaHari
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT kabupaten_kode,
+		       tanggal,
+		       COALESCE(MAX(curah_hujan_mm), 0) AS curah_hujan_mm,
+		       (BOOL_OR(anomali) OR COALESCE(MAX(curah_hujan_mm), 0) >= 50) AS hujan_lebat
+		  FROM cuaca_harian
+		 WHERE tanggal >= ?::date
+		 GROUP BY kabupaten_kode, tanggal
+		 ORDER BY kabupaten_kode, tanggal`,
+		dari.Format(tanggalSQL),
+	).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("cuaca harian latih: %w", err)
+	}
+	return rows, nil
+}
+
+// RiwayatPromosi mengembalikan jejak promosi dan pengarsipan model dari model_promosi, terbaru lebih dulu.
+func (r *Repository) RiwayatPromosi(ctx context.Context, ref idx.RujukanID) ([]domain.ModelPromosiView, error) {
+	m, err := r.GetModel(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	var rows []domain.ModelPromosiView
+	err = r.db.WithContext(ctx).Raw(`
+		SELECT mp.*,
+		       u.nama AS oleh_nama,
+		       mg.kode AS model_digantikan_kode
+		  FROM model_promosi mp
+		  LEFT JOIN pengguna u ON u.id = mp.oleh
+		  LEFT JOIN model_registry mg ON mg.id = mp.model_digantikan_id
+		 WHERE mp.model_id = ? OR mp.model_digantikan_id = ?
+		 ORDER BY mp.waktu DESC, mp.id DESC`,
+		m.ID, m.ID,
+	).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("riwayat promosi model: %w", err)
+	}
+	return rows, nil
+}
+
+// KomoditasLatih mengembalikan kode komoditas aktif untuk retraining otomatis.
+func (r *Repository) KomoditasLatih(ctx context.Context) ([]string, error) {
+	var kode []string
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT kode FROM komoditas
+		 WHERE status = 'AKTIF'
+		 ORDER BY pilot DESC, kode ASC`,
+	).Scan(&kode).Error
+	if err != nil {
+		return nil, fmt.Errorf("daftar komoditas latih: %w", err)
+	}
+	return kode, nil
+}

@@ -142,9 +142,12 @@ type AlarmSuhuResponse struct {
 }
 
 type IngestTelemetriResponse struct {
-	Diterima      int                 `json:"diterima"`
-	Duplikat      int                 `json:"duplikat"`
-	DiLuarRentang []AlarmSuhuResponse `json:"di_luar_rentang"`
+	GatewayID           string              `json:"gateway_id,omitempty"`
+	Topic               string              `json:"topic,omitempty"`
+	Diterima            int                 `json:"diterima"`
+	Duplikat            int                 `json:"duplikat"`
+	LotRisikoDiperbarui int                 `json:"lot_risiko_diperbarui"`
+	DiLuarRentang       []AlarmSuhuResponse `json:"di_luar_rentang"`
 }
 
 type TransaksiHasilResponse struct {

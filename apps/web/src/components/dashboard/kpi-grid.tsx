@@ -6,13 +6,15 @@ import { KpiSkeleton } from "@/components/garda/shimmer";
 import { stagger } from "@/lib/motion/presets";
 import { useKpiOperasional } from "@/lib/query/hooks";
 import { KpiCard } from "./kpi-card";
+import { useFilterOperasional } from "./use-filter-operasional";
 
 /**
  * Momen orkestrasi tunggal halaman: kartu KPI masuk bertahap & angka menghitung naik. Kartu bernilai nol atau bernada
  * netral (`data`) adalah data yang sah (mis. Koordinator di kabupaten tanpa cold storage), bukan galat.
  */
 export function KpiGrid() {
-  const { data, isLoading, error, refetch } = useKpiOperasional();
+  const { filter } = useFilterOperasional();
+  const { data, isLoading, error, refetch } = useKpiOperasional(filter);
   if (isLoading) {
     return <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)}</div>;
   }

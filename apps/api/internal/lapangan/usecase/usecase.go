@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit"
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/internal/lapangan/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
@@ -53,14 +54,29 @@ type Pemanggil struct {
 }
 
 type UseCase struct {
-	repo  domain.Repository
-	audit audit.Writer
-	log   *logger.Logger
-	now   func() time.Time
+	repo       domain.Repository
+	audit      audit.Writer
+	log        *logger.Logger
+	now        func() time.Time
+	storageDir string
 }
 
 func New(repo domain.Repository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
-	return &UseCase{repo: repo, audit: auditWriter, log: log, now: time.Now}
+	return &UseCase{
+		repo:       repo,
+		audit:      auditWriter,
+		log:        log,
+		now:        time.Now,
+		storageDir: "./storage/lapangan-foto",
+	}
+}
+
+// WithStorageDir mengatur direktori penyimpanan berkas foto lapangan.
+func (uc *UseCase) WithStorageDir(dir string) *UseCase {
+	if strings.TrimSpace(dir) != "" {
+		uc.storageDir = strings.TrimSpace(dir)
+	}
+	return uc
 }
 
 func (uc *UseCase) tampil(items ...domain.TugasView) []Tugas {
@@ -72,9 +88,30 @@ func (uc *UseCase) tampil(items ...domain.TugasView) []Tugas {
 	return out
 }
 
-// ListSaya mengembalikan tugas milik pemanggil.
-func (uc *UseCase) ListSaya(ctx context.Context, petugasID string) ([]Tugas, error) {
-	items, err := uc.repo.ListSaya(ctx, petugasID)
+// Cakupan menurunkan jangkauan baris pemanggil dari peran dan kabupaten tugasnya di DB (02-B).
+// Pemegang tugas.kelola atau dashboard.operasional memperoleh cakupan perannya; selain itu hanya miliknya sendiri.
+func (uc *UseCase) Cakupan(ctx context.Context, p Pemanggil) (hargadomain.Cakupan, error) {
+	if !p.Semua {
+		return hargadomain.CakupanMilik(p.ID), nil
+	}
+	peran, kab, ditemukan, err := uc.repo.PenggunaCakupan(ctx, p.ID)
+	if err != nil {
+		return hargadomain.Cakupan{}, fmt.Errorf("baca cakupan pengguna: %w", err)
+	}
+	if !ditemukan {
+		return hargadomain.Cakupan{}, nil
+	}
+	return hargadomain.CakupanPeran(peran, kab, p.ID), nil
+}
+
+// ListSaya mengembalikan tugas sesuai cakupan baris pemanggil.
+func (uc *UseCase) ListSaya(ctx context.Context, p Pemanggil) ([]Tugas, error) {
+	cakupan, err := uc.Cakupan(ctx, p)
+	if err != nil {
+		uc.log.Error("lapangan: baca cakupan gagal", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("list tugas: %w", err)
+	}
+	items, err := uc.repo.ListSaya(ctx, cakupan)
 	if err != nil {
 		uc.log.Error("lapangan: list tugas gagal", map[string]interface{}{"error": err.Error()})
 		return nil, fmt.Errorf("list tugas: %w", err)
@@ -82,10 +119,14 @@ func (uc *UseCase) ListSaya(ctx context.Context, petugasID string) ([]Tugas, err
 	return uc.tampil(items...), nil
 }
 
-// GetByID mengembalikan satu tugas menurut ID BIGINT atau kode lama (TGS-...); tugas milik petugas lain tidak
-// terlihat kecuali pemanggil boleh mengelola.
+// GetByID mengembalikan satu tugas menurut ID BIGINT atau kode lama (TGS-...) sesuai cakupan baris pemanggil.
 func (uc *UseCase) GetByID(ctx context.Context, ref idx.RujukanID, p Pemanggil) (*Tugas, error) {
-	item, err := uc.repo.GetByID(ctx, ref, p.ID, p.Semua)
+	cakupan, err := uc.Cakupan(ctx, p)
+	if err != nil {
+		uc.log.Error("lapangan: baca cakupan gagal", map[string]interface{}{"error": err.Error()})
+		return nil, fmt.Errorf("get tugas: %w", err)
+	}
+	item, err := uc.repo.GetByID(ctx, ref, cakupan)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, ErrNotFound
@@ -149,15 +190,21 @@ func (uc *UseCase) BulkAction(ctx context.Context, refs []idx.RujukanID, aksi st
 		return HasilBulk{}, fmt.Errorf("%w: jumlah id harus 1 sampai %d", ErrValidasi, MaxBulkIDs)
 	}
 
+	cakupan, err := uc.Cakupan(ctx, p)
+	if err != nil {
+		uc.log.Error("lapangan: baca cakupan gagal", map[string]interface{}{"error": err.Error()})
+		return HasilBulk{}, fmt.Errorf("bulk %s: %w", aksi, err)
+	}
+
 	if action == domain.BulkUnduhDataAcuan {
-		found, err := uc.repo.Aksesibel(ctx, unik, p.ID, p.Semua)
+		found, err := uc.repo.Aksesibel(ctx, unik, cakupan)
 		if err != nil {
 			return HasilBulk{}, fmt.Errorf("bulk %s: %w", aksi, err)
 		}
 		return hitungHasil(unik, found), nil
 	}
 
-	changed, err := uc.repo.TandaiSelesai(ctx, unik, p.ID, p.Semua, uc.now())
+	changed, err := uc.repo.TandaiSelesai(ctx, unik, cakupan, uc.now())
 	if err != nil {
 		uc.log.Error("lapangan: tandai selesai gagal", map[string]interface{}{"count": len(unik), "error": err.Error()})
 		return HasilBulk{}, fmt.Errorf("bulk %s: %w", aksi, err)

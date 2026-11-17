@@ -8,6 +8,7 @@ import (
 	"github.com/garda-inflasi/api/internal/prediksi/domain"
 	"github.com/garda-inflasi/api/internal/prediksi/dto"
 	"github.com/garda-inflasi/api/internal/prediksi/usecase"
+	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -86,6 +87,24 @@ func (h *MLOpsHandler) Bulk(c *gin.Context) {
 		detail[i] = dto.GagalModelResponse{ID: g.ID, Alasan: g.Alasan}
 	}
 	response.Success(c, dto.BulkModelResponse{Berhasil: hasil.Berhasil, Gagal: len(hasil.Gagal), Detail: detail})
+}
+
+// GET /v1/prediksi/registri/:id/promosi
+func (h *MLOpsHandler) RiwayatPromosi(c *gin.Context) {
+	ref, ok := idx.ParamIDAtauKode(c, "id", 64, "Model prediksi tidak ditemukan")
+	if !ok {
+		return
+	}
+	items, err := h.uc.RiwayatPromosi(c.Request.Context(), ref)
+	if err != nil {
+		if errors.Is(err, domain.ErrModelTidakDitemukan) {
+			response.NotFound(c, "Model prediksi tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil riwayat promosi model")
+		return
+	}
+	response.Success(c, dto.ToPromosiModelResponses(items))
 }
 
 // galat menjawab err (bila ada) dengan status yang sesuai dan melaporkan apakah sudah dijawab.

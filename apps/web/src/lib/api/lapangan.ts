@@ -3,6 +3,7 @@
  * Endpoint: GET /v1/lapangan/tugas/saya, GET /v1/lapangan/tugas/{id}, POST /v1/lapangan/tugas/bulk.
  */
 
+import { apiFetch, MODE_MOCK } from "@/lib/api/client";
 import type { TipeHarga, TugasLapangan } from "@/lib/data/types";
 import type { EntriLokal } from "@/lib/stores/field-queue-store";
 
@@ -122,4 +123,68 @@ export function cariAcuan(data: DataAcuanResponse, kode: string, kabupatenKode: 
   const nilai = tipe === "PRODUSEN" ? dasar * RASIO_PRODUSEN : dasar;
   const bulat = (n: number) => Math.round(n / 100) * 100;
   return { median: Math.round(nilai), bawah: bulat(nilai * (1 - data.toleransi)), atas: bulat(nilai * (1 + data.toleransi)) };
+}
+
+export interface KodeEtikResponse {
+  versi: string;
+  judul: string;
+  isi: string;
+  sudah_setuju: boolean;
+  disetujui_pada?: string;
+}
+
+export interface PersetujuanKodeEtikResponse {
+  id: string;
+  versi: string;
+  disetujui_pada: string;
+}
+
+export interface KinerjaPetugasResponse {
+  petugas_id: string;
+  nama_petugas: string;
+  kabupaten_kode?: string | null;
+  total_entri: number;
+  entri_valid: number;
+  entri_ditolak: number;
+  rasio_penolakan_pct: number;
+  total_tugas: number;
+  tugas_selesai: number;
+  tugas_tepat_waktu: number;
+  ketepatan_tenggat_pct: number;
+}
+
+const MOCK_KODE_ETIK: KodeEtikResponse = {
+  versi: "v1.0",
+  judul: "Kode Etik Pencacah Harga Pangan Lapangan (TPID Aceh)",
+  isi:
+    "1. Kejujuran & Akurasi Data: Petugas wajib mencatat harga riil yang terjadi di pasar sesuai satuan, kualitas, dan waktu pencatatan sebenarnya tanpa manipulasi.\n" +
+    "2. Kehadiran Fisik (Geofence): Pencacahan dilakukan langsung di lokasi pasar yang ditugaskan serta melampirkan foto bukti kondisi komoditas atau papan harga bila diperlukan.\n" +
+    "3. Kerahasiaan Narasumber: Identitas pedagang atau responden pasar dijaga kerahasiaannya.\n" +
+    "4. Bebas Konflik Kepentingan: Petugas dilarang menerima imbalan untuk memengaruhi angka pencatatan.\n" +
+    "5. Kepatuhan Jadwal: Tugas survei diselesaikan sesuai tenggat waktu yang ditetapkan.",
+  sudah_setuju: false,
+};
+
+export async function fetchKodeEtik(): Promise<KodeEtikResponse> {
+  if (MODE_MOCK) {
+    return MOCK_KODE_ETIK;
+  }
+  return apiFetch<KodeEtikResponse>("/v1/lapangan/kode-etik");
+}
+
+export async function setujuiKodeEtik(versi: string): Promise<PersetujuanKodeEtikResponse> {
+  if (MODE_MOCK) {
+    return { id: "1", versi, disetujui_pada: new Date().toISOString() };
+  }
+  return apiFetch<PersetujuanKodeEtikResponse>("/v1/lapangan/kode-etik/setuju", {
+    method: "POST",
+    body: JSON.stringify({ versi }),
+  });
+}
+
+export async function fetchKinerjaPetugas(): Promise<KinerjaPetugasResponse[]> {
+  if (MODE_MOCK) {
+    return [];
+  }
+  return apiFetch<KinerjaPetugasResponse[]>("/v1/lapangan/kinerja");
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/garda-inflasi/api/pkg/logger"
 	"gorm.io/gorm"
@@ -48,8 +49,29 @@ func New(repo domain.Repository, evaluator domain.Evaluator, auditWriter audit.W
 	return &UseCase{repo: repo, evaluator: evaluator, audit: auditWriter, log: log}
 }
 
-// List mengembalikan satu halaman alert (terbaru dahulu) dan jumlah seluruh hasil.
-func (uc *UseCase) List(ctx context.Context, q domain.ListQuery) ([]domain.Alert, int64, error) {
+// Cakupan menurunkan jangkauan baris pemanggil dari peran dan kabupaten tugasnya di DB (02-B).
+func (uc *UseCase) Cakupan(ctx context.Context, userID string) (hargadomain.Cakupan, error) {
+	peran, kab, ditemukan, err := uc.repo.PenggunaCakupan(ctx, userID)
+	if err != nil {
+		return hargadomain.Cakupan{}, fmt.Errorf("baca cakupan pengguna: %w", err)
+	}
+	if !ditemukan {
+		return hargadomain.Cakupan{}, nil
+	}
+	return hargadomain.CakupanPeran(peran, kab, userID), nil
+}
+
+// List mengembalikan satu halaman alert (terbaru dahulu) dan jumlah seluruh hasil sesuai cakupan baris.
+func (uc *UseCase) List(ctx context.Context, q domain.ListQuery, cakupan hargadomain.Cakupan) ([]domain.Alert, int64, error) {
+	if !cakupan.Semua {
+		if cakupan.KabupatenKode == "" {
+			return []domain.Alert{}, 0, nil
+		}
+		if q.KabupatenKode != "" && q.KabupatenKode != cakupan.KabupatenKode {
+			return []domain.Alert{}, 0, nil
+		}
+		q.KabupatenKode = cakupan.KabupatenKode
+	}
 	if q.Page < 1 {
 		q.Page = 1
 	}
@@ -64,8 +86,11 @@ func (uc *UseCase) List(ctx context.Context, q domain.ListQuery) ([]domain.Alert
 	return items, total, nil
 }
 
-// GetByID mengambil satu alert menurut ID atau kode tampilan lama (EWS-...).
-func (uc *UseCase) GetByID(ctx context.Context, ref idx.RujukanID) (*domain.Alert, error) {
+// GetByID mengambil satu alert menurut ID atau kode tampilan lama (EWS-...) sesuai cakupan baris.
+func (uc *UseCase) GetByID(ctx context.Context, ref idx.RujukanID, cakupan hargadomain.Cakupan) (*domain.Alert, error) {
+	if !cakupan.Semua && cakupan.KabupatenKode == "" {
+		return nil, ErrNotFound
+	}
 	alert, err := uc.repo.GetByID(ctx, ref)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
@@ -73,6 +98,9 @@ func (uc *UseCase) GetByID(ctx context.Context, ref idx.RujukanID) (*domain.Aler
 	if err != nil {
 		uc.log.Error("ews: ambil alert gagal", map[string]interface{}{"id": ref.ID, "kode": ref.Kode, "error": err.Error()})
 		return nil, err
+	}
+	if !cakupan.Semua && alert.KabupatenKode != cakupan.KabupatenKode {
+		return nil, ErrNotFound
 	}
 	return alert, nil
 }
@@ -88,8 +116,8 @@ func (uc *UseCase) ListAturan(ctx context.Context) ([]domain.Aturan, error) {
 }
 
 // ListRiwayat mengembalikan perubahan status satu alert (menurut ID atau kode), terlama dahulu.
-func (uc *UseCase) ListRiwayat(ctx context.Context, ref idx.RujukanID) ([]domain.Riwayat, error) {
-	alert, err := uc.GetByID(ctx, ref)
+func (uc *UseCase) ListRiwayat(ctx context.Context, ref idx.RujukanID, cakupan hargadomain.Cakupan) ([]domain.Riwayat, error) {
+	alert, err := uc.GetByID(ctx, ref, cakupan)
 	if err != nil {
 		return nil, err
 	}
@@ -158,8 +186,8 @@ func (uc *UseCase) writeAudit(ctx context.Context, entry audit.Entry) {
 	}
 }
 
-// BulkAction menerapkan aksi massal dan mencatatnya di audit trail.
-func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, action, actorID string) (BulkResult, error) {
+// BulkAction menerapkan aksi massal dan mencatatnya di audit trail sesuai cakupan baris pemanggil.
+func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, action, actorID string, cakupan hargadomain.Cakupan) (BulkResult, error) {
 	domainAction := domain.BulkAction(action)
 	switch domainAction {
 	case domain.BulkAkui, domain.BulkEskalasi, domain.BulkSelesai:
@@ -168,7 +196,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, action, actorID
 	}
 
 	ids = unique(ids)
-	changed, err := uc.repo.BulkAction(ctx, ids, domainAction, actorID)
+	changed, err := uc.repo.BulkAction(ctx, ids, domainAction, actorID, cakupan)
 	if err != nil {
 		uc.log.Error("ews: aksi massal gagal", map[string]interface{}{"aksi": action, "jumlah": len(ids), "error": err.Error()})
 		return BulkResult{}, fmt.Errorf("aksi massal: %w", err)

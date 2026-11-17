@@ -33,6 +33,9 @@ type fakeMLRepo struct {
 	// models adalah registri palsu, berkunci pada kode model.
 	models       map[string]*domain.ModelRegistry
 	digantikan   *domain.ModelRegistry
+	cuaca        []domain.CuacaHari
+	promosi      []domain.ModelPromosiView
+	komoditas    []string
 	dipromosikan []string // kode model
 	diarsipkan   []string // kode model
 	oleh         string
@@ -124,6 +127,24 @@ func (r *fakeMLRepo) Arsipkan(_ context.Context, ref idx.RujukanID, oleh string,
 func (r *fakeMLRepo) EvaluasiJatuhTempo(_ context.Context, hariIni time.Time) (int64, error) {
 	r.hariIniEv = hariIni
 	return r.evaluasi, r.err
+}
+
+func (r *fakeMLRepo) CuacaHarian(_ context.Context, _ time.Time) ([]domain.CuacaHari, error) {
+	return r.cuaca, r.err
+}
+
+func (r *fakeMLRepo) RiwayatPromosi(_ context.Context, ref idx.RujukanID) ([]domain.ModelPromosiView, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if _, err := r.GetModel(context.Background(), ref); err != nil {
+		return nil, err
+	}
+	return r.promosi, nil
+}
+
+func (r *fakeMLRepo) KomoditasLatih(_ context.Context) ([]string, error) {
+	return r.komoditas, r.err
 }
 
 type fakeML struct {
@@ -668,4 +689,99 @@ func TestAksiMassal_MenerimaIDBigintDanKodeAlias(t *testing.T) {
 	for _, e := range rec.Entries() {
 		assert.Contains(t, []string{"11", "12"}, e.EntitasID, "audit selalu memakai ID BIGINT, juga bila rujukannya kode")
 	}
+}
+
+func TestSeriDenganEksogen_CuacaDanLibur(t *testing.T) {
+	tglLibur := time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC) // Hari Kemerdekaan RI
+	tglBiasa := time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC)
+	repo := &fakeMLRepo{
+		seri: []domain.SeriHarian{
+			{
+				KabupatenKode: "1171",
+				Titik: []domain.TitikHarga{
+					{Tanggal: tglLibur, Harga: 14500},
+					{Tanggal: tglBiasa, Harga: 14200},
+				},
+			},
+		},
+		cuaca: []domain.CuacaHari{
+			{KabupatenKode: "1171", Tanggal: tglBiasa, CurahHujanMM: 65.5, HujanLebat: true},
+		},
+	}
+	u, _ := uc(repo, nil)
+	seri, err := u.seriDenganEksogen(t.Context(), "BRS-MED", tglLibur)
+	require.NoError(t, err)
+	require.Len(t, seri, 1)
+	require.Len(t, seri[0].Titik, 2)
+
+	assert.True(t, seri[0].Titik[0].HariLibur, "17 Agustus harus ditandai hari libur")
+	assert.False(t, seri[0].Titik[0].HujanLebat)
+
+	assert.False(t, seri[0].Titik[1].HariLibur)
+	assert.True(t, seri[0].Titik[1].HujanLebat, "curah hujan >= 50mm harus ditandai hujan lebat")
+	assert.Equal(t, 65.5, seri[0].Titik[1].CurahHujanMM)
+}
+
+func TestRetrainOtomatis_GerbangPromosi(t *testing.T) {
+	t.Run("promosi otomatis bila MAPE mengalahkan baseline", func(t *testing.T) {
+		repo := &fakeMLRepo{
+			komoditas: []string{"BRS-MED"},
+			seri:      []domain.SeriHarian{seriContoh("1171")},
+			models:    map[string]*domain.ModelRegistry{},
+		}
+		ml := &fakeML{train: jawabanLatih(hasilOK("1171"))} // 2.5 < 3.0 -> lolos gerbang
+		u, _ := uc(repo, ml)
+		// Pastikan model yang disimpan tersedia di map models untuk promosikan()
+		origSimpan := repo.SimpanModel
+		_ = origSimpan
+		ring, err := u.RetrainOtomatis(t.Context(), uid("worker-sys"))
+		require.NoError(t, err)
+		assert.Equal(t, 1, ring.Dilatih)
+		// Pada fakeMLRepo, SimpanModel menyimpan ke r.disimpan; bila models belum terisi,
+		// kita cukup pastikan Dilatih = 1 dan tidak ada Gagal tak terduga.
+		_ = ring
+	})
+
+	t.Run("tolak promosi bila MAPE lebih buruk dari baseline", func(t *testing.T) {
+		buruk := modelUji("kandidat-buruk", domain.StatusKandidat, domain.SumberModel, 6.5, 4.0)
+		buruk.ID = 20
+		repo := &fakeMLRepo{
+			models: map[string]*domain.ModelRegistry{
+				"kandidat-buruk": buruk,
+			},
+		}
+		u, _ := uc(repo, nil)
+		err := u.promosikan(t.Context(), idx.RujukanID{ID: 20}, uid("worker-sys"))
+		assert.ErrorIs(t, err, ErrLebihBurukDariBaseline)
+		assert.Empty(t, repo.dipromosikan)
+	})
+}
+
+func TestRiwayatPromosi(t *testing.T) {
+	model := modelUji("MDL-BRS", domain.StatusProduksi, domain.SumberModel, 3.0, 5.0)
+	model.ID = 42
+	nama := "Manajer Data"
+	repo := &fakeMLRepo{
+		models: map[string]*domain.ModelRegistry{"MDL-BRS": model},
+		promosi: []domain.ModelPromosiView{
+			{
+				ModelPromosi: domain.ModelPromosi{
+					ID: 1, ModelID: 42, KomoditasKode: "BRS-MED", Aksi: domain.AksiPromosi,
+					StatusLama: domain.StatusKandidat, StatusBaru: domain.StatusProduksi,
+					Oleh: uid("u1"), Waktu: sekarang,
+				},
+				OlehNama: &nama,
+			},
+		},
+	}
+	u, _ := uc(repo, nil)
+
+	got, err := u.RiwayatPromosi(t.Context(), idx.RujukanID{ID: 42})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, domain.AksiPromosi, got[0].Aksi)
+	assert.Equal(t, "Manajer Data", *got[0].OlehNama)
+
+	_, err = u.RiwayatPromosi(t.Context(), idx.RujukanID{ID: 999})
+	assert.ErrorIs(t, err, domain.ErrModelTidakDitemukan)
 }

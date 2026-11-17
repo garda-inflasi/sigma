@@ -15,6 +15,7 @@ import { heatCell } from "@/lib/motion/presets";
 import { useHeatmap } from "@/lib/query/hooks";
 import { komoditasByKode, kabupatenByKode } from "@/lib/data/reference";
 import { cn } from "@/lib/utils";
+import { useFilterOperasional } from "./use-filter-operasional";
 
 const LEGENDA = [-10, -5, 0, 5, 9, 14].map((v) => heatTone(v));
 
@@ -24,7 +25,8 @@ const LEGENDA = [-10, -5, 0, 5, 9, 14].map((v) => heatTone(v));
  * daftar kosong: itu keadaan kosong, bukan galat, dan tidak boleh menyisakan grid tanpa kolom.
  */
 export function PriceHeatmap({ className }: { className?: string } = {}) {
-  const { data, isLoading, error, refetch } = useHeatmap();
+  const { filter } = useFilterOperasional();
+  const { data, isLoading, error, refetch } = useHeatmap(filter);
   const router = useRouter();
   const [mode, setMode] = useState<"semua" | "pilot">("semua");
   const [hover, setHover] = useState<SelHeatmap | null>(null);

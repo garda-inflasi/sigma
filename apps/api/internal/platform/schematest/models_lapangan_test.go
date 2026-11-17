@@ -5,5 +5,10 @@ import (
 )
 
 func init() {
-	registerModels("lapangan", &lapangandomain.TugasLapangan{})
+	registerModels("lapangan",
+		&lapangandomain.TugasLapangan{},
+		&lapangandomain.LampiranEntri{},
+		&lapangandomain.KodeEtik{},
+		&lapangandomain.PersetujuanKodeEtik{},
+	)
 }

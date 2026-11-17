@@ -185,3 +185,38 @@ type BulkModelResponse struct {
 	Gagal    int                  `json:"gagal"`
 	Detail   []GagalModelResponse `json:"detail"`
 }
+
+// PromosiModelResponse adalah satu entri riwayat promosi/arsip model dari tabel model_promosi.
+type PromosiModelResponse struct {
+	ID                  idx.ID  `json:"id"`
+	ModelID             idx.ID  `json:"model_id"`
+	KomoditasKode       string  `json:"komoditas_kode"`
+	Aksi                string  `json:"aksi"`
+	StatusLama          string  `json:"status_lama"`
+	StatusBaru          string  `json:"status_baru"`
+	ModelDigantikanID   *idx.ID `json:"model_digantikan_id,omitempty"`
+	ModelDigantikanKode *string `json:"model_digantikan_kode,omitempty"`
+	Oleh                string  `json:"oleh"`
+	OlehNama            *string `json:"oleh_nama,omitempty"`
+	Waktu               string  `json:"waktu"`
+}
+
+func ToPromosiModelResponses(items []domain.ModelPromosiView) []PromosiModelResponse {
+	res := make([]PromosiModelResponse, len(items))
+	for i, item := range items {
+		res[i] = PromosiModelResponse{
+			ID:                  item.ID,
+			ModelID:             item.ModelID,
+			KomoditasKode:       item.KomoditasKode,
+			Aksi:                item.Aksi,
+			StatusLama:          item.StatusLama,
+			StatusBaru:          item.StatusBaru,
+			ModelDigantikanID:   item.ModelDigantikanID,
+			ModelDigantikanKode: item.ModelDigantikanKode,
+			Oleh:                item.Oleh,
+			OlehNama:            item.OlehNama,
+			Waktu:               item.Waktu.UTC().Format(time.RFC3339),
+		}
+	}
+	return res
+}

@@ -64,6 +64,27 @@ type MLRepository interface {
 	// Arsipkan mengarsipkan model berstatus KANDIDAT. ErrStatusModelTidakValid untuk status
 	// lain (model PRODUKSI tidak dapat diarsipkan langsung: promosikan penggantinya).
 	Arsipkan(ctx context.Context, ref idx.RujukanID, oleh string, waktu time.Time) (*ModelRegistry, error)
+	// CuacaHarian membaca data curah hujan & penanda hujan lebat sejak tanggal `dari`.
+	CuacaHarian(ctx context.Context, dari time.Time) ([]CuacaHari, error)
+	// RiwayatPromosi mengembalikan riwayat promosi/arsip model dari tabel model_promosi (terbaru dahulu).
+	RiwayatPromosi(ctx context.Context, ref idx.RujukanID) ([]ModelPromosiView, error)
+	// KomoditasLatih mengembalikan daftar kode komoditas aktif untuk retraining otomatis.
+	KomoditasLatih(ctx context.Context) ([]string, error)
+}
+
+// CuacaHari adalah fitur eksogen cuaca per kabupaten dan tanggal.
+type CuacaHari struct {
+	KabupatenKode string    `gorm:"column:kabupaten_kode"`
+	Tanggal       time.Time `gorm:"column:tanggal"`
+	CurahHujanMM  float64   `gorm:"column:curah_hujan_mm"`
+	HujanLebat    bool      `gorm:"column:hujan_lebat"`
+}
+
+// ModelPromosiView melengkapi ModelPromosi dengan nama aktor dan kode model yang digantikan.
+type ModelPromosiView struct {
+	ModelPromosi
+	OlehNama            *string `gorm:"column:oleh_nama"`
+	ModelDigantikanKode *string `gorm:"column:model_digantikan_kode"`
 }
 
 // SimulasiRepository adalah akses data untuk simulasi skenario.

@@ -15,13 +15,14 @@ export class ApiError extends Error {
 
 async function kirimApi<T>(path: string, init: RequestInit & { idempotencyKey?: string }): Promise<{ data: T; res: Response }> {
   const { idempotencyKey, headers, ...rest } = init;
+  const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
   // 401 karena access token habis/dicabut → refresh senyap lalu ulangi sekali (lihat sesi-client).
   const res = await fetchSesi(`${API_BASE}${path}`, {
     credentials: "include",
     ...rest,
     headers: {
       Accept: "application/json",
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       ...headers,
     },

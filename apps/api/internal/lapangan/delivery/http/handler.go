@@ -3,7 +3,9 @@ package http
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/garda-inflasi/api/internal/audit"
@@ -33,7 +35,7 @@ func pemanggil(c *gin.Context) usecase.Pemanggil {
 
 // GET /v1/lapangan/tugas/saya
 func (h *Handler) ListSaya(c *gin.Context) {
-	items, err := h.uc.ListSaya(c.Request.Context(), c.GetString("user_id"))
+	items, err := h.uc.ListSaya(c.Request.Context(), pemanggil(c))
 	if err != nil {
 		response.InternalError(c, "Gagal mengambil data tugas lapangan")
 		return
@@ -139,4 +141,148 @@ func rujukanDaftar(ids []string) ([]idx.RujukanID, error) {
 		refs = append(refs, idx.RujukanID{Kode: teks})
 	}
 	return refs, nil
+}
+
+// POST /v1/lapangan/harga/:id/foto
+func (h *Handler) UploadFoto(c *gin.Context) {
+	entriID, err := idx.Parse(c.Param("id"))
+	if err != nil {
+		response.NotFound(c, "Entri harga tidak ditemukan")
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, usecase.MaxFotoSize+64*1024)
+	fileHeader, err := c.FormFile("foto")
+	if err != nil {
+		fileHeader, err = c.FormFile("file")
+		if err != nil {
+			response.BadRequest(c, "Berkas foto wajib diunggah pada field 'foto'")
+			return
+		}
+	}
+
+	if fileHeader.Size > usecase.MaxFotoSize {
+		response.BadRequest(c, "Ukuran foto melebihi batas maksimal 5 MB")
+		return
+	}
+
+	f, err := fileHeader.Open()
+	if err != nil {
+		response.BadRequest(c, "Gagal membaca berkas foto")
+		return
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, usecase.MaxFotoSize+1))
+	if err != nil {
+		response.BadRequest(c, "Gagal membaca isi berkas foto")
+		return
+	}
+
+	p := usecase.Pemanggil{
+		ID:    c.GetString("user_id"),
+		Semua: middleware.HasPermission(c, "tugas.kelola") || middleware.HasPermission(c, "harga.validasi"),
+	}
+	lampiran, fotoURL, err := h.uc.UploadFoto(audit.RequestContext(c), entriID, p, data)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrNotFound):
+			response.NotFound(c, "Entri harga tidak ditemukan")
+		case errors.Is(err, usecase.ErrValidasi):
+			response.BadRequest(c, err.Error())
+		default:
+			response.InternalError(c, "Gagal menyimpan foto entri")
+		}
+		return
+	}
+
+	response.Created(c, dto.ToLampiranFotoResponse(*lampiran, fotoURL))
+}
+
+// GET /v1/lapangan/harga/:id/foto
+func (h *Handler) GetFoto(c *gin.Context) {
+	entriID, err := idx.Parse(c.Param("id"))
+	if err != nil {
+		response.NotFound(c, "Foto entri tidak ditemukan")
+		return
+	}
+
+	p := usecase.Pemanggil{
+		ID:    c.GetString("user_id"),
+		Semua: middleware.HasPermission(c, "tugas.kelola") || middleware.HasPermission(c, "harga.validasi") || middleware.HasPermission(c, "harga.lihat"),
+	}
+	fullPath, mimeType, err := h.uc.GetFoto(c.Request.Context(), entriID, p)
+	if err != nil {
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Foto entri tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil foto entri")
+		return
+	}
+
+	if _, err := os.Stat(fullPath); err != nil {
+		response.NotFound(c, "Berkas foto tidak ditemukan di penyimpanan")
+		return
+	}
+	c.Header("Content-Type", mimeType)
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.File(fullPath)
+}
+
+// GET /v1/lapangan/kode-etik
+func (h *Handler) GetKodeEtik(c *gin.Context) {
+	status, err := h.uc.GetKodeEtik(c.Request.Context(), c.GetString("user_id"))
+	if err != nil {
+		if errors.Is(err, usecase.ErrNotFound) {
+			response.NotFound(c, "Kode etik aktif tidak ditemukan")
+			return
+		}
+		response.InternalError(c, "Gagal mengambil kode etik")
+		return
+	}
+	response.Success(c, dto.ToKodeEtikResponse(*status))
+}
+
+// POST /v1/lapangan/kode-etik/setuju
+func (h *Handler) SetujuiKodeEtik(c *gin.Context) {
+	var req dto.SetujuiKodeEtikRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+
+	persetujuan, err := h.uc.SetujuiKodeEtik(audit.RequestContext(c), c.GetString("user_id"), req.Versi)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrNotFound):
+			response.NotFound(c, "Versi kode etik tidak ditemukan")
+		case errors.Is(err, usecase.ErrValidasi):
+			response.BadRequest(c, err.Error())
+		default:
+			response.InternalError(c, "Gagal menyimpan persetujuan kode etik")
+		}
+		return
+	}
+
+	response.Success(c, dto.ToPersetujuanKodeEtikResponse(*persetujuan))
+}
+
+// GET /v1/lapangan/kinerja
+func (h *Handler) ListKinerja(c *gin.Context) {
+	p := usecase.Pemanggil{
+		ID:    c.GetString("user_id"),
+		Semua: middleware.HasPermission(c, "tugas.kelola") || middleware.HasPermission(c, "dashboard.operasional"),
+	}
+	items, err := h.uc.ListKinerja(c.Request.Context(), p)
+	if err != nil {
+		response.InternalError(c, "Gagal mengambil data kinerja petugas")
+		return
+	}
+
+	res := make([]dto.KinerjaPetugasResponse, len(items))
+	for i, item := range items {
+		res[i] = dto.ToKinerjaPetugasResponse(item)
+	}
+	response.Success(c, res)
 }

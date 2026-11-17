@@ -120,7 +120,12 @@ func (h *Handler) IngestTelemetri(c *gin.Context) {
 		response.BadRequest(c, "Validasi gagal: "+err.Error())
 		return
 	}
-	in := usecase.IngestInput{ActorID: c.GetString("user_id"), Pembacaan: make([]usecase.Pembacaan, len(req.Pembacaan))}
+	in := usecase.IngestInput{
+		ActorID:   c.GetString("user_id"),
+		GatewayID: req.GatewayID,
+		Topic:     req.Topic,
+		Pembacaan: make([]usecase.Pembacaan, len(req.Pembacaan)),
+	}
 	for i, p := range req.Pembacaan {
 		in.Pembacaan[i] = usecase.Pembacaan{FasilitasID: p.FasilitasID, Waktu: p.Waktu, SuhuC: *p.SuhuC, KelembapanPct: p.KelembapanPct, Sumber: p.Sumber}
 	}
@@ -134,7 +139,14 @@ func (h *Handler) IngestTelemetri(c *gin.Context) {
 	for i, a := range out.DiLuarRentang {
 		alarm[i] = dto.AlarmSuhuResponse{FasilitasID: a.FasilitasID, Waktu: a.Waktu, SuhuC: a.SuhuC, BatasMinC: a.BatasMinC, BatasMaksC: a.BatasMaksC}
 	}
-	response.Success(c, dto.IngestTelemetriResponse{Diterima: out.Diterima, Duplikat: out.Duplikat, DiLuarRentang: alarm})
+	response.Success(c, dto.IngestTelemetriResponse{
+		GatewayID:           req.GatewayID,
+		Topic:               req.Topic,
+		Diterima:            out.Diterima,
+		Duplikat:            out.Duplikat,
+		LotRisikoDiperbarui: out.LotRisikoDiperbarui,
+		DiLuarRentang:       alarm,
+	})
 }
 
 // Transaksi handles POST /v1/cold-storage/transaksi

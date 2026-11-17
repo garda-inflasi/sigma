@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/garda-inflasi/api/internal/ews/domain"
+	hargadomain "github.com/garda-inflasi/api/internal/harga/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"gorm.io/gorm"
 )
@@ -24,7 +25,10 @@ var bulkSQL = map[domain.BulkAction]string{
 
 func bulkQuery(kondisi, ke, setTambahan string) string {
 	return fmt.Sprintf(`WITH prev AS (
-			SELECT id, status FROM ews_alert WHERE id IN @ids AND %s FOR UPDATE
+			SELECT id, status FROM ews_alert
+			 WHERE id IN @ids AND %s
+			   AND (@semua OR (@kab <> '' AND kabupaten_kode = @kab))
+			 FOR UPDATE
 		), upd AS (
 			UPDATE ews_alert a SET status = '%s', %s
 			  FROM prev WHERE a.id = prev.id
@@ -42,6 +46,25 @@ type Repository struct {
 
 func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
+}
+
+// PenggunaCakupan membaca peran dan kabupaten tugas pengguna langsung dari DB per request (02-B).
+func (r *Repository) PenggunaCakupan(ctx context.Context, userID string) (string, string, bool, error) {
+	var rows []struct {
+		Peran         string `gorm:"column:peran"`
+		KabupatenKode string `gorm:"column:kabupaten_kode"`
+	}
+	err := r.db.WithContext(ctx).Raw(
+		`SELECT peran::text AS peran, COALESCE(kabupaten_kode, '') AS kabupaten_kode FROM pengguna WHERE id = ?`,
+		userID,
+	).Scan(&rows).Error
+	if err != nil {
+		return "", "", false, fmt.Errorf("baca peran pengguna: %w", err)
+	}
+	if len(rows) == 0 {
+		return "", "", false, nil
+	}
+	return rows[0].Peran, rows[0].KabupatenKode, true, nil
 }
 
 // kolomAlert dan gabungAlert melengkapi alert dengan nama komoditas, nama kabupaten, dan kode aturan pemicunya.
@@ -194,13 +217,21 @@ func (r *Repository) UpdateAturan(ctx context.Context, id idx.ID, upd domain.Atu
 	return updated, nil
 }
 
-func (r *Repository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction, userID string) ([]idx.ID, error) {
+func (r *Repository) BulkAction(ctx context.Context, ids []idx.ID, action domain.BulkAction, userID string, cakupan hargadomain.Cakupan) ([]idx.ID, error) {
+	if !cakupan.Semua && cakupan.KabupatenKode == "" {
+		return nil, nil
+	}
 	query, ok := bulkSQL[action]
 	if !ok {
 		return nil, fmt.Errorf("aksi massal tidak dikenal: %s", action)
 	}
 	var changed []idx.ID
-	err := r.db.WithContext(ctx).Raw(query, map[string]any{"ids": ids, "user": userID}).Scan(&changed).Error
+	err := r.db.WithContext(ctx).Raw(query, map[string]any{
+		"ids":   ids,
+		"user":  userID,
+		"semua": cakupan.Semua,
+		"kab":   cakupan.KabupatenKode,
+	}).Scan(&changed).Error
 	if err != nil {
 		return nil, fmt.Errorf("aksi massal %s: %w", action, err)
 	}

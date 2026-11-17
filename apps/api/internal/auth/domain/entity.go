@@ -75,6 +75,9 @@ type RefreshToken struct {
 	SessionStartedAt time.Time `gorm:"column:session_started_at;default:now()"`
 	// RotatedAt terisi (bersama RevokedAt) bila token dicabut karena diganti rotasi, bukan karena sesinya dicabut.
 	RotatedAt *time.Time `gorm:"column:rotated_at"`
+	// ImpersonasiID menandai token milik sesi impersonasi (impersonasi_sesi.id): sesi itu tidak tampil di daftar sesi
+	// pemilik akun sasaran, dan rotasi refresh menerbitkan access token ber-klaim impersonasi.
+	ImpersonasiID *string `gorm:"column:impersonasi_id;type:uuid"`
 }
 
 func (RefreshToken) TableName() string {

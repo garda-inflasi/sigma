@@ -18,6 +18,13 @@ import {
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { DialogAlihPeran } from "@/components/impersonasi/dialog-alih-peran";
+import {
+  ItemMenuImpersonasi,
+  useImpersonasiTersedia,
+} from "@/components/impersonasi/menu-impersonasi";
+import { TombolKembaliPeran } from "@/components/impersonasi/tombol-kembali";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,11 +100,13 @@ export function Topbar() {
   const stream = useEwsStore((s) => s.status);
   const { data: siklus } = useSiklusAktif(can(user, "dashboard.operasional"));
   const { resolvedTheme, setTheme } = useTheme();
+  const [dialogImpersonasi, setDialogImpersonasi] = useState(false);
+  const impersonasiTersedia = useImpersonasiTersedia();
   const remah = remahRoti(pathname);
   const meta = siklus ? siklusMeta[siklus.siklus] : null;
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-sm">
+    <header className="sticky top-[var(--bar-atas,0px)] z-20 border-b border-border bg-background/90 backdrop-blur-sm">
       <div className="flex h-14 items-center gap-3 px-3 sm:px-5">
         <button
           type="button"
@@ -204,6 +213,8 @@ export function Topbar() {
           </Link>
         )}
 
+        <TombolKembaliPeran />
+
         <DropdownMenu>
           <DropdownMenuTrigger
             className="grid size-8 place-items-center rounded-full bg-navy-800 text-[11px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-white dark:text-navy-900"
@@ -220,6 +231,11 @@ export function Topbar() {
               <p className="text-xs font-normal text-muted-foreground">
                 {user.lembaga}
               </p>
+              {user.impersonation?.active && (
+                <p className="mt-1 text-xs font-medium text-waspada-ink dark:text-amber-300">
+                  Impersonate oleh {user.impersonation.originalUser.name}
+                </p>
+              )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {itemMenuProfil(MODE_MOCK).map(({ tab, label, ikon: Ikon }) => (
@@ -230,6 +246,10 @@ export function Topbar() {
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
+            <ItemMenuImpersonasi
+              tersedia={impersonasiTersedia}
+              onBuka={() => setDialogImpersonasi(true)}
+            />
             <DropdownMenuItem
               onSelect={() =>
                 setTheme(resolvedTheme === "dark" ? "light" : "dark")
@@ -253,6 +273,11 @@ export function Topbar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <DialogAlihPeran
+        open={dialogImpersonasi}
+        onOpenChange={setDialogImpersonasi}
+      />
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent

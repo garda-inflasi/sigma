@@ -7,6 +7,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit"
 	"github.com/garda-inflasi/api/internal/auth/delivery/http"
+	"github.com/garda-inflasi/api/internal/auth/domain"
 	"github.com/garda-inflasi/api/internal/auth/repository/postgres"
 	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/pkg/crypto"
@@ -73,6 +74,9 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 	// Izin efektif (peran + izin langsung) dibaca dari basis data lewat cache pendek dan ditegakkan JWTAuth di
 	// semua modul, dengan cara yang sama seperti pemeriksa pencabutan di atas (lihat usecase/izin.go).
 	deps.Token.SetPermissionResolver(uc.PermissionResolver())
+	// Token impersonasi (klaim `imp`) divalidasi terhadap catatannya di basis data pada setiap request, dan mutasi selama
+	// impersonasi dicatat di audit (docs/impersonasi.md). Tanpa penjaga, token ber-`imp` ditolak.
+	deps.Token.SetImpersonationGuard(uc.ImpersonationGuard())
 	handler := http.New(uc)
 
 	// Caddy membuka /api/v1/* langsung ke Go, melewati batas laju BFF (5/menit/IP). Endpoint publik yang
@@ -113,6 +117,13 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		protected.PATCH("/auth/me", handler.UpdateMe)
 		protected.POST("/auth/change-password", handler.ChangePassword)
 
+		// Impersonasi (21-A). Memulai, berhenti, dan pemilih sasaran terbuka bagi sesi terautentikasi mana pun: hak
+		// dievaluasi usecase dari kebijakan dan catatan di basis data (pelaku asli, bukan peran token). Berhenti harus
+		// terjangkau dari peran sasaran yang tidak punya izin apa pun.
+		protected.GET("/auth/impersonation/targets", handler.SasaranImpersonasi)
+		protected.POST("/auth/impersonation/start", handler.MulaiImpersonasi)
+		protected.POST("/auth/impersonation/stop", handler.HentikanImpersonasi)
+
 		// MFA routes
 		mfa := protected.Group("/auth/mfa")
 		{
@@ -147,6 +158,17 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 			users.GET("/:id/permissions", handler.ListUserPermissions)
 			users.POST("/:id/permissions", handler.GrantUserPermission)
 			users.DELETE("/:id/permissions/:izin", handler.RevokeUserPermission)
+		}
+
+		// Kebijakan dan riwayat impersonasi — eksklusif superadmin: izin impersonasi.kelola DAN peran ADMIN_SISTEM
+		// (izin itu sendiri hanya pernah dimiliki ADMIN_SISTEM; peran diperiksa lagi sebagai pertahanan berlapis).
+		impersonasi := protected.Group("/admin/impersonation")
+		impersonasi.Use(middleware.RequirePermission(domain.IzinImpersonasi), middleware.RequireRole(domain.PeranSuperadmin))
+		{
+			impersonasi.GET("/policy", handler.KebijakanImpersonasi)
+			impersonasi.PUT("/policy", handler.SimpanKebijakanImpersonasi)
+			impersonasi.GET("/riwayat", handler.RiwayatImpersonasi)
+			impersonasi.POST("/riwayat/:id/akhiri", handler.AkhiriImpersonasi)
 		}
 
 		// RBAC catalogue and role x permission matrix (02-C) — requires pengguna.kelola permission

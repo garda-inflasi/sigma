@@ -44,7 +44,7 @@ func currentContract() permissionsContract {
 }
 
 func TestKatalogIzin_LengkapUnikDanKonsistenDenganMatriksBawaan(t *testing.T) {
-	assert.Len(t, katalogIzin, 35)
+	assert.Len(t, katalogIzin, 36)
 	nama := regexp.MustCompile(`^[a-z]+\.[a-z_]+$`)
 	seen := map[string]bool{}
 	for _, d := range katalogIzin {

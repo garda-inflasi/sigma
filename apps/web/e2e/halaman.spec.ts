@@ -63,6 +63,7 @@ const HALAMAN = [
   "/policy-brief",
   "/kpi",
   "/pengguna",
+  "/impersonasi",
   "/audit",
   "/alur-sistem",
   "/profil",
@@ -96,6 +97,8 @@ for (const peran of ROLE_IDS) {
 const DITOLAK: [Akun, string][] = [
   ["superadmin", "/kpi"],
   ["strategisFmipa", "/pengguna"],
+  // Kebijakan impersonasi eksklusif superadmin (izin impersonasi.kelola).
+  ["manajerProgram", "/impersonasi"],
   ["mahasiswa", "/operasional"],
   ["manajerPembiayaan", "/ews"],
   ["agregator", "/peta"],

@@ -93,10 +93,53 @@ func (uc *UseCase) mintAccess(ctx context.Context, user *domain.Pengguna, family
 	return accessToken, nil
 }
 
+// mintAccessImpersonasi membuat access token impersonasi: sub, role, izin, dan profil milik SASARAN, ditambah klaim `imp`
+// yang menunjuk pelaku asli dari catatan impersonasi (docs/impersonasi.md). Penanda wajib ganti kata sandi dan wajib setup
+// MFA sengaja tidak dibawa: itu kewajiban pemilik akun, bukan pelaku yang meminjam sesinya (dan rute kredensial dilarang
+// selama impersonasi).
+func (uc *UseCase) mintAccessImpersonasi(ctx context.Context, sasaran *domain.Pengguna, familyID string, rec *domain.ImpersonasiSesi) (string, error) {
+	kabupaten := ""
+	if sasaran.KabupatenKode != nil {
+		kabupaten = *sasaran.KabupatenKode
+	}
+	izin, err := uc.izinPengguna(ctx, sasaran)
+	if err != nil {
+		return "", err
+	}
+	pelakuID := ""
+	if rec.PelakuID != nil {
+		pelakuID = *rec.PelakuID
+	}
+	accessToken, err := uc.token.CreateAccessToken(sasaran.ID, sasaran.Peran, izin,
+		token.WithProfile(sasaran.Nama, sasaran.Email, sasaran.Lembaga, kabupaten),
+		token.WithSession(familyID),
+		token.WithImpersonation(token.Impersonation{
+			ID:        rec.ID,
+			By:        token.ImpersonatedBy{UserID: pelakuID, Name: rec.PelakuNama, Email: rec.PelakuEmail, Role: rec.PelakuPeran},
+			StartedAt: rec.MulaiPada.Unix(),
+		}))
+	if err != nil {
+		return "", fmt.Errorf("create access token: %w", err)
+	}
+	return accessToken, nil
+}
+
 // mintSession membuat access token (terikat sid = familyID) dan baris refresh token baru tanpa menyimpannya.
 // startedAt nol berarti sesi baru dimulai now. IP dan user agent mengikuti permintaan yang sedang berjalan.
 func (uc *UseCase) mintSession(ctx context.Context, user *domain.Pengguna, familyID, ip string, startedAt, now time.Time) (*mintedSession, error) {
-	accessToken, err := uc.mintAccess(ctx, user, familyID)
+	return uc.mintSessionDengan(ctx, user, familyID, ip, startedAt, now, nil)
+}
+
+// mintSessionDengan seperti mintSession; imp non-nil menerbitkan token impersonasi (user = sasaran) dan menandai baris
+// refresh token sebagai milik sesi impersonasi.
+func (uc *UseCase) mintSessionDengan(ctx context.Context, user *domain.Pengguna, familyID, ip string, startedAt, now time.Time, imp *domain.ImpersonasiSesi) (*mintedSession, error) {
+	var accessToken string
+	var err error
+	if imp != nil {
+		accessToken, err = uc.mintAccessImpersonasi(ctx, user, familyID, imp)
+	} else {
+		accessToken, err = uc.mintAccess(ctx, user, familyID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +162,9 @@ func (uc *UseCase) mintSession(ctx context.Context, user *domain.Pengguna, famil
 	}
 	if ip != "" {
 		row.IP = &ip
+	}
+	if imp != nil {
+		row.ImpersonasiID = &imp.ID
 	}
 	return &mintedSession{accessToken: accessToken, refreshToken: refreshToken, row: row}, nil
 }
@@ -252,7 +298,11 @@ func (uc *UseCase) rotate(ctx context.Context, stored *domain.RefreshToken, ip s
 	if err != nil {
 		return nil, false, err
 	}
-	minted, err := uc.mintSession(ctx, user, stored.FamilyID, ip, stored.SessionStartedAt, now)
+	imp, err := uc.impersonasiUntukRefresh(ctx, stored)
+	if err != nil {
+		return nil, false, err
+	}
+	minted, err := uc.mintSessionDengan(ctx, user, stored.FamilyID, ip, stored.SessionStartedAt, now, imp)
 	if err != nil {
 		return nil, false, err
 	}
@@ -283,6 +333,44 @@ func (uc *UseCase) activeUser(ctx context.Context, stored *domain.RefreshToken) 
 	return user, nil
 }
 
+// impersonasiUntukRefresh memuat dan memeriksa catatan impersonasi milik token refresh yang akan ditukar. nil, nil untuk
+// sesi biasa. Sesi impersonasi yang sudah tidak sah (berakhir, kedaluwarsa, kebijakan dinonaktifkan, pelaku atau sasaran
+// tidak lagi berhak) dicabut seluruh family-nya dan dijawab ErrInvalidToken: klien masuk ulang.
+func (uc *UseCase) impersonasiUntukRefresh(ctx context.Context, stored *domain.RefreshToken) (*domain.ImpersonasiSesi, error) {
+	if stored.ImpersonasiID == nil {
+		return nil, nil
+	}
+	cabut := func() {
+		if err := uc.repo.RevokeRefreshTokenFamily(ctx, stored.FamilyID); err != nil {
+			uc.log.Warn("refresh impersonasi: gagal mencabut family", map[string]interface{}{"family_id": stored.FamilyID, "error": err.Error()})
+		}
+	}
+	if uc.imp == nil {
+		cabut()
+		return nil, ErrInvalidToken
+	}
+	rec, err := uc.imp.GetImpersonasi(ctx, *stored.ImpersonasiID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			cabut()
+			return nil, ErrInvalidToken
+		}
+		return nil, fmt.Errorf("baca impersonasi: %w", err)
+	}
+	if rec.FamilyID != stored.FamilyID {
+		cabut()
+		return nil, ErrInvalidToken
+	}
+	if err := uc.periksaImpersonasi(ctx, rec); err != nil {
+		if errors.Is(err, token.ErrImpersonationEnded) {
+			cabut()
+			return nil, ErrInvalidToken
+		}
+		return nil, err
+	}
+	return rec, nil
+}
+
 // replayOrReuse memutuskan nasib token yang sudah dicabut: pemutaran ulang yang ditoleransi, pencabutan
 // biasa, atau pemakaian ulang token hasil rotasi.
 func (uc *UseCase) replayOrReuse(ctx context.Context, stored *domain.RefreshToken) (*RefreshResult, error) {
@@ -303,7 +391,16 @@ func (uc *UseCase) replayOrReuse(ctx context.Context, stored *domain.RefreshToke
 			if err != nil {
 				return nil, err
 			}
-			accessToken, err := uc.mintAccess(ctx, user, stored.FamilyID)
+			imp, err := uc.impersonasiUntukRefresh(ctx, stored)
+			if err != nil {
+				return nil, err
+			}
+			var accessToken string
+			if imp != nil {
+				accessToken, err = uc.mintAccessImpersonasi(ctx, user, stored.FamilyID, imp)
+			} else {
+				accessToken, err = uc.mintAccess(ctx, user, stored.FamilyID)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -350,6 +447,8 @@ func (uc *UseCase) LogoutSession(ctx context.Context, userID, jti, refreshToken 
 	}
 
 	uc.blacklist(ctx, userID, jti)
+	// Logout dari sesi impersonasi menutup catatannya (alasan LOGOUT); entri audit di bawah tercatat atas nama pelaku asli.
+	uc.akhiriBilaLogout(ctx)
 
 	entry := audit.Entry{AktorID: userID, Aksi: "LOGOUT", Entitas: "pengguna", EntitasID: userID, Hasil: audit.HasilBerhasil}
 	if family != "" {

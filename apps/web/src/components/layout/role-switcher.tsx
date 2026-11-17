@@ -12,9 +12,12 @@ import { LAPIS_META, ROLES, ROLE_IDS, type Lapis, type Role } from "@/lib/rbac/r
 
 /** Pengalih peran — hanya di lingkungan pengembangan, untuk meninjau RBAC seluruh halaman. */
 export function RoleSwitcher() {
-  const { role } = useSession();
+  const { role, impersonation } = useSession();
   const router = useRouter();
   if (process.env.NODE_ENV === "production") return null;
+  // Selama impersonasi sesinya nyata (token API), bukan sesi demo: cookie peran dev tidak berarti apa pun dan
+  // pengalihnya hanya membingungkan. Kembali dulu lewat banner/chip impersonasi.
+  if (impersonation?.active) return null;
 
   const pilih = (r: string) => {
     document.cookie = `${DEV_ROLE_COOKIE}=${r}; path=/; max-age=2592000; samesite=lax`;

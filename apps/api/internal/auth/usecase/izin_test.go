@@ -267,7 +267,7 @@ func TestListPermissions_UrutanKatalogDiKode(t *testing.T) {
 	perms, err := s.uc.ListPermissions(context.Background())
 
 	require.NoError(t, err)
-	require.Len(t, perms, 35)
+	require.Len(t, perms, 36)
 	for i, p := range perms {
 		assert.Equal(t, katalogIzin[i].Nama, p.ID)
 		assert.Equal(t, katalogIzin[i].Kelompok, p.Kelompok)

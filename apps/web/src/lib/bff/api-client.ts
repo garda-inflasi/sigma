@@ -15,6 +15,14 @@ import {
   type ColdStorageBulkAction,
   type ColdStorageParams,
 } from "@/lib/api/cold-storage-query";
+import type {
+  HalamanRiwayatWire,
+  ImpersonasiMetaWire,
+  KebijakanInput,
+  KebijakanWire,
+  MulaiInput,
+  TargetsWire,
+} from "@/lib/api/impersonasi";
 import type { UndanganWire } from "@/lib/api/pengguna-undangan";
 import type { ImporWire } from "@/lib/pengguna/impor";
 import type { UndangPenggunaInput } from "@/lib/pengguna/undang";
@@ -266,6 +274,8 @@ export interface UserResponse {
 export type MeUserResponse = UserResponse & {
   mfa_setup_diwajibkan: boolean;
   mfa_wajib: boolean;
+  /** Ada hanya selama impersonasi: profil di atas milik akun SASARAN, ini menunjuk pelaku aslinya. */
+  impersonasi?: ImpersonasiMetaWire;
 };
 
 /**
@@ -757,4 +767,68 @@ export const coldStorageApi = {
       headers: bearer(accessToken),
       body: JSON.stringify(data),
     }),
+};
+
+// ── Impersonasi API ───────────────────────────────────────────────────
+
+/**
+ * Hasil POST /auth/impersonation/start dan /stop: sesi baru (token) beserta profil akun efektif. `impersonasi`
+ * hanya ada pada start.
+ */
+export interface SesiImpersonasiResponse {
+  access_token: string;
+  refresh_token: string;
+  user: UserResponse;
+  impersonasi?: ImpersonasiMetaWire;
+}
+
+export const impersonationApi = {
+  /** Pemilih sasaran; `boleh: false` (bukan 403) bila pemanggil tidak berhak memulai. */
+  targets: (accessToken: string) =>
+    apiFetch<TargetsWire>("/auth/impersonation/targets", {
+      method: "GET",
+      headers: bearer(accessToken),
+    }),
+
+  /** Mulai (atau ganti) impersonasi. Mencabut sesi asal dan menerbitkan sesi baru. */
+  start: (accessToken: string, data: MulaiInput) =>
+    apiFetch<SesiImpersonasiResponse>("/auth/impersonation/start", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
+    }),
+
+  /** Kembali ke akun asli; sah bagi sesi impersonasi apa pun tanpa izin khusus. */
+  stop: (accessToken: string) =>
+    apiFetch<SesiImpersonasiResponse>("/auth/impersonation/stop", {
+      method: "POST",
+      headers: bearer(accessToken),
+    }),
+
+  /** Kebijakan impersonasi (khusus ADMIN_SISTEM + impersonasi.kelola; ditegakkan API Go). */
+  policy: (accessToken: string) =>
+    apiFetch<KebijakanWire>("/admin/impersonation/policy", {
+      method: "GET",
+      headers: bearer(accessToken),
+    }),
+
+  savePolicy: (accessToken: string, data: KebijakanInput) =>
+    apiFetch<KebijakanWire>("/admin/impersonation/policy", {
+      method: "PUT",
+      headers: bearer(accessToken),
+      body: JSON.stringify(data),
+    }),
+
+  riwayat: (accessToken: string, query: string) =>
+    apiFetch<HalamanRiwayatWire>(
+      `/admin/impersonation/riwayat${query ? `?${query}` : ""}`,
+      { method: "GET", headers: bearer(accessToken) },
+    ),
+
+  /** Mengakhiri paksa satu sesi impersonasi yang masih aktif. */
+  akhiri: (accessToken: string, id: string) =>
+    apiFetch<{ berakhir: boolean }>(
+      `/admin/impersonation/riwayat/${encodeURIComponent(id)}/akhiri`,
+      { method: "POST", headers: bearer(accessToken) },
+    ),
 };

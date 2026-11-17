@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NAV_FLAT, activeNav, judulHalaman } from "./nav";
+import { NAV, NAV_FLAT, activeNav, judulHalaman, remahRoti } from "./nav";
 
 describe("activeNav", () => {
   it("antrean perubahan master menyala sendiri, bukan 'Master data'", () => {
@@ -38,6 +38,22 @@ describe("activeNav", () => {
     assert.equal(activeNav("/data/harga/123")?.href, "/data/harga");
     assert.equal(activeNav("/audit")?.href, "/audit");
     assert.equal(activeNav("/tidak/ada"), undefined);
+  });
+});
+
+describe("item nav Impersonasi", () => {
+  it("ada di grup Tata kelola, dijaga izin impersonasi.kelola, dan menyala sendiri (bukan 'Pengguna & peran')", () => {
+    const item = NAV_FLAT.find((i) => i.href === "/impersonasi");
+    assert.equal(item?.label, "Impersonasi");
+    assert.equal(item?.perm, "impersonasi.kelola");
+    assert.equal(
+      NAV.find((g) => g.items.includes(item!))?.grup,
+      "Tata kelola",
+    );
+    assert.equal(activeNav("/impersonasi")?.href, "/impersonasi");
+    assert.equal(activeNav("/pengguna")?.href, "/pengguna");
+    assert.equal(judulHalaman("/impersonasi"), "Impersonasi");
+    assert.deepEqual(remahRoti("/impersonasi"), ["Tata kelola", "Impersonasi"]);
   });
 });
 

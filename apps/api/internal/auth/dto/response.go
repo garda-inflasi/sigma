@@ -44,6 +44,9 @@ type MeUserResponse struct {
 	MfaWajib bool `json:"mfa_wajib"`
 	// KodeCadanganTersisa hanya ada untuk akun dengan MFA aktif.
 	KodeCadanganTersisa *int `json:"kode_cadangan_tersisa,omitempty"`
+	// Impersonasi hanya ada selama sesi ini adalah impersonasi: profil di atas milik akun sasaran, dan ini menunjuk
+	// pelaku asli (docs/impersonasi.md).
+	Impersonasi *ImpersonasiMetaResponse `json:"impersonasi,omitempty"`
 }
 
 // ── User Responses ────────────────────────────────────────────────────

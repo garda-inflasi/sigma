@@ -35,6 +35,7 @@ export const PERMISSIONS = [
   "sumber.lihat",
   "sumber.kelola",
   "pengguna.kelola",
+  "impersonasi.kelola",
   "audit.lihat",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -101,7 +102,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   OPS_MAHASISWA: ["harga.input", "tugas.lihat_sendiri"],
 
-  ADMIN_SISTEM: ["pengguna.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat"],
+  // `impersonasi.kelola` eksklusif ADMIN_SISTEM (superadmin): kebijakan dan riwayat impersonasi. API Go menolaknya
+  // bagi peran lain, baik lewat matriks maupun izin langsung.
+  ADMIN_SISTEM: ["pengguna.kelola", "impersonasi.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat"],
 };
 
 const cache = new Map<Role, Set<Permission>>();

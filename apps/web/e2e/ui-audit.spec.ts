@@ -77,7 +77,7 @@ const SKENARIO: Skenario[] = [
   {
     peran: "ADMIN_SISTEM",
     akun: "superadmin",
-    halaman: ["/pengguna", "/audit", "/master/komoditas", "/master/perubahan", "/sumber-data", "/profil?tab=aktivitas", "/profil?tab=keamanan"],
+    halaman: ["/pengguna", "/impersonasi", "/audit", "/master/komoditas", "/master/perubahan", "/sumber-data", "/profil?tab=aktivitas", "/profil?tab=keamanan"],
   },
 ];
 

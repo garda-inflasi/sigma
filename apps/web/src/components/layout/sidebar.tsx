@@ -185,7 +185,8 @@ export function Sidebar() {
       initial={false}
       animate={{ width: collapsed ? 64 : 248 }}
       transition={spring.layout}
-      className="sticky top-0 z-30 hidden h-dvh shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar lg:flex"
+      // Offset `--bar-atas` (ConsoleShell) menyisihkan ruang bagi banner impersonasi di puncak viewport.
+      className="sticky top-[var(--bar-atas,0px)] z-30 hidden h-[calc(100dvh-var(--bar-atas,0px))] shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar lg:flex"
     >
       <div className={cn("p-2.5 pb-3", collapsed && "px-2")}>
         <WorkspaceSwitcher collapsed={collapsed} />

@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { ROLE_PERMISSIONS } from "./permissions";
 import { ROLE_IDS, ROLES, type Role } from "./roles";
 import { ROUTE_ACCESS, canAccessRoute } from "./routes";
-import { decideEdge, isPublicRoute, tujuanSemula } from "./edge-guard";
+import { ACCESS_DENIED_PATH, decideEdge, isPublicRoute, tujuanSemula } from "./edge-guard";
 import { decodeJwtPayload, readEdgeClaims } from "@/lib/auth/edge-claims";
 
 const NOW = 1_800_000_000;
@@ -450,6 +450,57 @@ describe("izin rute", () => {
     assert.deepEqual(decide("/api/pengguna", tokenFor("OPS_MAHASISWA")), {
       kind: "next",
     });
+  });
+
+  it("/impersonasi hanya untuk pemegang impersonasi.kelola (ADMIN_SISTEM)", () => {
+    assert.deepEqual(decide("/impersonasi", tokenFor("ADMIN_SISTEM")), {
+      kind: "next",
+    });
+    assert.deepEqual(decide("/impersonasi/apa-saja", tokenFor("ADMIN_SISTEM")), {
+      kind: "next",
+    });
+    for (const role of ROLE_IDS.filter((r) => r !== "ADMIN_SISTEM")) {
+      // Tanpa penanda pemulihan: sekali coba menyegarkan izin (token bisa basi), lalu ditolak.
+      assert.equal(decide("/impersonasi", tokenFor(role)).kind, "redirect", role);
+      assert.deepEqual(decide("/impersonasi", tokenFor(role), undefined, true), {
+        kind: "redirect",
+        path: ACCESS_DENIED_PATH,
+        query: { dari: "/impersonasi" },
+      });
+    }
+  });
+
+  it("sesi impersonasi memakai izin SASARAN: halaman sasaran terbuka, /impersonasi dan /pengguna tertutup", () => {
+    // Token impersonasi: role dan permissions milik sasaran; klaim imp hanya tampilan dan tidak memberi izin.
+    const token = tokenFor("OPS_KOORDINATOR", {
+      imp: {
+        id: "i-1",
+        by: { user_id: "u-2", name: "A", email: "a@x.id", role: "ADMIN_SISTEM" },
+        started_at: 1_763_370_000,
+      },
+    });
+    assert.deepEqual(decide("/data/harga", token), { kind: "next" });
+    assert.equal(decide("/impersonasi", token, undefined, true).kind, "redirect");
+    assert.deepEqual(decide("/pengguna", token, undefined, true), {
+      kind: "redirect",
+      path: ACCESS_DENIED_PATH,
+      query: { dari: "/pengguna" },
+    });
+    assert.equal(decide("/", token).kind, "redirect");
+  });
+
+  it("API BFF impersonasi tidak dijaga di edge (Go otoritatif; stop harus terjangkau dari peran sasaran)", () => {
+    for (const path of [
+      "/api/impersonation/stop",
+      "/api/impersonation/start",
+      "/api/impersonation/targets",
+      "/api/impersonation/policy",
+      "/api/impersonation/riwayat",
+    ]) {
+      assert.deepEqual(decide(path, tokenFor("OPS_MAHASISWA")), { kind: "next" }, path);
+    }
+    // Tetap butuh sesi.
+    assert.equal(decide("/api/impersonation/stop").kind, "json");
   });
 
   it("keputusan edge sama dengan canAccessRoute untuk semua peran x rute", () => {

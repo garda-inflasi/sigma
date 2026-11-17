@@ -44,6 +44,7 @@ Kolom **Terhubung** berarti halaman web memanggil API Go (bukan `lib/api/mock.ts
 | 18  | Lintas fitur (platform, CI, deploy, docs) | —                          |  —  |    —    |     —     |      —       |  —  | [18-platform-lintas-fitur.md](18-platform-lintas-fitur.md) |
 | 19  | **Migration & seeder (fondasi data)**     | —                          |  —  |    —    |     —     |      —       |  —  | [19-migration-seeder.md](19-migration-seeder.md)           |
 | 20  | Profil terpadu & keamanan akun            | `/profil`                  | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [20-profile.md](20-profile.md)                             |
+| 21  | Impersonasi peran dan akun                | `/impersonasi`             | ✅  |   ✅    |    ✅     |      ✅      | ✅  | [21-impersonasi.md](21-impersonasi.md)                     |
 
 "Backend ⬜" berarti ada route/CRUD tipis tetapi logika inti (AI, scraping, generator) belum ada. "Backend 🟡" berarti route dan query dasar ada, tetapi aturan bisnis penuh belum. "Skema & seed ⬜" berarti, berdasarkan analisis kode, query modul itu akan gagal pada database hasil migrasi atau tabelnya kosong (detail di §19).
 

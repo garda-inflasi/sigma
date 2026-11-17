@@ -71,7 +71,7 @@ func (r *Repository) IsSessionActive(ctx context.Context, familyID string) (bool
 func (r *Repository) ListActiveRefreshTokens(ctx context.Context, userID string, now time.Time) ([]domain.RefreshToken, error) {
 	var rows []domain.RefreshToken
 	if err := r.db.WithContext(ctx).
-		Where("user_id = ? AND revoked_at IS NULL AND expires_at > ?", userID, now).
+		Where("user_id = ? AND revoked_at IS NULL AND expires_at > ? AND impersonasi_id IS NULL", userID, now).
 		Order("last_used_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("daftar sesi aktif: %w", err)
@@ -79,6 +79,9 @@ func (r *Repository) ListActiveRefreshTokens(ctx context.Context, userID string,
 	return rows, nil
 }
 
+// Sesi impersonasi (impersonasi_id terisi) tidak tampil di daftar dan riwayat sesi milik akun sasaran: itu bukan sesi
+// perangkat pemiliknya, dan jejaknya ada di riwayat impersonasi dan audit.
+//
 // ListSessionHistory mengelompokkan refresh_tokens milik pengguna per sesi (family_id). Sesi aktif bila ada token
 // yang belum dicabut dan belum kedaluwarsa. Selain itu DICABUT bila ada token yang dicabut tanpa rotasi
 // (rotated_at kosong: keluar, pencabutan, atau pemakaian ulang token), dan KEDALUWARSA bila hanya masa berlakunya
@@ -93,7 +96,7 @@ func (r *Repository) ListSessionHistory(ctx context.Context, userID string, f do
 		BOOL_OR(revoked_at IS NULL AND expires_at > @now) AS aktif,
 		MAX(revoked_at) FILTER (WHERE rotated_at IS NULL) AS dicabut_pada,
 		MAX(expires_at) AS kedaluwarsa_pada
-	FROM refresh_tokens WHERE user_id = @user GROUP BY family_id`
+	FROM refresh_tokens WHERE user_id = @user AND impersonasi_id IS NULL GROUP BY family_id`
 	args := map[string]any{"now": now, "user": userID, "limit": f.Limit}
 	var having []string
 	switch f.Status {
@@ -147,8 +150,9 @@ func (r *Repository) ListSessionHistory(ctx context.Context, userID string, f do
 // ── Pencabutan ────────────────────────────────────────────────────────
 
 func (r *Repository) RevokeSessions(ctx context.Context, userID, keepFamilyID string, now time.Time) ([]string, error) {
-	query := "UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL"
-	args := []any{now, userID}
+	// Sesi impersonasi yang dimulai akun ini (tercatat atas user_id sasaran) ikut dicabut, kecuali keepFamilyID.
+	query := "UPDATE refresh_tokens SET revoked_at = ? WHERE (user_id = ? OR " + sesiImpersonasiOleh + ") AND revoked_at IS NULL"
+	args := []any{now, userID, userID}
 	if keepFamilyID != "" {
 		query += " AND family_id <> ?"
 		args = append(args, keepFamilyID)

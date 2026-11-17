@@ -103,4 +103,20 @@ describe("can: izin efektif dari token (02-C)", () => {
     );
     assert.equal(canAccessRoute(biasa, "/halaman-tanpa-aturan"), true);
   });
+
+  it("/impersonasi mengikuti izin impersonasi.kelola, bukan pengguna.kelola", () => {
+    const adminTanpa: PemegangIzin = {
+      role: "ADMIN_SISTEM",
+      permissions: ["pengguna.kelola"],
+    };
+    const adminDengan: PemegangIzin = {
+      role: "ADMIN_SISTEM",
+      permissions: ["pengguna.kelola", "impersonasi.kelola"],
+    };
+    assert.equal(canAccessRoute(adminTanpa, "/pengguna"), true);
+    assert.equal(canAccessRoute(adminTanpa, "/impersonasi"), false);
+    assert.equal(canAccessRoute(adminDengan, "/impersonasi"), true);
+    assert.equal(canAccessRoute("ADMIN_SISTEM", "/impersonasi"), true);
+    assert.equal(canAccessRoute("MANAJER_PROGRAM", "/impersonasi"), false);
+  });
 });

@@ -112,6 +112,8 @@ func (c *izinCache) Permissions(ctx context.Context, userID string) ([]string, e
 		}
 		return nil, fmt.Errorf("izin efektif: %w", err)
 	}
+	// impersonasi.kelola eksklusif milik ADMIN_SISTEM: selalu ada padanya dan tidak pernah pada peran lain.
+	hasil.Izin = terapkanIzinEksklusif(hasil.Peran, hasil.Izin)
 
 	if c.ttl > 0 {
 		umur := c.ttl
@@ -181,6 +183,8 @@ func (uc *UseCase) bersihkanCacheIzin(ids ...string) {
 	if uc.izinCache != nil {
 		uc.izinCache.buangPengguna(ids...)
 	}
+	// Peran, status, atau izin akun berubah: sesi impersonasi yang melibatkannya harus dinilai ulang.
+	uc.bersihkanCacheImpersonasi()
 }
 
 // bersihkanSemuaCacheIzin membuang seluruh cache izin (matriks peran berubah).
@@ -188,6 +192,7 @@ func (uc *UseCase) bersihkanSemuaCacheIzin() {
 	if uc.izinCache != nil {
 		uc.izinCache.buangSemua()
 	}
+	uc.bersihkanCacheImpersonasi()
 }
 
 // izinPengguna adalah izin efektif yang dibawa token baru. Memakai cache yang sama dengan JWTAuth supaya token
@@ -284,6 +289,10 @@ func (uc *UseCase) UpdateRolePermissions(ctx context.Context, peran string, vers
 	}
 	if err := validasiNamaIzin(izin); err != nil {
 		return nil, err
+	}
+	// impersonasi.kelola eksklusif milik ADMIN_SISTEM: peran lain tidak boleh memilikinya lewat matriks.
+	if peran != domain.PeranSuperadmin && slices.Contains(izin, domain.IzinImpersonasi) {
+		return nil, ErrIzinEksklusif
 	}
 
 	hasil, err := uc.izin.SetIzinPeran(ctx, domain.SetIzinPeran{Peran: peran, Versi: versi, Izin: izin, Oleh: actorID})
@@ -438,6 +447,10 @@ func (uc *UseCase) GrantUserPermission(ctx context.Context, in GrantInput, actor
 	}
 	if !IzinDikenal(in.Izin) {
 		return nil, fmt.Errorf("%w: %s", ErrIzinTidakDikenal, in.Izin)
+	}
+	// Izin eksklusif tidak dapat diberikan langsung kepada siapa pun: ADMIN_SISTEM sudah memilikinya lewat perannya.
+	if in.Izin == domain.IzinImpersonasi {
+		return nil, ErrIzinEksklusif
 	}
 	alasan := strings.TrimSpace(in.Alasan)
 	switch {

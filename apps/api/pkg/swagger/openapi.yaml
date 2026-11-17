@@ -420,6 +420,266 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/auth/impersonation/targets:
+    get:
+      summary: Pemilih sasaran impersonasi
+      operationId: authImpersonationTargets
+      description: |
+        Peran beserta akun AKTIF yang dapat di-impersonate oleh pemanggil (atau oleh pelaku asli bila pemanggil sedang
+        impersonasi). Tidak berhak bukan galat: `boleh: false` dan `peran: []`. Akun `ADMIN_SISTEM` dan pemanggil sendiri
+        tidak pernah termasuk. Lihat docs/impersonasi.md.
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar sasaran
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationTargetsResponse"
+        "401":
+          description: Token tidak valid atau sesi impersonasi berakhir (`IMPERSONATION_ENDED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/impersonation/start:
+    post:
+      summary: Mulai (atau ganti) impersonasi
+      operationId: authImpersonationStart
+      description: |
+        Memulai impersonasi ke satu akun (`target_pengguna_id`) atau satu peran (`target_peran`, harus tepat satu akun
+        AKTIF yang diizinkan; lebih dari satu dijawab 409 `TARGET_AMBIGU`). Sesi asal pelaku dicabut dan sesi impersonasi
+        baru terbit: token milik akun sasaran dengan klaim `imp` yang menunjuk pelaku asli. Bila pemanggil sedang
+        impersonasi, ini MENGGANTI sasaran (tanpa bersarang); hak dievaluasi terhadap pelaku asli.
+
+        Hak: peran `ADMIN_SISTEM` (superadmin) selalu berhak atas semua akun kecuali `ADMIN_SISTEM` dan dirinya sendiri;
+        pihak lain hanya bila kebijakan mengizinkan pelaku dan sasarannya. Saklar kebijakan nonaktif menolak semua
+        (`IMPERSONASI_NONAKTIF`). `alasan` wajib bila kebijakan mewajibkan (`ALASAN_WAJIB`), maks. 500 karakter.
+        Tercatat di audit (`IMPERSONASI_MULAI` / `IMPERSONASI_GANTI`, juga bila ditolak).
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImpersonationStartRequest"
+      responses:
+        "200":
+          description: Sesi impersonasi baru
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationStartResponse"
+        "400":
+          description: Sasaran atau alasan tidak valid (`ALASAN_WAJIB`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "`IMPERSONASI_NONAKTIF`, `IMPERSONASI_DITOLAK` (pelaku tidak berhak atau sasaran tidak diizinkan), atau `IMPERSONATION_RESTRICTED`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "`TARGET_TIDAK_ADA`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`TARGET_AMBIGU`: lebih dari satu akun berperan itu, kirim `target_pengguna_id`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/impersonation/stop:
+    post:
+      summary: Kembali ke akun asli
+      operationId: authImpersonationStop
+      description: |
+        Mengakhiri impersonasi dan menerbitkan sesi biasa bagi pelaku asli, tanpa kata sandi atau MFA ulang. Sah bagi
+        sesi impersonasi apa pun tanpa izin khusus (peran sasaran mungkin tidak punya izin apa pun). Pelaku asli
+        ditentukan dari catatan impersonasi di server yang cocok dengan sesi (`sid`) token, bukan dari header atau
+        body. Tercatat di audit (`IMPERSONASI_BERHENTI`).
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Sesi pelaku asli
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationStopResponse"
+        "400":
+          description: "`TIDAK_ADA_IMPERSONASI`: token ini bukan token impersonasi"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sesi impersonasi sudah berakhir (`IMPERSONATION_ENDED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/impersonation/policy:
+    get:
+      summary: Kebijakan impersonasi
+      operationId: adminImpersonationPolicyGet
+      description: |
+        Hanya `ADMIN_SISTEM` dengan izin `impersonasi.kelola` (eksklusif miliknya); selain itu 403. Sebelum pernah
+        disimpan: kebijakan bawaan dengan `versi: 0`.
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Kebijakan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationPolicyResponse"
+        "403":
+          description: Bukan superadmin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Mengganti seluruh kebijakan impersonasi
+      operationId: adminImpersonationPolicyPut
+      description: |
+        Mengganti pengaturan, daftar pelaku, dan sasaran per pelaku dalam satu transaksi dengan kunci optimistis
+        `versi` (0 bila belum pernah disimpan). Versi usang dijawab 409 `VERSI_KEBIJAKAN_BERUBAH` dengan kebijakan
+        terkini di `data`. `ADMIN_SISTEM` tidak boleh menjadi pelaku (selalu berhak) maupun sasaran; durasi 5 sampai
+        1440 menit atau `null`. Kebijakan baru berlaku seketika: sesi impersonasi yang pelaku atau sasarannya tidak
+        lagi diizinkan berakhir. Tercatat di audit (`IMPERSONASI_KEBIJAKAN_UBAH`).
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImpersonationPolicyInput"
+      responses:
+        "200":
+          description: Kebijakan tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationPolicyResponse"
+        "400":
+          description: "`KEBIJAKAN_TIDAK_VALID`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Bukan superadmin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`VERSI_KEBIJAKAN_BERUBAH`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationPolicyResponse"
+
+  /v1/admin/impersonation/riwayat:
+    get:
+      summary: Riwayat impersonasi
+      operationId: adminImpersonationHistory
+      description: Khusus superadmin. Terbaru dulu, paginasi cursor. `aktif` dihitung dari catatan dan sesi (family) refresh token.
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [semua, aktif]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satu halaman riwayat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpersonationHistoryResponse"
+        "403":
+          description: Bukan superadmin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/impersonation/riwayat/{id}/akhiri:
+    post:
+      summary: Mengakhiri paksa impersonasi yang berjalan
+      operationId: adminImpersonationEnd
+      description: Khusus superadmin. Token sesi impersonasi mati seketika. Tercatat di audit (`IMPERSONASI_DIAKHIRI`).
+      tags:
+        - Impersonasi
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Berakhir
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: string, example: "200"}
+                  message: {type: string, example: "OK"}
+                  data:
+                    type: object
+                    properties:
+                      berakhir: {type: boolean, example: true}
+        "404":
+          description: Tidak ada atau sudah berakhir
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/auth/sessions:
     get:
       summary: Daftar sesi aktif milik sendiri
@@ -7710,6 +7970,11 @@ components:
         access token sudah berbeda dari izin efektif akun; klien menyegarkannya lewat refresh), dan untuk RBAC
         (02-C): `ROLE_VERSION_CONFLICT`, `LAST_PERMISSION_HOLDER`, `PERMISSION_ALREADY_VIA_ROLE`,
         `DIRECT_PERMISSION_EXISTS` (409), `UNKNOWN_PERMISSION` (400), `DIRECT_PERMISSION_NOT_FOUND` (404).
+        Impersonasi (21-A): `IMPERSONATION_ENDED` (401: sesi impersonasi sudah tidak sah; klien menyegarkan lalu
+        masuk ulang), `IMPERSONATION_RESTRICTED` (403: rute kredensial atau hak dilarang selama impersonasi),
+        `IMPERSONASI_NONAKTIF`, `IMPERSONASI_DITOLAK` (403), `TARGET_TIDAK_ADA` (404), `TARGET_AMBIGU`,
+        `VERSI_KEBIJAKAN_BERUBAH` (409), `ALASAN_WAJIB`, `KEBIJAKAN_TIDAK_VALID`, `IZIN_EKSKLUSIF`,
+        `TIDAK_ADA_IMPERSONASI` (400).
         Kode tidak berubah antara API Go dan BFF web.
       properties:
         code:
@@ -8647,6 +8912,216 @@ components:
                 kode_cadangan_tersisa:
                   type: integer
                   description: Hanya ada bila MFA aktif
+                impersonasi:
+                  allOf:
+                    - $ref: "#/components/schemas/ImpersonationMeta"
+                  description: Hanya ada selama sesi ini adalah impersonasi; profil di atas milik akun sasaran
+
+    # ── Impersonasi (21-A, docs/impersonasi.md) ────────────────────────
+    ImpersonationParty:
+      type: object
+      description: Satu pihak pada kebijakan; kolom `pengguna_*` hanya terisi untuk jenis PENGGUNA pada respons.
+      properties:
+        tipe: {type: string, enum: [PERAN, PENGGUNA]}
+        peran: {type: string, nullable: true}
+        pengguna_id: {type: string, format: uuid, nullable: true}
+        pengguna_nama: {type: string, nullable: true}
+        pengguna_email: {type: string, nullable: true}
+        pengguna_peran: {type: string, nullable: true}
+
+    ImpersonationActor:
+      allOf:
+        - $ref: "#/components/schemas/ImpersonationParty"
+        - type: object
+          properties:
+            aktif: {type: boolean}
+            target:
+              type: array
+              items:
+                $ref: "#/components/schemas/ImpersonationParty"
+
+    ImpersonationPolicy:
+      type: object
+      properties:
+        aktif: {type: boolean, description: Saklar global; nonaktif menolak semua impersonasi dan mengakhiri sesi yang berjalan}
+        wajib_alasan: {type: boolean}
+        durasi_maks_menit: {type: integer, nullable: true, minimum: 5, maximum: 1440, description: null = tanpa batas}
+        versi: {type: integer, format: int64, description: Kunci optimistis; 0 bila belum pernah disimpan}
+        diperbarui_pada: {type: string, format: date-time, nullable: true}
+        diperbarui_oleh: {type: string, format: uuid, nullable: true}
+        diperbarui_oleh_nama: {type: string, nullable: true}
+        pelaku:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImpersonationActor"
+
+    ImpersonationPolicyResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          $ref: "#/components/schemas/ImpersonationPolicy"
+
+    ImpersonationPolicyInput:
+      type: object
+      required: [versi, aktif, wajib_alasan, pelaku]
+      properties:
+        versi: {type: integer, format: int64}
+        aktif: {type: boolean}
+        wajib_alasan: {type: boolean}
+        durasi_maks_menit: {type: integer, nullable: true}
+        pelaku:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [tipe]
+            properties:
+              tipe: {type: string, enum: [PERAN, PENGGUNA]}
+              peran: {type: string}
+              pengguna_id: {type: string, format: uuid}
+              aktif: {type: boolean, description: Bawaan true bila tidak dikirim}
+              target:
+                type: array
+                maxItems: 200
+                items:
+                  type: object
+                  required: [tipe]
+                  properties:
+                    tipe: {type: string, enum: [PERAN, PENGGUNA]}
+                    peran: {type: string}
+                    pengguna_id: {type: string, format: uuid}
+
+    ImpersonationTargetsResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            boleh: {type: boolean, description: Pemanggil berhak memulai dan kebijakan aktif}
+            aktif: {type: boolean}
+            wajib_alasan: {type: boolean}
+            durasi_maks_menit: {type: integer, nullable: true}
+            peran:
+              type: array
+              items:
+                type: object
+                properties:
+                  peran: {type: string}
+                  label: {type: string}
+                  lapis: {type: string}
+                  akun:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string, format: uuid}
+                        nama: {type: string}
+                        email: {type: string}
+                        lembaga: {type: string}
+                        kabupaten_kode: {type: string, nullable: true}
+
+    ImpersonationStartRequest:
+      type: object
+      description: Salah satu sasaran wajib; `target_pengguna_id` didahulukan.
+      properties:
+        target_pengguna_id: {type: string, format: uuid}
+        target_peran: {type: string}
+        alasan: {type: string, maxLength: 500}
+
+    ImpersonationMeta:
+      type: object
+      properties:
+        aktif: {type: boolean, example: true}
+        sesi_id: {type: string, format: uuid}
+        pelaku:
+          type: object
+          properties:
+            id: {type: string, format: uuid}
+            nama: {type: string}
+            email: {type: string}
+            peran: {type: string}
+        sasaran:
+          type: object
+          properties:
+            id: {type: string, format: uuid}
+            nama: {type: string}
+            peran: {type: string}
+        mulai_pada: {type: string, format: date-time}
+        kedaluwarsa_pada: {type: string, format: date-time, nullable: true}
+        alasan: {type: string, nullable: true}
+
+    ImpersonationStartResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            access_token: {type: string}
+            refresh_token: {type: string}
+            user:
+              $ref: "#/components/schemas/UserObject"
+            impersonasi:
+              $ref: "#/components/schemas/ImpersonationMeta"
+
+    ImpersonationStopResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            access_token: {type: string}
+            refresh_token: {type: string}
+            user:
+              $ref: "#/components/schemas/UserObject"
+
+    ImpersonationHistoryResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: {type: string, format: uuid}
+                  pelaku:
+                    type: object
+                    properties:
+                      id: {type: string, format: uuid, nullable: true}
+                      nama: {type: string}
+                      email: {type: string}
+                      peran: {type: string}
+                  sasaran:
+                    type: object
+                    properties:
+                      id: {type: string, format: uuid, nullable: true}
+                      nama: {type: string}
+                      email: {type: string}
+                      peran: {type: string}
+                  alasan: {type: string, nullable: true}
+                  mulai_pada: {type: string, format: date-time}
+                  kedaluwarsa_pada: {type: string, format: date-time, nullable: true}
+                  berakhir_pada: {type: string, format: date-time, nullable: true}
+                  alasan_berakhir:
+                    type: string
+                    nullable: true
+                    enum: [STOP, BERGANTI, KEDALUWARSA, KEBIJAKAN, DIAKHIRI, LOGOUT, DICABUT]
+                  aktif: {type: boolean}
+                  ip: {type: string, nullable: true}
+                  perangkat: {type: string}
+            next_cursor: {type: string}
 
     MFADisableRequest:
       type: object

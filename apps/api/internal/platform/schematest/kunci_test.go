@@ -47,6 +47,11 @@ var kategoriPK = map[string]KategoriPK{
 	"sumber_data":  PKUUID,
 	"cold_storage": PKUUID,
 
+	// Impersonasi (000129, docs/impersonasi.md): pelaku, sasaran, dan catatan sesi adalah entitas yang terlihat admin.
+	"impersonasi_pelaku": PKUUID,
+	"impersonasi_target": PKUUID,
+	"impersonasi_sesi":   PKUUID,
+
 	// BIGINT: transaksional, time-series, log, operasional, master data (000122).
 	"provinsi":               PKBigint,
 	"kabupaten":              PKBigint,
@@ -119,6 +124,8 @@ var kategoriPK = map[string]KategoriPK{
 	"alur_persetujuan": PKKode,
 	"target_inflasi":   PKKode, // satu baris per tahun anggaran
 	"pengguna_id_lama": PKKode, // 1:1 dengan pengguna (pemetaan ID lama untuk rollback 000110)
+
+	"impersonasi_kebijakan": PKKode, // satu baris (id = 1): kebijakan impersonasi global (000129)
 
 	// HASH: keamanan, kuncinya hash atau token id.
 	"jwt_blacklist":   PKHash,

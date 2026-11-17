@@ -17,6 +17,10 @@ export const ROUTE_ACCESS: { prefix: string; perm: Permission }[] = [
   { prefix: "/master", perm: "master.lihat" },
   { prefix: "/sumber-data", perm: "sumber.lihat" },
   { prefix: "/pengguna", perm: "pengguna.kelola" },
+  // Halaman kebijakan dan riwayat impersonasi: eksklusif superadmin (ADMIN_SISTEM). API BFF `/api/impersonation/*`
+  // tidak dijaga di edge seperti API BFF lain: API Go yang otoritatif (kebijakan dan peran), dan `stop` harus selalu
+  // terjangkau dari sesi peran sasaran yang tidak punya izin apa pun atas impersonasi.
+  { prefix: "/impersonasi", perm: "impersonasi.kelola" },
   { prefix: "/audit", perm: "audit.lihat" },
   { prefix: "/lapangan", perm: "harga.input" },
 ];

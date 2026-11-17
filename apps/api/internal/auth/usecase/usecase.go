@@ -154,6 +154,10 @@ type UseCase struct {
 	// yang lalu memakai matriks bawaan. izinCache selalu ada bersamanya.
 	izin      domain.IzinRepository
 	izinCache *izinCache
+	// imp adalah penyimpanan impersonasi (docs/impersonasi.md); nil hanya pada tes unit dengan repositori tiruan lama.
+	// impCache selalu ada bersamanya.
+	imp      domain.ImpersonasiRepository
+	impCache *impersonasiCache
 	// sekarang adalah jam usecase (masa berlaku izin langsung); tes menggantinya.
 	sekarang func() time.Time
 }
@@ -175,6 +179,14 @@ func New(repo domain.Repository, tokenMgr *token.Manager, cfg Config, log *logge
 		}
 		uc.izin = izin
 		uc.izinCache = newIzinCache(izin, ttl, nil)
+	}
+	if imp, ok := repo.(domain.ImpersonasiRepository); ok {
+		ttl := cfg.IzinCacheTTL
+		if ttl == 0 {
+			ttl = DefaultIzinCacheTTL
+		}
+		uc.imp = imp
+		uc.impCache = newImpersonasiCache(ttl, nil)
 	}
 	return uc
 }

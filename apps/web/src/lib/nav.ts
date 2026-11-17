@@ -15,6 +15,7 @@ import {
   Snowflake,
   SquareKanban,
   Target,
+  UserCog,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -162,6 +163,13 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
         icon: Users,
         perm: "pengguna.kelola",
         keywords: ["rbac", "akses", "mfa"],
+      },
+      {
+        href: "/impersonasi",
+        label: "Impersonasi",
+        icon: UserCog,
+        perm: "impersonasi.kelola",
+        keywords: ["alih peran", "alih akun", "beralih", "superadmin", "uji peran", "kebijakan"],
       },
       {
         href: "/audit",

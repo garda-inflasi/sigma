@@ -13,6 +13,12 @@ import {
   renderHalaman,
   type FetchPalsu,
 } from "@/test/render";
+import {
+  sesiImpersonate,
+  targetsFixture,
+  tangkapNavigasi,
+  tuntaskanTimer,
+} from "@/test/impersonasi";
 import { Topbar, itemMenuProfil } from "./topbar";
 
 let fetchPalsu: FetchPalsu;
@@ -20,6 +26,7 @@ beforeEach(() => {
   fetchPalsu = pasangFetchPalsu();
 });
 afterEach(() => fetchPalsu.pulihkan());
+afterEach(tuntaskanTimer);
 
 // Peran tanpa dashboard.operasional dan ews.lihat: topbar tidak memuat siklus dan tidak menampilkan lonceng EWS.
 const sesi = penggunaSesi({
@@ -220,5 +227,132 @@ describe("Topbar: siklus ekonomi aktif", () => {
     renderTopbar();
     assert.ok(screen.getByRole("button", { name: "Menu akun" }));
     assert.equal(fetchPalsu.ke("GET", "/v1/siklus/aktif").length, 0);
+  });
+});
+
+describe("Topbar: impersonasi", () => {
+  const TARGETS = "GET /api/impersonation/targets";
+  const STOP = "POST /api/impersonation/stop";
+
+  function renderDengan(sesiUji: ReturnType<typeof penggunaSesi>, path = "/profil") {
+    return renderHalaman(
+      <PathnameContext.Provider value={path}>
+        <Topbar />
+      </PathnameContext.Provider>,
+      { url: path, sesi: sesiUji },
+    );
+  }
+
+  it("sesi biasa: tidak ada chip kembali dan tombol RoleSwitcher tidak berubah", () => {
+    renderTopbar();
+    assert.equal(screen.queryByTestId("chip-kembali-peran"), null);
+  });
+
+  it("selama impersonasi: chip 'Kembali ke [Peran Asal]' tepat di sebelah lonceng dan avatar (lonceng, chip, avatar)", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu();
+    // Peran dengan lonceng EWS tetapi tanpa dasbor operasional (tidak memuat siklus).
+    renderDengan(
+      sesiImpersonate("OPS_MAHASISWA", { permissions: ["ews.lihat", "harga.input"] }),
+    );
+
+    const lonceng = await screen.findByRole("link", { name: /Peringatan dini/ });
+    const chip = screen.getByRole("button", { name: "Kembali ke Administrator Sistem" });
+    const avatar = screen.getByRole("button", { name: "Menu akun" });
+    const urutan = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.ok(urutan(lonceng, chip), "chip sesudah lonceng");
+    assert.ok(urutan(chip, avatar), "chip sebelum avatar");
+    assert.equal(chip.parentElement, avatar.parentElement, "satu baris dengan avatar");
+    assert.equal(chip.nextElementSibling, avatar, "tepat bersebelahan dengan avatar");
+  });
+
+  it("chip memanggil stop dan memuat penuh ke tujuan dari BFF", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu({
+      [STOP]: { user: { id: "u", nama: "A", peran: "ADMIN_SISTEM" }, redirectTo: "/" },
+    });
+    const nav = tangkapNavigasi();
+    try {
+      const { user } = renderDengan(sesiImpersonate("OPS_MAHASISWA"));
+      await user.click(screen.getByRole("button", { name: "Kembali ke Administrator Sistem" }));
+      await waitFor(() => assert.deepEqual(nav.tujuan, ["/"]));
+    } finally {
+      nav.pulihkan();
+    }
+  });
+
+  it("menu akun selama impersonasi: label menyebut pelaku asli; 'Beralih' dan 'Kembali ke Administrator Sistem' sebelum tema", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu();
+    const { user } = renderDengan(sesiImpersonate("OPS_MAHASISWA"));
+    const menu = await bukaMenuAkun(user);
+
+    assert.match(menu.children[0].textContent ?? "", /Impersonate oleh Super Admin/);
+    assert.deepEqual(urutanMenu(menu), [
+      "---",
+      "Profil Saya -> /profil",
+      "Ganti Kata Sandi -> /profil?tab=ganti-password",
+      "Verifikasi 2 Langkah -> /profil?tab=mfa",
+      "Perangkat & Sesi Aktif -> /profil?tab=keamanan",
+      "---",
+      "Beralih / Impersonate Role",
+      "Kembali ke Administrator Sistem",
+      "---",
+      "Mode gelap",
+      "---",
+      "Keluar",
+    ]);
+  });
+
+  it("superadmin (ADMIN_SISTEM): item 'Beralih / Impersonate Role' tampil tanpa bertanya ke API, tanpa item kembali", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu();
+    const { user } = renderDengan(penggunaSesi({ role: "ADMIN_SISTEM" }));
+    const menu = await bukaMenuAkun(user);
+
+    const urutan = urutanMenu(menu);
+    assert.ok(urutan.includes("Beralih / Impersonate Role"));
+    assert.ok(!urutan.includes("Kembali ke Administrator Sistem"));
+    assert.equal(fetchPalsu.ke("GET", "/api/impersonation/targets").length, 0);
+  });
+
+  it("peran lain yang di-allowlist (targets.boleh true): item tampil; yang tidak berhak: menu tidak berubah", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu({ [TARGETS]: targetsFixture({ boleh: true }) });
+    const { user, unmount } = renderDengan(penggunaSesi({ role: "MANAJER_MUTU" }));
+    await waitFor(() => assert.equal(fetchPalsu.ke("GET", "/api/impersonation/targets").length, 1));
+    await waitFor(async () => {
+      const menu = await bukaMenuAkun(user);
+      assert.ok(urutanMenu(menu).includes("Beralih / Impersonate Role"));
+    });
+    unmount();
+
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu({ [TARGETS]: targetsFixture({ boleh: false, peran: [] }) });
+    const kedua = renderDengan(penggunaSesi({ role: "MANAJER_MUTU" }));
+    await waitFor(() => assert.equal(fetchPalsu.ke("GET", "/api/impersonation/targets").length, 1));
+    const menu = await bukaMenuAkun(kedua.user);
+    assert.ok(!urutanMenu(menu).includes("Beralih / Impersonate Role"));
+  });
+
+  it("targets gagal (API lama, jaringan): menu tidak berubah dan tidak diulang", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu({ [TARGETS]: galatApi(500, "gagal") });
+    const { user } = renderDengan(penggunaSesi({ role: "MANAJER_MUTU" }));
+    const menu = await bukaMenuAkun(user);
+    assert.ok(!urutanMenu(menu).includes("Beralih / Impersonate Role"));
+    assert.equal(fetchPalsu.ke("GET", "/api/impersonation/targets").length, 1);
+  });
+
+  it("memilih 'Beralih / Impersonate Role' membuka dialog pemilih", async () => {
+    fetchPalsu.pulihkan();
+    fetchPalsu = pasangFetchPalsu({ [TARGETS]: targetsFixture() });
+    const { user } = renderDengan(penggunaSesi({ role: "ADMIN_SISTEM" }));
+    await bukaMenuAkun(user);
+    await user.click(screen.getByRole("menuitem", { name: /Beralih \/ Impersonate Role/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Beralih / Impersonate Role" });
+    assert.ok(within(dialog).getByText("Peran sasaran"));
   });
 });

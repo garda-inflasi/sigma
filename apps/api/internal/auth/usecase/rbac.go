@@ -116,6 +116,6 @@ var rolePermissions = map[string][]string{
 		"harga.input", "tugas.lihat_sendiri",
 	},
 	"ADMIN_SISTEM": {
-		"pengguna.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat",
+		"pengguna.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat", "impersonasi.kelola",
 	},
 }

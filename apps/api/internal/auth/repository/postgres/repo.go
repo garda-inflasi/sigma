@@ -227,10 +227,16 @@ func (r *Repository) ConsumeResetToken(ctx context.Context, id int64, now time.T
 
 func (r *Repository) RevokeAllUserRefreshTokens(ctx context.Context, userID string) error {
 	now := time.Now()
+	// Sesi impersonasi yang DIMULAI akun ini (tercatat atas user_id sasaran) ikut dicabut: pelaku yang kredensialnya
+	// dicabut tidak boleh tetap memegang sesi pinjaman.
 	return r.db.WithContext(ctx).Model(&domain.RefreshToken{}).
-		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Where("(user_id = ? OR "+sesiImpersonasiOleh+") AND revoked_at IS NULL", userID, userID).
 		Update("revoked_at", now).Error
 }
+
+// sesiImpersonasiOleh adalah kondisi refresh_tokens milik impersonasi yang masih berjalan dan dimulai oleh pelaku
+// (argumen: id pelaku).
+const sesiImpersonasiOleh = `impersonasi_id IN (SELECT id FROM impersonasi_sesi WHERE pelaku_id = ? AND berakhir_pada IS NULL)`
 
 // ── MFA ───────────────────────────────────────────────────────────────
 

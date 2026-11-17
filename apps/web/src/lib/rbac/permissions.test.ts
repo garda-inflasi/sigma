@@ -40,3 +40,13 @@ describe("izin web sama dengan API Go", () => {
     assert.deepEqual(sorted(PERMISSIONS.filter((p) => !dimiliki.has(p))), []);
   });
 });
+
+describe("izin impersonasi.kelola", () => {
+  it("ada di katalog dan eksklusif milik ADMIN_SISTEM pada matriks bawaan", () => {
+    assert.ok((PERMISSIONS as readonly string[]).includes("impersonasi.kelola"));
+    const pemegang = ROLE_IDS.filter((r) =>
+      (ROLE_PERMISSIONS[r] as readonly string[]).includes("impersonasi.kelola"),
+    );
+    assert.deepEqual(pemegang, ["ADMIN_SISTEM"]);
+  });
+});

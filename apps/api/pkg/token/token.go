@@ -50,6 +50,9 @@ type Claims struct {
 	Email string `json:"email,omitempty"`
 	Org   string `json:"org,omitempty"`
 	Kab   string `json:"kab,omitempty"`
+	// Imp (`imp`) hanya ada pada token impersonasi: sub, role, permissions, dan profil di atas milik akun SASARAN,
+	// sedangkan Imp menunjuk pelaku asli. Lihat impersonation.go dan docs/impersonasi.md.
+	Imp *Impersonation `json:"imp,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -65,6 +68,8 @@ type Manager struct {
 	audience    string
 	revocation  atomic.Pointer[RevocationChecker]
 	permissions atomic.Pointer[PermissionResolver]
+	// impersonation memvalidasi token ber-klaim `imp` (impersonation.go).
+	impersonation atomic.Pointer[ImpersonationGuard]
 }
 
 // NewManager creates a new token manager.

@@ -55,6 +55,8 @@ func (h *Handler) UpdateRolePermissions(c *gin.Context) {
 			response.NotFound(c, "Peran tidak dikenal")
 		case errors.Is(err, usecase.ErrIzinTidakDikenal):
 			response.Error(c, http.StatusBadRequest, dto.KodeIzinTidakDikenal, err.Error())
+		case errors.Is(err, usecase.ErrIzinEksklusif):
+			response.Error(c, http.StatusBadRequest, dto.KodeIzinEksklusif, err.Error())
 		case errors.Is(err, usecase.ErrPemegangTerakhir):
 			jawabPemegangTerakhir(c)
 		default:
@@ -114,6 +116,8 @@ func (h *Handler) GrantUserPermission(c *gin.Context) {
 			response.NotFound(c, "Pengguna tidak ditemukan")
 		case errors.Is(err, usecase.ErrIzinTidakDikenal):
 			response.Error(c, http.StatusBadRequest, dto.KodeIzinTidakDikenal, err.Error())
+		case errors.Is(err, usecase.ErrIzinEksklusif):
+			response.Error(c, http.StatusBadRequest, dto.KodeIzinEksklusif, err.Error())
 		case errors.Is(err, usecase.ErrAlasanWajib), errors.Is(err, usecase.ErrAlasanTerlaluPanjang), errors.Is(err, usecase.ErrBerlakuSampaiLampau):
 			response.BadRequest(c, err.Error())
 		case errors.Is(err, usecase.ErrIzinDariPeran):

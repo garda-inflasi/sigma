@@ -117,6 +117,11 @@ export const INFO_IZIN: Record<Permission, InfoIzin> = {
     label: "Mengelola pengguna, peran, matriks izin, dan izin langsung",
     kelompok: "Pengguna dan audit",
   },
+  "impersonasi.kelola": {
+    label:
+      "Mengatur kebijakan impersonasi dan melihat riwayatnya (eksklusif administrator sistem)",
+    kelompok: "Pengguna dan audit",
+  },
   "audit.lihat": {
     label: "Melihat jejak audit",
     kelompok: "Pengguna dan audit",

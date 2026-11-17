@@ -6,6 +6,7 @@
 import { jwtVerify } from "jose";
 import { USERS } from "@/lib/data/reference";
 import { ROLE_IDS, type Role } from "@/lib/rbac/roles";
+import { impersonasiDariKlaim, type ImpersonasiSesi } from "./impersonasi";
 
 export interface SessionUser {
   id: string;
@@ -19,6 +20,12 @@ export interface SessionUser {
    * terbit). Undefined bila klaim tidak ada (mode mock/dev): pemeriksaan izin jatuh ke matriks bawaan peran.
    */
   permissions?: readonly string[];
+  /**
+   * Ada hanya selama impersonasi: identitas di atas (id, nama, peran, izin) adalah milik akun SASARAN, sedangkan
+   * pelaku aslinya ada di `originalUser`. Diturunkan dari klaim `imp` untuk tampilan (banner, tombol kembali);
+   * otorisasi tetap di API Go. Mode dev (`garda_dev_role`) tidak punya impersonasi.
+   */
+  impersonation?: ImpersonasiSesi;
 }
 
 /** Klaim `permissions` token → daftar izin; undefined bila bukan larik string. */
@@ -62,6 +69,7 @@ export async function resolveSession(getCookie: (name: string) => string | undef
           lembaga: String(payload.org ?? ""),
           kabupatenKode: typeof payload.kab === "string" ? payload.kab : undefined,
           permissions: izinDariKlaim(payload.permissions),
+          impersonation: impersonasiDariKlaim(payload),
         };
       }
     } catch {

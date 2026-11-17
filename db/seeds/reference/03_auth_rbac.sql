@@ -1,4 +1,4 @@
--- GARDA INFLASI - Auth & RBAC Reference Seed Data (14 Peran & 35 Izin)
+-- GARDA INFLASI - Auth & RBAC Reference Seed Data (14 Peran & 36 Izin)
 
 -- =====================================================================
 -- Tabel: roles (14 baris)
@@ -21,7 +21,7 @@ INSERT INTO roles (kunci, label, lapis, urutan) VALUES
 ON CONFLICT (kunci) DO NOTHING;
 
 -- =====================================================================
--- Tabel: permissions (35 baris)
+-- Tabel: permissions (36 baris)
 -- =====================================================================
 INSERT INTO permissions (nama, deskripsi, kelompok) VALUES
   ('audit.lihat', 'Melihat jejak audit', 'Pengguna dan audit'),
@@ -42,6 +42,7 @@ INSERT INTO permissions (nama, deskripsi, kelompok) VALUES
   ('harga.lihat', 'Melihat data harga pangan', 'Harga'),
   ('harga.publikasi', 'Mempublikasikan data harga', 'Harga'),
   ('harga.validasi', 'Memvalidasi entri harga', 'Harga'),
+  ('impersonasi.kelola', 'Mengatur kebijakan impersonasi dan melihat riwayatnya (eksklusif administrator sistem)', 'Pengguna dan audit'),
   ('intervensi.kelola', 'Menyusun dan memindahkan tahap intervensi', 'Intervensi'),
   ('intervensi.lihat', 'Melihat daftar intervensi', 'Intervensi'),
   ('intervensi.setujui', 'Menyetujui intervensi', 'Intervensi'),
@@ -62,7 +63,7 @@ INSERT INTO permissions (nama, deskripsi, kelompok) VALUES
 ON CONFLICT (nama) DO NOTHING;
 
 -- =====================================================================
--- Tabel: role_permissions (182 baris)
+-- Tabel: role_permissions (183 baris)
 -- =====================================================================
 INSERT INTO role_permissions (role_kunci, permission_nama) VALUES
   ('STRATEGIS_FMIPA', 'audit.lihat'),
@@ -242,6 +243,7 @@ INSERT INTO role_permissions (role_kunci, permission_nama) VALUES
   ('OPS_MAHASISWA', 'harga.input'),
   ('OPS_MAHASISWA', 'tugas.lihat_sendiri'),
   ('ADMIN_SISTEM', 'audit.lihat'),
+  ('ADMIN_SISTEM', 'impersonasi.kelola'),
   ('ADMIN_SISTEM', 'master.ajukan'),
   ('ADMIN_SISTEM', 'master.lihat'),
   ('ADMIN_SISTEM', 'pengguna.kelola'),

@@ -76,6 +76,7 @@ var katalogIzin = []DefinisiIzin{
 	{"sumber.kelola", "Mengelola sumber data dan ingesti", "Sumber data"},
 	{"pengguna.kelola", "Mengelola pengguna, peran, matriks izin, dan izin langsung", "Pengguna dan audit"},
 	{"audit.lihat", "Melihat jejak audit", "Pengguna dan audit"},
+	{"impersonasi.kelola", "Mengatur kebijakan impersonasi dan melihat riwayatnya (eksklusif administrator sistem)", "Pengguna dan audit"},
 }
 
 // DaftarPeran mengembalikan 14 peran dalam urutan baku.

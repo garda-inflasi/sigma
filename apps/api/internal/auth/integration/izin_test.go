@@ -144,7 +144,7 @@ func TestIzin_RolesDanPermissionsMembacaBasisDataDenganVersiDanBawaan(t *testing
 	w = s.panggil(t, http.MethodGet, "/v1/permissions", nil, admin.access)
 	require.Equal(t, http.StatusOK, w.Code)
 	perms := s.parseResponse(t, w)["data"].([]any)
-	require.Len(t, perms, 35)
+	require.Len(t, perms, 36)
 	first := perms[0].(map[string]any)
 	assert.NotEmpty(t, first["deskripsi"])
 	assert.NotEmpty(t, first["kelompok"])

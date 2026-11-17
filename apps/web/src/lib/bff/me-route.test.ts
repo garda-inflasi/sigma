@@ -487,6 +487,30 @@ describe("GET /api/auth/me", () => {
     assert.equal(go[0].metode, "GET");
     assert.equal(go[0].auth, `Bearer ${token}`);
   });
+
+  it("selama impersonasi meneruskan `impersonasi` (pelaku asli) apa adanya bersama profil sasaran", async () => {
+    const impersonasi = {
+      aktif: true,
+      sesi_id: "33333333-3333-4333-8333-333333333333",
+      pelaku: {
+        id: "22222222-2222-4222-8222-222222222222",
+        nama: "Super Admin",
+        email: "superadmin@gardainflasi.id",
+        peran: "ADMIN_SISTEM",
+      },
+      sasaran: { id: USER.id, nama: USER.nama, peran: USER.peran },
+      mulai_pada: "2026-11-17T10:00:00Z",
+      kedaluwarsa_pada: null,
+      alasan: "uji dasbor",
+    };
+    goMenjawab({ "GET /v1/auth/me": () => envelope({ ...USER, impersonasi }) });
+    const cookie = cookieSesi(tokenAkses("Budi Baru"));
+
+    const res = await jalankan(cookie, minta(cookie), GET);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { user: { ...USER, impersonasi } });
+  });
 });
 
 // ── Edge ─────────────────────────────────────────────────────────────

@@ -36,6 +36,23 @@ func (m *Manager) SetPermissionResolver(r PermissionResolver) {
 // tidak ada resolver terpasang: router tanpa modul auth (mis. tes modul lain) memakai klaim apa adanya.
 // Galat dikembalikan apa adanya; kebijakan gagal-tutup ada di middleware.
 func (m *Manager) ResolvePermissions(ctx context.Context, claims *Claims) (perms []string, resolved bool, err error) {
+	// Token impersonasi: izin efektif adalah izin akun sasaran, dan catatan impersonasinya harus masih sah. Gagal-tutup:
+	// tanpa penjaga terpasang, atau klaim `imp` cacat, token ditolak (bukan diperlakukan sebagai token biasa).
+	if claims != nil && claims.Imp != nil {
+		if !ValidImpersonationClaim(claims.Imp) {
+			return nil, true, ErrImpersonationEnded
+		}
+		g := m.impersonation.Load()
+		if g == nil {
+			return nil, true, ErrImpersonationEnded
+		}
+		perms, err = (*g).ValidateImpersonation(ctx, claims)
+		if err != nil {
+			return nil, true, err
+		}
+		return perms, true, nil
+	}
+
 	r := m.permissions.Load()
 	if r == nil || claims == nil {
 		return nil, false, nil

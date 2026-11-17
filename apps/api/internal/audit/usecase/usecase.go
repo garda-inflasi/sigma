@@ -12,6 +12,7 @@ import (
 
 	"github.com/garda-inflasi/api/internal/audit/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
+	"github.com/garda-inflasi/api/pkg/token"
 )
 
 const (
@@ -71,7 +72,8 @@ func (uc *UseCase) buildRow(ctx context.Context, entry domain.Entry) (*domain.Au
 		CorrelationID: nonEmpty(origin.CorrelationID),
 	}
 
-	if err := uc.fillActor(ctx, row, entry.AktorID); err != nil {
+	aktorID, entry := atributKeImpersonasi(ctx, entry)
+	if err := uc.fillActor(ctx, row, aktorID); err != nil {
 		return nil, err
 	}
 
@@ -90,6 +92,35 @@ func (uc *UseCase) buildRow(ctx context.Context, entry domain.Entry) (*domain.Au
 		*field.dst = encoded
 	}
 	return row, nil
+}
+
+// atributKeImpersonasi menautkan aksi yang terjadi selama impersonasi (docs/impersonasi.md) ke pelaku ASLI: aksi yang
+// dicatat atas nama akun sasaran dicatat atas nama pelaku, dan metadata memuat sesi impersonasi, akun sasaran, dan peran
+// efektif. Keadaan impersonasi berasal dari context yang dipasang JWTAuth dari token yang sudah diverifikasi dan
+// dicocokkan dengan catatan di basis data, bukan dari masukan klien. metadata masuk hash berantai (HitungHash), jadi
+// penautan ini tamper-evident. Entri di luar impersonasi dikembalikan apa adanya.
+func atributKeImpersonasi(ctx context.Context, entry domain.Entry) (aktorID string, _ domain.Entry) {
+	aktorID = entry.AktorID
+	ic, ok := token.ImpersonationFrom(ctx)
+	if !ok {
+		return aktorID, entry
+	}
+	if aktorID == ic.EffectiveUserID {
+		aktorID = ic.By.UserID
+	}
+	metadata := make(map[string]any, len(entry.Metadata)+1)
+	for k, v := range entry.Metadata {
+		metadata[k] = v
+	}
+	if _, ada := metadata["impersonasi"]; !ada {
+		metadata["impersonasi"] = map[string]any{
+			"sesi_id":             ic.ID,
+			"sebagai_pengguna_id": ic.EffectiveUserID,
+			"peran_efektif":       ic.EffectiveRole,
+		}
+	}
+	entry.Metadata = metadata
+	return aktorID, entry
 }
 
 // fillActor menyalin identitas aktor. Akun yang tidak ada (mis. sudah dihapus)

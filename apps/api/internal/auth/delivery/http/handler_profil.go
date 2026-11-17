@@ -27,11 +27,16 @@ func (h *Handler) meResponse(ctx context.Context, user *domain.Pengguna) (dto.Me
 	if err != nil {
 		return dto.MeUserResponse{}, err
 	}
+	meta, err := h.uc.ImpersonasiMeta(ctx)
+	if err != nil {
+		return dto.MeUserResponse{}, err
+	}
 	return dto.MeUserResponse{
 		UserResponse:        dto.ToUserResponse(user),
 		MfaSetupDiwajibkan:  status.SetupDiwajibkan,
 		MfaWajib:            status.Wajib,
 		KodeCadanganTersisa: status.KodeCadanganTersisa,
+		Impersonasi:         dto.ToImpersonasiMetaResponse(meta),
 	}, nil
 }
 

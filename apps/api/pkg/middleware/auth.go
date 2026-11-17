@@ -90,6 +90,15 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 		// mungkin sudah dicabut). Akun yang sudah tidak ada atau tidak aktif dijawab 401 seperti sesi dicabut.
 		perms, resolved, err := tokenMgr.ResolvePermissions(c.Request.Context(), claims)
 		if err != nil {
+			// Sesi impersonasi yang berakhir (dihentikan, kedaluwarsa, kebijakan dinonaktifkan, pelaku atau sasaran tidak
+			// lagi berhak) dijawab 401 berkode khusus: klien web mencoba refresh, refresh ditolak, lalu masuk ulang.
+			if errors.Is(err, token.ErrImpersonationEnded) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"code":    ImpersonationEndedCode,
+					"message": ImpersonationEndedMessage,
+				})
+				return
+			}
 			if errors.Is(err, token.ErrPrincipalNotFound) {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 					"code":    "401",
@@ -141,7 +150,111 @@ func JWTAuth(tokenMgr *token.Manager) gin.HandlerFunc {
 			})
 			return
 		}
+
+		if claims.Imp != nil {
+			ic := token.ImpersonationContext{Impersonation: *claims.Imp, EffectiveUserID: claims.UserID, EffectiveRole: claims.Role}
+			c.Set(impersonationKey, ic)
+			// Context request ikut membawa impersonasi: audit.Writer dan usecase memakainya untuk menautkan setiap aksi
+			// ke pelaku asli tanpa semua modul mengubah kode mereka.
+			c.Request = c.Request.WithContext(token.ContextWithImpersonation(c.Request.Context(), ic))
+			if impersonasiDilarang(c.Request.Method, c.FullPath()) {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"code":    ImpersonationRestrictedCode,
+					"message": ImpersonationRestrictedMessage,
+				})
+			} else {
+				c.Next()
+			}
+			// Jaring pengaman akuntabilitas: setiap mutasi selama impersonasi tercatat, termasuk yang ditolak, walau
+			// modul tujuannya tidak menulis audit sendiri.
+			// Mulai/berhenti/ganti sudah punya entri audit sendiri (IMPERSONASI_*), jadi tidak dicatat dua kali.
+			if mutasi(c.Request.Method) && !strings.HasPrefix(c.FullPath(), "/v1/auth/impersonation/") {
+				if guard := tokenMgr.ImpersonationGuard(); guard != nil {
+					reqID, _ := c.Get("request_id")
+					id, _ := reqID.(string)
+					guard.RecordImpersonationMutation(c.Request.Context(), ic, token.MutationInfo{
+						Method: c.Request.Method, Route: c.FullPath(), Status: c.Writer.Status(),
+						IP: c.ClientIP(), UserAgent: c.Request.UserAgent(), RequestID: id,
+					})
+				}
+			}
+			return
+		}
 		c.Next()
+	}
+}
+
+// impersonationKey adalah kunci context Gin untuk token.ImpersonationContext (hanya ada selama impersonasi).
+const impersonationKey = "impersonation"
+
+// Impersonation mengembalikan keadaan impersonasi request ini; ok false bila bukan sesi impersonasi. Hanya terisi
+// setelah JWTAuth.
+func Impersonation(c *gin.Context) (token.ImpersonationContext, bool) {
+	v, ok := c.Get(impersonationKey)
+	if !ok {
+		return token.ImpersonationContext{}, false
+	}
+	ic, ok := v.(token.ImpersonationContext)
+	return ic, ok
+}
+
+// ImpersonationEndedCode adalah kode galat 401 untuk token impersonasi yang sesinya sudah tidak sah.
+const ImpersonationEndedCode = "IMPERSONATION_ENDED"
+
+// ImpersonationEndedMessage dipakai klien sebagai pesan saat sesi impersonasi berakhir.
+const ImpersonationEndedMessage = "Sesi impersonasi telah berakhir, silakan masuk kembali"
+
+// ImpersonationRestrictedCode adalah kode galat 403 untuk endpoint yang dilarang selama impersonasi.
+const ImpersonationRestrictedCode = "IMPERSONATION_RESTRICTED"
+
+// ImpersonationRestrictedMessage menjelaskan larangan itu.
+const ImpersonationRestrictedMessage = "Aksi ini tidak tersedia selama impersonasi. Kembali ke akun asli terlebih dahulu"
+
+// mutasi true untuk metode HTTP yang mengubah data.
+func mutasi(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// impersonasiDilarang melaporkan apakah request ini dilarang selama impersonasi: pelaku tidak boleh mengubah kredensial
+// (kata sandi, MFA, sesi, profil) maupun hak (pengguna, peran, matriks izin, pengaturan impersonasi) akun sasaran atau
+// siapa pun lewat sesi pinjaman. Membaca tetap boleh, dan `/auth/impersonation/*` (berhenti atau ganti sasaran) bukan
+// bagian larangan ini.
+func impersonasiDilarang(method, fullPath string) bool {
+	switch fullPath {
+	case "/v1/auth/change-password", "/v1/auth/logout-all", "/v1/auth/sessions/revoke-others", "/v1/auth/sessions/:id":
+		return true
+	case "/v1/auth/me":
+		return method == http.MethodPatch
+	}
+	if strings.HasPrefix(fullPath, "/v1/auth/mfa/") || fullPath == "/v1/auth/mfa" {
+		return true
+	}
+	if strings.HasPrefix(fullPath, "/v1/admin/impersonation") {
+		return true
+	}
+	if strings.HasPrefix(fullPath, "/v1/users") || strings.HasPrefix(fullPath, "/v1/roles") {
+		return mutasi(method)
+	}
+	return false
+}
+
+// RequireRole menolak (403) request yang peran tokennya tidak termasuk roles. Dipakai berdampingan dengan
+// RequirePermission untuk izin yang eksklusif milik peran tertentu (mis. impersonasi.kelola milik ADMIN_SISTEM).
+// Harus dipasang setelah JWTAuth.
+func RequireRole(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if slices.Contains(roles, c.GetString("role")) {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"code":    "403",
+			"message": "Akses ditolak",
+		})
 	}
 }
 

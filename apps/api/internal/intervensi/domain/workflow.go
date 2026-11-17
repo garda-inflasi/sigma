@@ -40,6 +40,8 @@ var (
 	ErrPersetujuanTerbuka = errors.New("kartu masih memiliki permintaan persetujuan yang menunggu")
 	// ErrPersetujuanNotFound: permintaan persetujuan tidak ada.
 	ErrPersetujuanNotFound = errors.New("permintaan persetujuan tidak ditemukan")
+	// ErrPemisahanTugas: pemutus tidak boleh sama dengan pengaju, dan satu orang tidak memutus dua langkah.
+	ErrPemisahanTugas = errors.New("pengaju atau pemutus langkah sebelumnya tidak boleh memutus langkah ini")
 	// ErrPersetujuanSelesai: permintaan sudah diputuskan, atau langkahnya sudah berpindah.
 	ErrPersetujuanSelesai = errors.New("permintaan persetujuan sudah diputuskan atau langkahnya berubah")
 )
@@ -113,10 +115,30 @@ type LangkahPersetujuan struct {
 // Persetujuan adalah permintaan persetujuan beserta rantai langkah dan ringkasan kartunya.
 type Persetujuan struct {
 	IntervensiPersetujuan
-	KartuJudul     string               `gorm:"column:kartu_judul;->"`
-	KartuTahap     string               `gorm:"column:kartu_tahap;->"`
+	KartuJudul string `gorm:"column:kartu_judul;->"`
+	KartuTahap string `gorm:"column:kartu_tahap;->"`
+	// KartuKabupaten adalah kabupaten kartu ("" bila kartu tingkat provinsi); dasar cakupan wilayah pemutus.
+	KartuKabupaten string               `gorm:"column:kartu_kabupaten;->"`
 	DiajukanOlehNm *string              `gorm:"column:diajukan_oleh_nama;->"`
 	Langkah        []LangkahPersetujuan `gorm:"-"`
+}
+
+// MelibatkanPelaku melaporkan apakah pelaku sudah terlibat dalam permintaan ini: ia pengaju, atau sudah memutus
+// langkah lain. Pelaku seperti itu tidak boleh memutus langkah berikutnya (pemisahan tugas, 02-B). Pelaku kosong
+// (sistem) tidak pernah dianggap terlibat.
+func (p Persetujuan) MelibatkanPelaku(pelakuID string) bool {
+	if pelakuID == "" {
+		return false
+	}
+	if p.DiajukanOleh != nil && *p.DiajukanOleh == pelakuID {
+		return true
+	}
+	for _, l := range p.Langkah {
+		if l.Oleh != nil && *l.Oleh == pelakuID {
+			return true
+		}
+	}
+	return false
 }
 
 // IzinLangkahKini adalah izin yang dibutuhkan untuk memutuskan langkah yang sedang menunggu.

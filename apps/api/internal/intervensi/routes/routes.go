@@ -20,7 +20,7 @@ type Dependencies struct {
 
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
-	uc := usecase.New(repo, repo, audit.NewWriter(deps.DB), deps.Logger)
+	uc := usecase.New(repo, repo, repo, audit.NewWriter(deps.DB), deps.Logger)
 	handler := http.New(uc)
 
 	group := engine.Group("/intervensi")

@@ -98,6 +98,32 @@ type Filter struct {
 	// Q adalah pencarian bebas (tak peka huruf besar-kecil) pada aksi, entitas,
 	// id entitas, nama/email aktor, dan correlation id.
 	Q string
+	// PenggunaID (UUID kanonik) membatasi baris pada keterlibatan satu akun menurut Sebagai. Cocok persis pada id,
+	// bukan nama atau email, sehingga tidak pernah menyentuh baris akun lain.
+	PenggunaID string
+	// Sebagai menentukan hubungan akun dengan baris; kosong dibaca SebagaiSemua. Hanya dibaca bila PenggunaID terisi.
+	Sebagai Sebagai
+}
+
+// Sebagai adalah hubungan sebuah akun dengan baris audit.
+type Sebagai string
+
+const (
+	// SebagaiPelaku: akun melakukan aksinya (aktor_id).
+	SebagaiPelaku Sebagai = "pelaku"
+	// SebagaiSasaran: aksi dilakukan akun lain terhadap akun ini (mis. admin mengatur ulang MFA).
+	SebagaiSasaran Sebagai = "sasaran"
+	// SebagaiSemua: gabungan keduanya.
+	SebagaiSemua Sebagai = "semua"
+)
+
+// Sah melaporkan apakah nilai dikenal; kosong dianggap SebagaiSemua.
+func (s Sebagai) Sah() bool {
+	switch s {
+	case "", SebagaiPelaku, SebagaiSasaran, SebagaiSemua:
+		return true
+	}
+	return false
 }
 
 // Cursor menandai posisi halaman berikutnya pada urutan (waktu, id) menurun.

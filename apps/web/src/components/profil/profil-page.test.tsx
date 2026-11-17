@@ -46,6 +46,7 @@ const NAMA_TAB = {
   "ganti-password": "Ganti Kata Sandi",
   mfa: "Verifikasi 2 Langkah",
   keamanan: "Perangkat & Sesi Aktif",
+  aktivitas: "Aktivitas Akun",
 } as const;
 const URUTAN = Object.values(NAMA_TAB);
 
@@ -61,7 +62,7 @@ function render(url = "/profil") {
 }
 
 describe("ProfilPage: kerangka", () => {
-  it("judul halaman, tablist 'Bagian profil' dengan empat tab berurutan, dan satu tabpanel", () => {
+  it("judul halaman, tablist 'Bagian profil' dengan lima tab berurutan, dan satu tabpanel", () => {
     render();
 
     assert.ok(screen.getByRole("heading", { level: 1, name: "Profil saya" }));
@@ -217,10 +218,8 @@ describe("ProfilPage: papan ketik", () => {
 
     // Berputar dari tab pertama ke terakhir.
     await user.keyboard("{ArrowUp}");
-    await waitFor(() =>
-      assert.deepEqual(terpilih(), ["Perangkat & Sesi Aktif"]),
-    );
-    assert.equal(document.activeElement, tab("Perangkat & Sesi Aktif"));
+    await waitFor(() => assert.deepEqual(terpilih(), ["Aktivitas Akun"]));
+    assert.equal(document.activeElement, tab("Aktivitas Akun"));
 
     // Dan dari yang terakhir kembali ke yang pertama.
     await user.keyboard("{ArrowDown}");
@@ -233,10 +232,8 @@ describe("ProfilPage: papan ketik", () => {
     tab("Verifikasi 2 Langkah").focus();
 
     await user.keyboard("{End}");
-    await waitFor(() =>
-      assert.deepEqual(terpilih(), ["Perangkat & Sesi Aktif"]),
-    );
-    assert.equal(document.activeElement, tab("Perangkat & Sesi Aktif"));
+    await waitFor(() => assert.deepEqual(terpilih(), ["Aktivitas Akun"]));
+    assert.equal(document.activeElement, tab("Aktivitas Akun"));
 
     await user.keyboard("{Home}");
     await waitFor(() => assert.deepEqual(terpilih(), ["Edit Profil"]));

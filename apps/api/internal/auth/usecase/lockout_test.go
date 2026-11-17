@@ -475,7 +475,7 @@ func TestLockout_MFA_SetupDanGantiKataSandi(t *testing.T) {
 }
 
 // mfaUser mengembalikan pengguna ber-MFA yang sama dengan yang dipakai siapMFALogin (GetUserByID).
-func (m *mockRepository) mfaUser(t *testing.T, uc *UseCase) *domain.Pengguna {
+func (m *mockRepository) mfaUser(t *testing.T, _ *UseCase) *domain.Pengguna {
 	t.Helper()
 	pengguna, err := m.GetUserByID(context.Background(), uid("user-123"))
 	require.NoError(t, err)

@@ -1,6 +1,8 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { PageEnter } from "@/components/garda/page-enter";
 import { CommandPalette } from "@/components/command/command-palette";
 import { EwsStreamMount } from "@/components/ews/use-ews-stream";
 import { useSession } from "@/lib/auth/session-context";
@@ -10,9 +12,10 @@ import { useUi } from "@/lib/stores/ui-store";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
-/** Cangkang konsol: sidebar kaca, topbar, palet ⌘K, aliran EWS, siklus ambient. */
+/** Cangkang konsol: sidebar datar, topbar dengan remah roti, palet ⌘K, aliran EWS, siklus ambient. */
 export function ConsoleShell({ children }: { children: ReactNode }) {
   const sesi = useSession();
+  const pathname = usePathname();
   const { data } = useSiklusAktif(can(sesi, "dashboard.operasional"));
   useEffect(() => {
     useUi.persist.rehydrate();
@@ -26,8 +29,9 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main id="konten" className="flex-1 px-3 pt-6 pb-28 sm:px-5 lg:pr-6 lg:pl-6">
-          {children}
+        <main id="konten" className="mx-auto w-full max-w-[1600px] flex-1 px-3 pt-5 pb-28 sm:px-5 lg:px-6">
+          {/* key = rute: setiap halaman masuk dengan fade + geser naik lembut. */}
+          <PageEnter key={pathname}>{children}</PageEnter>
         </main>
       </div>
       <CommandPalette />

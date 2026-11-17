@@ -323,6 +323,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, aksi, aktorID, 
 		out.Rincian = append(out.Rincian, RincianBulk{ID: h.ID, Sebab: h.Sebab})
 	}
 	out.Berhasil, out.Gagal = len(berubah), len(out.Rincian)
+	uc.catatPelanggaranPemisahan(ctx, aksi, aktorID, out.Rincian)
 	if out.Berhasil == 0 {
 		return out, nil
 	}
@@ -337,6 +338,25 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, aksi, aktorID, 
 		EntitasID: fmt.Sprintf("%d entri", out.Berhasil), Hasil: audit.HasilBerhasil, Metadata: metadata,
 	})
 	return out, nil
+}
+
+// catatPelanggaranPemisahan mencatat di audit percobaan yang ditolak karena melanggar pemisahan tugas
+// (memvalidasi atau menerbitkan entri yang bukan haknya), supaya upaya itu tetap terlacak walau tidak mengubah data.
+func (uc *UseCase) catatPelanggaranPemisahan(ctx context.Context, aksi, aktorID string, rincian []RincianBulk) {
+	var ditolak []idx.ID
+	for _, r := range rincian {
+		if r.Sebab == domain.SebabPemisahanTugas {
+			ditolak = append(ditolak, r.ID)
+		}
+	}
+	if len(ditolak) == 0 {
+		return
+	}
+	uc.catat(ctx, audit.Entry{
+		AktorID: aktorID, Aksi: "HARGA_" + strings.ToUpper(aksi), Entitas: "entri_harga",
+		EntitasID: fmt.Sprintf("%d entri", len(ditolak)), Hasil: audit.HasilDitolak,
+		Metadata: map[string]any{"ids": ditolak, "sebab": domain.SebabPemisahanTugas},
+	})
 }
 
 func syaratAlasan(action domain.BulkAction) string {

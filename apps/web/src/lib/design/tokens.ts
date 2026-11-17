@@ -4,20 +4,20 @@
  */
 export const garda = {
   navy: {
-    50: "#f2f6fc", 100: "#e3ebf7", 200: "#c6d5ee", 300: "#9ab4df", 400: "#6a8dcb",
-    500: "#4569b3", 600: "#2f5096", 700: "#233e7a", 800: "#1a2f5e", 900: "#13234a", 950: "#0b1630",
+    50: "#f8f9fa", 100: "#f1f3f5", 200: "#eaecef", 300: "#d1d5db", 400: "#9ca3af",
+    500: "#6b7280", 600: "#4b5563", 700: "#374151", 800: "#18181b", 900: "#111827", 950: "#09090b",
   },
   data: {
-    50: "#effcfa", 100: "#cff6f1", 200: "#a0ece3", 300: "#67dbd0", 400: "#33c2b8",
-    500: "#14a69e", 600: "#0c857f", 700: "#0e6a67", 800: "#105553", 900: "#124745", 950: "#032a2a",
+    50: "#f0fdfa", 100: "#ccfbf1", 200: "#99f6e4", 300: "#5eead4", 400: "#2dd4bf",
+    500: "#14b8a6", 600: "#0d9488", 700: "#0f766e", 800: "#115e59", 900: "#134e4a", 950: "#042f2e",
   },
-  mist: { 50: "#f7f9fc", 100: "#eff3f8", 200: "#e2e9f2", 300: "#cfd9e6", 400: "#aebdd0" },
+  mist: { 50: "#fafafb", 100: "#f8f9fa", 200: "#eaecef", 300: "#d9dce1", 400: "#b5bac3" },
   status: {
-    normal: { base: "#10b981", soft: "#d1fae5", ink: "#047857" },
-    waspada: { base: "#f59e0b", soft: "#fef3c7", ink: "#b45309" },
-    defisit: { base: "#f43f5e", soft: "#ffe4e6", ink: "#be123c" },
-    surplus: { base: "#3b82f6", soft: "#dbeafe", ink: "#1d4ed8" },
-    kritis: { base: "#e11d48", soft: "#ffe4e6", ink: "#9f1239" },
+    normal: { base: "#10b981", soft: "#ecfdf5", ink: "#059669" },
+    waspada: { base: "#f59e0b", soft: "#fffbeb", ink: "#d97706" },
+    defisit: { base: "#ef4444", soft: "#fef2f2", ink: "#dc2626" },
+    surplus: { base: "#3b82f6", soft: "#eff6ff", ink: "#2563eb" },
+    kritis: { base: "#dc2626", soft: "#fef2f2", ink: "#b91c1c" },
   },
 } as const;
 
@@ -32,11 +32,11 @@ export const siklusMeta: Record<Siklus, { label: string; tone: Tone; color: stri
 
 /** Kelas Tailwind statis per tone (harus literal agar terdeteksi oleh scanner). */
 export const toneClass: Record<Tone, { bg: string; soft: string; text: string; ring: string; dot: string }> = {
-  data: { bg: "bg-data-500", soft: "bg-data-50 dark:bg-data-500/15", text: "text-data-700 dark:text-data-300", ring: "ring-data-500/30", dot: "bg-data-500" },
-  normal: { bg: "bg-normal", soft: "bg-normal-soft/70 dark:bg-normal/15", text: "text-normal-ink dark:text-emerald-300", ring: "ring-normal/30", dot: "bg-normal" },
-  waspada: { bg: "bg-waspada", soft: "bg-waspada-soft/80 dark:bg-waspada/15", text: "text-waspada-ink dark:text-amber-300", ring: "ring-waspada/30", dot: "bg-waspada" },
-  defisit: { bg: "bg-defisit", soft: "bg-defisit-soft/80 dark:bg-defisit/15", text: "text-defisit-ink dark:text-rose-300", ring: "ring-defisit/30", dot: "bg-defisit" },
-  surplus: { bg: "bg-surplus", soft: "bg-surplus-soft/80 dark:bg-surplus/15", text: "text-surplus-ink dark:text-blue-300", ring: "ring-surplus/30", dot: "bg-surplus" },
+  data: { bg: "bg-data-600", soft: "bg-data-50 dark:bg-data-500/15", text: "text-data-700 dark:text-data-300", ring: "ring-data-500/30", dot: "bg-data-600" },
+  normal: { bg: "bg-normal", soft: "bg-normal-soft dark:bg-normal/15", text: "text-normal-ink dark:text-emerald-300", ring: "ring-normal/30", dot: "bg-normal" },
+  waspada: { bg: "bg-waspada", soft: "bg-waspada-soft dark:bg-waspada/15", text: "text-waspada-ink dark:text-amber-300", ring: "ring-waspada/30", dot: "bg-waspada" },
+  defisit: { bg: "bg-defisit", soft: "bg-defisit-soft dark:bg-defisit/15", text: "text-defisit-ink dark:text-rose-300", ring: "ring-defisit/30", dot: "bg-defisit" },
+  surplus: { bg: "bg-surplus", soft: "bg-surplus-soft dark:bg-surplus/15", text: "text-surplus-ink dark:text-blue-300", ring: "ring-surplus/30", dot: "bg-surplus" },
   kritis: { bg: "bg-kritis", soft: "bg-defisit-soft dark:bg-kritis/20", text: "text-kritis dark:text-rose-300", ring: "ring-kritis/40", dot: "bg-kritis" },
   netral: { bg: "bg-mist-400", soft: "bg-mist-100 dark:bg-white/5", text: "text-muted-foreground", ring: "ring-mist-300", dot: "bg-mist-400" },
 };
@@ -50,7 +50,7 @@ export const severityMeta: Record<Severity, { label: string; tone: Tone; color: 
 };
 
 /** Palet seri grafik — urutan dipilih agar tetap terbaca untuk buta warna merah-hijau. */
-export const chartPalette = [garda.navy[700], garda.data[500], garda.status.waspada.base, garda.status.surplus.base, garda.status.defisit.base, garda.navy[400]];
+export const chartPalette = [garda.navy[800], garda.data[600], garda.status.waspada.base, garda.status.surplus.base, garda.status.defisit.base, garda.navy[400]];
 
 /**
  * Skala heatmap perubahan harga (Δ% vs rata-rata 7 hari).
@@ -58,11 +58,11 @@ export const chartPalette = [garda.navy[700], garda.data[500], garda.status.wasp
  */
 export function heatTone(pct: number): { fill: string; ink: string; label: string } {
   if (pct <= -8) return { fill: "#bfdbfe", ink: "#1d4ed8", label: "Turun tajam" };
-  if (pct <= -3) return { fill: "#dbeafe", ink: "#1d4ed8", label: "Turun" };
-  if (pct < 3) return { fill: "#d1fae5", ink: "#047857", label: "Stabil" };
-  if (pct < 7) return { fill: "#fef3c7", ink: "#b45309", label: "Naik" };
-  if (pct < 12) return { fill: "#fde68a", ink: "#92400e", label: "Naik tajam" };
-  return { fill: "#fecdd3", ink: "#be123c", label: "Lonjakan" };
+  if (pct <= -3) return { fill: "#dbeafe", ink: "#2563eb", label: "Turun" };
+  if (pct < 3) return { fill: "#d1fae5", ink: "#059669", label: "Stabil" };
+  if (pct < 7) return { fill: "#fef3c7", ink: "#d97706", label: "Naik" };
+  if (pct < 12) return { fill: "#fde68a", ink: "#b45309", label: "Naik tajam" };
+  return { fill: "#fecaca", ink: "#dc2626", label: "Lonjakan" };
 }
 
 export const mapConfig = {

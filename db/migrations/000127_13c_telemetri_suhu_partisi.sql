@@ -30,12 +30,9 @@ CREATE TABLE telemetri_suhu (
     suhu_c DOUBLE PRECISION NOT NULL CHECK (suhu_c BETWEEN -80 AND 60),
     kelembapan_pct DOUBLE PRECISION CHECK (kelembapan_pct BETWEEN 0 AND 100),
     sumber VARCHAR(10) NOT NULL DEFAULT 'SENSOR' CHECK (sumber IN ('SENSOR', 'MANUAL', 'DEMO')),
-    PRIMARY KEY (id, waktu),
+    PRIMARY KEY (waktu, id),
     UNIQUE (fasilitas_id, waktu)
 ) PARTITION BY RANGE (waktu);
-
-CREATE INDEX idx_telemetri_suhu_fasilitas_waktu ON telemetri_suhu (fasilitas_id, waktu DESC);
-CREATE INDEX idx_telemetri_suhu_waktu ON telemetri_suhu USING brin (waktu) WITH (pages_per_range = 32);
 
 DO $$
 DECLARE
@@ -67,6 +64,11 @@ SELECT setval(
 );
 
 DROP TABLE telemetri_suhu_lama;
+
+-- Indeks dibuat setelah tabel lama dijatuhkan: RENAME TABLE tidak mengganti nama indeksnya, jadi nama yang sama
+-- masih dipakai tabel lama sampai ia dihapus.
+CREATE INDEX idx_telemetri_suhu_fasilitas_waktu ON telemetri_suhu (fasilitas_id, waktu DESC);
+CREATE INDEX idx_telemetri_suhu_waktu ON telemetri_suhu USING brin (waktu) WITH (pages_per_range = 32);
 -- +goose StatementEnd
 
 -- +goose Down
@@ -83,8 +85,6 @@ CREATE TABLE telemetri_suhu (
     UNIQUE (fasilitas_id, waktu)
 );
 
-CREATE INDEX idx_telemetri_suhu_waktu ON telemetri_suhu USING brin (waktu) WITH (pages_per_range = 32);
-
 INSERT INTO telemetri_suhu (id, fasilitas_id, waktu, suhu_c, kelembapan_pct, sumber)
 SELECT id, fasilitas_id, waktu, suhu_c, kelembapan_pct, sumber
 FROM telemetri_suhu_partisi;
@@ -96,5 +96,7 @@ SELECT setval(
 );
 
 DROP TABLE telemetri_suhu_partisi;
+CREATE INDEX idx_telemetri_suhu_fasilitas_waktu ON telemetri_suhu (fasilitas_id, waktu DESC);
+CREATE INDEX idx_telemetri_suhu_waktu ON telemetri_suhu USING brin (waktu) WITH (pages_per_range = 32);
 DROP FUNCTION IF EXISTS pastikan_partisi_telemetri_suhu(DATE);
 -- +goose StatementEnd

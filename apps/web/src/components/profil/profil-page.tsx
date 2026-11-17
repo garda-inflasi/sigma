@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import {
+  History,
   KeyRound,
   MonitorSmartphone,
   ShieldCheck,
@@ -22,6 +23,7 @@ import {
   type TabProfil,
 } from "@/lib/profil/tab";
 import { cn } from "@/lib/utils";
+import { TabAktivitas } from "./tab-aktivitas";
 import { TabGantiSandi } from "./tab-ganti-sandi";
 import { TabMfa } from "./tab-mfa";
 import { TabProfil as TabDataDiri } from "./tab-profil";
@@ -32,6 +34,7 @@ const IKON_TAB: Record<TabProfil, LucideIcon> = {
   "ganti-password": KeyRound,
   mfa: ShieldCheck,
   keamanan: MonitorSmartphone,
+  aktivitas: History,
 };
 
 // Mode mock tidak punya BFF auth: hanya data diri (dari sesi) yang bisa ditampilkan.
@@ -50,6 +53,8 @@ function IsiTab({ tab }: { tab: TabProfil }) {
       return <TabMfa />;
     case "keamanan":
       return <TabSesi />;
+    case "aktivitas":
+      return <TabAktivitas />;
     default:
       return <TabDataDiri />;
   }
@@ -96,7 +101,7 @@ export function ProfilPage() {
     <div className="space-y-6">
       <PageHeader
         title="Profil saya"
-        description="Kelola data diri, kata sandi, verifikasi dua langkah, dan perangkat yang sedang masuk ke akun Anda."
+        description="Kelola data diri, kata sandi, verifikasi dua langkah, perangkat yang sedang masuk, dan riwayat aktivitas akun Anda."
       />
 
       <div className="grid gap-5 lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start">

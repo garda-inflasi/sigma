@@ -45,9 +45,9 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
             <thead>
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="pb-2 font-medium">Komoditas</th>
-                <th className="pb-2 text-right font-medium">Produsen</th>
-                <th className="pb-2 text-right font-medium">Konsumen</th>
-                <th className="pb-2 text-right font-medium">Margin</th>
+                <th className="pb-2 pl-3 text-right font-medium">Produsen</th>
+                <th className="pb-2 pl-3 text-right font-medium">Konsumen</th>
+                <th className="pb-2 pl-3 text-right font-medium">Margin</th>
               </tr>
             </thead>
             <tbody>
@@ -64,13 +64,13 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
                           : `Satuan /${k.satuan}`}
                       </p>
                     </td>
-                    <td className="num py-2 text-right">
+                    <td className="num py-2 pl-3 text-right">
                       {k.produsen ? formatRupiah(k.produsen.harga) : "—"}
                     </td>
-                    <td className="num py-2 text-right">
+                    <td className="num py-2 pl-3 text-right">
                       {k.konsumen ? formatRupiah(k.konsumen.harga) : "—"}
                     </td>
-                    <td className="py-2 text-right">
+                    <td className="py-2 pl-3 text-right">
                       {k.margin ? (
                         <div className="inline-flex flex-col items-end gap-0.5">
                           <StatusBadge

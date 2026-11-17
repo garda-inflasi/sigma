@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS persetujuan_kode_etik (
 );
 
 CREATE INDEX IF NOT EXISTS idx_persetujuan_kode_etik_user_id ON persetujuan_kode_etik (user_id);
+-- UNIQUE (user_id, versi) tidak melayani pemeriksaan FK ke kode_etik(versi) (kolom awalnya user_id).
+CREATE INDEX IF NOT EXISTS idx_persetujuan_kode_etik_versi ON persetujuan_kode_etik (versi);
 
 CREATE OR REPLACE VIEW kinerja_petugas AS
 SELECT
@@ -63,7 +65,7 @@ SELECT
 FROM pengguna p
 LEFT JOIN entri_harga e ON e.petugas_id = p.id
 LEFT JOIN tugas_lapangan t ON t.petugas_id = p.id
-WHERE p.peran IN ('MAHASISWA', 'KOORDINATOR_WILAYAH')
+WHERE p.peran IN ('OPS_MAHASISWA', 'OPS_KOORDINATOR')
   AND p.status = 'AKTIF'
 GROUP BY p.id, p.nama, p.kabupaten_kode;
 -- +goose StatementEnd

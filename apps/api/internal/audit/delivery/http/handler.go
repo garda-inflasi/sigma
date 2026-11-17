@@ -69,6 +69,43 @@ func (h *Handler) List(c *gin.Context) {
 	response.Success(c, dto.ToAuditPageResponse(page))
 }
 
+// GET /v1/auth/me/aktivitas
+// Riwayat aktivitas akun pemanggil sendiri dari jejak audit: aksi yang ia lakukan (login, ganti sandi, MFA,
+// validasi, persetujuan, ...) dan aksi orang lain terhadap akunnya. Cakupan dikunci ke user_id token; tidak ada
+// parameter untuk memilih akun lain, dan snapshot sebelum/sesudah tidak disajikan. Terbuka bagi semua pengguna
+// yang masuk, tanpa izin khusus, sedangkan sesi terbatas (wajib ganti sandi atau MFA) ditolak middleware.
+func (h *Handler) ListSaya(c *gin.Context) {
+	var req dto.ListAktivitasSayaRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BadRequest(c, "Validasi gagal: "+err.Error())
+		return
+	}
+	filter := domain.Filter{Aksi: strings.TrimSpace(req.Aksi), Hasil: req.Hasil}
+	var err error
+	if filter.Dari, err = parseBoundary(req.Dari, false); err != nil {
+		response.BadRequest(c, fmt.Sprintf("parameter dari tidak valid: %v", err))
+		return
+	}
+	if filter.Sampai, err = parseBoundary(req.Sampai, true); err != nil {
+		response.BadRequest(c, fmt.Sprintf("parameter sampai tidak valid: %v", err))
+		return
+	}
+
+	page, err := h.uc.ListSaya(c.Request.Context(), c.GetString("user_id"), usecase.QuerySaya{
+		Filter: filter, Sebagai: domain.Sebagai(req.Sebagai), Limit: req.Limit, Cursor: req.Cursor,
+	})
+	switch {
+	case err == nil:
+		response.Success(c, dto.ToAktivitasSayaPageResponse(page))
+	case errors.Is(err, usecase.ErrInvalidCursor):
+		response.BadRequest(c, "Cursor tidak valid")
+	case errors.Is(err, usecase.ErrSebagaiTidakValid):
+		response.BadRequest(c, "Nilai sebagai harus pelaku, sasaran, atau semua")
+	default:
+		response.InternalError(c, "Gagal mengambil riwayat aktivitas")
+	}
+}
+
 // maksKodeAudit adalah panjang kode ID lama (kolom kode varchar(64)).
 const maksKodeAudit = 64
 

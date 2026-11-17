@@ -54,7 +54,7 @@ func TestFotoEntriKodeEtikDanKinerja(t *testing.T) {
 		map[string]string{"Idempotency-Key": "foto-int-key-001"},
 		map[string]any{
 			"komoditas_kode": "BRS-MED",
-			"pasar_id":       "PSR-BNA-01",
+			"pasar_id":       "PSR-1171-01",
 			"tipe":           "KONSUMEN",
 			"harga":          14500,
 			"satuan":         "kg",

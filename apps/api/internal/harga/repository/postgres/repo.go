@@ -386,15 +386,16 @@ func (r *Repository) Transisi(ctx context.Context, ids []idx.ID, aksi domain.Bul
 			return fmt.Errorf("catat pelaku transaksi: %w", err)
 		}
 		var rows []struct {
-			ID        idx.ID  `gorm:"column:id"`
-			Status    string  `gorm:"column:status"`
-			PetugasID *string `gorm:"column:petugas_id;type:uuid"`
+			ID          idx.ID  `gorm:"column:id"`
+			Status      string  `gorm:"column:status"`
+			PetugasID   *string `gorm:"column:petugas_id;type:uuid"`
+			ValidatorID *string `gorm:"column:divalidasi_oleh;type:uuid"`
 		}
 		// Entri di luar cakupan tidak ikut terpilih dan tidak terkunci, jadi jatuh ke tidak_ditemukan di bawah,
 		// persis seperti id yang tidak ada: pemanggil tidak bisa membedakannya.
 		kondisi, args := kondisiCakupan(cakupan)
 		args = append([]any{ids}, args...)
-		if err := tx.Raw(`SELECT e.id, e.status::text AS status, e.petugas_id
+		if err := tx.Raw(`SELECT e.id, e.status::text AS status, e.petugas_id, e.divalidasi_oleh
 			FROM entri_harga e
 			WHERE e.id IN ? AND `+kondisi+` ORDER BY e.id FOR UPDATE`, args...).Scan(&rows).Error; err != nil {
 			return fmt.Errorf("kunci entri: %w", err)
@@ -413,7 +414,7 @@ func (r *Repository) Transisi(ctx context.Context, ids []idx.ID, aksi domain.Bul
 				continue
 			}
 			row := rows[idx]
-			if hasil[i].Sebab = domain.Evaluasi(aksi, row.Status, row.PetugasID, aktorID); hasil[i].Sebab != "" {
+			if hasil[i].Sebab = domain.Evaluasi(aksi, row.Status, domain.Jejak{PetugasID: row.PetugasID, ValidatorID: row.ValidatorID}, aktorID); hasil[i].Sebab != "" {
 				continue
 			}
 			dari, oleh := row.Status, aktorID

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import {
   Bell,
+  ChevronRight,
   KeyRound,
   LogOut,
   Menu,
@@ -17,7 +18,6 @@ import {
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,9 +35,8 @@ import { keteranganSiklus } from "@/lib/api/siklus";
 import { keluarDariSesi } from "@/lib/auth/logout-client";
 import { useSession } from "@/lib/auth/session-context";
 import { siklusMeta, toneClass } from "@/lib/design/tokens";
-import { formatTanggal } from "@/lib/format";
 import { popIn } from "@/lib/motion/presets";
-import { judulHalaman } from "@/lib/nav";
+import { remahRoti } from "@/lib/nav";
 import {
   LABEL_TAB_PROFIL,
   hrefTabProfil,
@@ -52,12 +51,6 @@ import { cn } from "@/lib/utils";
 import { BrandMark } from "./brand-mark";
 import { RoleSwitcher } from "./role-switcher";
 import { NavList } from "./sidebar";
-
-function useToday() {
-  const [d, setD] = useState<string>("");
-  useEffect(() => setD(formatTanggal(new Date(), "EEEE, d MMMM yyyy")), []);
-  return d;
-}
 
 interface ItemMenuProfil {
   tab: TabProfil;
@@ -92,7 +85,6 @@ export function itemMenuProfil(modeMock: boolean): readonly ItemMenuProfil[] {
 export function Topbar() {
   const pathname = usePathname();
   const user = useSession();
-  const today = useToday();
   const setCommandOpen = useUi((s) => s.setCommandOpen);
   const mobileOpen = useUi((s) => s.mobileNavOpen);
   const setMobileOpen = useUi((s) => s.setMobileNavOpen);
@@ -101,36 +93,47 @@ export function Topbar() {
   const stream = useEwsStore((s) => s.status);
   const { data: siklus } = useSiklusAktif(can(user, "dashboard.operasional"));
   const { resolvedTheme, setTheme } = useTheme();
-  const title = judulHalaman(pathname);
+  const remah = remahRoti(pathname);
   const meta = siklus ? siklusMeta[siklus.siklus] : null;
 
   return (
-    <header className="sticky top-3 z-20 mx-3 lg:mx-1 lg:mr-3">
-      <div className="glass flex h-16 items-center gap-3 rounded-xl px-3 sm:px-4">
+    <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-sm">
+      <div className="flex h-14 items-center gap-3 px-3 sm:px-5">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="grid size-9 place-items-center rounded-xl hover:bg-secondary lg:hidden"
+          className="grid size-8 place-items-center rounded-md hover:bg-secondary lg:hidden"
           aria-label="Buka navigasi"
         >
-          <Menu className="size-5" />
+          <Menu className="size-5" strokeWidth={1.75} />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-[15px] font-semibold text-navy-900 dark:text-white">
-            {title}
-          </p>
-          <p className="hidden truncate text-xs text-muted-foreground sm:block">
-            {today}
-          </p>
+          <nav aria-label="Remah roti" className="flex min-w-0 items-center gap-1.5 text-[13px]">
+            {remah.map((r, i) => {
+              const terakhir = i === remah.length - 1;
+              return (
+                <span key={`${r}-${i}`} className="flex min-w-0 items-center gap-1.5">
+                  {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-navy-300" strokeWidth={1.75} aria-hidden />}
+                  {terakhir ? (
+                    <p aria-current="page" className="truncate font-medium text-foreground">
+                      {r}
+                    </p>
+                  ) : (
+                    <span className="hidden truncate text-muted-foreground sm:inline">{r}</span>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
         </div>
 
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          className="glass-subtle hidden h-9 w-64 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground transition-shadow hover:shadow-ambient-sm md:flex"
+          className="hidden h-8 w-64 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-[13px] whitespace-nowrap text-muted-foreground shadow-ambient-xs transition-colors hover:bg-secondary md:flex"
         >
-          <Search className="size-4" />
-          <span className="flex-1 text-left">Cari atau jalankan perintah</span>
+          <Search className="size-4" strokeWidth={1.75} />
+          <span className="flex-1 truncate text-left">Cari atau jalankan perintah</span>
           <Kbd>⌘K</Kbd>
         </button>
 
@@ -143,7 +146,7 @@ export function Topbar() {
             }
             title={keteranganSiklus(siklus!) || undefined}
             className={cn(
-              "hidden h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium sm:inline-flex",
+              "hidden h-7 items-center gap-2 rounded-md px-2.5 text-xs font-medium sm:inline-flex",
               toneClass[meta.tone].soft,
               toneClass[meta.tone].text,
             )}
@@ -168,10 +171,10 @@ export function Topbar() {
           <Link
             href="/ews"
             onClick={bacaSemua}
-            className="relative grid size-9 place-items-center rounded-xl hover:bg-secondary"
+            className="relative grid size-8 place-items-center rounded-md hover:bg-secondary"
             aria-label={`Peringatan dini, ${unread} belum dibaca`}
           >
-            <Bell className="size-[18px]" />
+            <Bell className="size-[18px]" strokeWidth={1.75} />
             <AnimatePresence>
               {unread > 0 && (
                 <motion.span
@@ -203,12 +206,12 @@ export function Topbar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="grid size-9 place-items-center rounded-xl bg-navy-800 text-xs font-semibold text-white dark:bg-data-600"
+            className="grid size-8 place-items-center rounded-full bg-navy-800 text-[11px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-white dark:text-navy-900"
             aria-label="Menu akun"
           >
             {inisialNama(user.nama)}
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 rounded-xl p-1.5">
+          <DropdownMenuContent align="end" className="w-64 rounded-lg p-1.5">
             <DropdownMenuLabel>
               <p className="font-medium">{user.nama}</p>
               <p className="text-xs font-normal text-muted-foreground">
@@ -254,11 +257,11 @@ export function Topbar() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
-          className="glass-strong flex w-[300px] flex-col gap-0 border-0 p-0"
+          className="flex w-[280px] flex-col gap-0 bg-sidebar p-0"
         >
-          <SheetTitle className="flex h-[72px] items-center gap-3 px-5">
+          <SheetTitle className="flex h-14 items-center gap-2.5 px-4 text-[13px] font-semibold">
             <BrandMark />{" "}
-            <span className="font-display font-bold">Garda Inflasi</span>
+            <span>Garda Inflasi</span>
           </SheetTitle>
           <NavList
             layoutId="mobile-nav-active"

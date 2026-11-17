@@ -254,12 +254,13 @@ export function izinkan401(galat: PantauGalat): void {
 
 // ── Halaman /profil ──────────────────────────────────────────────────────
 
-/** Nama aksesibel keempat tab (kontrak UI 20) menurut urutannya. */
+/** Nama aksesibel kelima tab (kontrak UI 20) menurut urutannya. */
 export const LABEL_TAB = {
   profil: "Edit Profil",
   gantiSandi: "Ganti Kata Sandi",
   mfa: "Verifikasi 2 Langkah",
   sesi: "Perangkat & Sesi Aktif",
+  aktivitas: "Aktivitas Akun",
 } as const;
 
 export const URUTAN_TAB: readonly string[] = [
@@ -267,6 +268,7 @@ export const URUTAN_TAB: readonly string[] = [
   LABEL_TAB.gantiSandi,
   LABEL_TAB.mfa,
   LABEL_TAB.sesi,
+  LABEL_TAB.aktivitas,
 ];
 
 export const tabProfil = (page: Page, nama: string): Locator =>

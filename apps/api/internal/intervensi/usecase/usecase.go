@@ -46,14 +46,17 @@ type BulkResult struct {
 }
 
 type UseCase struct {
-	repo  domain.Repository
-	wf    domain.WorkflowRepository
-	audit audit.Writer
-	log   *logger.Logger
+	repo    domain.Repository
+	wf      domain.WorkflowRepository
+	cakupan domain.PembacaCakupan
+	audit   audit.Writer
+	log     *logger.Logger
 }
 
-func New(repo domain.Repository, wf domain.WorkflowRepository, auditWriter audit.Writer, log *logger.Logger) *UseCase {
-	return &UseCase{repo: repo, wf: wf, audit: auditWriter, log: log}
+// New membuat usecase. cakupan membaca peran dan kabupaten tugas aktor untuk cakupan wilayah (02-B); ia wajib
+// ada supaya batas wilayah tidak bisa terlewat karena lupa dipasang.
+func New(repo domain.Repository, wf domain.WorkflowRepository, cakupan domain.PembacaCakupan, auditWriter audit.Writer, log *logger.Logger) *UseCase {
+	return &UseCase{repo: repo, wf: wf, cakupan: cakupan, audit: auditWriter, log: log}
 }
 
 func (uc *UseCase) List(ctx context.Context, q domain.ListQuery) ([]domain.Kartu, error) {
@@ -115,7 +118,7 @@ func (uc *UseCase) kartu(ctx context.Context, ref idx.RujukanUUID) (*domain.Inte
 // pemindahan maju tidak boleh melompati tahap persetujuan yang izinnya tidak dimiliki
 // (persetujuan berjenjang). Audit memakai ID kartu.
 func (uc *UseCase) Move(ctx context.Context, ref idx.RujukanUUID, tahap string, index, versi int, actorID string, hasPermission func(string) bool) (int, error) {
-	card, err := uc.kartu(ctx, ref)
+	card, err := uc.kartuDalamCakupan(ctx, ref, actorID)
 	if err != nil {
 		return 0, err
 	}
@@ -182,11 +185,16 @@ func (uc *UseCase) BulkAksi(ctx context.Context, aksi string, ids []string, acto
 		return BulkResult{}, ErrInvalidAction
 	}
 	ids = unique(ids)
-	hasil, err := uc.repo.BulkAksi(ctx, domainAksi, ids, actorID)
+	diproses, luar, err := uc.saringCakupan(ctx, ids, actorID)
+	if err != nil {
+		return BulkResult{}, err
+	}
+	hasil, err := uc.repo.BulkAksi(ctx, domainAksi, diproses, actorID)
 	if err != nil {
 		uc.log.Error("intervensi: aksi massal gagal", map[string]interface{}{"aksi": aksi, "jumlah": len(ids), "error": err.Error()})
 		return BulkResult{}, err
 	}
+	hasil = gabungHasil(ids, hasil, luar)
 	res := BulkResult{Hasil: hasil}
 	var berubah []string
 	for _, h := range hasil {

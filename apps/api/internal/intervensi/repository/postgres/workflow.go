@@ -165,7 +165,7 @@ func (r *Repository) Ajukan(ctx context.Context, in domain.AjukanInput) (*domain
 // persetujuanQuery menggabungkan ringkasan kartu dan nama pengaju.
 func persetujuanQuery(db *gorm.DB) *gorm.DB {
 	return db.Table("intervensi_persetujuan AS p").
-		Select("p.*, i.judul AS kartu_judul, i.tahap AS kartu_tahap, u.nama AS diajukan_oleh_nama").
+		Select("p.*, i.judul AS kartu_judul, i.tahap AS kartu_tahap, COALESCE(i.kabupaten_kode, '') AS kartu_kabupaten, u.nama AS diajukan_oleh_nama").
 		Joins("JOIN intervensi i ON i.id = p.intervensi_id").
 		Joins("LEFT JOIN pengguna u ON u.id = p.diajukan_oleh")
 }
@@ -256,6 +256,10 @@ func (r *Repository) Putus(ctx context.Context, in domain.PutusInput) (*domain.P
 		if p.Status != domain.PersetujuanMenunggu || p.LangkahKini != in.LangkahKini {
 			return domain.ErrPersetujuanSelesai
 		}
+		// Pemisahan tugas diperiksa ulang di bawah kunci: pemeriksaan di usecase memakai potret yang bisa basi.
+		if err := pastikanPemisahanTugas(tx, p, in.Oleh); err != nil {
+			return err
+		}
 
 		err = tx.Exec(`
 			UPDATE intervensi_persetujuan_langkah
@@ -286,6 +290,27 @@ func (r *Repository) Putus(ctx context.Context, in domain.PutusInput) (*domain.P
 		return nil, err
 	}
 	return r.GetPersetujuan(ctx, in.PersetujuanID)
+}
+
+// pastikanPemisahanTugas menolak pelaku yang mengajukan permintaan ini atau sudah memutus langkah lain.
+// Dibaca dari baris yang terkunci, jadi dua keputusan serentak oleh orang yang sama tidak bisa lolos keduanya.
+func pastikanPemisahanTugas(tx *gorm.DB, p domain.IntervensiPersetujuan, pelaku string) error {
+	if pelaku == "" {
+		return nil
+	}
+	if p.DiajukanOleh != nil && *p.DiajukanOleh == pelaku {
+		return domain.ErrPemisahanTugas
+	}
+	var terlibat bool
+	err := tx.Raw(`SELECT EXISTS (SELECT 1 FROM intervensi_persetujuan_langkah
+		WHERE persetujuan_id = ? AND oleh = ?::uuid)`, p.ID, pelaku).Scan(&terlibat).Error
+	if err != nil {
+		return fmt.Errorf("periksa pemisahan tugas: %w", err)
+	}
+	if terlibat {
+		return domain.ErrPemisahanTugas
+	}
+	return nil
 }
 
 // tolakPersetujuan menutup permintaan sebagai DITOLAK. Menolak eskalasi mencabut tanda eskalasi kartu.

@@ -192,6 +192,42 @@ export interface SesiWire {
   saat_ini: boolean;
 }
 
+/** Satu sesi pada riwayat (GET /v1/auth/me/riwayat-sesi); `status` AKTIF, DICABUT, atau KEDALUWARSA. */
+export interface RiwayatSesiWire {
+  id: string;
+  perangkat: string;
+  ip?: string;
+  mulai_pada: string;
+  terakhir_dipakai_pada: string;
+  berakhir_pada?: string;
+  status: "AKTIF" | "DICABUT" | "KEDALUWARSA";
+  saat_ini: boolean;
+}
+
+/** Satu baris riwayat aktivitas akun sendiri (GET /v1/auth/me/aktivitas). */
+export interface AktivitasSayaWire {
+  id: string;
+  waktu: string;
+  aksi: string;
+  entitas: string;
+  entitas_id: string;
+  hasil: "BERHASIL" | "GAGAL" | "DITOLAK";
+  sebagai: "pelaku" | "sasaran";
+  perangkat?: string;
+  ip?: string;
+  oleh_peran?: string;
+}
+
+/** Halaman berkursor; `next_cursor` kosong pada halaman terakhir. */
+export interface HalamanKursorWire<T> {
+  items: T[];
+  next_cursor?: string;
+}
+
+/** Parameter query yang diteruskan BFF ke riwayat aktivitas dan riwayat sesi; selain ini dibuang. */
+export const PARAM_AKTIVITAS_SAYA = ["aksi", "hasil", "sebagai", "dari", "sampai", "limit", "cursor"] as const;
+export const PARAM_RIWAYAT_SESI = ["status", "limit", "cursor"] as const;
+
 /** Jumlah sesi yang dicabut oleh aksi massal. */
 export interface SesiDicabutWire {
   dicabut: number;
@@ -367,6 +403,18 @@ export const authApi = {
   logoutAll: (accessToken: string) =>
     apiFetch<SesiDicabutWire>("/auth/logout-all", {
       method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  aktivitasSaya: (accessToken: string, query: string) =>
+    apiFetch<HalamanKursorWire<AktivitasSayaWire>>(`/auth/me/aktivitas${query ? `?${query}` : ""}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  riwayatSesi: (accessToken: string, query: string) =>
+    apiFetch<HalamanKursorWire<RiwayatSesiWire>>(`/auth/me/riwayat-sesi${query ? `?${query}` : ""}`, {
+      method: "GET",
       headers: { Authorization: `Bearer ${accessToken}` },
     }),
 

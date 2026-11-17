@@ -94,6 +94,9 @@ func applyFilter(query *gorm.DB, filter domain.Filter) *gorm.DB {
 			query = query.Where("LOWER(aktor_nama) LIKE ? OR LOWER(aktor_email) LIKE ?", pattern, pattern)
 		}
 	}
+	if filter.PenggunaID != "" {
+		query = terapkanKeterlibatan(query, filter.PenggunaID, filter.Sebagai)
+	}
 	if filter.Aksi != "" {
 		query = query.Where("aksi = ?", filter.Aksi)
 	}
@@ -119,6 +122,20 @@ func applyFilter(query *gorm.DB, filter domain.Filter) *gorm.DB {
 			pattern, pattern, pattern, pattern, pattern, pattern)
 	}
 	return query
+}
+
+// terapkanKeterlibatan membatasi baris pada keterlibatan satu akun: sebagai pelaku (aktor_id), sebagai sasaran
+// (entitas pengguna dengan id akun itu, dilakukan akun lain), atau keduanya. Semua nilai terparameter.
+func terapkanKeterlibatan(query *gorm.DB, penggunaID string, sebagai domain.Sebagai) *gorm.DB {
+	const sasaran = "(entitas = 'pengguna' AND entitas_id = ? AND aktor_id IS DISTINCT FROM ?::uuid)"
+	switch sebagai {
+	case domain.SebagaiPelaku:
+		return query.Where("aktor_id = ?::uuid", penggunaID)
+	case domain.SebagaiSasaran:
+		return query.Where(sasaran, penggunaID, penggunaID)
+	default:
+		return query.Where("aktor_id = ?::uuid OR "+sasaran, penggunaID, penggunaID, penggunaID)
+	}
 }
 
 func likePattern(s string) string {

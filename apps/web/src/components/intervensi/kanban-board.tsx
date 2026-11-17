@@ -15,6 +15,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import { PageHeader } from "@/components/garda/page-header";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Segmented } from "@/components/garda/segmented";
+import { ViewTabs } from "@/components/garda/view-tabs";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { ApiError } from "@/lib/api/client";
@@ -248,7 +249,7 @@ export function KanbanBoard() {
   ], [tahap]);
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-5" data-siklus={siklus}>
+    <div className="space-y-4" data-siklus={siklus}>
       <PageHeader
         title="Intervensi"
         description={siklusMeta[siklus].deskripsi + ". Tarik kartu antartahap; tahap yang membutuhkan persetujuan ditandai gembok."}
@@ -257,8 +258,19 @@ export function KanbanBoard() {
             <Can perm="intervensi.kelola">
               <SpringButton variant="primary" size="sm" onClick={() => setTambahBuka(true)}><Plus /> Tambah intervensi</SpringButton>
             </Can>
-            <Segmented layoutId="kanban-view" size="sm" value={view} onChange={setView} options={[{ value: "papan", label: <><LayoutGrid className="size-3.5" />Papan</> }, { value: "tabel", label: <><Rows3 className="size-3.5" />Tabel</> }]} />
           </>
+        }
+        tabs={
+          <ViewTabs
+            layoutId="kanban-view"
+            label="Tampilan intervensi"
+            value={view}
+            onChange={setView}
+            tabs={[
+              { value: "papan", label: "Papan", icon: <LayoutGrid />, count: semuaKartu.length },
+              { value: "tabel", label: "Tabel", icon: <Rows3 /> },
+            ]}
+          />
         }
       />
       <Segmented

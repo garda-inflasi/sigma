@@ -78,8 +78,8 @@ Keputusan arsitektur yang masih terbuka:
 ## H. Dokumentasi
 
 - [ ] Perbarui atau hapus [session-summary.md](../session-summary.md), yang masih membahas masalah hydration/scroll awal Oktober.
-- [ ] Buat `README.md` di akar repo (langkah menjalankan lokal, variabel env, perintah penting). Saat ini hanya `start.md` yang menjelaskan seeder analytics dan Swagger.
-- [ ] Perbarui [ARCHITECTURE.md](../ARCHITECTURE.md) agar kontrak API sesuai route nyata (mis. `/v1/auth/sso/start` tidak ada).
+- [x] Buat `README.md` di akar repo (langkah menjalankan lokal, variabel env, perintah penting). *(17 Nov 2026: ringkasan platform, struktur repositori, prasyarat, konfigurasi environment, menjalankan API/web/worker/ML, tes, demo Docker.)*
+- [x] Perbarui [ARCHITECTURE.md](../ARCHITECTURE.md) agar kontrak API sesuai route nyata (mis. `/v1/auth/sso/start` tidak ada). *(17 Nov 2026: topologi, kontrak rute nyata, RBAC row scope dan pemisahan tugas, PWA lapangan, cold storage dan telemetri, ML/XAI retraining, peta 23 kabupaten/kota, riwayat aktivitas profil.)*
 - [ ] Catat keputusan arsitektur penting (ADR): pola BFF, pilihan Postgres+Mongo, layanan ML terpisah.
 - [ ] Pembaruan berkala daftar todo ini setiap selesai satu fase.
 

@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════
-   AI GARDA INFLASI — DESIGN TOKENS (Tailwind CSS v4, konfigurasi CSS-first)
+   AI GARDA INFLASI — DESIGN TOKENS v2 "Clean Clinical" (Tailwind CSS v4, CSS-first)
    Di Tailwind v4 "tailwind.config" hidup di sini lewat @theme.
    Cermin nilai untuk JS (Recharts, Mapbox) ada di lib/design/tokens.ts.
    ════════════════════════════════════════════════════════════════════ */
@@ -16,94 +16,88 @@
     var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
 
-  /* Skala tipe — rasio 1.25, dipadatkan untuk dashboard */
+  /* Skala tipe v2 — padat dan tenang. Judul halaman 20px, header seksi 14px; angka besar hanya untuk KPI/hero. */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
-  --text-display-2xl: 4.5rem;
-  --text-display-2xl--line-height: 1;
-  --text-display-2xl--letter-spacing: -0.045em;
-  --text-display-xl: 3.25rem;
-  --text-display-xl--line-height: 1.04;
-  --text-display-xl--letter-spacing: -0.035em;
-  --text-display-lg: 2.25rem;
-  --text-display-lg--line-height: 1.1;
-  --text-display-lg--letter-spacing: -0.03em;
-  --text-display-md: 1.75rem;
-  --text-display-md--line-height: 1.18;
-  --text-display-md--letter-spacing: -0.025em;
-  --text-display-sm: 1.3125rem;
-  --text-display-sm--line-height: 1.3;
-  --text-display-sm--letter-spacing: -0.018em;
+  --text-display-2xl: 3.25rem;
+  --text-display-2xl--line-height: 1.04;
+  --text-display-2xl--letter-spacing: -0.035em;
+  --text-display-xl: 2.5rem;
+  --text-display-xl--line-height: 1.08;
+  --text-display-xl--letter-spacing: -0.03em;
+  --text-display-lg: 1.75rem;
+  --text-display-lg--line-height: 1.15;
+  --text-display-lg--letter-spacing: -0.025em;
+  --text-display-md: 1.25rem;
+  --text-display-md--line-height: 1.3;
+  --text-display-md--letter-spacing: -0.015em;
+  --text-display-sm: 0.875rem;
+  --text-display-sm--line-height: 1.35;
+  --text-display-sm--letter-spacing: -0.006em;
 
-  /* Navy — kepercayaan & institusi */
-  --color-navy-50: #f2f6fc;
-  --color-navy-100: #e3ebf7;
-  --color-navy-200: #c6d5ee;
-  --color-navy-300: #9ab4df;
-  --color-navy-400: #6a8dcb;
-  --color-navy-500: #4569b3;
-  --color-navy-600: #2f5096;
-  --color-navy-700: #233e7a;
-  --color-navy-800: #1a2f5e;
-  --color-navy-900: #13234a;
-  --color-navy-950: #0b1630;
+  /* "Navy" kini rampa tinta netral (nama dipertahankan agar seluruh kelas lama tetap berlaku):
+     900 = teks utama #111827, 800 = aksi utama near-black #18181B. */
+  --color-navy-50: #f8f9fa;
+  --color-navy-100: #f1f3f5;
+  --color-navy-200: #eaecef;
+  --color-navy-300: #d1d5db;
+  --color-navy-400: #9ca3af;
+  --color-navy-500: #6b7280;
+  --color-navy-600: #4b5563;
+  --color-navy-700: #374151;
+  --color-navy-800: #18181b;
+  --color-navy-900: #111827;
+  --color-navy-950: #09090b;
 
-  /* Data — teal: sinyal informasi, sumber data, fokus */
-  --color-data-50: #effcfa;
-  --color-data-100: #cff6f1;
-  --color-data-200: #a0ece3;
-  --color-data-300: #67dbd0;
-  --color-data-400: #33c2b8;
-  --color-data-500: #14a69e;
-  --color-data-600: #0c857f;
-  --color-data-700: #0e6a67;
-  --color-data-800: #105553;
-  --color-data-900: #124745;
-  --color-data-950: #032a2a;
+  /* Data — deep clinical teal: konfirmasi, fokus, sinyal data */
+  --color-data-50: #f0fdfa;
+  --color-data-100: #ccfbf1;
+  --color-data-200: #99f6e4;
+  --color-data-300: #5eead4;
+  --color-data-400: #2dd4bf;
+  --color-data-500: #14b8a6;
+  --color-data-600: #0d9488;
+  --color-data-700: #0f766e;
+  --color-data-800: #115e59;
+  --color-data-900: #134e4a;
+  --color-data-950: #042f2e;
 
-  /* Kabut — latar dingin (bukan krem), dasar glassmorphism */
-  --color-mist-50: #f7f9fc;
-  --color-mist-100: #eff3f8;
-  --color-mist-200: #e2e9f2;
-  --color-mist-300: #cfd9e6;
-  --color-mist-400: #aebdd0;
+  /* Kabut — kanvas dan permukaan netral (bukan krem) */
+  --color-mist-50: #fafafb;
+  --color-mist-100: #f8f9fa;
+  --color-mist-200: #eaecef;
+  --color-mist-300: #d9dce1;
+  --color-mist-400: #b5bac3;
 
-  /* Semantik siklus ekonomi & status (psikologi warna) */
+  /* Semantik siklus ekonomi & status: pil pastel (latar lembut, teks pekat, titik kecil) */
   --color-normal: #10b981;
-  --color-normal-soft: #d1fae5;
-  --color-normal-ink: #047857;
+  --color-normal-soft: #ecfdf5;
+  --color-normal-ink: #059669;
   --color-waspada: #f59e0b;
-  --color-waspada-soft: #fef3c7;
-  --color-waspada-ink: #b45309;
-  --color-defisit: #f43f5e;
-  --color-defisit-soft: #ffe4e6;
-  --color-defisit-ink: #be123c;
+  --color-waspada-soft: #fffbeb;
+  --color-waspada-ink: #d97706;
+  --color-defisit: #ef4444;
+  --color-defisit-soft: #fef2f2;
+  --color-defisit-ink: #dc2626;
   --color-surplus: #3b82f6;
-  --color-surplus-soft: #dbeafe;
-  --color-surplus-ink: #1d4ed8;
-  --color-kritis: #e11d48;
+  --color-surplus-soft: #eff6ff;
+  --color-surplus-ink: #2563eb;
+  --color-kritis: #dc2626;
 
-  /* Radius berjenjang: kontrol < kartu < panel < shell */
-  --radius-2xl: 1.25rem;
-  --radius-3xl: 1.75rem;
-  --radius-4xl: 2.25rem;
+  /* Radius v2: tombol/badge 6px (md), kartu/input 8px (lg, xl), modal 12px (2xl–4xl) */
+  --radius-2xl: 0.75rem;
+  --radius-3xl: 0.75rem;
+  --radius-4xl: 0.75rem;
 
-  /* Bayangan ambient bernuansa navy (bukan abu-abu generik) */
-  --shadow-ambient-xs: 0 1px 2px rgb(19 35 74 / 0.05);
-  --shadow-ambient-sm:
-    0 2px 8px -2px rgb(19 35 74 / 0.07), 0 1px 2px rgb(19 35 74 / 0.04);
-  --shadow-ambient:
-    0 14px 34px -14px rgb(19 35 74 / 0.14), 0 2px 6px -2px rgb(19 35 74 / 0.05);
-  --shadow-ambient-lg:
-    0 30px 70px -28px rgb(19 35 74 / 0.26), 0 8px 18px -10px rgb(19 35 74 / 0.1);
-  --shadow-lift:
-    0 24px 48px -20px rgb(19 35 74 / 0.28), 0 6px 12px -6px rgb(19 35 74 / 0.08);
-  --shadow-glow-data:
-    0 0 0 1px rgb(20 166 158 / 0.25), 0 10px 28px -10px rgb(20 166 158 / 0.5);
-  --shadow-glow-defisit:
-    0 0 0 1px rgb(244 63 94 / 0.25), 0 10px 28px -10px rgb(244 63 94 / 0.5);
-  --shadow-glow-waspada:
-    0 0 0 1px rgb(245 158 11 / 0.25), 0 10px 28px -10px rgb(245 158 11 / 0.45);
+  /* Bayangan v2: nyaris tak terlihat; hanya elemen melayang (popover, drawer, bulk bar) yang terangkat */
+  --shadow-ambient-xs: 0 1px 2px rgb(16 24 40 / 0.04);
+  --shadow-ambient-sm: 0 1px 3px rgb(16 24 40 / 0.06), 0 1px 2px rgb(16 24 40 / 0.04);
+  --shadow-ambient: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 12px -4px rgb(16 24 40 / 0.06);
+  --shadow-ambient-lg: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px -2px rgb(16 24 40 / 0.06);
+  --shadow-lift: 0 8px 24px -8px rgb(16 24 40 / 0.14), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-glow-data: 0 0 0 3px rgb(13 148 136 / 0.16);
+  --shadow-glow-defisit: 0 0 0 3px rgb(220 38 38 / 0.14);
+  --shadow-glow-waspada: 0 0 0 3px rgb(217 119 6 / 0.16);
 
   /* Easing */
   --ease-garda: cubic-bezier(0.22, 1, 0.36, 1);
@@ -130,6 +124,16 @@
     box-shadow: 0 0 0 7px rgb(16 185 129 / 0);
   }
 }
+@keyframes baris-masuk {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 @keyframes aurora {
   0% {
     transform: translate3d(-6%, -4%, 0) scale(1);
@@ -141,83 +145,83 @@
 
 /* ── 2. Token semantik shadcn/ui ── */
 :root {
-  --radius: 0.75rem;
-  --background: #f1f5f9;
-  --foreground: #0f1d3d;
-  --card: rgb(255 255 255 / 0.72);
-  --card-foreground: #0f1d3d;
+  --radius: 0.5rem;
+  --background: #f8f9fa;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
   --popover: #ffffff;
-  --popover-foreground: #0f1d3d;
-  --primary: #1a2f5e;
-  --primary-foreground: #f7f9fc;
-  --secondary: #e8eef6;
-  --secondary-foreground: #13234a;
-  --muted: #eef2f7;
-  --muted-foreground: #5b6b86;
-  --accent: #e6f7f5;
-  --accent-foreground: #0e6a67;
-  --destructive: #e11d48;
-  --border: rgb(19 35 74 / 0.09);
-  --input: rgb(19 35 74 / 0.13);
-  --ring: #14a69e;
-  --chart-1: #1a2f5e;
-  --chart-2: #14a69e;
+  --popover-foreground: #111827;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #f0fdfa;
+  --accent-foreground: #0f766e;
+  --destructive: #dc2626;
+  --border: #eaecef;
+  --input: #e2e5e9;
+  --ring: #0d9488;
+  --chart-1: #18181b;
+  --chart-2: #0d9488;
   --chart-3: #f59e0b;
-  --chart-4: #f43f5e;
+  --chart-4: #ef4444;
   --chart-5: #3b82f6;
-  --sidebar: rgb(255 255 255 / 0.55);
-  --sidebar-foreground: #13234a;
-  --sidebar-primary: #1a2f5e;
+  --sidebar: #fafafb;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #18181b;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgb(26 47 94 / 0.06);
-  --sidebar-accent-foreground: #13234a;
-  --sidebar-border: rgb(19 35 74 / 0.07);
-  --sidebar-ring: #14a69e;
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #eaecef;
+  --sidebar-ring: #0d9488;
 }
 
 .dark {
-  --background: #08112a;
-  --foreground: #e6edf8;
-  --card: rgb(16 28 58 / 0.6);
-  --card-foreground: #e6edf8;
-  --popover: #0e1a3a;
-  --popover-foreground: #e6edf8;
-  --primary: #c6d5ee;
-  --primary-foreground: #0b1630;
-  --secondary: rgb(255 255 255 / 0.06);
-  --secondary-foreground: #e6edf8;
-  --muted: rgb(255 255 255 / 0.05);
-  --muted-foreground: #93a3bf;
-  --accent: rgb(20 166 158 / 0.14);
-  --accent-foreground: #67dbd0;
-  --destructive: #fb7185;
-  --border: rgb(255 255 255 / 0.08);
-  --input: rgb(255 255 255 / 0.12);
-  --ring: #33c2b8;
-  --sidebar: rgb(11 22 48 / 0.6);
-  --sidebar-foreground: #e6edf8;
-  --sidebar-accent: rgb(255 255 255 / 0.06);
-  --sidebar-border: rgb(255 255 255 / 0.06);
+  --background: #0c0d10;
+  --foreground: #ecedef;
+  --card: #131418;
+  --card-foreground: #ecedef;
+  --popover: #16171c;
+  --popover-foreground: #ecedef;
+  --primary: #f4f4f5;
+  --primary-foreground: #18181b;
+  --secondary: #1b1c22;
+  --secondary-foreground: #ecedef;
+  --muted: #1b1c22;
+  --muted-foreground: #8b8f98;
+  --accent: rgb(45 212 191 / 0.12);
+  --accent-foreground: #5eead4;
+  --destructive: #f87171;
+  --border: #24262d;
+  --input: #2c2f37;
+  --ring: #2dd4bf;
+  --sidebar: #101115;
+  --sidebar-foreground: #ecedef;
+  --sidebar-accent: #1b1c22;
+  --sidebar-border: #24262d;
 }
 
 /* ── 3. Siklus ambient: seluruh UI mengikuti kondisi ekonomi wilayah ── */
 :root,
 [data-siklus="normal"] {
   --siklus: #10b981;
-  --siklus-soft: #d1fae5;
-  --siklus-ink: #047857;
+  --siklus-soft: #ecfdf5;
+  --siklus-ink: #059669;
   --siklus-glow: rgb(16 185 129 / 0.16);
 }
 [data-siklus="tekanan"] {
-  --siklus: #f43f5e;
-  --siklus-soft: #ffe4e6;
-  --siklus-ink: #be123c;
-  --siklus-glow: rgb(244 63 94 / 0.16);
+  --siklus: #ef4444;
+  --siklus-soft: #fef2f2;
+  --siklus-ink: #dc2626;
+  --siklus-glow: rgb(239 68 68 / 0.12);
 }
 [data-siklus="surplus"] {
   --siklus: #3b82f6;
-  --siklus-soft: #dbeafe;
-  --siklus-ink: #1d4ed8;
+  --siklus-soft: #eff6ff;
+  --siklus-ink: #2563eb;
   --siklus-glow: rgb(59 130 246 / 0.16);
 }
 
@@ -259,48 +263,27 @@
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: var(--radius);
 }
 
 /* ── 4. Utilitas Garda ── */
+/* Nama "glass*" dipertahankan (dipakai di ratusan tempat) tetapi kini permukaan datar bergaya klinis:
+   putih murni + garis rambut #eaecef + bayangan nyaris tak terlihat. Tanpa blur. */
 @utility glass {
-  background-color: rgb(255 255 255 / 0.62);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
-  backdrop-filter: blur(24px) saturate(1.5);
-  border: 1px solid rgb(255 255 255 / 0.7);
-  box-shadow:
-    inset 0 1px 0 0 rgb(255 255 255 / 0.75),
-    var(--shadow-ambient);
-  @variant dark {
-    background-color: rgb(16 28 58 / 0.55);
-    border-color: rgb(255 255 255 / 0.08);
-    box-shadow:
-      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
-      0 20px 44px -22px rgb(0 0 0 / 0.6);
-  }
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-ambient-xs);
 }
+/* Elemen melayang (drawer, popover, toast, bulk bar): permukaan sama, bayangan terangkat. */
 @utility glass-strong {
-  background-color: rgb(255 255 255 / 0.82);
-  -webkit-backdrop-filter: blur(28px) saturate(1.6);
-  backdrop-filter: blur(28px) saturate(1.6);
-  border: 1px solid rgb(255 255 255 / 0.85);
-  box-shadow:
-    inset 0 1px 0 0 rgb(255 255 255 / 0.9),
-    var(--shadow-ambient-lg);
-  @variant dark {
-    background-color: rgb(14 26 58 / 0.82);
-    border-color: rgb(255 255 255 / 0.1);
-  }
+  background-color: var(--popover);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-ambient-lg);
 }
+/* Permukaan tersier: kanvas sedikit lebih gelap dari kartu, untuk kolom, kontrol, dan sub-panel. */
 @utility glass-subtle {
-  background-color: rgb(255 255 255 / 0.4);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgb(19 35 74 / 0.06);
-  @variant dark {
-    background-color: rgb(255 255 255 / 0.03);
-    border-color: rgb(255 255 255 / 0.06);
-  }
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
 }
 /* Gulir tanpa bilah gulir yang terlihat (pil tab mobile); tetap bisa digulir dengan sentuhan dan keyboard */
 @utility no-scrollbar {
@@ -310,16 +293,15 @@
     display: none;
   }
 }
-/* Semua angka memakai JetBrains Mono dengan digit tabular */
+/* Semua angka memakai digit tabular (Inter) agar kolom sejajar */
 @utility num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums slashed-zero;
-  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 @utility shimmer {
   position: relative;
   overflow: hidden;
-  background-color: var(--color-mist-200);
+  background-color: #eef0f3;
   &::after {
     content: "";
     position: absolute;
@@ -328,7 +310,7 @@
     background-image: linear-gradient(
       90deg,
       transparent,
-      rgb(255 255 255 / 0.7),
+      rgb(255 255 255 / 0.85),
       transparent
     );
     animation: var(--animate-shimmer);
@@ -344,6 +326,11 @@
       );
     }
   }
+}
+/* Masuk lembut untuk baris tabel/daftar: kelas + --i (indeks) → stagger 30ms, maksimum 12 baris. */
+@utility row-in {
+  animation: baris-masuk 0.32s var(--ease-garda) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 30ms);
 }
 @utility scrollbar-thin {
   scrollbar-width: thin;
@@ -362,8 +349,8 @@
     -webkit-tap-highlight-color: transparent;
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-feature-settings: "cv11", "ss03";
+    @apply bg-background text-foreground font-sans text-[13px] antialiased sm:text-sm;
+    font-feature-settings: "cv11", "ss03", "tnum";
     text-rendering: optimizeLegibility;
   }
   h1,
@@ -377,7 +364,7 @@
     outline-offset: 2px;
   }
   ::selection {
-    background: rgb(20 166 158 / 0.22);
+    background: rgb(13 148 136 / 0.2);
   }
 }
 

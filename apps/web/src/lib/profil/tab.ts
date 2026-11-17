@@ -10,6 +10,7 @@ export const TAB_PROFIL = [
   "ganti-password",
   "mfa",
   "keamanan",
+  "aktivitas",
 ] as const;
 export type TabProfil = (typeof TAB_PROFIL)[number];
 
@@ -21,6 +22,7 @@ export const LABEL_TAB_PROFIL: Record<TabProfil, string> = {
   "ganti-password": "Ganti Kata Sandi",
   mfa: "Verifikasi 2 Langkah",
   keamanan: "Perangkat & Sesi Aktif",
+  aktivitas: "Aktivitas Akun",
 };
 
 export function adalahTabProfil(nilai: unknown): nilai is TabProfil {

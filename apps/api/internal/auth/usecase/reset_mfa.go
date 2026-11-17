@@ -9,10 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrCannotResetOwnMFA: admin tidak boleh mereset MFA akunnya sendiri lewat endpoint admin. Pemilik akun punya
-// jalurnya sendiri (POST /v1/auth/mfa/disable) yang meminta kata sandi dan menghormati MFA wajib. Tanpa larangan
-// ini, sesi admin yang dibajak (access token curian) dapat melucuti MFA akunnya sendiri tanpa kata sandi dan
-// melewati aturan MFA wajib.
 var ErrCannotResetOwnMFA = errors.New("tidak dapat mereset MFA akun sendiri lewat halaman admin, gunakan pengaturan MFA di profil")
 
 // ResetMFAResult adalah hasil reset MFA oleh admin.

@@ -28,6 +28,7 @@ describe("hrefTabProfil", () => {
     assert.equal(hrefTabProfil("ganti-password"), "/profil?tab=ganti-password");
     assert.equal(hrefTabProfil("mfa"), "/profil?tab=mfa");
     assert.equal(hrefTabProfil("keamanan"), "/profil?tab=keamanan");
+    assert.equal(hrefTabProfil("aktivitas"), "/profil?tab=aktivitas");
   });
 
   it("URL setiap tab terbaca kembali sebagai tab yang sama", () => {

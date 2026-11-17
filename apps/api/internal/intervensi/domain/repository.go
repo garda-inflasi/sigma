@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 
 	"github.com/garda-inflasi/api/pkg/idx"
 )
@@ -27,4 +28,20 @@ type Repository interface {
 	BulkAksi(ctx context.Context, aksi BulkAksi, ids []string, oleh string) ([]HasilKartu, error)
 	// ListRiwayat mengembalikan peristiwa kartu, terlama dahulu.
 	ListRiwayat(ctx context.Context, id string) ([]Riwayat, error)
+}
+
+// PenggunaCakupan adalah peran dan kabupaten tugas pengguna (pengguna.peran, pengguna.kabupaten_kode); dasar
+// cakupan wilayah (02-B). KabupatenKode kosong berarti tidak punya kabupaten tugas.
+type PenggunaCakupan struct {
+	Peran         string
+	KabupatenKode string
+}
+
+// ErrPenggunaTidakAda: pengguna tidak ditemukan saat membaca cakupannya.
+var ErrPenggunaTidakAda = errors.New("pengguna tidak ditemukan")
+
+// PembacaCakupan membaca cakupan pengguna segar dari basis data per permintaan, bukan dari klaim token, supaya
+// perubahan peran atau kabupaten berlaku seketika.
+type PembacaCakupan interface {
+	PenggunaCakupan(ctx context.Context, penggunaID string) (PenggunaCakupan, error)
 }

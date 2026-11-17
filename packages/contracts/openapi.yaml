@@ -336,6 +336,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/auth/me/aktivitas:
+    get:
+      summary: Riwayat aktivitas akun sendiri
+      operationId: authAktivitasSaya
+      description: |
+        Riwayat aktivitas akun pemanggil dari jejak audit, terbaru lebih dulu, dengan paginasi cursor
+        (`next_cursor` kosong pada halaman terakhir). `sebagai=pelaku` berisi aksi yang dilakukan akun ini
+        (masuk, ganti kata sandi, MFA, validasi, persetujuan, dst.), `sebagai=sasaran` berisi aksi orang lain
+        terhadap akun ini (mis. admin mengatur ulang MFA), `semua` (bawaan) keduanya.
+
+        Cakupan selalu akun pemanggil dari token: tidak ada parameter untuk memilih akun, dan parameter
+        seperti `aktor` atau `q` diabaikan. Respons sengaja sempit: tanpa snapshot `sebelum`/`sesudah`, metadata,
+        correlation id, dan identitas pelaku lain (baris sasaran hanya memuat `oleh_peran`; IP dan perangkat hanya
+        pada baris pelaku). Terbuka bagi semua pengguna yang masuk, kecuali sesi yang masih wajib mengganti
+        kata sandi atau mengaktifkan MFA (403).
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: aksi, in: query, schema: { type: string }, description: Kode aksi persis, mis. LOGIN }
+        - { name: hasil, in: query, schema: { type: string, enum: [BERHASIL, GAGAL, DITOLAK] } }
+        - { name: sebagai, in: query, schema: { type: string, enum: [pelaku, sasaran, semua], default: semua } }
+        - { name: dari, in: query, schema: { type: string }, description: RFC 3339 atau YYYY-MM-DD (inklusif) }
+        - { name: sampai, in: query, schema: { type: string }, description: RFC 3339 atau YYYY-MM-DD (tanggal mencakup seluruh hari itu) }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Satu halaman riwayat aktivitas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AktivitasSayaPageEnvelope"
+        "400":
+          description: Filter atau cursor tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/me/riwayat-sesi:
+    get:
+      summary: Riwayat sesi masuk milik sendiri
+      operationId: authRiwayatSesi
+      description: |
+        Sesi masuk pemanggil, aktif maupun yang sudah berakhir, yang dimulai terbaru lebih dulu, dengan paginasi
+        cursor. `status` sebuah sesi: `AKTIF`, `DICABUT` (keluar, dicabut pemilik atau admin, ganti kata sandi,
+        atau pemakaian ulang token), atau `KEDALUWARSA`. `saat_ini` menandai sesi pemanggil. Hanya sesi yang
+        barisnya belum dihapus job pembersihan token yang tampil. Akun selalu dari token.
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [semua, aktif, berakhir], default: semua } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Satu halaman riwayat sesi
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiwayatSesiPageEnvelope"
+        "400":
+          description: Status atau cursor tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token tidak valid atau sudah dicabut
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/auth/sessions:
     get:
       summary: Daftar sesi aktif milik sendiri
@@ -2408,8 +2492,11 @@ paths:
       description: |
         State machine entri harga ditegakkan di server. Izin diperiksa per aksi: `harga.input` untuk ajukan
         (hanya petugas pencatat), `harga.validasi` untuk validasi, tolak, dan kembalikan, `harga.publikasi`
-        untuk publikasi. Validator dan penerbit tidak boleh sama dengan petugas pencatat (pemisahan tugas,
-        juga dijaga CHECK di basis data). Entri yang dilewati dilaporkan di `rincian` beserta sebabnya.
+        untuk publikasi. Validator dan penerbit tidak boleh sama dengan petugas pencatat, dan penerbit tidak boleh
+        sama dengan validator entri itu, jadi pencatat, validator, dan penerbit adalah tiga orang berbeda
+        (pemisahan tugas, juga dijaga CHECK `chk_entri_harga_pemisahan_tugas` dan `chk_entri_harga_pemisahan_penerbit`
+        di basis data). Percobaan yang melanggarnya dilaporkan `pemisahan_tugas` dan dicatat di audit dengan hasil
+        `DITOLAK`. Entri yang dilewati dilaporkan di `rincian` beserta sebabnya.
         Entri di luar cakupan baris aktor (Koordinator dan Agregator: di luar kabupaten tugasnya dan bukan
         catatannya; Mahasiswa: bukan catatannya) tidak dikunci dan tidak diubah, dan dilaporkan `tidak_ditemukan`,
         sama dengan ID yang tidak ada, sehingga keberadaannya tidak bocor.
@@ -6384,6 +6471,44 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Fasilitas belum beroperasi (RENCANA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/cold-storage/telemetri/batch:
+    post:
+      summary: Menerima kumpulan pembacaan dari gateway IoT/MQTT
+      description: |
+        Sama dengan `POST /v1/cold-storage/telemetri` (izin `coldstorage.kelola`, idempoten, maks. 500 pembacaan),
+        dengan `gateway_id` dan `topic` opsional yang ikut dicatat dan, bila dikirim, dikembalikan di `data` (bidang tambahan di atas respons biasa). `telemetri_suhu` berpartisi
+        bulanan sehingga volume sensor nyata tidak membesarkan satu tabel.
+      operationId: ingestColdStorageTelemetriBatch
+      tags:
+        - Cold Storage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestTelemetriRequest"
+      responses:
+        "200":
+          description: Pembacaan diproses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestTelemetriResponse"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `coldstorage.kelola`
           content:
             application/json:
               schema:
@@ -12345,6 +12470,60 @@ components:
                     type: string
                     format: date-time
 
+    AktivitasSayaResponse:
+      type: object
+      required: [id, waktu, aksi, entitas, entitas_id, hasil, sebagai]
+      properties:
+        id: { type: string, description: ID BIGINT sebagai string desimal }
+        waktu: { type: string, format: date-time }
+        aksi: { type: string, example: LOGIN }
+        entitas: { type: string, example: pengguna }
+        entitas_id: { type: string }
+        hasil: { type: string, enum: [BERHASIL, GAGAL, DITOLAK] }
+        sebagai: { type: string, enum: [pelaku, sasaran] }
+        perangkat: { type: string, description: Ringkasan perangkat; hanya pada baris pelaku }
+        ip: { type: string, description: Hanya pada baris pelaku }
+        oleh_peran: { type: string, description: Peran pelaku pada baris sasaran }
+    AktivitasSayaPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AktivitasSayaResponse" }
+        next_cursor: { type: string }
+    AktivitasSayaPageEnvelope:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        data: { $ref: "#/components/schemas/AktivitasSayaPage" }
+    RiwayatSesiResponse:
+      type: object
+      required: [id, perangkat, mulai_pada, terakhir_dipakai_pada, status, saat_ini]
+      properties:
+        id: { type: string, format: uuid }
+        perangkat: { type: string }
+        ip: { type: string }
+        mulai_pada: { type: string, format: date-time }
+        terakhir_dipakai_pada: { type: string, format: date-time }
+        berakhir_pada: { type: string, format: date-time, description: Kosong selama sesi aktif }
+        status: { type: string, enum: [AKTIF, DICABUT, KEDALUWARSA] }
+        saat_ini: { type: boolean }
+    RiwayatSesiPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/RiwayatSesiResponse" }
+        next_cursor: { type: string }
+    RiwayatSesiPageEnvelope:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        data: { $ref: "#/components/schemas/RiwayatSesiPage" }
     AuditPageResponse:
       type: object
       properties:
@@ -13394,6 +13573,14 @@ components:
       type: object
       required: [pembacaan]
       properties:
+        gateway_id:
+          type: string
+          maxLength: 64
+          description: Pengenal gateway IoT/MQTT (opsional; dipakai `/telemetri/batch`)
+        topic:
+          type: string
+          maxLength: 128
+          description: Topik MQTT asal pembacaan (opsional)
         pembacaan:
           type: array
           minItems: 1
@@ -13444,6 +13631,9 @@ components:
             duplikat:
               type: integer
               description: Pembacaan (fasilitas + waktu sama) yang sudah ada dan dilewati
+            lot_risiko_diperbarui:
+              type: integer
+              description: Jumlah lot aktif yang risiko food loss-nya dihitung ulang akibat anomali suhu (13-C)
             di_luar_rentang:
               type: array
               description: Pembacaan yang melewati batas alarm fasilitas

@@ -333,13 +333,17 @@ test("Keluar dari semua perangkat mengakhiri semua sesi, termasuk yang ini", asy
 
   await tanamCookie(page, ini);
   await buka(page, "/profil?tab=keamanan");
-  await page
-    .getByRole("button", { name: "Keluar dari semua perangkat" })
-    .click();
-  await page
-    .getByRole("alertdialog")
-    .getByRole("button", { name: "Ya, keluar semua" })
-    .click();
+  // Tunggu halaman tenang (hidrasi selesai) supaya klik pertama tidak jatuh ke tombol yang belum interaktif.
+  await tungguTenang(page);
+  // Diulang bila klik pertama jatuh sebelum hidrasi React selesai (terjadi pada `next dev`, tidak pada build produksi).
+  const dialog = page.getByRole("alertdialog");
+  await expect(async () => {
+    await page
+      .getByRole("button", { name: "Keluar dari semua perangkat" })
+      .click();
+    await expect(dialog).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: "Ya, keluar semua" }).click();
 
   await expect(page).toHaveURL(/\/masuk$/);
   expect(await cookieBrowser(page, "garda_access")).toBeUndefined();

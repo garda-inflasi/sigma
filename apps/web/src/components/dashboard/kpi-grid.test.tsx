@@ -119,7 +119,7 @@ describe("KpiGrid dengan respons nyata", () => {
       "Utilisasi cold storage",
     ]) {
       const titik = kartu(label).querySelector("span.rounded-full")!;
-      assert.match(titik.className, /bg-data-500/, label);
+      assert.match(titik.className, /bg-data-600/, label);
     }
   });
 

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export function StatusBadge({ tone, children, dot = true, className }: { tone: Tone; children: React.ReactNode; dot?: boolean; className?: string }) {
   const t = toneClass[tone];
   return (
-    <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium", t.soft, t.text, className)}>
+    <span className={cn("inline-flex h-[22px] items-center gap-1.5 rounded-md px-2 text-xs font-medium whitespace-nowrap", t.soft, t.text, className)}>
       {dot && <span className={cn("size-1.5 rounded-full", t.dot)} />}
       {children}
     </span>

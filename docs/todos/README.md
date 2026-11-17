@@ -67,7 +67,7 @@ matriks peran × izin di basis data yang dapat diedit admin, izin langsung per p
 (berlaku di API ≤ 15 detik, UI menyusul lewat refresh senyap), penjaga pemegang terakhir `pengguna.kelola`, undangan
 akun lewat email dengan halaman aktivasi, impor/ekspor CSV, daftar pengguna dengan filter/urutan/paginasi sisi
 server, reset MFA oleh admin, dan riwayat peran. Coverage handler pengguna ≥ 86%, usecase auth 96,9%, 71 tes
-komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemisahan tugas) yang tersisa di 02.
+komponen `/pengguna` (happy-dom + Testing Library). Row scope dan pemisahan tugas (02-B) selesai 17 Nov 2026 (lihat di bawah).
 
 **Standardisasi kunci primer (7 Nov 2026):** migrasi `000109`–`000115` menyelaraskan PK, FK, dan indeks seluruh
 75 tabel dengan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md):
@@ -127,6 +127,14 @@ komponen `/pengguna` (happy-dom + Testing Library). Hanya 02-B (row scope, pemis
    belum diukur.
 5. **Operasional:** backup belum disalin ke luar VM dan belum ada WAL/PITR; pengguna DB aplikasi masih pemilik
    skema (least-privilege di [19 §7](19-migration-seeder.md) belum).
+
+**Pemisahan tugas, persetujuan berjenjang, dan riwayat akun (17 Nov 2026):** migrasi `000128`.
+
+- **Pemisahan tugas harga ([02-B](02-pengguna-rbac.md)).** Pencatat, validator, dan penerbit tiga orang berbeda: penerbit tidak boleh validator entri itu (domain, repository, CHECK basis data). Percobaan yang ditolak masuk audit `DITOLAK`.
+- **Intervensi ([14-B](14-intervensi.md)).** Pemisahan tugas persetujuan diperiksa ulang di dalam transaksi, penolakannya diaudit, dan cakupan wilayah berlaku pada aksi tulis.
+- **Profil ([20](20-profile.md)).** Tab "Aktivitas Akun": `GET /v1/auth/me/aktivitas` dan `GET /v1/auth/me/riwayat-sesi`.
+- **Dokumentasi ([18](18-platform-lintas-fitur.md)).** README akar dan ARCHITECTURE disinkronkan dengan kode.
+- **Perbaikan migrasi:** `000126` (nilai enum peran salah) dan `000127` (nama indeks bentrok setelah `RENAME`) gagal pada DB kosong sehingga seluruh tes integrasi mati; keduanya diperbaiki di tempat karena tidak pernah bisa berhasil.
 
 ## Urutan pengerjaan
 

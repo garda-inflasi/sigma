@@ -23,6 +23,9 @@ type aturan struct {
 	izin string
 	// pisahTugas melarang pelaku sama dengan petugas pencatat (validator/penerbit bukan pencatat).
 	pisahTugas bool
+	// bukanValidator melarang pelaku sama dengan validator entri: penerbit bukan validator, sehingga
+	// pencatat, validator, dan penerbit adalah tiga orang berbeda (02-B).
+	bukanValidator bool
 	// hanyaPemilik mensyaratkan pelaku adalah petugas pencatat.
 	hanyaPemilik bool
 }
@@ -30,7 +33,7 @@ type aturan struct {
 var aturanTransisi = map[BulkAction]aturan{
 	BulkAjukan:     {dari: []string{StatusDraf}, ke: StatusDiajukan, izin: "harga.input", hanyaPemilik: true},
 	BulkValidasi:   {dari: []string{StatusDiajukan}, ke: StatusDivalidasi, izin: "harga.validasi", pisahTugas: true},
-	BulkPublikasi:  {dari: []string{StatusDivalidasi}, ke: StatusDipublikasi, izin: "harga.publikasi", pisahTugas: true},
+	BulkPublikasi:  {dari: []string{StatusDivalidasi}, ke: StatusDipublikasi, izin: "harga.publikasi", pisahTugas: true, bukanValidator: true},
 	BulkTolak:      {dari: []string{StatusDiajukan}, ke: StatusDitolak, izin: "harga.validasi"},
 	BulkKembalikan: {dari: []string{StatusDiajukan, StatusDivalidasi}, ke: StatusDraf, izin: "harga.validasi"},
 }
@@ -50,19 +53,31 @@ func (a BulkAction) AlasanWajib() bool {
 	return a == BulkTolak
 }
 
-// Evaluasi memeriksa apakah aktor boleh menjalankan aksi pada entri berstatus status
-// yang dicatat petugasID. Mengembalikan string kosong bila boleh, selain itu salah satu Sebab*.
-// Izin aktor diperiksa terpisah (per aksi) oleh lapisan delivery.
-func Evaluasi(aksi BulkAction, status string, petugasID *string, aktorID string) string {
+// Jejak adalah pelaku yang sudah tercatat pada sebuah entri; nilai nil berarti belum ada atau tidak diketahui.
+type Jejak struct {
+	// PetugasID adalah pencatat entri (entri_harga.petugas_id).
+	PetugasID *string
+	// ValidatorID adalah pemvalidasi entri (entri_harga.divalidasi_oleh).
+	ValidatorID *string
+}
+
+// Evaluasi memeriksa apakah aktor boleh menjalankan aksi pada entri berstatus status dengan jejak pelaku jejak.
+// Mengembalikan string kosong bila boleh, selain itu salah satu Sebab*. Pemisahan tugas ditegakkan di sini
+// sebagai invarian domain: validator dan penerbit bukan pencatat, dan penerbit bukan validator. Izin aktor
+// diperiksa terpisah (per aksi) oleh lapisan delivery.
+func Evaluasi(aksi BulkAction, status string, jejak Jejak, aktorID string) string {
 	a, ada := aturanTransisi[aksi]
 	if !ada || !slices.Contains(a.dari, status) {
 		return SebabStatus
 	}
-	pencatat := petugasID != nil && *petugasID == aktorID
+	pencatat := jejak.PetugasID != nil && *jejak.PetugasID == aktorID
+	validator := jejak.ValidatorID != nil && *jejak.ValidatorID == aktorID
 	switch {
 	case a.hanyaPemilik && !pencatat:
 		return SebabBukanPemilik
 	case a.pisahTugas && pencatat:
+		return SebabPemisahanTugas
+	case a.bukanValidator && validator:
 		return SebabPemisahanTugas
 	}
 	return ""

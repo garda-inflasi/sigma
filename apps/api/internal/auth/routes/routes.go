@@ -104,6 +104,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies, opts ...Options) {
 		protected.POST("/auth/logout", handler.Logout)
 		protected.POST("/auth/logout-all", handler.LogoutAll)
 		protected.GET("/auth/sessions", handler.ListSessions)
+		protected.GET("/auth/me/riwayat-sesi", handler.RiwayatSesi)
 		protected.DELETE("/auth/sessions/:id", handler.RevokeSession)
 		protected.POST("/auth/sessions/revoke-others", handler.RevokeOtherSessions)
 		protected.GET("/auth/me", handler.Me)

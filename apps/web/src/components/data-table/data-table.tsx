@@ -5,10 +5,11 @@ import {
   type ColumnDef, type ColumnFiltersState, type Row, type RowSelectionState, type SortingState, type VisibilityState,
 } from "@tanstack/react-table";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Inbox, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "@/components/garda/empty-state";
 import { TableSkeleton } from "@/components/garda/shimmer";
 import { toneClass, type Tone } from "@/lib/design/tokens";
 import { fadeIn } from "@/lib/motion/presets";
@@ -20,6 +21,20 @@ export interface Facet {
   columnId: string;
   label: string;
   options: { value: string; label: string }[];
+}
+
+/**
+ * Pengelompokan baris dengan header lipat (accordion): mis. entri harga per status. Urutan grup mengikuti `order`
+ * (kunci lain di akhir); baris di dalam grup tetap urut sesuai pengurutan tabel. Pilih-semua dan aksi massal tetap
+ * bekerja lintas grup, dan baris di grup terlipat tetap terhitung terpilih.
+ */
+export interface GroupBy<T> {
+  key: (row: T) => string;
+  order?: string[];
+  label: (key: string) => string;
+  tone?: (key: string) => Tone | undefined;
+  /** Kunci yang awalnya terlipat. */
+  collapsed?: string[];
 }
 
 interface DataTableProps<T> {
@@ -37,6 +52,7 @@ interface DataTableProps<T> {
   toolbar?: ReactNode;
   pageSize?: number;
   rowTone?: (row: T) => Tone | undefined;
+  groupBy?: GroupBy<T>;
   onRowClick?: (row: T) => void;
   empty?: { title: string; description: string; action?: ReactNode };
   /** Kolom yang hanya dipakai untuk filter/facet, tidak ditampilkan */
@@ -62,7 +78,7 @@ interface DataTableProps<T> {
  */
 export function DataTable<T>({
   data, columns, getRowId, entityLabel, bulkActions = [], isLoading, searchPlaceholder = "Cari…", facets = [],
-  initialFilters = [], initialSorting = [], toolbar, pageSize = 25, rowTone, onRowClick, empty, hiddenColumns = [], server, filterBar, tanpaCari = false, className,
+  initialFilters = [], initialSorting = [], toolbar, pageSize = 25, rowTone, groupBy, onRowClick, empty, hiddenColumns = [], server, filterBar, tanpaCari = false, className,
 }: DataTableProps<T>) {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => Object.fromEntries(hiddenColumns.map((c) => [c, false])));
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -70,6 +86,7 @@ export function DataTable<T>({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(initialFilters);
   const [globalFilter, setGlobalFilter] = useState("");
   const lastIndex = useRef<number | null>(null);
+  const [terlipat, setTerlipat] = useState<Set<string>>(() => new Set(groupBy?.collapsed ?? []));
 
   // Mode server: kotak cari memegang draft ketikan; kata kunci dikirim ke server setelah jeda ketik atau Enter.
   const adaServer = !!server;
@@ -150,7 +167,24 @@ export function DataTable<T>({
     autoResetPageIndex: false,
   });
 
-  const pageRows = table.getRowModel().rows;
+  const barisHalaman = table.getRowModel().rows;
+  // Dengan groupBy, baris disusun per grup (urutan grup tetap, urutan di dalam grup tetap) agar indeks
+  // shift-klik sama dengan urutan yang terlihat.
+  const kelompok = useMemo(() => {
+    if (!groupBy) return null;
+    const peta = new Map<string, Row<T>[]>();
+    for (const r of barisHalaman) {
+      const k = groupBy.key(r.original);
+      peta.set(k, [...(peta.get(k) ?? []), r]);
+    }
+    const urut = groupBy.order ?? [];
+    const kunci = [...peta.keys()].sort((a, b) => {
+      const ia = urut.indexOf(a), ib = urut.indexOf(b);
+      return (ia < 0 ? urut.length : ia) - (ib < 0 ? urut.length : ib);
+    });
+    return kunci.map((k) => ({ key: k, rows: peta.get(k)! }));
+  }, [groupBy, barisHalaman]);
+  const pageRows = useMemo(() => (kelompok ? kelompok.flatMap((g) => g.rows) : barisHalaman), [kelompok, barisHalaman]);
   const filteredRows = table.getFilteredRowModel().rows;
   const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original);
   const clear = useCallback(() => setRowSelection({}), []);
@@ -199,11 +233,11 @@ export function DataTable<T>({
   const catatanServer = server ? catatanPilihanHalaman(selectedRows.length, pageRows.length, server.total, entityLabel) : null;
 
   return (
-    <div className={cn("glass overflow-hidden rounded-xl", className)}>
+    <div className={cn("glass overflow-hidden rounded-lg", className)}>
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 border-b border-border/70 p-4 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-2.5 border-b border-border p-3 lg:flex-row lg:items-center">
         <label className={cn("relative flex-1 lg:max-w-sm", tanpaCari && "hidden")}>
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
           <input
             value={server ? draftCari : globalFilter}
             onChange={(e) => (server ? setDraftCari(e.target.value) : setGlobalFilter(e.target.value))}
@@ -218,7 +252,7 @@ export function DataTable<T>({
             }}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
-            className="h-10 w-full rounded-md border border-input bg-white/70 pr-3 pl-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:shadow-glow-data dark:bg-white/5"
+            className="h-9 w-full rounded-lg border border-input bg-card pr-3 pl-8 text-[13px] outline-none transition-shadow placeholder:text-muted-foreground focus:border-data-600 focus:shadow-glow-data"
           />
         </label>
         <div className="flex flex-wrap items-center gap-2">
@@ -226,10 +260,10 @@ export function DataTable<T>({
             const val = (table.getColumn(f.columnId)?.getFilterValue() as string) ?? "__semua";
             return (
               <Select key={f.columnId} value={val} onValueChange={(v: string) => table.getColumn(f.columnId)?.setFilterValue(v === "__semua" ? undefined : v)}>
-                <SelectTrigger className="h-10 min-w-36 rounded-md bg-white/70 dark:bg-white/5">
+                <SelectTrigger className="h-9 min-w-36 rounded-lg bg-card text-[13px]">
                   <SelectValue placeholder={f.label} />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl">
+                <SelectContent className="rounded-lg">
                   <SelectItem value="__semua">{f.label}: semua</SelectItem>
                   {f.options.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -241,12 +275,12 @@ export function DataTable<T>({
           {toolbar}
         </div>
       </div>
-      {filterBar && <div className="border-b border-border/70 px-4 py-3">{filterBar}</div>}
+      {filterBar && <div className="border-b border-border px-3 py-2.5">{filterBar}</div>}
 
       {/* Banner pilih-semua lintas halaman */}
       <AnimatePresence initial={false}>
         {allPageSelected && filteredRows.length > pageRows.length && (
-          <motion.div variants={fadeIn} initial="hidden" animate="show" exit="exit" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-border/70 bg-data-50/70 px-4 py-2 text-sm text-data-800 dark:bg-data-500/10 dark:text-data-200">
+          <motion.div variants={fadeIn} initial="hidden" animate="show" exit="exit" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-border bg-data-50 px-4 py-2 text-[13px] text-data-800 dark:bg-data-500/10 dark:text-data-200">
             {allFilteredSelected ? (
               <>
                 Seluruh <span className="num font-semibold">{filteredRows.length.toLocaleString("id-ID")}</span> {entityLabel} terpilih.
@@ -269,7 +303,7 @@ export function DataTable<T>({
 
       {/* Mode server: pilihan tidak pernah lintas halaman; jelaskan agar tidak ambigu */}
       {catatanServer && (
-        <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-border/70 bg-data-50/70 px-4 py-2 text-sm text-data-800 dark:bg-data-500/10 dark:text-data-200">
+        <div role="status" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-border bg-data-50 px-4 py-2 text-[13px] text-data-800 dark:bg-data-500/10 dark:text-data-200">
           {catatanServer}
           <button type="button" onClick={clear} className="font-semibold underline-offset-4 hover:underline">Batalkan pilihan</button>
         </div>
@@ -280,8 +314,8 @@ export function DataTable<T>({
         {isLoading ? (
           <TableSkeleton cols={Math.min(6, columns.length)} />
         ) : (
-          <table className="w-full min-w-[760px] border-separate border-spacing-0 text-sm">
-            <thead className="sticky top-0 z-10 bg-white/80 backdrop-blur-xl dark:bg-navy-950/80">
+          <table className="w-full min-w-[760px] border-separate border-spacing-0 text-[13px]">
+            <thead className="sticky top-0 z-10 bg-card">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   {hg.headers.map((h) => {
@@ -292,10 +326,10 @@ export function DataTable<T>({
                         key={h.id}
                         aria-sort={sortable ? (dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none") : undefined}
                         style={{ width: h.getSize() !== 150 ? h.getSize() : undefined }}
-                        className="h-11 border-b border-border/70 px-3 text-left text-xs font-medium whitespace-nowrap text-muted-foreground first:pl-5"
+                        className="h-9 border-b border-border bg-secondary/60 px-3 text-left text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase first:pl-4"
                       >
                         {h.isPlaceholder ? null : sortable ? (
-                          <button type="button" onClick={server ? () => server.onSortToggle(h.column.id) : h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 hover:text-foreground">
+                          <button type="button" onClick={server ? () => server.onSortToggle(h.column.id) : h.column.getToggleSortingHandler()} className="inline-flex items-center gap-1 tracking-wide uppercase hover:text-foreground">
                             {flexRender(h.column.columnDef.header, h.getContext())}
                             {dir === "asc" ? <ArrowUp className="size-3" /> : dir === "desc" ? <ArrowDown className="size-3" /> : <ChevronsUpDown className="size-3 opacity-40" />}
                           </button>
@@ -309,64 +343,102 @@ export function DataTable<T>({
               ))}
             </thead>
             <tbody>
-              {pageRows.map((row, i) => {
-                const selected = row.getIsSelected();
-                const tone = rowTone?.(row.original);
+              {(kelompok ?? [{ key: "", rows: pageRows }]).map((g) => {
+                const lipat = !!groupBy && terlipat.has(g.key);
+                const tone = groupBy?.tone?.(g.key);
                 return (
-                  <tr
-                    key={row.id}
-                    data-state={selected ? "selected" : undefined}
-                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                    className={cn(
-                      "group transition-colors",
-                      selected ? "bg-data-50/80 dark:bg-data-500/10" : "hover:bg-white/60 dark:hover:bg-white/[0.03]",
-                      onRowClick && "cursor-pointer",
-                    )}
-                  >
-                    {row.getVisibleCells().map((cell, ci) => (
-                      <td key={cell.id} className={cn("relative h-14 border-b border-border/50 px-3 align-middle first:pl-5", ci === 0 && "w-11")}>
-                        {ci === 0 && (selected || tone) && (
-                          <span className={cn("absolute inset-y-2 left-0 w-[3px] rounded-r-full", selected ? "bg-data-500" : tone && toneClass[tone].bg)} />
-                        )}
-                        {cell.column.id === "_pilih" ? (
-                          <span onClick={(e) => { e.stopPropagation(); onRowCheck(row, i, e.shiftKey); }} className="inline-flex">
-                            <Checkbox checked={selected} aria-label="Pilih baris" className="rounded-md" />
-                          </span>
-                        ) : (
-                          flexRender(cell.column.columnDef.cell, cell.getContext())
-                        )}
-                      </td>
-                    ))}
-                  </tr>
+                  <GroupRows
+                    key={g.key || "_"}
+                    header={
+                      groupBy ? (
+                        <tr className="bg-secondary/40">
+                          <td colSpan={table.getVisibleLeafColumns().length} className="h-9 border-b border-border px-4">
+                            <button
+                              type="button"
+                              aria-expanded={!lipat}
+                              onClick={() =>
+                                setTerlipat((cur) => {
+                                  const next = new Set(cur);
+                                  if (next.has(g.key)) next.delete(g.key);
+                                  else next.add(g.key);
+                                  return next;
+                                })
+                              }
+                              className="flex w-full items-center gap-2 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                            >
+                              <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform duration-200", lipat && "-rotate-90")} strokeWidth={2} aria-hidden />
+                              {tone && <span aria-hidden className={cn("size-1.5 rounded-full", toneClass[tone].dot)} />}
+                              {groupBy.label(g.key)}
+                              <span className="num rounded bg-card px-1.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border">{g.rows.length}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ) : null
+                    }
+                    rows={lipat ? [] : g.rows}
+                    render={(row) => {
+                      const i = pageRows.indexOf(row);
+                      const selected = row.getIsSelected();
+                      const toneBaris = rowTone?.(row.original);
+                      return (
+                        <tr
+                          key={row.id}
+                          data-state={selected ? "selected" : undefined}
+                          onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                          style={{ "--i": i } as React.CSSProperties}
+                          className={cn(
+                            "group row-in transition-colors",
+                            selected ? "bg-data-50 dark:bg-data-500/10" : "hover:bg-secondary/60",
+                            onRowClick && "cursor-pointer",
+                          )}
+                        >
+                          {row.getVisibleCells().map((cell, ci) => (
+                            <td key={cell.id} className={cn("relative h-12 border-b border-border/70 px-3 align-middle first:pl-4", ci === 0 && "w-11")}>
+                              {ci === 0 && (selected || toneBaris) && (
+                                <span className={cn("absolute inset-y-2 left-0 w-0.5 rounded-r-full", selected ? "bg-data-600" : toneBaris && toneClass[toneBaris].bg)} />
+                              )}
+                              {cell.column.id === "_pilih" ? (
+                                <span onClick={(e) => { e.stopPropagation(); onRowCheck(row, i, e.shiftKey); }} className="inline-flex">
+                                  <Checkbox checked={selected} aria-label="Pilih baris" className="rounded" />
+                                </span>
+                              ) : (
+                                flexRender(cell.column.columnDef.cell, cell.getContext())
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    }}
+                  />
                 );
               })}
             </tbody>
           </table>
         )}
         {!isLoading && pageRows.length === 0 && (
-          <div className="grid place-items-center gap-2 px-6 py-16 text-center">
-            <span className="grid size-12 place-items-center rounded-xl bg-mist-100 text-muted-foreground dark:bg-white/5"><Inbox className="size-5" /></span>
-            <p className="font-display font-semibold">{empty?.title ?? `Tidak ada ${entityLabel} yang cocok`}</p>
-            <p className="max-w-sm text-sm text-muted-foreground">{empty?.description ?? "Ubah kata kunci atau filter untuk melihat data lain."}</p>
-            {empty?.action}
-          </div>
+          <EmptyState
+            title={empty?.title ?? `Tidak ada ${entityLabel} yang cocok`}
+            description={empty?.description ?? "Ubah kata kunci atau filter untuk melihat data lain."}
+            action={empty?.action}
+            className="py-14"
+          />
         )}
       </div>
 
       {/* Paginasi */}
-      <div className="flex flex-col items-center justify-between gap-3 px-5 py-3 text-sm text-muted-foreground sm:flex-row">
+      <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-2.5 text-[13px] text-muted-foreground sm:flex-row">
         <span>
           <span className="num text-foreground">{from.toLocaleString("id-ID")}–{to.toLocaleString("id-ID")}</span> dari{" "}
           <span className="num text-foreground">{totalBaris.toLocaleString("id-ID")}</span> {entityLabel}
           {selectedRows.length > 0 && (
-            <span className="ml-2 rounded-full bg-data-50 px-2 py-0.5 text-xs text-data-700 dark:bg-data-500/15 dark:text-data-300">
+            <span className="ml-2 rounded-md bg-data-50 px-2 py-0.5 text-xs text-data-700 dark:bg-data-500/15 dark:text-data-300">
               <span className="num">{selectedRows.length.toLocaleString("id-ID")}</span> terpilih
             </span>
           )}
         </span>
         <div className="flex items-center gap-2">
           <Select value={String(ps)} onValueChange={(v: string) => (server ? server.onPageSizeChange(Number(v)) : table.setPageSize(Number(v)))}>
-            <SelectTrigger className="h-8 w-[110px] rounded-md"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-[110px] rounded-md text-[13px]"><SelectValue /></SelectTrigger>
             <SelectContent>{[10, 25, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n} / halaman</SelectItem>)}</SelectContent>
           </Select>
           <button type="button" onClick={() => (server ? server.onPageChange(server.page - 1) : table.previousPage())} disabled={!table.getCanPreviousPage()} className="grid size-8 place-items-center rounded-md hover:bg-secondary disabled:opacity-40" aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></button>
@@ -377,5 +449,15 @@ export function DataTable<T>({
 
       {bulkActions.length > 0 && <BulkActionBar rows={selectedRows} actions={bulkActions} entityLabel={entityLabel} onClear={clear} />}
     </div>
+  );
+}
+
+/** Satu grup baris: header lipat (opsional) lalu baris-barisnya. Fragment agar <tbody> tetap valid. */
+function GroupRows<T>({ header, rows, render }: { header: ReactNode; rows: Row<T>[]; render: (row: Row<T>) => ReactNode }) {
+  return (
+    <>
+      {header}
+      {rows.map((r) => render(r))}
+    </>
   );
 }

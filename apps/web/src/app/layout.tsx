@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
-import { KonturBackdrop } from "@/components/garda/kontur-backdrop";
 import { getSession } from "@/lib/auth/session";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -47,8 +46,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f1f5f9" },
-    { media: "(prefers-color-scheme: dark)", color: "#08112a" },
+    { media: "(prefers-color-scheme: light)", color: "#f8f9fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0d10" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -71,11 +70,10 @@ export default async function RootLayout({
       <body>
         <a
           href="#konten"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-xl focus:bg-white focus:px-4 focus:py-2"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:border focus:bg-white focus:px-4 focus:py-2"
         >
           Lewati ke konten
         </a>
-        <KonturBackdrop />
         <Providers user={user}>{children}</Providers>
       </body>
     </html>

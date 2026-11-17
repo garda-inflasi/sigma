@@ -1,3 +1,4 @@
+// Package domain menyediakan tipe dan fungsi untuk membandingkan keadaan objek JSON
 package domain
 
 import (

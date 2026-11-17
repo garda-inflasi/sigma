@@ -146,11 +146,11 @@ export interface RincianBulk {
 const KETERANGAN_SEBAB: Record<SebabLewat, string> = {
   tidak_ditemukan: "tidak ditemukan",
   status_tidak_sesuai: "status tidak sesuai",
-  pemisahan_tugas: "dicatat oleh Anda sendiri",
+  pemisahan_tugas: "melanggar pemisahan tugas",
   bukan_pemilik: "bukan entri Anda",
 };
 
-/** Ringkasan sebab entri dilewati, mis. "2 status tidak sesuai, 1 dicatat oleh Anda sendiri". */
+/** Ringkasan sebab entri dilewati, mis. "2 status tidak sesuai, 1 melanggar pemisahan tugas". */
 export function ringkasSebab(rincian: RincianBulk[] | undefined): string {
   const hitung = new Map<SebabLewat, number>();
   for (const r of rincian ?? []) hitung.set(r.sebab, (hitung.get(r.sebab) ?? 0) + 1);

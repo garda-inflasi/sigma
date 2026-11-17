@@ -210,7 +210,11 @@ Selisih terhadap rencana di atas, beserta alasannya:
 - [ ] Perkiraan lokasi sesi dari IP (butuh sumber GeoIP lokal, mis. basis data MaxMind; jangan memanggil layanan pihak ketiga dengan IP pengguna tanpa dasar UU PDP).
 - [ ] Unggah foto profil (butuh penyimpanan objek, [18 §C](18-platform-lintas-fitur.md)).
 - [ ] Verifikasi nomor telepon via OTP (bergantung pada kanal WhatsApp/SMS yang belum ada).
-- [ ] Riwayat aktivitas akun sendiri di `/profil` (login, ganti sandi, MFA) dari `audit_log` dengan filter aktor = diri sendiri.
+- [x] Riwayat aktivitas akun sendiri di `/profil` (login, ganti sandi, MFA) dari `audit_log` dengan filter aktor = diri sendiri. *(17 Nov 2026, tab "Aktivitas Akun", `?tab=aktivitas`)*
+  - **API:** `GET /v1/auth/me/aktivitas` (modul `audit`; filter `aksi`, `hasil`, `sebagai=pelaku|sasaran|semua`, `dari`, `sampai`; kursor, bawaan 20, maks 100) dan `GET /v1/auth/me/riwayat-sesi` (modul `auth`; sesi aktif dan berakhir AKTIF/DICABUT/KEDALUWARSA, filter `status`, kursor). Keduanya hanya milik `user_id` token, tanpa izin khusus (sesi terbatas ditolak), tanpa parameter pemilih akun (parameter `aktor`, `q`, dst. dibuang). Respons sempit: tanpa `sebelum`/`sesudah`/metadata/correlation id; baris "sasaran" (mis. admin mengatur ulang MFA) hanya memuat peran pelaku, tanpa nama, email, IP, atau perangkatnya. Mencakup event validasi dan persetujuan (`HARGA_*`, `AJUKAN_PERSETUJUAN`, `PUTUS_PERSETUJUAN`).
+  - **FE:** BFF `app/api/auth/me/{aktivitas,riwayat-sesi}/route.ts` (daftar putih parameter), `lib/api/aktivitas.ts`, `lib/query/aktivitas-hooks.ts` (`useInfiniteQuery`), `components/profil/tab-aktivitas.tsx` (saringan, label Indonesia, muat lebih banyak, galat dan keadaan kosong).
+  - **Tes:** Go unit (`audit/usecase/aktivitas_saya_test.go`, `auth/usecase/riwayat_sesi_test.go`) dan integrasi Postgres (`audit/integration/aktivitas_saya_test.go`: isolasi akun, tanpa kebocoran snapshot, parameter pemilih diabaikan, filter, paginasi, status sesi); web unit `lib/api/aktivitas.test.ts` dan komponen `tab-aktivitas.test.tsx`.
+  - **Sisa:** aksi event lama tanpa label tampil sebagai kode mentah; belum ada ekspor.
 - [ ] Preferensi notifikasi per pengguna (EWS, web push) di tab tersendiri.
 - [ ] Peringatan sebelum meninggalkan tab MFA saat kode cadangan belum disimpan.
 - [ ] Pertimbangkan menyamarkan `telepon` di snapshot `audit_log` (append-only) dan di respons pengguna untuk admin, sesuai kebijakan UU PDP ([18 §D](18-platform-lintas-fitur.md)).

@@ -25,12 +25,17 @@ import { FormBff } from "@/components/form/form-bff";
 import { validasiBuat, type BuatIntervensiInput } from "@/lib/api/intervensi";
 import { useSession } from "@/lib/auth/session-context";
 import { KABUPATEN, KOMODITAS } from "@/lib/data/reference";
+import { OptionCards } from "@/components/garda/option-cards";
 import { SIKLUS_URUTAN } from "@/lib/data/siklus";
 import type { Prioritas } from "@/lib/data/types";
 import { siklusMeta, type Siklus } from "@/lib/design/tokens";
+import { Flame, Sprout, Waves } from "lucide-react";
+
 import { skemaDariValidasi } from "@/lib/form/skema";
 import { useFormBff } from "@/lib/form/use-form-bff";
 import { useBuatIntervensi } from "@/lib/query/hooks";
+const IKON_SIKLUS = { normal: Waves, tekanan: Flame, surplus: Sprout } as const;
+const AKSEN_SIKLUS: Record<Siklus, string> = { normal: "text-normal-ink", tekanan: "text-defisit-ink", surplus: "text-surplus-ink" };
 
 const PRIORITAS: { value: Prioritas; label: string }[] = [
   { value: "TINGGI", label: "Tinggi" },
@@ -144,25 +149,23 @@ export function TambahIntervensiDialog({
               rows={3}
             />
           </div>
+          <div className="space-y-1.5">
+            <Label id="int-siklus-label">Siklus</Label>
+            <OptionCards
+              name="int-siklus"
+              label="Siklus"
+              value={isian.siklus}
+              onChange={(v) => set("siklus", v)}
+              options={SIKLUS_URUTAN.map((s) => ({
+                value: s,
+                title: siklusMeta[s].label,
+                description: siklusMeta[s].deskripsi,
+                icon: IKON_SIKLUS[s],
+                accent: AKSEN_SIKLUS[s],
+              }))}
+            />
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="int-siklus">Siklus</Label>
-              <Select
-                value={isian.siklus}
-                onValueChange={(v) => set("siklus", v as Siklus)}
-              >
-                <SelectTrigger id="int-siklus" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SIKLUS_URUTAN.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {siklusMeta[s].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="int-prioritas">Prioritas</Label>
               <Select

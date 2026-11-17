@@ -126,6 +126,38 @@ func TestBulk_PublikasiRespectsSeparationOfDuties(t *testing.T) {
 	assert.Equal(t, hasilBulkRincian{Berhasil: 1, Gagal: 1, Rincian: []rincianBulk{{ID: manajerOwn, Sebab: "pemisahan_tugas"}}}, *got)
 }
 
+// Penginput, validator, dan penerbit adalah tiga orang berbeda: validator tidak boleh menerbitkan entri yang
+// divalidasinya, walau memegang harga.publikasi. Percobaannya ditolak, tidak mengubah apa pun, dan tercatat di audit.
+func TestBulk_PublikasiByValidatorIsRejectedAndAudited(t *testing.T) {
+	s := sharedSuite(t)
+	id := s.buat(t, emailMahasiswa)
+	require.NoError(t, s.db.Exec("UPDATE entri_harga SET status = 'DIVALIDASI', divalidasi_oleh = garda_uuid_stabil('pengguna', 'manajer_data') WHERE id = ?", id).Error)
+
+	got := s.bulk(t, emailManajerData, map[string]any{"action": "publikasi", "ids": []string{id}})
+
+	assert.Equal(t, hasilBulkRincian{Gagal: 1, Rincian: []rincianBulk{{ID: id, Sebab: "pemisahan_tugas"}}}, *got)
+	assert.Equal(t, "DIVALIDASI", s.status(t, id))
+	var ditolak int64
+	require.NoError(t, s.db.Raw(`SELECT count(*) FROM audit_log WHERE aksi = 'HARGA_PUBLIKASI' AND hasil = 'DITOLAK'
+		AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_data') AND metadata->>'sebab' = 'pemisahan_tugas'`).Scan(&ditolak).Error)
+	assert.Positive(t, ditolak, "percobaan melanggar pemisahan tugas tercatat sebagai ditolak")
+}
+
+func TestBulk_ValidasiByRecorderIsRejected(t *testing.T) {
+	s := sharedSuite(t)
+	// Koordinator tercatat sebagai pencatat entri (mis. input di lapangan) lalu mencoba memvalidasinya sendiri.
+	id := s.buat(t, emailMahasiswa)
+	require.NoError(t, s.db.Exec("UPDATE entri_harga SET petugas_id = garda_uuid_stabil('pengguna', 'koordinator_lapangan') WHERE id = ?", id).Error)
+
+	got := s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{id}})
+
+	assert.Equal(t, hasilBulkRincian{Gagal: 1, Rincian: []rincianBulk{{ID: id, Sebab: "pemisahan_tugas"}}}, *got)
+	assert.Equal(t, "DIAJUKAN", s.status(t, id))
+	var validator *string
+	require.NoError(t, s.db.Raw("SELECT divalidasi_oleh::text FROM entri_harga WHERE id = ?", id).Scan(&validator).Error)
+	assert.Nil(t, validator, "divalidasi_oleh tetap kosong")
+}
+
 func TestRiwayat_RecordsEveryTransition(t *testing.T) {
 	s := sharedSuite(t)
 	id := s.buat(t, emailMahasiswa)
@@ -203,4 +235,37 @@ func TestDatabaseEnforcesSeparationOfDutiesAndRejectionReason(t *testing.T) {
 	err = s.db.Exec("UPDATE entri_harga SET status = 'DITOLAK' WHERE id = ?", id).Error
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "chk_entri_harga_alasan_penolakan")
+}
+
+func TestDatabaseEnforcesPublisherSeparation(t *testing.T) {
+	s := sharedSuite(t)
+	id := s.buat(t, emailMahasiswa)
+
+	err := s.db.Exec(`UPDATE entri_harga SET status = 'DIPUBLIKASI', divalidasi_oleh = garda_uuid_stabil('pengguna', 'koordinator_lapangan'),
+		dipublikasi_oleh = garda_uuid_stabil('pengguna', 'koordinator_lapangan') WHERE id = ?`, id).Error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "chk_entri_harga_pemisahan_penerbit", "penerbit = validator")
+
+	err = s.db.Exec("UPDATE entri_harga SET status = 'DIPUBLIKASI', dipublikasi_oleh = petugas_id WHERE id = ?", id).Error
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "chk_entri_harga_pemisahan_penerbit", "penerbit = pencatat")
+
+	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET status = 'DIPUBLIKASI', divalidasi_oleh = garda_uuid_stabil('pengguna', 'koordinator_lapangan'),
+		dipublikasi_oleh = garda_uuid_stabil('pengguna', 'manajer_data') WHERE id = ?`, id).Error, "tiga orang berbeda lolos")
+}
+
+// 02-B: Admin Sistem mengelola akun dan konfigurasi, bukan keputusan bisnis. Izin persetujuan apa pun (validasi,
+// publikasi, setujui) tidak boleh masuk ke matriks bawaannya.
+func TestRBAC_AdminSistemTanpaHakPersetujuanBisnis(t *testing.T) {
+	s := sharedSuite(t)
+
+	var terlarang []string
+	require.NoError(t, s.db.Raw(`SELECT permission_nama FROM role_permissions
+		WHERE role_kunci = 'ADMIN_SISTEM' AND permission_nama ~ '(validasi|publikasi|setujui)' ORDER BY 1`).Scan(&terlarang).Error)
+
+	assert.Empty(t, terlarang, "ADMIN_SISTEM tidak boleh memegang izin persetujuan bisnis")
+	for _, email := range []string{"superadmin@gardainflasi.id"} {
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", email, map[string]any{"action": "validasi", "ids": []string{"1"}}).Code)
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", email, map[string]any{"action": "publikasi", "ids": []string{"1"}}).Code)
+	}
 }

@@ -27,4 +27,6 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	engine.GET("/audit/export", auth, canRead, handler.Export)
 	engine.GET("/audit/integritas", auth, canRead, handler.Integritas)
 	engine.GET("/audit/:id", auth, canRead, handler.Get)
+	// Riwayat aktivitas akun sendiri: tanpa izin khusus, karena datanya selalu milik pemanggil (profil, 20).
+	engine.GET("/auth/me/aktivitas", auth, handler.ListSaya)
 }

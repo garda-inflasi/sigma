@@ -70,9 +70,21 @@ func kid(kode string) string { return idx.UUIDStabil("intervensi", kode) }
 
 func rujukanID(kode string) idx.RujukanUUID { return idx.RujukanUUID{ID: kid(kode)} }
 
+// stubCakupan adalah PembacaCakupan uji: setiap pengguna berperan tingkat provinsi kecuali dipetakan lain.
+type stubCakupan struct {
+	peta map[string]domain.PenggunaCakupan
+}
+
+func (s stubCakupan) PenggunaCakupan(_ context.Context, id string) (domain.PenggunaCakupan, error) {
+	if c, ok := s.peta[id]; ok {
+		return c, nil
+	}
+	return domain.PenggunaCakupan{Peran: "MANAJER_PROGRAM"}, nil
+}
+
 func newTestUseCase(repo *mockRepository) (*UseCase, *audittest.Recorder) {
 	recorder := &audittest.Recorder{}
-	return New(repo, nil, recorder, logger.NewDefault()), recorder
+	return New(repo, nil, stubCakupan{}, recorder, logger.NewDefault()), recorder
 }
 
 func defs() []domain.TahapDef {

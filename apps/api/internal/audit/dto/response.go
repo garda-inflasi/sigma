@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/garda-inflasi/api/internal/audit/domain"
+	"github.com/garda-inflasi/api/internal/audit/usecase"
 	"github.com/garda-inflasi/api/pkg/idx"
+	"github.com/garda-inflasi/api/pkg/useragent"
 )
 
 // AuditRowResponse: ID adalah BIGINT yang ditulis sebagai string desimal; Kode memuat ID lama (alias rute detail)
@@ -185,4 +187,42 @@ func idOpsional(v *int64) *idx.ID {
 	}
 	id := idx.ID(*v)
 	return &id
+}
+
+// AktivitasSayaResponse adalah satu baris riwayat aktivitas akun sendiri. Tanpa snapshot sebelum/sesudah,
+// metadata, dan identitas pelaku lain: lihat usecase.AktivitasSaya.
+type AktivitasSayaResponse struct {
+	ID        idx.ID    `json:"id"`
+	Waktu     time.Time `json:"waktu"`
+	Aksi      string    `json:"aksi"`
+	Entitas   string    `json:"entitas"`
+	EntitasID string    `json:"entitas_id"`
+	Hasil     string    `json:"hasil"`
+	// Sebagai: "pelaku" bila akun ini melakukannya, "sasaran" bila orang lain melakukannya terhadap akun ini.
+	Sebagai string `json:"sebagai"`
+	// Perangkat adalah ringkasan perangkat pelaku (pada baris pelaku); IP hanya pada baris pelaku.
+	Perangkat string  `json:"perangkat,omitempty"`
+	IP        *string `json:"ip,omitempty"`
+	OlehPeran *string `json:"oleh_peran,omitempty"`
+}
+
+// AktivitasSayaPageResponse adalah satu halaman riwayat aktivitas; NextCursor kosong pada halaman terakhir.
+type AktivitasSayaPageResponse struct {
+	Items      []AktivitasSayaResponse `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+}
+
+// ToAktivitasSayaPageResponse memetakan halaman riwayat aktivitas ke bentuk API.
+func ToAktivitasSayaPageResponse(page usecase.HalamanAktivitas) AktivitasSayaPageResponse {
+	items := make([]AktivitasSayaResponse, len(page.Items))
+	for i, a := range page.Items {
+		items[i] = AktivitasSayaResponse{
+			ID: a.ID, Waktu: a.Waktu, Aksi: a.Aksi, Entitas: a.Entitas, EntitasID: a.EntitasID, Hasil: a.Hasil,
+			Sebagai: string(a.Sebagai), IP: a.IP, OlehPeran: a.OlehPeran,
+		}
+		if a.UserAgent != nil {
+			items[i].Perangkat = useragent.Ringkas(*a.UserAgent)
+		}
+	}
+	return AktivitasSayaPageResponse{Items: items, NextCursor: page.NextCursor}
 }

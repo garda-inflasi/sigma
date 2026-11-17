@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -491,4 +492,90 @@ func (uc *UseCase) ForceLogoutUser(ctx context.Context, targetID, actorID string
 	})
 	uc.log.Info("force logout", map[string]interface{}{"user_id": targetID, "actor_id": actorID, "sessions": len(families)})
 	return len(families), nil
+}
+
+// Batas satu halaman riwayat sesi.
+const (
+	DefaultLimitRiwayatSesi = 20
+	MaxLimitRiwayatSesi     = 100
+)
+
+// ErrRiwayatSesiTidakValid dikembalikan bila status atau cursor riwayat sesi salah bentuk.
+var ErrRiwayatSesiTidakValid = errors.New("parameter riwayat sesi tidak valid")
+
+// RiwayatSesiInfo adalah satu sesi pada riwayat; Current menandai sesi tempat permintaan ini berasal.
+type RiwayatSesiInfo struct {
+	domain.RiwayatSesi
+	Current bool
+}
+
+// HalamanRiwayatSesi adalah satu halaman riwayat sesi; NextCursor kosong berarti halaman terakhir.
+type HalamanRiwayatSesi struct {
+	Items      []RiwayatSesiInfo
+	NextCursor string
+}
+
+// ListSessionHistory mengembalikan riwayat sesi milik pengguna (aktif dan yang sudah berakhir), terbaru dimulai
+// lebih dulu, dengan paginasi cursor. userID berasal dari token, tidak pernah dari masukan. status kosong dibaca
+// "semua".
+func (uc *UseCase) ListSessionHistory(ctx context.Context, userID, status string, limit int, rawCursor string) (HalamanRiwayatSesi, error) {
+	switch status {
+	case "":
+		status = domain.RiwayatSemua
+	case domain.RiwayatSemua, domain.RiwayatAktif, domain.RiwayatBerakhir:
+	default:
+		return HalamanRiwayatSesi{}, ErrRiwayatSesiTidakValid
+	}
+	if limit < 1 {
+		limit = DefaultLimitRiwayatSesi
+	}
+	limit = min(limit, MaxLimitRiwayatSesi)
+	f := domain.RiwayatFilter{Status: status, Limit: limit + 1}
+	if rawCursor != "" {
+		cursor, err := decodeCursorRiwayat(rawCursor)
+		if err != nil {
+			return HalamanRiwayatSesi{}, err
+		}
+		f.After = &cursor
+	}
+
+	// Satu baris ekstra menunjukkan masih ada halaman berikutnya.
+	rows, err := uc.repo.ListSessionHistory(ctx, userID, f, time.Now())
+	if err != nil {
+		return HalamanRiwayatSesi{}, fmt.Errorf("riwayat sesi: %w", err)
+	}
+	var next string
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next = encodeCursorRiwayat(domain.RiwayatCursor{MulaiPada: rows[limit-1].MulaiPada, ID: rows[limit-1].ID})
+	}
+	sid := currentSession(ctx)
+	out := make([]RiwayatSesiInfo, len(rows))
+	for i, row := range rows {
+		out[i] = RiwayatSesiInfo{RiwayatSesi: row, Current: sid != "" && row.ID == sid}
+	}
+	return HalamanRiwayatSesi{Items: out, NextCursor: next}, nil
+}
+
+func encodeCursorRiwayat(c domain.RiwayatCursor) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(c.MulaiPada.UTC().Format(time.RFC3339Nano) + "|" + c.ID))
+}
+
+func decodeCursorRiwayat(raw string) (domain.RiwayatCursor, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return domain.RiwayatCursor{}, ErrRiwayatSesiTidakValid
+	}
+	teksWaktu, id, ok := strings.Cut(string(decoded), "|")
+	if !ok {
+		return domain.RiwayatCursor{}, ErrRiwayatSesiTidakValid
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return domain.RiwayatCursor{}, ErrRiwayatSesiTidakValid
+	}
+	waktu, err := time.Parse(time.RFC3339Nano, teksWaktu)
+	if err != nil {
+		return domain.RiwayatCursor{}, ErrRiwayatSesiTidakValid
+	}
+	return domain.RiwayatCursor{MulaiPada: waktu, ID: strings.ToLower(id)}, nil
 }

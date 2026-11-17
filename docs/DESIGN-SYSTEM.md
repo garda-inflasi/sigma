@@ -1,31 +1,31 @@
 # Garda Design System
 
-Soft & smooth govtech: presisi, tenang, institusional, namun mudah didekati.
+**v2 "Clean Clinical" (17 Nov 2026).** Bersih, lembut, dan sangat rapi: kanvas off-white, kartu putih dengan garis rambut, aksi utama near-black, aksen teal. Terinspirasi Linear / Notion / Attio. Sejak v2 tidak ada lagi kaca/blur; nama utilitas `glass*` dipertahankan tetapi kini permukaan datar.
 
 ## Prinsip
 
-1. **Satu keberanian per layar.** Dashboard eksekutif: inflasi diletakkan pada *koridor sasaran* (bukan angka besar biasa). Konsol: latar kontur topografi Gayo–pesisir. Sisanya tenang.
-2. **Warna = makna, bukan dekorasi.** Navy (kepercayaan), teal *data*, emerald (normal), amber (waspada), rose (defisit), blue (surplus). Warna ambient seluruh UI mengikuti siklus ekonomi aktif lewat `data-siklus` di `<html>`.
-3. **Gerak menjawab aksi.** Gerak otomatis hanya untuk menarik perhatian (EWS, data baru, satu orkestrasi KPI saat halaman dibuka). Semua menghormati `prefers-reduced-motion`.
-4. **Angka selalu JetBrains Mono tabular** (`.num`); heading Plus Jakarta Sans; UI Inter. Tanpa label ALL CAPS, tanpa titik tengah sebagai pemisah meta.
-5. **Semua tabel dapat dicentang.** Proses massal adalah pola utama, bukan fitur tambahan.
+1. **Datar dan tenang.** Kanvas `#f8f9fa`, kartu `#fff` dengan garis `#eaecef` dan bayangan nyaris tak terlihat. Hanya elemen melayang (drawer, popover, toast, bilah aksi massal) yang terangkat.
+2. **Warna = makna.** Aksi utama near-black `#18181b`; konfirmasi dan fokus teal `#0d9488`; status memakai pil pastel (latar lembut, teks pekat, titik kecil): normal/berhasil emerald, waspada amber, defisit/kritis merah, surplus/info biru. Warna ambient siklus ekonomi lewat `data-siklus` di `<html>` dipakai kecil-kecil (indikator, pil siklus), bukan latar.
+3. **Gerak menjawab aksi.** Masuk halaman: fade + geser naik 10px, 300ms, easing `[0.22, 1, 0.36, 1]`, stagger 30–40ms pada KPI dan baris tabel. Semua menghormati `prefers-reduced-motion`.
+4. **Angka tabular.** Seluruh angka memakai `.num` (digit tabular Inter). Heading Plus Jakarta Sans, UI Inter. Header tabel dan label grup sidebar memakai huruf kapital kecil (11px, tracking lebar, warna muted).
+5. **Semua tabel dapat dicentang dan dikelompokkan.** Proses massal adalah pola utama; baris dapat dikelompokkan per status dengan header lipat.
 
 ## Token (sumber: `app/globals.css`, cermin JS: `lib/design/tokens.ts`)
 
 | Kelompok | Token | Contoh kelas |
 |---|---|---|
-| Navy 50–950 | `--color-navy-*` | `bg-navy-800`, `text-navy-900` |
-| Data (teal) 50–950 | `--color-data-*` | `bg-data-500`, `shadow-glow-data` |
-| Kabut (latar) | `--color-mist-50…400` | `bg-mist-100` |
-| Status | `normal · waspada · defisit · surplus · kritis` (+`-soft`, `-ink`) | `bg-defisit-soft text-defisit-ink` |
-| Siklus aktif | `--siklus`, `--siklus-soft`, `--siklus-ink` | `bg-siklus`, `ring-siklus` |
-| Radius | kontrol `xl` 16px · kartu `2xl` 20px · panel `3xl` 28px · shell `4xl` 36px | `rounded-xl` |
-| Bayangan | `ambient-xs/sm/ambient/lg`, `lift`, `glow-data/defisit/waspada` (bernuansa navy) | `shadow-ambient`, `hover:shadow-lift` |
-| Kaca | `glass-subtle` · `glass` · `glass-strong` (backdrop-blur 16–28px + inset highlight) | `glass rounded-xl` |
-| Tipe | `text-display-sm/md/lg/xl/2xl` (rasio 1.25, tracking negatif terkalibrasi) | `text-display-md font-semibold` |
+| "Navy" = rampa tinta netral 50–950 | `--color-navy-*` (900 teks `#111827`, 800 aksi utama `#18181b`) | `bg-navy-800`, `text-navy-900` |
+| Data (deep teal) 50–950 | `--color-data-*` (600 `#0d9488`, 700 `#0f766e`) | `bg-data-600`, `text-data-700` |
+| Kabut (kanvas, permukaan) | `--color-mist-50…400` | `bg-mist-100` |
+| Status (pastel) | `normal · waspada · defisit · surplus · kritis` (+`-soft`, `-ink`) | `bg-defisit-soft text-defisit-ink` |
+| Siklus aktif | `--siklus`, `--siklus-soft`, `--siklus-ink` | `bg-siklus` |
+| Radius | tombol/badge 6px (`rounded-md`), kartu/input 8px (`rounded-lg`/`xl`), modal 12px (`rounded-2xl`) | `rounded-lg` |
+| Bayangan | `ambient-xs/sm/ambient/lg`, `lift`, `glow-*` (cincin fokus 3px) | `shadow-ambient-xs` |
+| Permukaan | `glass` (kartu), `glass-strong` (melayang), `glass-subtle` (tersier) | `glass rounded-lg` |
+| Tipe | judul halaman `text-display-md` 20px, header seksi `text-display-sm` 14px, badan 13–14px, KPI `text-display-lg/xl` | `text-display-md font-semibold` |
 | Easing | `--ease-garda` cubic-bezier(.22,1,.36,1) | `ease-garda` |
 
-Dark mode tersedia (`.dark`, via next-themes) dengan token kaca terpisah.
+Dark mode tersedia (`.dark`, next-themes) dengan permukaan netral gelap (`#0c0d10` / `#131418`).
 
 ## Gerak (`lib/motion/presets.ts`)
 
@@ -61,10 +61,17 @@ Dark mode tersedia (`.dark`, via next-themes) dengan token kaca terpisah.
 
 | Komponen | Catatan |
 |---|---|
-| `DataTable` | centang header (indeterminate), "Pilih seluruh N", Shift+klik rentang, Esc batal, facet, paginasi, `rowTone`, `hiddenColumns` |
-| `BulkActionBar` | aksi difilter izin, `enabled()` per pilihan, konfirmasi destruktif, overflow menu |
-| `Segmented` | pill aktif meluncur (layoutId) — tab, filter, tipe harga |
-| `GlassCard`, `PageHeader`, `PanelTitle`, `StatusBadge`, `KomoditasIcon` | primitif tampilan |
+| `DataTable` | centang header (indeterminate), "Pilih seluruh N", Shift+klik rentang, Esc batal, facet, paginasi, `rowTone`, `hiddenColumns`, **`groupBy`** (grup berheader lipat dengan badge jumlah), baris masuk berstagger (`row-in`) |
+| `BulkActionBar` | pil gelap mengambang di bawah layar ("N entri terpilih · aksi · ✕"); aksi difilter izin, `enabled()` per pilihan, konfirmasi destruktif, overflow menu |
+| `Segmented` | kontrol segmen: trek abu, pil putih aktif meluncur (layoutId) — mode, filter, tipe harga |
+| `ViewTabs` | tab tampilan bergaris bawah di bawah judul halaman (Papan/Tabel), ikon dan badge jumlah |
+| `PageHeader` (`tabs`), `PanelTitle` | judul 20px, deskripsi 13px, aksi di kanan, tab tampilan di bawah; remah roti ada di topbar (`remahRoti`) |
+| `Sidebar` + `WorkspaceSwitcher` | sidebar datar bergrup (label kapital kecil), pengalih ruang kerja (Provinsi Aceh + siklus), item aktif berupa kartu putih bergaris, ikon `strokeWidth` 1,75, dapat diciutkan ke 64px |
+| `Sheet` + `InspectorSection`, `MetaGrid`/`MetaItem`, `ChecklistProgress`, `ActivityTimeline` | drawer inspector kanan (480px): metadata 2 kolom, checklist dengan bilah progres tipis, linimasa aktivitas |
+| `OptionCards` | kartu pilihan tunggal (radio) dengan ikon dan indikator radio, untuk jenis/kategori di modal |
+| `EmptyState`, `Shimmer`/`TableSkeleton`/`KpiRowSkeleton`/`ListSkeleton` | keadaan kosong dan kerangka pemuatan |
+| `PageEnter`, `Stagger`/`StaggerItem` | animasi masuk halaman dan deretan kartu |
+| `GlassCard`, `StatusBadge`, `KomoditasIcon` | primitif tampilan (`StatusBadge` = pil 6px berpenanda titik) |
 | `PanelGalat` | galat query di dalam widget: pesan server berbahasa Indonesia (atau "Periksa sambungan internet" untuk galat jaringan) + tombol "Coba lagi"; data yang sudah tampil tidak dihapus bila polling berikutnya gagal |
 | `CommandPalette` | ⌘K / Ctrl+K / `/`; aksi cepat, navigasi, komoditas, wilayah — difilter izin |
 | `notifyEws()` | toast kustom Sonner; Kritis menetap, lainnya berbilah waktu |

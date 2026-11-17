@@ -345,3 +345,20 @@ func uniqueStrings(in []string) []string {
 	}
 	return out
 }
+
+// PenggunaCakupan membaca peran dan kabupaten tugas pengguna: satu pencarian kunci primer.
+func (r *Repository) PenggunaCakupan(ctx context.Context, penggunaID string) (domain.PenggunaCakupan, error) {
+	var rows []struct {
+		Peran         string `gorm:"column:peran"`
+		KabupatenKode string `gorm:"column:kabupaten_kode"`
+	}
+	err := r.db.WithContext(ctx).Raw(`SELECT peran::text AS peran, COALESCE(kabupaten_kode, '') AS kabupaten_kode
+		FROM pengguna WHERE id = ?`, penggunaID).Scan(&rows).Error
+	if err != nil {
+		return domain.PenggunaCakupan{}, fmt.Errorf("baca peran pengguna: %w", err)
+	}
+	if len(rows) == 0 {
+		return domain.PenggunaCakupan{}, domain.ErrPenggunaTidakAda
+	}
+	return domain.PenggunaCakupan{Peran: rows[0].Peran, KabupatenKode: rows[0].KabupatenKode}, nil
+}

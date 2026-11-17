@@ -24,7 +24,55 @@ type SesiRepository interface {
 	// RevokeSession mencabut satu sesi milik pengguna; false bila sesi itu tidak ada, bukan milik pengguna,
 	// atau sudah tidak hidup.
 	RevokeSession(ctx context.Context, userID, familyID string, now time.Time) (bool, error)
+	// ListSessionHistory mengembalikan sesi (family) milik pengguna, aktif maupun yang sudah berakhir, terbaru
+	// dimulai lebih dulu. Hanya sesi yang barisnya belum dibersihkan job pembersihan yang tampil.
+	ListSessionHistory(ctx context.Context, userID string, f RiwayatFilter, now time.Time) ([]RiwayatSesi, error)
 	// RetireFamilyTokensExcept menandai semua token hidup dalam family selain keepTokenHash sebagai hasil
 	// rotasi (dipakai saat token pengganti diterbitkan tanpa menyajikan token lama, mis. ganti kata sandi).
 	RetireFamilyTokensExcept(ctx context.Context, familyID, keepTokenHash string, now time.Time) error
+}
+
+// Status akhir sebuah sesi pada riwayat.
+const (
+	// SesiAktif: masih ada token hidup.
+	SesiAktif = "AKTIF"
+	// SesiDicabut: diakhiri (keluar, dicabut pemilik atau admin, ganti kata sandi, atau pemakaian ulang token).
+	SesiDicabut = "DICABUT"
+	// SesiKedaluwarsa: berakhir karena masa berlaku token habis.
+	SesiKedaluwarsa = "KEDALUWARSA"
+)
+
+// Filter status riwayat sesi.
+const (
+	RiwayatSemua    = "semua"
+	RiwayatAktif    = "aktif"
+	RiwayatBerakhir = "berakhir"
+)
+
+// RiwayatSesi adalah satu sesi (family refresh token) beserta keadaan akhirnya.
+type RiwayatSesi struct {
+	// ID adalah family_id, juga klaim sid access token.
+	ID                  string
+	MulaiPada           time.Time
+	TerakhirDipakaiPada time.Time
+	// BerakhirPada kosong selama sesi aktif; selain itu waktu dicabut atau kedaluwarsa.
+	BerakhirPada *time.Time
+	// IP dan UserAgent adalah milik token pertama sesi (saat masuk).
+	IP        *string
+	UserAgent *string
+	Status    string
+}
+
+// RiwayatCursor menandai posisi halaman berikutnya pada urutan (mulai, id) menurun.
+type RiwayatCursor struct {
+	MulaiPada time.Time
+	ID        string
+}
+
+// RiwayatFilter adalah kriteria satu halaman riwayat sesi.
+type RiwayatFilter struct {
+	// Status: RiwayatSemua (atau kosong), RiwayatAktif, atau RiwayatBerakhir.
+	Status string
+	Limit  int
+	After  *RiwayatCursor
 }

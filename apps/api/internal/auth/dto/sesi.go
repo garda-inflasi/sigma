@@ -1,8 +1,9 @@
 package dto
 
 import (
-	"strings"
 	"time"
+
+	"github.com/garda-inflasi/api/pkg/useragent"
 )
 
 // LogoutRequest adalah isi opsional POST /v1/auth/logout. RefreshToken membantu server menentukan sesi yang
@@ -24,6 +25,32 @@ type SessionResponse struct {
 	SaatIni             bool      `json:"saat_ini"`
 }
 
+// RiwayatSesiRequest adalah query GET /v1/auth/me/riwayat-sesi.
+type RiwayatSesiRequest struct {
+	Status string `form:"status" binding:"omitempty,oneof=semua aktif berakhir"`
+	Limit  int    `form:"limit" binding:"omitempty,min=1"`
+	Cursor string `form:"cursor"`
+}
+
+// RiwayatSesiResponse adalah satu sesi pada riwayat (GET /v1/auth/me/riwayat-sesi). status: AKTIF, DICABUT, atau
+// KEDALUWARSA; berakhir_pada kosong selama sesi aktif.
+type RiwayatSesiResponse struct {
+	ID                  string     `json:"id"`
+	Perangkat           string     `json:"perangkat"`
+	IP                  string     `json:"ip,omitempty"`
+	MulaiPada           time.Time  `json:"mulai_pada"`
+	TerakhirDipakaiPada time.Time  `json:"terakhir_dipakai_pada"`
+	BerakhirPada        *time.Time `json:"berakhir_pada,omitempty"`
+	Status              string     `json:"status"`
+	SaatIni             bool       `json:"saat_ini"`
+}
+
+// RiwayatSesiPageResponse adalah satu halaman riwayat sesi; next_cursor kosong pada halaman terakhir.
+type RiwayatSesiPageResponse struct {
+	Items      []RiwayatSesiResponse `json:"items"`
+	NextCursor string                `json:"next_cursor,omitempty"`
+}
+
 // SessionsRevokedResponse melaporkan jumlah sesi yang dicabut oleh satu aksi massal.
 type SessionsRevokedResponse struct {
 	Dicabut int `json:"dicabut"`
@@ -35,63 +62,5 @@ type ForceLogoutResponse struct {
 	Dicabut int    `json:"dicabut"`
 }
 
-// RingkasPerangkat meringkas user agent menjadi label pendek, mis. "Chrome di macOS". Heuristik sederhana
-// (cukup untuk membedakan perangkat di daftar sesi), bukan parser UA lengkap; urutan pemeriksaan penting
-// karena hampir semua UA memuat "Mozilla", "Safari", dan kadang "Chrome" sekaligus.
-func RingkasPerangkat(ua string) string {
-	ua = strings.TrimSpace(ua)
-	if ua == "" {
-		return "Perangkat tidak dikenal"
-	}
-	peramban := ringkasPeramban(ua)
-	os := ringkasSistemOperasi(ua)
-	switch {
-	case peramban != "" && os != "":
-		return peramban + " di " + os
-	case peramban != "":
-		return peramban
-	case os != "":
-		return os
-	default:
-		return "Perangkat tidak dikenal"
-	}
-}
-
-func ringkasPeramban(ua string) string {
-	rules := []struct{ token, nama string }{
-		{"Edg/", "Edge"}, {"EdgA/", "Edge"}, {"EdgiOS/", "Edge"},
-		{"OPR/", "Opera"}, {"Opera", "Opera"},
-		{"SamsungBrowser/", "Samsung Internet"},
-		{"Firefox/", "Firefox"}, {"FxiOS/", "Firefox"},
-		{"CriOS/", "Chrome"}, {"Chromium/", "Chromium"}, {"Chrome/", "Chrome"},
-		{"Safari/", "Safari"},
-		{"curl/", "curl"},
-		{"undici", "Node.js"},
-	}
-	for _, r := range rules {
-		if strings.Contains(ua, r.token) {
-			return r.nama
-		}
-	}
-	if strings.HasPrefix(ua, "node") {
-		return "Node.js"
-	}
-	return ""
-}
-
-func ringkasSistemOperasi(ua string) string {
-	rules := []struct{ token, nama string }{
-		{"Windows", "Windows"},
-		{"Android", "Android"},
-		{"iPhone", "iOS"}, {"iPad", "iPadOS"}, {"iPod", "iOS"},
-		{"Mac OS X", "macOS"}, {"Macintosh", "macOS"},
-		{"CrOS", "ChromeOS"},
-		{"Linux", "Linux"}, {"X11", "Linux"},
-	}
-	for _, r := range rules {
-		if strings.Contains(ua, r.token) {
-			return r.nama
-		}
-	}
-	return ""
-}
+// RingkasPerangkat meringkas user agent menjadi label pendek, mis. "Chrome di macOS" (lihat useragent.Ringkas).
+func RingkasPerangkat(ua string) string { return useragent.Ringkas(ua) }

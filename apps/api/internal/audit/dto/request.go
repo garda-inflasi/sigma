@@ -19,3 +19,17 @@ type ListAuditRequest struct {
 	Limit         int    `form:"limit" binding:"omitempty,min=1"`
 	Cursor        string `form:"cursor"`
 }
+
+// ListAktivitasSayaRequest adalah filter dan paginasi cursor untuk GET /v1/auth/me/aktivitas. Tidak ada
+// parameter yang memilih akun: riwayat selalu milik pemanggil. Dari dan Sampai berformat RFC 3339 atau
+// tanggal (YYYY-MM-DD), seperti GET /v1/audit.
+type ListAktivitasSayaRequest struct {
+	Dari   string `form:"dari"`
+	Sampai string `form:"sampai"`
+	Aksi   string `form:"aksi"`
+	Hasil  string `form:"hasil" binding:"omitempty,oneof=BERHASIL GAGAL DITOLAK"`
+	// Sebagai: pelaku (aksi akun ini), sasaran (aksi orang lain terhadap akun ini), atau semua (bawaan).
+	Sebagai string `form:"sebagai" binding:"omitempty,oneof=pelaku sasaran semua"`
+	Limit   int    `form:"limit" binding:"omitempty,min=1"`
+	Cursor  string `form:"cursor"`
+}

@@ -82,26 +82,27 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
             role="toolbar"
             aria-label={`Aksi untuk ${rows.length} ${entityLabel} terpilih`}
             className={cn(
-              "glass-strong z-40 flex items-center gap-1.5 rounded-xl p-1.5 pl-3",
+              "z-40 flex items-center gap-1.5 rounded-full border border-white/10 bg-navy-800 p-1.5 pl-4 text-white shadow-ambient-lg",
               placement === "fixed" ? "fixed bottom-6 left-1/2 -translate-x-1/2 max-w-[calc(100vw-2rem)]" : "sticky bottom-3 mx-auto w-fit max-w-full",
               className,
             )}
           >
             <div className="flex items-center gap-2 pr-2">
               <AnimatePresence mode="popLayout" initial={false}>
-                <motion.span key={rows.length} variants={popIn} initial="hidden" animate="show" exit="exit" className="num grid h-7 min-w-7 place-items-center rounded-lg bg-navy-800 px-1.5 text-sm font-semibold text-white dark:bg-data-500">
+                <motion.span key={rows.length} variants={popIn} initial="hidden" animate="show" exit="exit" className="num grid h-6 min-w-6 place-items-center rounded-full bg-white px-1.5 text-[13px] font-semibold text-navy-900">
                   {rows.length.toLocaleString("id-ID")}
                 </motion.span>
               </AnimatePresence>
-              <span className="hidden text-sm text-muted-foreground sm:inline">{entityLabel} terpilih</span>
+              <span className="hidden text-[13px] text-white/70 sm:inline">{entityLabel} terpilih</span>
             </div>
-            <span className="mx-1 h-6 w-px bg-border" />
-            {allowed.length === 0 && <span className="px-2 text-sm text-muted-foreground">Peran Anda tidak memiliki aksi massal di sini</span>}
+            <span className="mx-1 h-5 w-px bg-white/20" />
+            {allowed.length === 0 && <span className="px-2 text-[13px] text-white/70">Peran Anda tidak memiliki aksi massal di sini</span>}
             {visible.map((a) => (
               <SpringButton
                 key={a.id}
                 size="sm"
-                variant={a.tone === "danger" ? "danger" : a.tone === "data" ? "data" : "soft"}
+                variant={a.tone === "danger" ? "danger" : a.tone === "data" ? "data" : "ghost"}
+                className={cn("rounded-full", (!a.tone || a.tone === "default") && "bg-white/10 text-white hover:bg-white/20 hover:text-white")}
                 disabled={!!busy || !isEnabled(a)}
                 title={!isEnabled(a) ? "Tidak berlaku untuk sebagian data terpilih" : undefined}
                 onClick={() => trigger(a)}
@@ -113,7 +114,7 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
             {overflow.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <SpringButton size="icon" variant="ghost" aria-label="Aksi lainnya" className="size-8">
+                  <SpringButton size="icon" variant="ghost" aria-label="Aksi lainnya" className="size-8 rounded-full text-white/80 hover:bg-white/10 hover:text-white">
                     <MoreHorizontal />
                   </SpringButton>
                 </DropdownMenuTrigger>
@@ -126,7 +127,7 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <SpringButton size="icon" variant="ghost" onClick={onClear} aria-label="Batalkan pilihan (Esc)" className="size-8">
+            <SpringButton size="icon" variant="ghost" onClick={onClear} aria-label="Batalkan pilihan (Esc)" className="size-8 rounded-full text-white/80 hover:bg-white/10 hover:text-white">
               <X />
             </SpringButton>
           </motion.div>
@@ -142,14 +143,14 @@ export function BulkActionBar<T>({ rows, actions, entityLabel, onClear, placemen
           {pending?.confirm?.alasan && (
             <label className="block space-y-1.5 text-sm">
               <span className="text-muted-foreground">{pending.confirm.alasan.label}</span>
-              <Textarea value={alasan} onChange={(e) => setAlasan(e.target.value)} rows={3} maxLength={1000} className="rounded-xl" />
+              <Textarea value={alasan} onChange={(e) => setAlasan(e.target.value)} rows={3} maxLength={1000} className="rounded-lg" />
             </label>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
+            <AlertDialogCancel className="rounded-md">Batal</AlertDialogCancel>
             <AlertDialogAction
               disabled={alasanKurang}
-              className={cn("rounded-xl", pending?.tone === "danger" && "bg-defisit hover:bg-kritis")}
+              className={cn("rounded-md", pending?.tone === "danger" && "bg-defisit-ink hover:bg-kritis")}
               onClick={(e: React.MouseEvent) => {
                 e.preventDefault();
                 if (pending) execute(pending);

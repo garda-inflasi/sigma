@@ -93,7 +93,11 @@ export const qk = {
   rbac: { katalog: () => ["rbac", "katalog"] as const },
   sesi: { aktif: () => ["sesi", "aktif"] as const },
   /** Profil sendiri (GET /api/auth/me): data diri dan status MFA; dipakai semua tab /profil. */
-  profil: { saya: () => ["profil", "saya"] as const },
+  profil: {
+    saya: () => ["profil", "saya"] as const,
+    aktivitas: (filter: unknown) => ["profil", "aktivitas", filter] as const,
+    riwayatSesi: (status: string) => ["profil", "riwayat-sesi", status] as const,
+  },
   audit: {
     list: (filter: AuditFilter) => ["audit", "list", filter] as const,
     detail: (id: string) => ["audit", "detail", id] as const,

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/garda-inflasi/api/internal/audit"
@@ -19,7 +18,7 @@ var (
 	ErrPersetujuanNotFound = domain.ErrPersetujuanNotFound
 	ErrPersetujuanSelesai  = domain.ErrPersetujuanSelesai
 	// ErrPemisahanTugas: pemutus tidak boleh sama dengan pengaju, dan satu orang tidak memutus dua langkah.
-	ErrPemisahanTugas = errors.New("pengaju atau pemutus langkah sebelumnya tidak boleh memutus langkah ini")
+	ErrPemisahanTugas = domain.ErrPemisahanTugas
 	// ErrCatatanWajib: penolakan harus disertai alasan.
 	ErrCatatanWajib = errors.New("penolakan wajib disertai catatan")
 )
@@ -48,7 +47,7 @@ func (uc *UseCase) ListPersetujuan(ctx context.Context, status string) ([]domain
 // persetujuan terdiri dari alur tiap tahap persetujuan yang dilalui; setelah semua langkah disetujui
 // kartu dipindahkan otomatis. Hanya satu permintaan terbuka per kartu.
 func (uc *UseCase) Ajukan(ctx context.Context, ref idx.RujukanUUID, tahapTujuan, catatan, actorID string) (*domain.Persetujuan, error) {
-	card, err := uc.kartu(ctx, ref)
+	card, err := uc.kartuDalamCakupan(ctx, ref, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +87,13 @@ func (uc *UseCase) Putus(ctx context.Context, id idx.ID, keputusan, catatan, act
 	if err != nil {
 		return nil, err
 	}
+	c, err := uc.cakupanAktor(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !dalamCakupan(c, p.KartuKabupaten) {
+		return nil, ErrPersetujuanNotFound
+	}
 	if p.Status != domain.PersetujuanMenunggu {
 		return nil, ErrPersetujuanSelesai
 	}
@@ -100,12 +106,24 @@ func (uc *UseCase) Putus(ctx context.Context, id idx.ID, keputusan, catatan, act
 		})
 		return nil, &ForbiddenError{Izin: izin}
 	}
-	if sudahTerlibat(p, actorID) {
+	if p.MelibatkanPelaku(actorID) {
+		uc.writeAudit(ctx, audit.Entry{
+			AktorID: actorID, Aksi: "PUTUS_PERSETUJUAN", Entitas: "intervensi", EntitasID: p.IntervensiID, Hasil: audit.HasilDitolak,
+			Metadata: map[string]any{"persetujuan": id, "langkah": p.LangkahKini, "sebab": "pemisahan_tugas"},
+		})
 		return nil, ErrPemisahanTugas
 	}
 
 	hasil, err := uc.wf.Putus(ctx, domain.PutusInput{PersetujuanID: id, LangkahKini: p.LangkahKini, Keputusan: keputusan, Oleh: actorID, Catatan: catatan})
 	if err != nil {
+		if errors.Is(err, ErrPemisahanTugas) {
+			// Terdeteksi di bawah kunci transaksi: potret di atas belum memuat keterlibatan pelaku.
+			uc.writeAudit(ctx, audit.Entry{
+				AktorID: actorID, Aksi: "PUTUS_PERSETUJUAN", Entitas: "intervensi", EntitasID: p.IntervensiID, Hasil: audit.HasilDitolak,
+				Metadata: map[string]any{"persetujuan": id, "langkah": p.LangkahKini, "sebab": "pemisahan_tugas"},
+			})
+			return nil, err
+		}
 		if !errors.Is(err, ErrPersetujuanSelesai) && !errors.Is(err, ErrKartuSelesai) && !errors.Is(err, ErrPersetujuanNotFound) {
 			uc.log.Error("intervensi: putus persetujuan gagal", map[string]interface{}{"id": id, "error": err.Error()})
 			return nil, fmt.Errorf("putus persetujuan: %w", err)
@@ -119,12 +137,4 @@ func (uc *UseCase) Putus(ctx context.Context, id idx.ID, keputusan, catatan, act
 		},
 	})
 	return hasil, nil
-}
-
-// sudahTerlibat: aktor adalah pengaju, atau sudah memutus langkah lain permintaan ini.
-func sudahTerlibat(p *domain.Persetujuan, actorID string) bool {
-	if p.DiajukanOleh != nil && *p.DiajukanOleh == actorID {
-		return true
-	}
-	return slices.ContainsFunc(p.Langkah, func(l domain.LangkahPersetujuan) bool { return l.Oleh != nil && *l.Oleh == actorID })
 }

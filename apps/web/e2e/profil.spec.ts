@@ -176,6 +176,7 @@ test("navigasi: deep link ?tab= membuka tab yang benar; nilai kosong atau tak di
     ["/profil?tab=ganti-password", LABEL_TAB.gantiSandi],
     ["/profil?tab=mfa", LABEL_TAB.mfa],
     ["/profil?tab=keamanan", LABEL_TAB.sesi],
+    ["/profil?tab=aktivitas", LABEL_TAB.aktivitas],
     ["/profil?tab=tidak-dikenal", LABEL_TAB.profil],
     ["/profil?tab=", LABEL_TAB.profil],
   ];
@@ -224,7 +225,7 @@ test("navigasi: klik tab mengganti URL lewat replaceState tanpa menambah riwayat
     const langkah: [string, string][] = [
       ["ArrowDown", LABEL_TAB.gantiSandi],
       ["ArrowDown", LABEL_TAB.mfa],
-      ["End", LABEL_TAB.sesi],
+      ["End", LABEL_TAB.aktivitas],
       ["Home", LABEL_TAB.profil],
       ["ArrowRight", LABEL_TAB.gantiSandi],
       ["ArrowLeft", LABEL_TAB.profil],
@@ -278,7 +279,7 @@ test("navigasi: /keamanan dialihkan ke /profil?tab=keamanan; /ganti-password dan
   ).toBeVisible();
 });
 
-test("navigasi: di layar ponsel keempat tab dapat dijangkau dengan target sentuh minimal 44 px", async ({
+test("navigasi: di layar ponsel kelima tab dapat dijangkau dengan target sentuh minimal 44 px", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -298,8 +299,16 @@ test("navigasi: di layar ponsel keempat tab dapat dijangkau dengan target sentuh
     ).toBeGreaterThanOrEqual(44);
   }
 
-  await tabProfil(page, LABEL_TAB.sesi).click();
-  await expect(page).toHaveURL(/\/profil\?tab=keamanan$/);
+  // Daftar tab bergulir horizontal: setelah loop di atas tab terakhir yang terlihat adalah "Aktivitas Akun", jadi tab
+  // sasaran dibawa ke tengah layar dan diberi satu bingkai untuk berhenti sebelum diklik.
+  const sasaran = tabProfil(page, LABEL_TAB.sesi);
+  await sasaran.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  // Diulang bila klik pertama jatuh sebelum hidrasi React selesai (terjadi pada `next dev`, tidak pada build produksi).
+  await expect(async () => {
+    await sasaran.click();
+    await expect(page).toHaveURL(/\/profil\?tab=keamanan$/, { timeout: 1500 });
+  }).toPass({ timeout: 10_000 });
   await expect(tabTerpilih(page)).toHaveText(LABEL_TAB.sesi);
 });
 

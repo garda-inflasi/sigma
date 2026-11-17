@@ -52,7 +52,7 @@ Rujukan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md) (matriks "000112") dan `db/mig
 
 ---
 
-## 14-B — Izin per tahap, riwayat, konkurensi *(Fase F, gelombang F-2)* — ✅ (komentar/lampiran belum)
+## 14-B — Izin per tahap, riwayat, konkurensi *(Fase F, gelombang F-2)* — ✅ (komentar/lampiran belum; cakupan wilayah dan audit penolakan 17 Nov 2026)
 
 **Tujuan:** aturan persetujuan berjenjang ditegakkan di backend dan setiap perpindahan tercatat.
 **Bergantung pada:** 14-A, 03-A.
@@ -69,7 +69,7 @@ Rujukan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md) (matriks "000112") dan `db/mig
 3. **API**
    - [x] Izin per tahap dari `tahap_intervensi_def.izin_dibutuhkan` (14-A) ditambah aturan berjenjang: pemindahan maju tidak boleh melompati tahap persetujuan yang izinnya tidak dimiliki; galat 403 menyebut tahap dan izinnya.
    - [x] `PATCH /:id/tahap` wajib `versi`; versi usang 409; respons membawa versi baru; audit sukses dan penolakan.
-   - [x] `POST /v1/intervensi/bulk` (`intervensi.kelola`, field `action`): `tugaskan` (jadikan pemanggil penanggung jawab) dan `eskalasi` (tandai ke Dewan Pengarah, prioritas TINGGI), hasil per kartu, audit. Row scope per peran/wilayah: belum.
+   - [x] `POST /v1/intervensi/bulk` (`intervensi.kelola`, field `action`): `tugaskan` (jadikan pemanggil penanggung jawab) dan `eskalasi` (tandai ke Dewan Pengarah, prioritas TINGGI), hasil per kartu, audit. Row scope wilayah untuk aksi tulis (17 Nov 2026): kartu di luar kabupaten Koordinator/Agregator dilaporkan "Kartu tidak ditemukan"; daftar baca belum dibatasi.
    - [x] `GET /:id/riwayat` (`intervensi.lihat`).
 4. **FE**: "Tugaskan ke saya" dan "Eskalasi ke Dewan Pengarah" memanggil API (tidak lagi toast simulasi), papan memakai dan memperbarui `versi`, 409 memuat ulang papan dengan pesan jelas, pesan izin dari server saat drop ditolak, lencana Eskalasi pada kartu. Dialog buat kartu: ✅ (lihat di atas); dialog ubah kartu: belum.
 5. **TES**: unit usecase (versi, lompat tahap, bulk, riwayat), integrasi Postgres (versi usang 409, dua pemindahan bersamaan tepat satu menang, riwayat hanya saat tahap berganti, hasil bulk per kartu, 401/403/400), seeder, `kanban-store`.
@@ -86,6 +86,7 @@ Rujukan [SKEMA-DATABASE.md](../SKEMA-DATABASE.md) (matriks "000112") dan `db/mig
 - [x] **Eskalasi nyata:** eskalasi (aksi massal 14-B atau SLA) membuka permintaan telaah Dewan Pengarah; menolaknya mencabut tanda eskalasi.
 - [x] **Kartu otomatis dari alert EWS:** alert >= `INTERVENSI_KARTU_OTOMATIS_MIN` (bawaan SIAGA; lonjakan harga, kelangkaan stok, dan cuaca memicu siklus Tekanan, over-supply memicu Surplus) menjadi kartu di tahap pertama dengan tautan `ews_alert_id`, tenggat dari SLA tahap pertama, ditugasi otomatis ke peran MANAJER_PROGRAM; idempoten, tidak menggandakan kartu yang sudah ada.
 - [x] **Eskalasi bila lewat SLA:** `INTERVENSI_SLA_INTERVAL` (bawaan mati) mengeskalasi kartu yang lebih lama di tahapnya daripada `sla_hari`.
+- [x] **Pemisahan tugas dan cakupan (17 Nov 2026):** `domain.ErrPemisahanTugas` dan `Persetujuan.MelibatkanPelaku` (pengaju atau pemutus langkah lain); `repository.Putus` memeriksa ulang di bawah kunci baris permintaan (tahan potret basi), dan penolakannya (usecase maupun transaksi) dicatat di audit `PUTUS_PERSETUJUAN` hasil `DITOLAK` (`sebab: pemisahan_tugas`). Cakupan wilayah `usecase/cakupan.go` memakai `harga/domain.CakupanPeran` dari `pengguna.peran` dan `kabupaten_kode` segar (`PembacaCakupan`): `Move`, `Ajukan`, `Putus`, dan `BulkAksi` untuk kartu di luar kabupaten pelaku bercakupan wilayah dijawab seperti tidak ada. Tes: unit (`cakupan_test.go`, `persetujuan_test.go`) dan integrasi (`cakupan_test.go`: wilayah, audit penolakan, `repo.Putus` langsung).
 - [x] Definisi alur sebagai data (tabel, bukan kode). Antarmuka mengubah alur: belum (lewat basis data).
 - [x] FE: referensi alur persetujuan (`GET /v1/intervensi/alur`) di panel "Alur persetujuan", lembar detail kartu, dan label gembok kolom.
 - [x] FE: antrean "Menunggu persetujuan" di `/intervensi` (rantai langkah, setujui/tolak dengan catatan), tombol "Ajukan persetujuan" saat drop ditolak karena izin.

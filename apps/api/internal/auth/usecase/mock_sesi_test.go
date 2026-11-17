@@ -47,3 +47,11 @@ func (m *mockRepository) TouchLastLogin(ctx context.Context, userID string, at t
 func (m *mockRepository) RetireFamilyTokensExcept(ctx context.Context, familyID, keepTokenHash string, now time.Time) error {
 	return m.Called(ctx, familyID, keepTokenHash, now).Error(0)
 }
+
+func (m *mockRepository) ListSessionHistory(ctx context.Context, userID string, f domain.RiwayatFilter, now time.Time) ([]domain.RiwayatSesi, error) {
+	args := m.Called(ctx, userID, f, now)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.RiwayatSesi), args.Error(1)
+}

@@ -58,7 +58,7 @@ func (m *mockWorkflow) Putus(ctx context.Context, in domain.PutusInput) (*domain
 
 func newWorkflowUseCase() (*UseCase, *mockRepository, *mockWorkflow, *audittest.Recorder) {
 	repo, wf, rec := new(mockRepository), new(mockWorkflow), &audittest.Recorder{}
-	return New(repo, wf, rec, logger.NewDefault()), repo, wf, rec
+	return New(repo, wf, stubCakupan{}, rec, logger.NewDefault()), repo, wf, rec
 }
 
 func strPtr(s string) *string { return &s }

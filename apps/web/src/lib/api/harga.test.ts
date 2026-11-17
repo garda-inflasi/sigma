@@ -168,7 +168,7 @@ describe("ringkasSebab", () => {
         { id: "b", sebab: "pemisahan_tugas" },
         { id: "c", sebab: "status_tidak_sesuai" },
       ]),
-      "2 status tidak sesuai, 1 dicatat oleh Anda sendiri",
+      "2 status tidak sesuai, 1 melanggar pemisahan tugas",
     );
   });
 

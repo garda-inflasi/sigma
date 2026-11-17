@@ -460,6 +460,41 @@ func TestBulkAction_NothingChangedIsNotAuditedOrRefreshed(t *testing.T) {
 	assert.Zero(t, refresh.triggers, "tanpa perubahan tidak perlu menyegarkan agregat")
 }
 
+func TestBulkAction_SeparationOfDutiesViolationIsAuditedAsDenied(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder, refresh := newTestUseCaseWithRefresher(repo)
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]domain.HasilTransisi{lewat(1, domain.SebabPemisahanTugas), lewat(2, domain.SebabStatus)}, nil)
+
+	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1, 2}, "validasi", "koordinator", "", domain.CakupanSemua())
+
+	require.NoError(t, err)
+	assert.Zero(t, hasil.Berhasil)
+	require.Len(t, recorder.Entries(), 1, "hanya pelanggaran pemisahan tugas yang dicatat, bukan status tak sesuai")
+	entry, _ := recorder.Last()
+	assert.Equal(t, "HARGA_VALIDASI", entry.Aksi)
+	assert.Equal(t, audit.HasilDitolak, entry.Hasil)
+	assert.Equal(t, "koordinator", entry.AktorID)
+	assert.Equal(t, map[string]any{"ids": []idx.ID{1}, "sebab": domain.SebabPemisahanTugas}, entry.Metadata)
+	assert.Zero(t, refresh.triggers, "tanpa perubahan tidak perlu menyegarkan agregat")
+}
+
+func TestBulkAction_PartialSeparationViolationAuditsDeniedAndSucceeded(t *testing.T) {
+	repo := new(mockRepository)
+	uc, recorder := newTestUseCase(repo)
+	repo.On("Transisi", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]domain.HasilTransisi{lolos(1), lewat(2, domain.SebabPemisahanTugas)}, nil)
+
+	hasil, err := uc.BulkAction(t.Context(), []idx.ID{1, 2}, "publikasi", "manajer", "", domain.CakupanSemua())
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, hasil.Berhasil)
+	entries := recorder.Entries()
+	require.Len(t, entries, 2)
+	assert.Equal(t, audit.HasilDitolak, entries[0].Hasil)
+	assert.Equal(t, audit.HasilBerhasil, entries[1].Hasil)
+}
+
 func TestBulkAction_RefreshesDashboardWhenRowsChanged(t *testing.T) {
 	repo := new(mockRepository)
 	uc, _, refresh := newTestUseCaseWithRefresher(repo)

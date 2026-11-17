@@ -1,15 +1,68 @@
 # Garda Inflasi
 
-Platform pengendalian inflasi daerah. Monorepo:
+Platform pengendalian inflasi daerah (Aceh): data harga pangan dari lapangan dan sumber resmi dikumpulkan,
+divalidasi, dianalisis (peringatan dini, prediksi dengan penjelasan faktor, peta surplus–defisit), lalu
+diterjemahkan menjadi intervensi dan policy brief. Arsitektur lengkap: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-| Lokasi          | Isi                                                                                      |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `apps/api`      | API Go (Gin + GORM, hexagonal per modul). Lihat [apps/api/README.md](apps/api/README.md) |
-| `apps/web`      | Web Next.js 16 (BFF + UI)                                                                |
-| `db/migrations` | Migrasi goose (PostgreSQL), satu-satunya sumber kebenaran skema                          |
-| `docs/todos`    | Rencana kerja per fitur; mulai dari [00-cara-kerja.md](docs/todos/00-cara-kerja.md)      |
+## Ringkasan platform
 
-Prasyarat: Go (versi di `apps/api/go.mod`), Node + pnpm, Docker.
+| Lapis | Isi | Modul |
+| --- | --- | --- |
+| 1 Data | Aplikasi lapangan (PWA offline-first), validasi harga bertahap, master data, sumber data eksternal | `lapangan`, `harga`, `master`, `sumber-data`, `ingestion` |
+| 2 Analitik | Peringatan dini (rule engine + SSE), prediksi dan XAI (retraining terjadwal), peta spasial 23 kabupaten/kota, cold storage dan telemetri suhu | `ews`, `prediksi`, `spasial`, `cold-storage` |
+| 3 Keputusan | Dashboard operasional dan eksekutif, policy brief, KPI | `dashboard`, `eksekutif`, `policy-brief`, `kpi`, `siklus` |
+| 4 Tindakan | Intervensi (kanban 3 siklus) dengan persetujuan berjenjang | `intervensi` |
+| Tata kelola | Autentikasi (MFA, SSO Google, sesi), RBAC berbasis basis data, audit trail berantai hash, profil dan riwayat aktivitas akun | `auth`, `audit` |
+
+Prinsip keamanan yang ditegakkan di API Go (bukan hanya UI): izin granular `domain.aksi` dari basis data,
+**cakupan baris** per peran (Koordinator dan Agregator hanya kabupatennya, Mahasiswa hanya entrinya sendiri),
+**pemisahan tugas** (pencatat, validator, dan penerbit harga tiga orang berbeda; pengaju persetujuan intervensi tidak boleh
+memutusnya; Admin Sistem tanpa hak persetujuan bisnis), MFA, dan jejak audit append-only.
+
+## Isi repositori
+
+| Lokasi | Isi |
+| --- | --- |
+| `apps/api` | API Go (Gin + GORM, hexagonal per modul) dengan empat biner di `cmd/`: `api`, `worker`, `migrate`, `seed` (serta `gardactl`). Lihat [apps/api/README.md](apps/api/README.md) |
+| `apps/web` | Web Next.js 16: konsol (`app/(console)`), aplikasi lapangan PWA (`app/lapangan`), dan BFF (`app/api`) |
+| `apps/ml` | Layanan ML Python (pustaka standar saja): peramalan harga, backtest, faktor XAI. HTTP internal `/health`, `/train`, `/predict` |
+| `db/migrations` | Migrasi goose (PostgreSQL), satu-satunya sumber kebenaran skema |
+| `db/seeds` | Seeder SQL-first: `reference/` (aman di produksi), `admin/`, `demo/` (ditolak bila `APP_ENV=production`) |
+| `packages/contracts` | Kontrak OpenAPI (`openapi.yaml`, sumber tunggal) dan kontrak bersama API-web |
+| `docker`, `compose*.yaml` | Image (api, web, ml, caddy), stack infra, aplikasi, dan produksi |
+| `scripts` | Build, deploy, rollback, backup |
+| `docs/todos` | Rencana kerja per fitur; mulai dari [00-cara-kerja.md](docs/todos/00-cara-kerja.md) |
+
+## Prasyarat
+
+| Kebutuhan | Versi / catatan |
+| --- | --- |
+| Go | Sesuai `apps/api/go.mod` (juga `go.work` di akar) |
+| Node.js + pnpm | Node LTS terkini; pnpm lewat `corepack enable` |
+| Docker | Untuk PostgreSQL, Redis, demo penuh, dan **tes integrasi Go** (dockertest) |
+| Python | 3.11+ untuk layanan ML lokal dan `make test/ml` (tanpa dependensi pihak ketiga) |
+| `make` | Semua perintah di bawah memakai Makefile |
+
+## Konfigurasi environment
+
+`make setup/env` menyalin [env.example](env.example) ke `.env` (akar) dan `apps/web/.env.local`. Variabel yang paling
+sering disentuh (daftar lengkap beserta penjelasan ada di `env.example`):
+
+| Variabel | Fungsi |
+| --- | --- |
+| `APP_ENV` | `production` mengaktifkan cookie `Secure`, penegakan MFA, dan menolak seed demo |
+| `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | Koneksi PostgreSQL (atau `DATABASE_URL`) |
+| `REDIS_URL` | Cache, batas laju, pub/sub SSE EWS |
+| `JWT_SECRET`, `AES_KEY` | Penandatanganan token dan enkripsi rahasia MFA (wajib kuat di produksi) |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Akun admin awal (`make db/seed/admin`, wajib ganti sandi saat masuk pertama) |
+| `ML_SERVICE_URL` | Alamat layanan ML; kosong = pelatihan model menjawab 503, data demo tetap tampil |
+| `INGEST_SCHEDULER`, `BPS_API_KEY` | Penjadwal ingestion sumber data (PIHPS, BMKG, BPS, Bapanas, OpenWeather) |
+| `EWS_EVAL_INTERVAL`, `INTERVENSI_*` | Evaluasi EWS, kartu intervensi otomatis, eskalasi SLA |
+| `JOB_*_INTERVAL` | Interval job worker (lihat bagian Worker) |
+| `SMTP_*`, `VAPID_*` | Email dan Web Push |
+| `ANTHROPIC_API_KEY`, `LLM_MODEL` | Generator policy brief; tanpa kunci memakai templat |
+| `SSO_GOOGLE_*`, `MFA_ENFORCE` | SSO Google dan penegakan MFA |
+| `NEXT_PUBLIC_API_BASE_URL`, `GO_API_BASE_URL` | Web: `/api` agar tampil dari API (kosong = mode mock); tujuan proxy dev |
 
 ## Alur lokal (pengembangan)
 
@@ -23,6 +76,18 @@ make db/seed/demo         # data demo (akun, histori, dst.)
 make dev/api              # terminal 1: API di :8080
 make dev/web              # terminal 2: web di :3000
 ```
+
+Komponen tambahan (opsional, perlu bila fiturnya diuji):
+
+```bash
+cd apps/api && go run ./cmd/worker   # job terjadwal: KPI, dashboard, siklus, audit, pembersihan auth, retraining
+cd apps/ml && python3 -m garda_ml    # layanan ML di :8000, lalu set ML_SERVICE_URL=http://localhost:8000
+make ctl/ingest ARGS="daftar"        # utilitas CLI ingestion sumber data
+```
+
+**Worker** menjalankan job berinterval: `dashboard_refresh`, `kpi_hitung`, `siklus_evaluasi`, `audit_partisi`,
+`audit_verifikasi` (rantai hash), `auth_pembersihan`, `prediksi_retraining` (retraining model dengan gerbang MAPE
+terhadap baseline), serta penjadwal ingestion bila `INGEST_SCHEDULER` aktif. Interval diatur variabel `JOB_*_INTERVAL`.
 
 Login dengan akun demo, mis. `superadmin@gardainflasi.id`, kata sandi `Garda2024!`.
 
@@ -97,7 +162,7 @@ go -C apps/api test ./... -count=1     # butuh Docker (dockertest); tambah -shor
 make test/api/integration              # hanya paket integrasi
 pnpm -C apps/web typecheck
 pnpm -C apps/web test
-make test/ml
+make test/ml                           # unit Python layanan ML
 make test/e2e                          # Playwright terhadap stack demo yang sedang berjalan
 ```
 

@@ -1,11 +1,13 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Camera, Check, MapPin, MapPinOff, TriangleAlert, X } from "lucide-react";
+import { Check, TriangleAlert, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, type GroupBy } from "@/components/data-table/data-table";
+import { ActivityTimeline, ChecklistProgress, InspectorSection, MetaGrid, MetaItem, type TimelineEntry } from "@/components/garda/inspector";
+import { Stagger, StaggerItem } from "@/components/garda/page-enter";
 import { PageHeader } from "@/components/garda/page-header";
 import { STATUS_ENTRI, StatusBadge } from "@/components/garda/status-badge";
 import { CountUp } from "@/components/motion/count-up";
@@ -13,6 +15,7 @@ import type { EntriHarga, StatusEntri } from "@/lib/data/types";
 import { toneClass } from "@/lib/design/tokens";
 import { formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
 import { fadeUp, stagger } from "@/lib/motion/presets";
+import { Camera, MapPin, MapPinOff } from "lucide-react";
 import type { HargaParams } from "@/lib/api/harga";
 import { MODE_MOCK } from "@/lib/api/client";
 import { useDetailHarga, useEntriHarga, useRingkasanHarga, useRiwayatStatus } from "@/lib/query/hooks";
@@ -61,13 +64,13 @@ function BuktiOtomatis({ id }: { id: string }) {
       {data.bendera.length > 0 ? (
         <ul className="space-y-1.5">
           {data.bendera.map((b) => (
-            <li key={b.kode} className="flex items-start gap-2 rounded-xl bg-waspada-soft px-3 py-2 text-sm text-waspada-ink">
+            <li key={b.kode} className="flex items-start gap-2 rounded-md bg-waspada-soft px-3 py-2 text-[13px] text-waspada-ink">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />{b.label}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="rounded-xl bg-normal-soft px-3 py-2 text-sm text-normal-ink">Lolos semua cek otomatis.</p>
+        <p className="rounded-md bg-normal-soft px-3 py-2 text-[13px] text-normal-ink">Lolos semua cek otomatis.</p>
       )}
       {data.lat !== undefined && data.lng !== undefined && (
         <p className="text-xs text-muted-foreground">
@@ -81,27 +84,28 @@ function BuktiOtomatis({ id }: { id: string }) {
   );
 }
 
-/** Timeline perpindahan status dari server: siapa, kapan, dan alasannya. */
+/** Linimasa perpindahan status dari server: siapa, kapan, dan alasannya. */
 function RiwayatEntri({ id }: { id: string }) {
   const { data, isLoading } = useRiwayatStatus(id);
-  if (isLoading) return <p className="text-sm text-muted-foreground">Memuat riwayat</p>;
-  if (!data?.length) return <p className="text-sm text-muted-foreground">Belum ada riwayat status.</p>;
-  return (
-    <ol className="relative space-y-4 pl-7">
-      <span className="absolute top-2 bottom-2 left-[9px] w-0.5 bg-border" />
-      {data.map((h, i) => (
-        <li key={`${h.ke}-${h.waktu}-${i}`} className="relative">
-          <span className={cn("absolute top-0.5 -left-7 grid size-5 place-items-center rounded-full text-white", h.ke === "DITOLAK" ? toneClass.defisit.bg : toneClass.data.bg)}>
-            {h.ke === "DITOLAK" ? <X className="size-3" /> : <Check className="size-3" />}
-          </span>
-          <p className="text-sm font-medium">{STATUS_ENTRI[h.ke].label}</p>
-          <p className="text-xs text-muted-foreground">{h.olehNama ?? "Sistem"}, {formatTanggal(h.waktu, "d MMM HH.mm")}</p>
-          {h.alasan && <p className="mt-1 text-xs">{h.alasan}</p>}
-        </li>
-      ))}
-    </ol>
-  );
+  if (isLoading) return <p className="text-[13px] text-muted-foreground">Memuat riwayat</p>;
+  const entries: TimelineEntry[] = (data ?? []).map((h, i) => ({
+    id: `${h.ke}-${h.waktu}-${i}`,
+    title: STATUS_ENTRI[h.ke].label,
+    meta: `${h.olehNama ?? "Sistem"}, ${formatTanggal(h.waktu, "d MMM HH.mm")}`,
+    note: h.alasan ?? undefined,
+    tone: h.ke === "DITOLAK" ? "defisit" : "data",
+  }));
+  return <ActivityTimeline entries={entries} empty="Belum ada riwayat status." />;
 }
+
+/** Urutan tampil grup status: yang butuh tindakan lebih dulu. */
+const URUTAN_GRUP: StatusEntri[] = ["DIAJUKAN", "DIVALIDASI", "DRAF", "DITOLAK", "DIPUBLIKASI"];
+const GRUP_STATUS: GroupBy<EntriHarga> = {
+  key: (r) => r.status,
+  order: URUTAN_GRUP,
+  label: (k) => STATUS_ENTRI[k]?.label ?? k,
+  tone: (k) => STATUS_ENTRI[k]?.tone,
+};
 
 export function HargaPage() {
   const params = useSearchParams();
@@ -113,22 +117,24 @@ export function HargaPage() {
   const actions = useHargaBulkActions(qk.harga.list(query));
   const [detail, setDetail] = useState<EntriHarga | null>(null);
 
+  const alur = ALUR.map((st) => ({ id: st, label: STATUS_ENTRI[st].label, done: detail ? (detail.status === "DITOLAK" ? st === "DRAF" || st === "DIAJUKAN" : ALUR.indexOf(st) <= ALUR.indexOf(detail.status)) : false }));
+
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
-      <PageHeader title="Validasi harga" description="Ringkasan menghitung tujuh hari terakhir. Entri lapangan mengalir dari draf, pengecekan otomatis, validasi koordinator, hingga publikasi. Centang beberapa baris untuk memproses sekaligus; Shift + klik untuk memilih rentang." />
-      <motion.div variants={stagger(0.06)} initial="hidden" animate="show" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="space-y-5">
+      <PageHeader title="Validasi harga" description="Ringkasan menghitung tujuh hari terakhir. Entri dikelompokkan per status; centang beberapa baris untuk memproses sekaligus (Shift + klik untuk rentang), atau klik baris untuk membuka rincian." />
+      <Stagger className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "Menunggu validasi", v: ringkasan?.diajukan ?? 0, tone: "waspada" as const },
           { label: "Divalidasi", v: ringkasan?.divalidasi ?? 0, tone: "data" as const },
           { label: "Dipublikasi", v: ringkasan?.dipublikasi ?? 0, tone: "normal" as const },
           { label: "Deviasi > 25%", v: ringkasan?.anomali ?? 0, tone: "defisit" as const },
         ].map((k) => (
-          <motion.div key={k.label} variants={fadeUp} className="glass rounded-xl p-4">
+          <StaggerItem key={k.label} className="glass rounded-lg p-4">
             <p className="flex items-center gap-2 text-xs text-muted-foreground"><span className={cn("size-1.5 rounded-full", toneClass[k.tone].dot)} />{k.label}</p>
-            <CountUp value={k.v} className="mt-2 block text-2xl font-semibold" />
-          </motion.div>
+            <CountUp value={k.v} className="mt-1.5 block text-2xl font-semibold tracking-tight" />
+          </StaggerItem>
         ))}
-      </motion.div>
+      </Stagger>
       <DataTable
         data={data}
         isLoading={isLoading}
@@ -141,38 +147,48 @@ export function HargaPage() {
         initialSorting={[{ id: "dicatatPada", desc: true }]}
         searchPlaceholder="Cari komoditas, pasar, wilayah, atau petugas"
         rowTone={(r) => (Math.abs(r.deviasiPct) > 25 ? "defisit" : Math.abs(r.deviasiPct) > 10 ? "waspada" : undefined)}
+        groupBy={GRUP_STATUS}
         onRowClick={setDetail}
       />
       <Sheet open={!!detail} onOpenChange={(o: boolean) => !o && setDetail(null)}>
-        <SheetContent className="glass-strong w-full overflow-y-auto border-0 sm:max-w-md">
+        <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-[480px]">
           {detail && (
             <>
-              <SheetHeader>
-                <SheetTitle>{detail.komoditasNama}</SheetTitle>
-                <SheetDescription>{detail.pasarNama}, {detail.wilayah}</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-5 px-4 pb-6">
-                <div className="flex items-end justify-between">
-                  <div>
-                    <p className="num text-3xl font-semibold">{formatRupiah(detail.harga)}<span className="text-base font-normal text-muted-foreground">/{detail.satuan}</span></p>
-                    <p className="text-sm text-muted-foreground">Deviasi <span className="num">{formatPersen(detail.deviasiPct, { signed: true })}</span> dari median 7 hari</p>
-                  </div>
+              <SheetHeader className="gap-1 border-b border-border p-5 pr-12">
+                <div className="flex items-center gap-2.5">
+                  <SheetTitle className="text-base">{detail.komoditasNama}</SheetTitle>
                   <StatusBadge tone={STATUS_ENTRI[detail.status].tone}>{STATUS_ENTRI[detail.status].label}</StatusBadge>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5"><Camera className="size-4 text-muted-foreground" /><p className="mt-1">{detail.adaFoto ? "Foto terlampir" : "Tanpa foto"}</p></div>
-                  <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5">{detail.dalamGeofence ? <MapPin className="size-4 text-normal" /> : <MapPinOff className="size-4 text-waspada" />}<p className="mt-1">{detail.dalamGeofence ? "Dalam geofence" : "Di luar geofence"}</p></div>
-                </div>
-                {!MODE_MOCK && <BuktiOtomatis id={detail.id} />}
+                <SheetDescription>{detail.pasarNama}, {detail.wilayah}</SheetDescription>
+                <p className="num pt-1 text-2xl font-semibold tracking-tight">{formatRupiah(detail.harga)}<span className="text-sm font-normal text-muted-foreground">/{detail.satuan}</span></p>
+              </SheetHeader>
+              <InspectorSection title="Rincian">
+                <MetaGrid>
+                  <MetaItem label="Deviasi (median 7 hari)"><span className="num">{formatPersen(detail.deviasiPct, { signed: true })}</span></MetaItem>
+                  <MetaItem label="Petugas">{detail.petugasNama}</MetaItem>
+                  <MetaItem label="Dicatat"><span className="num">{formatTanggal(detail.dicatatPada, "d MMM yyyy, HH.mm")}</span></MetaItem>
+                  <MetaItem label="Kualitas / tipe">{detail.kualitas} · {detail.tipe}</MetaItem>
+                  <MetaItem label="Foto"><span className="inline-flex items-center gap-1.5"><Camera className="size-3.5 text-muted-foreground" strokeWidth={1.75} />{detail.adaFoto ? "Terlampir" : "Tanpa foto"}</span></MetaItem>
+                  <MetaItem label="Lokasi">{detail.dalamGeofence ? <span className="inline-flex items-center gap-1.5"><MapPin className="size-3.5 text-normal-ink" strokeWidth={1.75} />Dalam geofence</span> : <span className="inline-flex items-center gap-1.5"><MapPinOff className="size-3.5 text-waspada-ink" strokeWidth={1.75} />Di luar geofence</span>}</MetaItem>
+                </MetaGrid>
                 {detail.alasanPenolakan && (
-                  <p className="rounded-xl bg-defisit-soft p-3 text-sm text-defisit-ink"><span className="font-medium">Alasan penolakan:</span> {detail.alasanPenolakan}</p>
+                  <p className="rounded-md bg-defisit-soft p-3 text-[13px] text-defisit-ink"><span className="font-medium">Alasan penolakan:</span> {detail.alasanPenolakan}</p>
                 )}
-                <div>
-                  <p className="mb-3 text-sm font-medium">Alur entri</p>
-                  {MODE_MOCK ? <AlurEntri e={detail} /> : <RiwayatEntri id={detail.id} />}
-                </div>
+              </InspectorSection>
+              <InspectorSection title="Progres alur">
+                <ChecklistProgress label="Progres alur entri" items={alur} />
+              </InspectorSection>
+              {!MODE_MOCK && (
+                <InspectorSection title="Cek otomatis">
+                  <BuktiOtomatis id={detail.id} />
+                </InspectorSection>
+              )}
+              <InspectorSection title="Aktivitas">
+                {MODE_MOCK ? <AlurEntri e={detail} /> : <RiwayatEntri id={detail.id} />}
+              </InspectorSection>
+              <InspectorSection title="Asal data">
                 <LineageEntri id={detail.id} />
-              </div>
+              </InspectorSection>
             </>
           )}
         </SheetContent>

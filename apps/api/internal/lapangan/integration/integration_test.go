@@ -68,7 +68,7 @@ func sharedSuite(t *testing.T) *suite {
 		// ikut disemai (SeedDemo penuh juga mengisi pedagang, EWS, prediksi, dan seterusnya yang tidak dipakai tes ini).
 		require.NoError(t, seed.SeedFiles(t.Context(), db,
 			"reference/01_master.sql", "reference/02_kecamatan.sql", "reference/03_auth_rbac.sql", "demo/01_auth_users.sql",
-			"demo/08_lapangan_tugas.sql", "demo/03_harga_harian.sql"))
+			"demo/08_lapangan_tugas.sql", "demo/03_harga_harian.sql", "reference/15_kode_etik.sql"))
 
 		tokens, log := token.NewManager(jwtSecret), logger.NewDefault()
 		router := gin.New()
@@ -273,12 +273,28 @@ func TestBulk_TandaiSelesai(t *testing.T) {
 
 func TestBulk_ManagerClosesOthersTask(t *testing.T) {
 	s := sharedSuite(t)
+	// Koordinator (kabupaten 1171) menutup tugas di pasar kabupatennya milik petugas lain (02-B).
+	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE kode = 'TGS-agregator_data-2'").Error)
+
+	w := s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", emailKoordinator, map[string]any{"action": "tandai_selesai", "ids": []string{"TGS-agregator_data-2"}})
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, w))
+}
+
+// Tugas di pasar luar kabupaten koordinator (mahasiswa_3 di Pidie, 1107) tidak terjangkau walau targetnya terpenuhi:
+// dilaporkan gagal seperti tugas yang tidak ada, dan tidak berubah.
+func TestBulk_ManagerCannotCloseTaskOutsideKabupaten(t *testing.T) {
+	s := sharedSuite(t)
 	require.NoError(t, s.db.Exec("UPDATE tugas_lapangan SET jumlah_selesai = target WHERE kode = 'TGS-mahasiswa_3-2'").Error)
 
 	w := s.call(t, http.MethodPost, "/v1/lapangan/tugas/bulk", emailKoordinator, map[string]any{"action": "tandai_selesai", "ids": []string{"TGS-mahasiswa_3-2"}})
 
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Equal(t, hasilBulk{Berhasil: 1}, data[hasilBulk](t, w))
+	assert.Equal(t, hasilBulk{Gagal: 1}, data[hasilBulk](t, w))
+	var status string
+	require.NoError(t, s.db.Raw("SELECT status::text FROM tugas_lapangan WHERE kode = 'TGS-mahasiswa_3-2'").Scan(&status).Error)
+	assert.NotEqual(t, "SELESAI", status)
 }
 
 func TestBulk_UnduhDataAcuanCountsAccessibleTasks(t *testing.T) {

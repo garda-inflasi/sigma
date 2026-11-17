@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/garda-inflasi/api/internal/auth/domain"
@@ -76,6 +77,71 @@ func (r *Repository) ListActiveRefreshTokens(ctx context.Context, userID string,
 		return nil, fmt.Errorf("daftar sesi aktif: %w", err)
 	}
 	return rows, nil
+}
+
+// ListSessionHistory mengelompokkan refresh_tokens milik pengguna per sesi (family_id). Sesi aktif bila ada token
+// yang belum dicabut dan belum kedaluwarsa. Selain itu DICABUT bila ada token yang dicabut tanpa rotasi
+// (rotated_at kosong: keluar, pencabutan, atau pemakaian ulang token), dan KEDALUWARSA bila hanya masa berlakunya
+// yang habis. Pencarian memakai idx_rt_user; status dan cursor disaring di HAVING setelah pengelompokan, dan
+// semua nilai terparameter (fragmen SQL yang disambung berasal dari konstanta, bukan masukan).
+func (r *Repository) ListSessionHistory(ctx context.Context, userID string, f domain.RiwayatFilter, now time.Time) ([]domain.RiwayatSesi, error) {
+	query := `SELECT family_id::text AS id,
+		MIN(session_started_at) AS mulai_pada,
+		MAX(last_used_at) AS terakhir_dipakai_pada,
+		(ARRAY_AGG(ip ORDER BY created_at, id))[1] AS ip,
+		(ARRAY_AGG(user_agent ORDER BY created_at, id))[1] AS user_agent,
+		BOOL_OR(revoked_at IS NULL AND expires_at > @now) AS aktif,
+		MAX(revoked_at) FILTER (WHERE rotated_at IS NULL) AS dicabut_pada,
+		MAX(expires_at) AS kedaluwarsa_pada
+	FROM refresh_tokens WHERE user_id = @user GROUP BY family_id`
+	args := map[string]any{"now": now, "user": userID, "limit": f.Limit}
+	var having []string
+	switch f.Status {
+	case domain.RiwayatAktif:
+		having = append(having, "BOOL_OR(revoked_at IS NULL AND expires_at > @now)")
+	case domain.RiwayatBerakhir:
+		having = append(having, "NOT BOOL_OR(revoked_at IS NULL AND expires_at > @now)")
+	}
+	if f.After != nil {
+		having = append(having, "(MIN(session_started_at), family_id) < (@after_mulai, CAST(@after_id AS uuid))")
+		args["after_mulai"], args["after_id"] = f.After.MulaiPada, f.After.ID
+	}
+	if len(having) > 0 {
+		query += " HAVING " + strings.Join(having, " AND ")
+	}
+	query += " ORDER BY MIN(session_started_at) DESC, family_id DESC LIMIT @limit"
+
+	var rows []struct {
+		ID                  string     `gorm:"column:id"`
+		MulaiPada           time.Time  `gorm:"column:mulai_pada"`
+		TerakhirDipakaiPada time.Time  `gorm:"column:terakhir_dipakai_pada"`
+		IP                  *string    `gorm:"column:ip"`
+		UserAgent           *string    `gorm:"column:user_agent"`
+		Aktif               bool       `gorm:"column:aktif"`
+		DicabutPada         *time.Time `gorm:"column:dicabut_pada"`
+		KedaluwarsaPada     time.Time  `gorm:"column:kedaluwarsa_pada"`
+	}
+	if err := r.db.WithContext(ctx).Raw(query, args).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("riwayat sesi: %w", err)
+	}
+	out := make([]domain.RiwayatSesi, len(rows))
+	for i, row := range rows {
+		item := domain.RiwayatSesi{
+			ID: row.ID, MulaiPada: row.MulaiPada, TerakhirDipakaiPada: row.TerakhirDipakaiPada,
+			IP: row.IP, UserAgent: row.UserAgent, Status: domain.SesiAktif,
+		}
+		switch {
+		case row.Aktif:
+		case row.DicabutPada != nil:
+			item.Status, item.BerakhirPada = domain.SesiDicabut, row.DicabutPada
+		default:
+			item.Status = domain.SesiKedaluwarsa
+			kedaluwarsa := row.KedaluwarsaPada
+			item.BerakhirPada = &kedaluwarsa
+		}
+		out[i] = item
+	}
+	return out, nil
 }
 
 // ── Pencabutan ────────────────────────────────────────────────────────

@@ -18,6 +18,9 @@ const (
 	// DefaultLimit dan MaxLimit membatasi ukuran satu halaman daftar audit.
 	DefaultLimit = 50
 	MaxLimit     = 200
+	// DefaultLimitSaya dan MaxLimitSaya membatasi satu halaman riwayat aktivitas akun sendiri.
+	DefaultLimitSaya = 20
+	MaxLimitSaya     = 100
 )
 
 const (
@@ -117,15 +120,19 @@ type Query struct {
 // pribadinya saat disajikan (domain.SamarkanBaris): baris lama yang tersimpan dengan nomor telepon utuh tidak tampil
 // utuh. Data di basis data dan hash rantai tidak berubah.
 func (uc *UseCase) List(ctx context.Context, q Query) (domain.Page, error) {
-	limit := q.Limit
+	return uc.listPage(ctx, q.Filter, q.Limit, q.Cursor, DefaultLimit, MaxLimit)
+}
+
+// listPage membaca satu halaman dengan paginasi cursor; limit dijepit ke 1..maks (bawaan bila kurang dari 1).
+func (uc *UseCase) listPage(ctx context.Context, filter domain.Filter, limit int, rawCursor string, bawaan, maks int) (domain.Page, error) {
 	if limit < 1 {
-		limit = DefaultLimit
+		limit = bawaan
 	}
-	limit = min(limit, MaxLimit)
+	limit = min(limit, maks)
 
 	var after *domain.Cursor
-	if q.Cursor != "" {
-		cursor, err := decodeCursor(q.Cursor)
+	if rawCursor != "" {
+		cursor, err := decodeCursor(rawCursor)
 		if err != nil {
 			return domain.Page{}, err
 		}
@@ -133,7 +140,7 @@ func (uc *UseCase) List(ctx context.Context, q Query) (domain.Page, error) {
 	}
 
 	// Satu baris ekstra menunjukkan masih ada halaman berikutnya.
-	items, err := uc.repo.List(ctx, q.Filter, after, limit+1)
+	items, err := uc.repo.List(ctx, filter, after, limit+1)
 	if err != nil {
 		return domain.Page{}, err
 	}
@@ -143,6 +150,77 @@ func (uc *UseCase) List(ctx context.Context, q Query) (domain.Page, error) {
 	items = items[:limit]
 	last := items[len(items)-1]
 	return domain.Page{Items: samarkanBaris(items), NextCursor: encodeCursor(domain.Cursor{Waktu: last.Waktu, ID: last.ID})}, nil
+}
+
+// AktivitasSaya adalah satu baris riwayat aktivitas akun, disajikan kepada pemiliknya sendiri. Sengaja sempit:
+// tanpa snapshot sebelum/sesudah, metadata, atau correlation id, dan tanpa identitas pelaku lain (hanya
+// perannya), karena baris sasaran dibuat oleh orang lain.
+type AktivitasSaya struct {
+	ID        idx.ID
+	Waktu     time.Time
+	Aksi      string
+	Entitas   string
+	EntitasID string
+	Hasil     string
+	Sebagai   domain.Sebagai
+	// IP dan UserAgent hanya terisi pada baris pelaku: itu perangkat pemiliknya sendiri.
+	IP        *string
+	UserAgent *string
+	// OlehPeran adalah peran pelaku pada baris sasaran.
+	OlehPeran *string
+}
+
+// HalamanAktivitas adalah satu halaman riwayat aktivitas; NextCursor kosong berarti halaman terakhir.
+type HalamanAktivitas struct {
+	Items      []AktivitasSaya
+	NextCursor string
+}
+
+// QuerySaya adalah kriteria riwayat aktivitas milik pengguna yang sedang masuk. Filter.PenggunaID dan
+// Filter.Sebagai diisi usecase; isi dari pemanggil diabaikan, jadi riwayat akun lain tidak bisa diminta.
+type QuerySaya struct {
+	Filter  domain.Filter
+	Sebagai domain.Sebagai
+	Limit   int
+	Cursor  string
+}
+
+// ErrSebagaiTidakValid dikembalikan bila Sebagai bukan pelaku, sasaran, atau semua.
+var ErrSebagaiTidakValid = errors.New("nilai sebagai tidak valid")
+
+// ListSaya mengembalikan riwayat aktivitas akun penggunaID (aksi yang ia lakukan dan aksi orang lain terhadap
+// akunnya), terbaru lebih dulu. Cakupan dikunci ke penggunaID, yang berasal dari token, bukan dari masukan.
+func (uc *UseCase) ListSaya(ctx context.Context, penggunaID string, q QuerySaya) (HalamanAktivitas, error) {
+	if !q.Sebagai.Sah() {
+		return HalamanAktivitas{}, ErrSebagaiTidakValid
+	}
+	filter := q.Filter
+	// Filter akun lain tidak boleh melonggarkan cakupan.
+	filter.Aktor, filter.Peran, filter.CorrelationID, filter.Q = "", "", "", ""
+	filter.PenggunaID, filter.Sebagai = penggunaID, q.Sebagai
+	if filter.Sebagai == "" {
+		filter.Sebagai = domain.SebagaiSemua
+	}
+	// Entitas dan id entitas mengikuti filter pemanggil, tetapi tetap di dalam cakupan di atas.
+	halaman, err := uc.listPage(ctx, filter, q.Limit, q.Cursor, DefaultLimitSaya, MaxLimitSaya)
+	if err != nil {
+		return HalamanAktivitas{}, err
+	}
+	out := HalamanAktivitas{Items: make([]AktivitasSaya, len(halaman.Items)), NextCursor: halaman.NextCursor}
+	for i, row := range halaman.Items {
+		out.Items[i] = keAktivitasSaya(row, penggunaID)
+	}
+	return out, nil
+}
+
+func keAktivitasSaya(row domain.AuditLog, penggunaID string) AktivitasSaya {
+	a := AktivitasSaya{ID: row.ID, Waktu: row.Waktu, Aksi: row.Aksi, Entitas: row.Entitas, EntitasID: row.EntitasID, Hasil: row.Hasil, Sebagai: domain.SebagaiPelaku}
+	if row.AktorID != nil && *row.AktorID == penggunaID {
+		a.IP, a.UserAgent = row.IP, row.UserAgent
+		return a
+	}
+	a.Sebagai, a.OlehPeran = domain.SebagaiSasaran, row.AktorPeran
+	return a
 }
 
 // samarkanBaris menyamarkan data pribadi pada setiap baris (salinan; masukan tidak diubah).

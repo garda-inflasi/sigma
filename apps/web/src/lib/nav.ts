@@ -228,3 +228,16 @@ export function judulHalaman(pathname: string, items = NAV_FLAT): string {
   );
   return lain?.label ?? JUDUL_BAWAAN;
 }
+
+/**
+ * Remah roti untuk topbar: [grup, halaman] dari NAV (mis. ["Data", "Validasi harga"]). Halaman di luar NAV
+ * (profil, akses ditolak) hanya punya satu remah. Tidak pernah kosong.
+ */
+export function remahRoti(pathname: string, items = NAV): string[] {
+  const aktif = activeNav(pathname, items.flatMap((g) => g.items));
+  if (aktif) {
+    const grup = items.find((g) => g.items.includes(aktif))?.grup;
+    return grup ? [grup, aktif.label] : [aktif.label];
+  }
+  return [judulHalaman(pathname)];
+}

@@ -77,7 +77,9 @@ var kategoriPK = map[string]KategoriPK{
 	"intervensi_persetujuan": PKBigint,
 	"stok_cold_storage":      PKBigint,
 	"transaksi_stok":         PKBigint,
-	"telemetri_suhu":         PKBigint,
+	"telemetri_suhu":         PKBigintPartisi, // PARTITION BY RANGE (waktu), PK (waktu, id) (000127)
+	"lampiran_entri":         PKBigint,
+	"persetujuan_kode_etik":  PKBigint,
 	"kandidat_cold_storage":  PKBigint,
 	"optimasi_rute":          PKBigint,
 	"rute_distribusi":        PKBigint,
@@ -113,6 +115,7 @@ var kategoriPK = map[string]KategoriPK{
 	"permissions":      PKKode,
 	"roles":            PKKode,
 	"kpi_definisi":     PKKode,
+	"kode_etik":        PKKode, // versi kode etik pencacah (000126)
 	"alur_persetujuan": PKKode,
 	"target_inflasi":   PKKode, // satu baris per tahun anggaran
 	"pengguna_id_lama": PKKode, // 1:1 dengan pengguna (pemetaan ID lama untuk rollback 000110)

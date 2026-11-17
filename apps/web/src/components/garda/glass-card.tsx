@@ -15,7 +15,7 @@ export interface GlassCardProps extends HTMLMotionProps<"div"> {
 }
 
 const levelClass: Record<Level, string> = { subtle: "glass-subtle", base: "glass", strong: "glass-strong" };
-const radiusClass = { "2xl": "rounded-xl", "3xl": "rounded-xl", "4xl": "rounded-xl" };
+const radiusClass = { "2xl": "rounded-lg", "3xl": "rounded-lg", "4xl": "rounded-lg" };
 
 export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(function GlassCard(
   { level = "base", interactive = false, radius = "2xl", className, ...props },
@@ -28,7 +28,7 @@ export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(function Gla
         levelClass[level],
         radiusClass[radius],
         "relative",
-        interactive && "cursor-pointer transition-shadow duration-300 hover:shadow-lift",
+        interactive && "cursor-pointer transition-[box-shadow,border-color] duration-200 hover:border-navy-300 hover:shadow-lift",
         className,
       )}
       {...(interactive ? hoverLift : {})}

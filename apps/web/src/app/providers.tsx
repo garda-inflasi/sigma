@@ -34,14 +34,16 @@ export function Providers({ user, children }: { user: SessionUser | null; childr
               <PenyegarIzin />
               <DialogKeluar />
               <Toaster
-                position="top-right"
-                gap={10}
+                position="bottom-right"
+                gap={8}
                 offset={20}
                 toastOptions={{
                   classNames: {
-                    toast: "!glass-strong !rounded-xl !border-0 !font-sans",
-                    title: "!font-display !font-semibold",
+                    toast: "!glass-strong !rounded-lg !font-sans !text-[13px]",
+                    title: "!font-medium",
                     description: "!text-muted-foreground",
+                    actionButton: "!rounded-md !bg-primary !text-primary-foreground",
+                    cancelButton: "!rounded-md !bg-secondary !text-foreground",
                   },
                 }}
               />

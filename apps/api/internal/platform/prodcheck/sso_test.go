@@ -26,7 +26,7 @@ func TestSSOKonfigurasiLengkapSah(t *testing.T) {
 
 	kv := ssoEnv()
 	kv["SSO_GOOGLE_ISSUER"] = "https://accounts.google.com"
-	kv["SSO_GOOGLE_HOSTED_DOMAIN"] = "Kemenkeu.go.id"
+	kv["SSO_GOOGLE_HOSTED_DOMAIN"] = "gardainflasi.id"
 	kv["APP_ALLOWED_ORIGINS"] = "https://garda.example.go.id/, https://www.example.go.id"
 	require.NoError(t, ValidateAPI(env(kv)), "issuer https, domain Workspace, dan origin dengan garis miring penutup")
 }
@@ -54,7 +54,7 @@ func TestSSOProduksiMenolakKonfigurasiBermasalah(t *testing.T) {
 		{"redirect origin tak terdaftar", "SSO_GOOGLE_REDIRECT_URL", "https://lain.example.go.id/api/auth/sso/google/callback", "APP_ALLOWED_ORIGINS"},
 		{"issuer http", "SSO_GOOGLE_ISSUER", "http://accounts.example.com", "SSO_GOOGLE_ISSUER harus memakai https"},
 		{"issuer mock lokal", "SSO_GOOGLE_ISSUER", "https://sso.localhost/default", "SSO_GOOGLE_ISSUER tidak boleh menunjuk ke localhost"},
-		{"domain berupa email", "SSO_GOOGLE_HOSTED_DOMAIN", "@kemenkeu.go.id", "SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain"},
+		{"domain berupa email", "SSO_GOOGLE_HOSTED_DOMAIN", "@gardainflasi.id", "SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain"},
 		{"domain tanpa titik", "SSO_GOOGLE_HOSTED_DOMAIN", "kemenkeu", "SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain"},
 	}
 	for _, tc := range cases {

@@ -119,7 +119,7 @@ func validClaims(issuer string) map[string]any {
 	return map[string]any{
 		"iss": issuer, "aud": testClientID, "sub": "google-sub-1",
 		"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
-		"nonce": "nonce-1", "email": "ani@kemenkeu.go.id", "email_verified": true, "name": "Ani", "hd": "kemenkeu.go.id",
+		"nonce": "nonce-1", "email": "ani@gardainflasi.id", "email_verified": true, "name": "Ani", "hd": "gardainflasi.id",
 	}
 }
 
@@ -155,14 +155,14 @@ func exchange(t *testing.T, p *Provider) (*Identity, error) {
 func TestConfigFromEnvBawaanDanTrim(t *testing.T) {
 	env := map[string]string{
 		"SSO_GOOGLE_CLIENT_ID": " id ", "SSO_GOOGLE_CLIENT_SECRET": " rahasia ",
-		"SSO_GOOGLE_REDIRECT_URL": " https://app.id/api/auth/sso/google/callback ", "SSO_GOOGLE_HOSTED_DOMAIN": " Kemenkeu.GO.id ",
+		"SSO_GOOGLE_REDIRECT_URL": " https://app.id/api/auth/sso/google/callback ", "SSO_GOOGLE_HOSTED_DOMAIN": " gardainflasi.id ",
 	}
 	cfg := ConfigFromEnv(func(k string) string { return env[k] })
 	assert.Equal(t, DefaultGoogleIssuer, cfg.Issuer, "penerbit bawaan Google")
 	assert.Equal(t, "id", cfg.ClientID)
 	assert.Equal(t, "rahasia", cfg.ClientSecret)
 	assert.Equal(t, "https://app.id/api/auth/sso/google/callback", cfg.RedirectURL)
-	assert.Equal(t, "kemenkeu.go.id", cfg.HostedDomain, "domain dinormalkan huruf kecil")
+	assert.Equal(t, "gardainflasi.id", cfg.HostedDomain, "domain dinormalkan huruf kecil")
 	assert.True(t, cfg.Enabled())
 	assert.NoError(t, cfg.Validate())
 }
@@ -183,7 +183,7 @@ func TestConfigValidate(t *testing.T) {
 		"SSO_GOOGLE_REDIRECT_URL kosong":  func(c *Config) { c.RedirectURL = "" },
 		"SSO_GOOGLE_REDIRECT_URL harus":   func(c *Config) { c.RedirectURL = "/relatif" },
 		"SSO_GOOGLE_ISSUER harus":         func(c *Config) { c.Issuer = "bukan-url" },
-		"SSO_GOOGLE_HOSTED_DOMAIN harus":  func(c *Config) { c.HostedDomain = "@kemenkeu.go.id" },
+		"SSO_GOOGLE_HOSTED_DOMAIN harus":  func(c *Config) { c.HostedDomain = "@gardainflasi.id" },
 	}
 	for want, mutate := range cases {
 		cfg := ok
@@ -227,13 +227,13 @@ func TestAuthCodeURLMemuatParameterWajibDanPKCE(t *testing.T) {
 func TestAuthCodeURLMenyertakanPetunjukDomain(t *testing.T) {
 	f := newFakeIdP(t)
 	cfg := f.config()
-	cfg.HostedDomain = "kemenkeu.go.id"
+	cfg.HostedDomain = "gardainflasi.id"
 	p, err := New(cfg)
 	require.NoError(t, err)
 	raw, err := p.AuthCodeURL(context.Background(), "s", "n", NewCodeVerifier())
 	require.NoError(t, err)
 	u, _ := url.Parse(raw)
-	assert.Equal(t, "kemenkeu.go.id", u.Query().Get("hd"))
+	assert.Equal(t, "gardainflasi.id", u.Query().Get("hd"))
 }
 
 // ── Penukaran kode dan verifikasi ID token ───────────────────────────────
@@ -245,7 +245,7 @@ func TestExchangeBerhasilMemetakanIdentitasDanMengirimPKCE(t *testing.T) {
 
 	id, err := p.Exchange(context.Background(), "kode-1", verifier, "nonce-1")
 	require.NoError(t, err)
-	assert.Equal(t, &Identity{Subject: "google-sub-1", Email: "ani@kemenkeu.go.id", EmailVerified: true, Name: "Ani", HostedDomain: "kemenkeu.go.id"}, id)
+	assert.Equal(t, &Identity{Subject: "google-sub-1", Email: "ani@gardainflasi.id", EmailVerified: true, Name: "Ani", HostedDomain: "gardainflasi.id"}, id)
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -348,7 +348,7 @@ func TestExchangeMenolakParameterKosong(t *testing.T) {
 func TestExchangeDomainTerbatas(t *testing.T) {
 	f := newFakeIdP(t)
 	cfg := f.config()
-	cfg.HostedDomain = "kemenkeu.go.id"
+	cfg.HostedDomain = "gardainflasi.id"
 	p, err := New(cfg)
 	require.NoError(t, err)
 

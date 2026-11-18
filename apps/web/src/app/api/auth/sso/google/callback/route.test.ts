@@ -18,7 +18,7 @@ const BINDING = "q3Zk9vT2mXb7LpR4nYc1Hd5FgJ8sWe0uAaB6CiDkEoM";
 const PENGGUNA = {
   id: "u1",
   nama: "Ani",
-  email: "ani@kemenkeu.go.id",
+  email: "ani@gardainflasi.id",
   peran: "ADMIN_SISTEM",
   wajib_ganti_password: false,
 };

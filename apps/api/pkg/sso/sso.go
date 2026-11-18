@@ -111,7 +111,7 @@ func (c Config) Validate() error {
 		problems = append(problems, "SSO_GOOGLE_REDIRECT_URL "+err.Error())
 	}
 	if c.HostedDomain != "" && (strings.ContainsAny(c.HostedDomain, "@/: ") || !strings.Contains(c.HostedDomain, ".")) {
-		problems = append(problems, "SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain (mis. kemenkeu.go.id)")
+		problems = append(problems, "SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain (mis. gardainflasi.id)")
 	}
 	if len(problems) > 0 {
 		return errors.New("konfigurasi SSO Google tidak valid: " + strings.Join(problems, "; "))

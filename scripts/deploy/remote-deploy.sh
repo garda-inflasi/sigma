@@ -265,6 +265,18 @@ build_vm_image() {
   [[ "$NO_CACHE" -eq 1 ]] && args+=(--no-cache)
 
   if [[ "$target" == "web" ]]; then
+    if [[ "${PUBLIC_HOST:-}" != "localhost"* ]]; then
+      case "${NEXT_PUBLIC_API_BASE_URL:-}" in
+        *localhost*|*127.0.0.1*|http://*)
+          die "NEXT_PUBLIC_API_BASE_URL tidak valid untuk produksi: '${NEXT_PUBLIC_API_BASE_URL}'." \
+              "Harus relatif '/api' di .env.deploy agar browser memanggil origin HTTPS yang sama." ;;
+      esac
+      case "${NEXT_PUBLIC_APP_URL:-}" in
+        *localhost*|*127.0.0.1*)
+          die "NEXT_PUBLIC_APP_URL tidak valid untuk produksi: '${NEXT_PUBLIC_APP_URL}'." \
+              "Isi origin publik HTTPS di .env.deploy, mis. https://${PUBLIC_HOST}." ;;
+      esac
+    fi
     args+=(
       --build-arg "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}"
       --build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}"

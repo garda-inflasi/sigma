@@ -209,7 +209,7 @@ CADDY_TLS=admin@garda.id
 # SSO_GOOGLE_CLIENT_ID=123456789012-xxxxxxxx.apps.googleusercontent.com
 # SSO_GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 # SSO_GOOGLE_REDIRECT_URL=https://app.garda.id/api/auth/sso/google/callback
-# SSO_GOOGLE_HOSTED_DOMAIN=kemenkeu.go.id   # opsional: hanya akun Workspace domain ini
+# SSO_GOOGLE_HOSTED_DOMAIN=gardainflasi.id   # opsional: hanya akun Workspace domain ini
 ENVEOF
 
 ssh -i ~/.ssh/garda_vm deploy@192.168.1.100 'chmod 600 ~/garda-inflasi/.env'
@@ -247,7 +247,7 @@ tombolnya tidak tampil dan rute SSO menjawab `503 SSO_NOT_CONFIGURED`; login kat
    | `SSO_GOOGLE_CLIENT_SECRET` | Client secret |
    | `SSO_GOOGLE_REDIRECT_URL` | `https://<domain publik>/api/auth/sso/google/callback` (harus sama dengan yang didaftarkan di Google dan berasal dari salah satu origin di `APP_ALLOWED_ORIGINS`) |
    | `SSO_GOOGLE_ISSUER` | Kosong = `https://accounts.google.com` (jangan diubah untuk Google) |
-   | `SSO_GOOGLE_HOSTED_DOMAIN` | Opsional, mis. `kemenkeu.go.id`: hanya akun Workspace dengan klaim `hd` itu yang diterima (akun Google pribadi ditolak) |
+   | `SSO_GOOGLE_HOSTED_DOMAIN` | Opsional, mis. `gardainflasi.id`: hanya akun Workspace dengan klaim `hd` itu yang diterima (akun Google pribadi ditolak) |
 
 4. Jalankan ulang `api` (`make deploy`). `prodcheck` menolak start bila SSO dinyalakan tetapi secret/redirect
    kosong, redirect bukan `https` atau bukan `…/api/auth/sso/google/callback`, atau origin-nya tidak ada di

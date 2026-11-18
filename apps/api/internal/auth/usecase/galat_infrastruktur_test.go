@@ -530,7 +530,7 @@ func TestKunciPengguna_DaftarKosongTanpaKuerydanGalatDiteruskan(t *testing.T) {
 // ── SSO: kegagalan infrastruktur tidak membuka jalur pintas ──────────
 
 func TestSSOCallback_PembacaanKunciGagalDitolakDanTidakMenautkanAkun(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	f.repo.errAktif = errDB
 
 	_, err := f.masuk()
@@ -541,7 +541,7 @@ func TestSSOCallback_PembacaanKunciGagalDitolakDanTidakMenautkanAkun(t *testing.
 }
 
 func TestSSOCallback_AkunHilangSaatMenautMenolakDanTidakMenerbitkanSesi(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	f.repo.linkOverride = func(r *memRepo, userID string) (bool, error) {
 		r.mu.Lock()
 		delete(r.users, userID) // dihapus admin di sela pemeriksaan dan penautan
@@ -576,7 +576,7 @@ func (r *ssoRepoGalat) ConsumeLoginState(ctx context.Context, hash string) (*dom
 }
 
 func TestSSOCallback_GalatBasisDataBukanStateTidakValid(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	repo := &ssoRepoGalat{memRepo: f.repo, errState: errDB}
 	f.sso = NewSSO(f.uc, repo, SSOConfig{Provider: f.provider, Now: func() time.Time { return f.now }})
 	state, binding := f.mulai()
@@ -591,7 +591,7 @@ func TestSSOCallback_GalatBasisDataBukanStateTidakValid(t *testing.T) {
 // Regresi desain: bila pencarian menurut subjek gagal karena basis data, TIDAK boleh jatuh ke pencocokan email
 // (itu akan menautkan atau memasukkan akun lewat jalur yang lebih lemah).
 func TestSSOCallback_PencarianSubjekGagalTidakJatuhKePencocokanEmail(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	repo := &ssoRepoGalat{memRepo: f.repo, errSubjek: errDB}
 	f.sso = NewSSO(f.uc, repo, SSOConfig{Provider: f.provider, Now: func() time.Time { return f.now }})
 

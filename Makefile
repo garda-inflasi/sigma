@@ -227,13 +227,13 @@ clean: ## Clean build artifacts
 # Semua target memakai scripts/deploy/*.sh. Lihat docs/DEPLOYMENT.md.
 
 deploy: ## Full/selective deploy: sync → build di VM → hapus source → up (ARGS=--only=web dsb)
-	@bash scripts/deploy/deploy.sh $(ARGS)
+	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL -u NEXT_PUBLIC_MAPBOX_TOKEN bash scripts/deploy/deploy.sh $(ARGS)
 
 deploy/sync: ## Sync source & compose sementara ke VM (.build-src)
 	@bash scripts/deploy/sync-source.sh $(ARGS)
 
 deploy/build: ## Build image lokal (ARGS=--only=api,web,caddy --no-cache)
-	@bash scripts/deploy/build-local.sh $(ARGS)
+	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL -u NEXT_PUBLIC_MAPBOX_TOKEN bash scripts/deploy/build-local.sh $(ARGS)
 
 deploy/save: ## Save image ke dist/garda-images-<sha>.tar.gz
 	@bash scripts/deploy/save-images.sh $(ARGS)

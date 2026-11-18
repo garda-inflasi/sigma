@@ -62,7 +62,7 @@ func ValidateSSO(getenv func(string) string) error {
 
 	if domain := strings.ToLower(value("SSO_GOOGLE_HOSTED_DOMAIN")); domain != "" {
 		if strings.ContainsAny(domain, "@/: ") || !strings.Contains(domain, ".") {
-			add("SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain (mis. kemenkeu.go.id), bukan email atau URL")
+			add("SSO_GOOGLE_HOSTED_DOMAIN harus berupa nama domain (mis. gardainflasi.id), bukan email atau URL")
 		}
 	}
 	return errors.Join(errs...)

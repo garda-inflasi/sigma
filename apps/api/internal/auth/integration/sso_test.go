@@ -35,20 +35,20 @@ func seedSSO(t *testing.T, db *gorm.DB) {
 			VALUES (?, ?, ?, 'OPS_MAHASISWA', 'OPERASIONAL', 'BPPSDMP', ?`+placeholdersFor(args)+`)`,
 			append([]any{id, "Pengguna " + id, mail, status}, args...)...).Error)
 	}
-	insert(uid("sso-ani"), "ani@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-ulang"), "ulang@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-replay"), "replay@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-pkce"), "pkce@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-nonce"), "nonce@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-kedaluwarsa"), "kedaluwarsa@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-belum"), "belum@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-nonaktif"), "nonaktif@kemenkeu.go.id", "NONAKTIF", "")
-	insert(uid("sso-terkunci"), "terkunci@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-hd"), "hd@kemenkeu.go.id", "AKTIF", "")
-	insert(uid("sso-bertaut"), "bertaut@kemenkeu.go.id", "AKTIF", ", sso_provider, sso_subject", "google", "sub-pemilik-asli")
+	insert(uid("sso-ani"), "ani@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-ulang"), "ulang@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-replay"), "replay@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-pkce"), "pkce@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-nonce"), "nonce@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-kedaluwarsa"), "kedaluwarsa@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-belum"), "belum@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-nonaktif"), "nonaktif@gardainflasi.id", "NONAKTIF", "")
+	insert(uid("sso-terkunci"), "terkunci@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-hd"), "hd@gardainflasi.id", "AKTIF", "")
+	insert(uid("sso-bertaut"), "bertaut@gardainflasi.id", "AKTIF", ", sso_provider, sso_subject", "google", "sub-pemilik-asli")
 	// Kunci login dicatat per email (kunci_login, lihat 01-F), bukan dari login_attempts.
 	require.NoError(t, db.Exec(`INSERT INTO kunci_login (email_hash, gagal, jendela_mulai, terkunci_sampai, diperbarui_pada)
-		VALUES (?, 5, now(), now() + interval '15 minutes', now())`, usecase.HashEmailKunci("terkunci@kemenkeu.go.id")).Error)
+		VALUES (?, 5, now(), now() + interval '15 minutes', now())`, usecase.HashEmailKunci("terkunci@gardainflasi.id")).Error)
 }
 
 func placeholdersFor(args []any) string {
@@ -193,7 +193,7 @@ func TestIntegration_SSO(t *testing.T) {
 	t.Run("masuk pertama menautkan akun lalu menerbitkan sesi yang bekerja", func(t *testing.T) {
 		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-ani"))))
 
-		w := s.ssoLogin(t, idp, "sub-ani", identitas("ani@kemenkeu.go.id"))
+		w := s.ssoLogin(t, idp, "sub-ani", identitas("ani@gardainflasi.id"))
 		data := s.ssoSession(t, w)
 		assert.Equal(t, uid("sso-ani"), data.User.ID)
 		assert.Equal(t, "OPS_MAHASISWA", data.User.Peran)
@@ -216,7 +216,7 @@ func TestIntegration_SSO(t *testing.T) {
 	})
 
 	t.Run("masuk berikutnya mencocokkan subjek walau email di penyedia berubah", func(t *testing.T) {
-		w := s.ssoLogin(t, idp, "sub-ani", identitas("ani.ganti-nama@kemenkeu.go.id"))
+		w := s.ssoLogin(t, idp, "sub-ani", identitas("ani.ganti-nama@gardainflasi.id"))
 		data := s.ssoSession(t, w)
 		assert.Equal(t, uid("sso-ani"), data.User.ID)
 		assert.EqualValues(t, 1, s.count(t, "SELECT count(*) FROM audit_log WHERE aksi = 'SSO_LINK' AND aktor_id = garda_uuid_stabil('pengguna', 'sso-ani')"), "tidak ditautkan ulang")
@@ -233,7 +233,7 @@ func TestIntegration_SSO(t *testing.T) {
 	})
 
 	t.Run("email milik akun yang bertaut ke subjek lain ditolak dan diaudit", func(t *testing.T) {
-		w := s.ssoLogin(t, idp, "sub-penyerang", identitas("bertaut@kemenkeu.go.id"))
+		w := s.ssoLogin(t, idp, "sub-penyerang", identitas("bertaut@gardainflasi.id"))
 		assert.Equal(t, http.StatusConflict, w.Code)
 		assert.Equal(t, "SSO_ACCOUNT_CONFLICT", errorCode(t, w))
 		_, subject := s.ssoLink(t, uid("sso-bertaut"))
@@ -243,22 +243,22 @@ func TestIntegration_SSO(t *testing.T) {
 		assert.Zero(t, s.count(t, "SELECT count(*) FROM refresh_tokens WHERE user_id = garda_uuid_stabil('pengguna', 'sso-bertaut')"))
 
 		// Pemilik asli tetap bisa masuk.
-		ok := s.ssoLogin(t, idp, "sub-pemilik-asli", identitas("bertaut@kemenkeu.go.id"))
+		ok := s.ssoLogin(t, idp, "sub-pemilik-asli", identitas("bertaut@gardainflasi.id"))
 		assert.Equal(t, uid("sso-bertaut"), s.ssoSession(t, ok).User.ID)
 	})
 
 	t.Run("email belum terverifikasi ditolak dan tidak menautkan", func(t *testing.T) {
-		w := s.ssoLogin(t, idp, "sub-belum", map[string]any{"email": "belum@kemenkeu.go.id", "email_verified": false})
+		w := s.ssoLogin(t, idp, "sub-belum", map[string]any{"email": "belum@gardainflasi.id", "email_verified": false})
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Equal(t, "SSO_EMAIL_UNVERIFIED", errorCode(t, w))
 		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-belum"))))
 
-		tanpaKlaim := s.ssoLogin(t, idp, "sub-belum", map[string]any{"email": "belum@kemenkeu.go.id"})
+		tanpaKlaim := s.ssoLogin(t, idp, "sub-belum", map[string]any{"email": "belum@gardainflasi.id"})
 		assert.Equal(t, "SSO_EMAIL_UNVERIFIED", errorCode(t, tanpaKlaim), "tanpa klaim email_verified = tidak terverifikasi")
 	})
 
 	t.Run("akun nonaktif ditolak seperti login kata sandi", func(t *testing.T) {
-		w := s.ssoLogin(t, idp, "sub-nonaktif", identitas("nonaktif@kemenkeu.go.id"))
+		w := s.ssoLogin(t, idp, "sub-nonaktif", identitas("nonaktif@gardainflasi.id"))
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Equal(t, "SSO_ACCOUNT_INACTIVE", errorCode(t, w))
 		assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-nonaktif"))))
@@ -266,7 +266,7 @@ func TestIntegration_SSO(t *testing.T) {
 	})
 
 	t.Run("akun terkunci ditolak seperti login kata sandi", func(t *testing.T) {
-		w := s.ssoLogin(t, idp, "sub-terkunci", identitas("terkunci@kemenkeu.go.id"))
+		w := s.ssoLogin(t, idp, "sub-terkunci", identitas("terkunci@gardainflasi.id"))
 		assert.Equal(t, http.StatusLocked, w.Code)
 		assert.NotEmpty(t, w.Header().Get("Retry-After"))
 		assert.Equal(t, "SSO_ACCOUNT_LOCKED", errorCode(t, w))
@@ -304,7 +304,7 @@ func TestIntegration_SSO(t *testing.T) {
 
 	t.Run("state hanya sekali pakai: callback yang diulang ditolak", func(t *testing.T) {
 		authorizeURL, binding := s.ssoAuthorize(t)
-		code, state := idp.signIn(t, authorizeURL, "sub-replay", mustJSON(t, identitas("replay@kemenkeu.go.id")))
+		code, state := idp.signIn(t, authorizeURL, "sub-replay", mustJSON(t, identitas("replay@gardainflasi.id")))
 
 		first := s.ssoCallback(t, code, state, binding)
 		require.Equal(t, http.StatusOK, first.Code, first.Body.String())
@@ -317,7 +317,7 @@ func TestIntegration_SSO(t *testing.T) {
 
 	t.Run("binding salah (login CSRF) ditolak dan state hangus", func(t *testing.T) {
 		authorizeURL, binding := s.ssoAuthorize(t)
-		code, state := idp.signIn(t, authorizeURL, "sub-ulang", mustJSON(t, identitas("ulang@kemenkeu.go.id")))
+		code, state := idp.signIn(t, authorizeURL, "sub-ulang", mustJSON(t, identitas("ulang@gardainflasi.id")))
 
 		// Korban membawa state penyerang tetapi cookie binding miliknya sendiri.
 		serangan := s.ssoCallback(t, code, state, "binding-browser-korban")
@@ -333,7 +333,7 @@ func TestIntegration_SSO(t *testing.T) {
 
 	t.Run("state kedaluwarsa ditolak", func(t *testing.T) {
 		authorizeURL, binding := s.ssoAuthorize(t)
-		code, state := idp.signIn(t, authorizeURL, "sub-kedaluwarsa", mustJSON(t, identitas("kedaluwarsa@kemenkeu.go.id")))
+		code, state := idp.signIn(t, authorizeURL, "sub-kedaluwarsa", mustJSON(t, identitas("kedaluwarsa@gardainflasi.id")))
 		require.NoError(t, s.db.Exec("UPDATE sso_login_state SET expires_at = now() - interval '1 second'").Error)
 
 		w := s.ssoCallback(t, code, state, binding)
@@ -352,7 +352,7 @@ func TestIntegration_SSO(t *testing.T) {
 		urlA, bindingA := s.ssoAuthorize(t)
 		stateA := mustQuery(t, urlA, "state")
 		urlB, _ := s.ssoAuthorize(t)
-		codeB, _ := idp.signIn(t, urlB, "sub-pkce", mustJSON(t, identitas("pkce@kemenkeu.go.id")))
+		codeB, _ := idp.signIn(t, urlB, "sub-pkce", mustJSON(t, identitas("pkce@gardainflasi.id")))
 
 		w := s.ssoCallback(t, codeB, stateA, bindingA)
 		assert.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
@@ -367,7 +367,7 @@ func TestIntegration_SSO(t *testing.T) {
 		q := u.Query()
 		q.Set("nonce", "nonce-penyerang") // IdP menerbitkan token dengan nonce yang bukan milik alur ini
 		u.RawQuery = q.Encode()
-		code, state := idp.signIn(t, u.String(), "sub-nonce", mustJSON(t, identitas("nonce@kemenkeu.go.id")))
+		code, state := idp.signIn(t, u.String(), "sub-nonce", mustJSON(t, identitas("nonce@gardainflasi.id")))
 
 		w := s.ssoCallback(t, code, state, binding)
 		assert.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
@@ -386,20 +386,20 @@ func TestIntegration_SSO(t *testing.T) {
 
 	t.Run("domain Workspace dibatasi lewat SSO_GOOGLE_HOSTED_DOMAIN", func(t *testing.T) {
 		cfg := ssoConfig(idp)
-		cfg.HostedDomain = "kemenkeu.go.id"
+		cfg.HostedDomain = "gardainflasi.id"
 		s := newSuite(t, seedSSO, routes.Options{UseCaseConfig: routes.ConfigFromEnv(os.Getenv), SSO: cfg})
 
 		authorizeURL, _ := s.ssoAuthorize(t)
-		assert.Equal(t, "kemenkeu.go.id", mustQuery(t, authorizeURL, "hd"), "petunjuk domain diteruskan ke Google")
+		assert.Equal(t, "gardainflasi.id", mustQuery(t, authorizeURL, "hd"), "petunjuk domain diteruskan ke Google")
 
 		t.Run("hd cocok diterima", func(t *testing.T) {
-			claims := identitas("hd@kemenkeu.go.id")
-			claims["hd"] = "kemenkeu.go.id"
+			claims := identitas("hd@gardainflasi.id")
+			claims["hd"] = "gardainflasi.id"
 			w := s.ssoLogin(t, idp, "sub-hd", claims)
 			assert.Equal(t, uid("sso-hd"), s.ssoSession(t, w).User.ID)
 		})
 		t.Run("hd lain ditolak", func(t *testing.T) {
-			claims := identitas("ani@kemenkeu.go.id")
+			claims := identitas("ani@gardainflasi.id")
 			claims["hd"] = "lain.go.id"
 			w := s.ssoLogin(t, idp, "sub-hd-lain", claims)
 			assert.Equal(t, http.StatusForbidden, w.Code)
@@ -407,7 +407,7 @@ func TestIntegration_SSO(t *testing.T) {
 			assert.Nil(t, firstOf(s.ssoLink(t, uid("sso-ani"))))
 		})
 		t.Run("akun pribadi tanpa hd ditolak", func(t *testing.T) {
-			w := s.ssoLogin(t, idp, "sub-pribadi", identitas("ani@kemenkeu.go.id"))
+			w := s.ssoLogin(t, idp, "sub-pribadi", identitas("ani@gardainflasi.id"))
 			assert.Equal(t, "SSO_DOMAIN_NOT_ALLOWED", errorCode(t, w))
 		})
 	})

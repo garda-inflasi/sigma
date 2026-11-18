@@ -18,7 +18,7 @@ import (
 // fixtureSSOMFA adalah akun ber-MFA yang sudah tertaut, siap melewati Callback lalu ValidateMFALogin.
 func fixtureSSOMFA(t *testing.T) (*ssoFixture, string) {
 	t.Helper()
-	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	f := newSSOFixture(t, u)
 	secret := totp.GenerateSecret()
 	sealed, err := f.uc.cfg.MFAKey.Seal(secret)

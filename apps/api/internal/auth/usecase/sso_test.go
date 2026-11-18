@@ -265,7 +265,7 @@ func newSSOFixture(t *testing.T, users ...*domain.Pengguna) *ssoFixture {
 	f := &ssoFixture{
 		t:        t,
 		repo:     newMemRepo(users...),
-		provider: &fakeProvider{identity: &sso.Identity{Subject: "sub-1", Email: "ani@kemenkeu.go.id", EmailVerified: true, Name: "Ani"}},
+		provider: &fakeProvider{identity: &sso.Identity{Subject: "sub-1", Email: "ani@gardainflasi.id", EmailVerified: true, Name: "Ani"}},
 		audit:    &audittest.Recorder{},
 		tokens:   token.NewManager("test-secret-key-32-chars!!"),
 		now:      time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC),
@@ -393,7 +393,7 @@ func TestSSOAuthorize_GalatLainDanGalatPenyimpanan(t *testing.T) {
 // ── Callback: state, binding, TTL ─────────────────────────────────────────
 
 func TestSSOCallback_StateHanyaSekaliPakai(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	state, binding := f.mulai()
 
 	_, err := f.callback(state, binding)
@@ -408,7 +408,7 @@ func TestSSOCallback_StateHanyaSekaliPakai(t *testing.T) {
 }
 
 func TestSSOCallback_BindingSalahMenolakDanMenghanguskanState(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	state, binding := f.mulai()
 
 	// Login CSRF: korban membawa state penyerang tetapi cookie binding-nya sendiri (atau tanpa cookie).
@@ -426,7 +426,7 @@ func TestSSOCallback_BindingSalahMenolakDanMenghanguskanState(t *testing.T) {
 }
 
 func TestSSOCallback_StateKedaluwarsa(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	state, binding := f.mulai()
 
 	f.now = f.now.Add(10*time.Minute + time.Second)
@@ -437,7 +437,7 @@ func TestSSOCallback_StateKedaluwarsa(t *testing.T) {
 }
 
 func TestSSOCallback_StateMasihBerlakuTepatSebelumBatas(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	state, binding := f.mulai()
 	f.now = f.now.Add(10*time.Minute - time.Second)
 	_, err := f.callback(state, binding)
@@ -472,7 +472,7 @@ func TestSSOCallback_ParameterKosongAtauTerlaluPanjang(t *testing.T) {
 }
 
 func TestSSOCallback_PenukaranMemakaiVerifierDanNonceTersimpanBukanDariRequest(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	state, binding := f.mulai()
 	verifier, nonce := f.provider.gotVerifier, f.provider.gotNonce
 
@@ -501,7 +501,7 @@ func TestSSOCallback_PemetaanGalatPenukaran(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+			f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 			f.provider.exchangeErr = tc.err
 
 			res, err := f.masuk()
@@ -519,7 +519,7 @@ func TestSSOCallback_PemetaanGalatPenukaran(t *testing.T) {
 // ── Callback: pemetaan akun ───────────────────────────────────────────────
 
 func TestSSOCallback_MasukPertamaMenautkanAkunDanMenerbitkanSesi(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 
 	res, err := f.masuk()
 	require.NoError(t, err)
@@ -558,29 +558,29 @@ func TestSSOCallback_MasukPertamaMenautkanAkunDanMenerbitkanSesi(t *testing.T) {
 }
 
 func TestSSOCallback_MasukBerikutnyaMencocokkanSubjekBukanEmail(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	_, err := f.masuk()
 	require.NoError(t, err)
 
 	// Email di penyedia berubah, subjek tetap: tetap akun yang sama dan tidak ditautkan ulang.
-	f.provider.identity.Email = "ani.baru@kemenkeu.go.id"
+	f.provider.identity.Email = "ani.baru@gardainflasi.id"
 	res, err := f.masuk()
 	require.NoError(t, err)
 	assert.Equal(t, uid("u1"), res.User.ID)
 	assert.Len(t, f.auditAksi("SSO_LINK"), 1, "penautan hanya pada masuk pertama")
-	assert.Equal(t, "ani@kemenkeu.go.id", f.repo.stored(uid("u1")).Email, "email akun tidak berubah")
+	assert.Equal(t, "ani@gardainflasi.id", f.repo.stored(uid("u1")).Email, "email akun tidak berubah")
 }
 
 func TestSSOCallback_EmailTakPekaHurufBesarKecil(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
-	f.provider.identity.Email = "Ani@Kemenkeu.GO.id"
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
+	f.provider.identity.Email = "Ani@gardainflasi.id"
 	res, err := f.masuk()
 	require.NoError(t, err)
 	assert.Equal(t, uid("u1"), res.User.ID)
 }
 
 func TestSSOCallback_EmailTakDikenalDitolakTanpaMembuatAkun(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "lain@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "lain@gardainflasi.id"))
 
 	res, err := f.masuk()
 	assert.ErrorIs(t, err, ErrSSOAccountNotFound)
@@ -592,13 +592,13 @@ func TestSSOCallback_EmailTakDikenalDitolakTanpaMembuatAkun(t *testing.T) {
 	assert.Equal(t, "LOGIN", e.Aksi)
 	assert.Equal(t, audit.HasilGagal, e.Hasil)
 	assert.Equal(t, "sso_akun_tidak_ditemukan", alasanAudit(e))
-	assert.Equal(t, "ani@kemenkeu.go.id", e.Metadata["email"])
+	assert.Equal(t, "ani@gardainflasi.id", e.Metadata["email"])
 	assert.Equal(t, MetodeSSOGoogle, e.Metadata["metode"])
 	assert.Empty(t, e.AktorID)
 }
 
 func TestSSOCallback_EmailTerhubungKeSubjekLainDitolakDanDiaudit(t *testing.T) {
-	user := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	user := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	asing, google := "sub-lain", domain.ProviderGoogle
 	user.SSOProvider, user.SSOSubject = &google, &asing
 	f := newSSOFixture(t, user)
@@ -624,7 +624,7 @@ func TestSSOCallback_EmailTakTerverifikasiDitolak(t *testing.T) {
 		"email kosong":         func(id *sso.Identity) { id.Email = "" },
 	} {
 		t.Run(name, func(t *testing.T) {
-			f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+			f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 			mutate(f.provider.identity)
 
 			_, err := f.masuk()
@@ -639,7 +639,7 @@ func TestSSOCallback_EmailTakTerverifikasiDitolak(t *testing.T) {
 func TestSSOCallback_AkunTidakAktifDitolakSepertiLoginKataSandi(t *testing.T) {
 	for _, status := range []string{"NONAKTIF", "MENUNGGU"} {
 		t.Run(status, func(t *testing.T) {
-			u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+			u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 			u.Status = status
 			f := newSSOFixture(t, u)
 
@@ -657,7 +657,7 @@ func TestSSOCallback_AkunTidakAktifDitolakSepertiLoginKataSandi(t *testing.T) {
 }
 
 func TestSSOCallback_AkunBertautTidakAktifJugaDitolak(t *testing.T) {
-	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	u.Status = "NONAKTIF"
 	sub, google := "sub-1", domain.ProviderGoogle
 	u.SSOProvider, u.SSOSubject = &google, &sub
@@ -669,8 +669,8 @@ func TestSSOCallback_AkunBertautTidakAktifJugaDitolak(t *testing.T) {
 }
 
 func TestSSOCallback_AkunTerkunciDitolakTanpaMenaut(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
-	f.repo.kunciTerkunci("ANI@kemenkeu.go.id ")
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
+	f.repo.kunciTerkunci("ANI@gardainflasi.id ")
 
 	res, err := f.masuk()
 	assert.ErrorIs(t, err, ErrAccountLocked)
@@ -681,7 +681,7 @@ func TestSSOCallback_AkunTerkunciDitolakTanpaMenaut(t *testing.T) {
 }
 
 func TestSSOCallback_AkunSSOSajaTanpaKataSandi(t *testing.T) {
-	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	require.Nil(t, u.PasswordHash)
 	f := newSSOFixture(t, u)
 	res, err := f.masuk()
@@ -692,7 +692,7 @@ func TestSSOCallback_AkunSSOSajaTanpaKataSandi(t *testing.T) {
 // ── Callback: MFA ─────────────────────────────────────────────────────────
 
 func TestSSOCallback_AkunMFAAktifMenerimaTantanganBukanSesi(t *testing.T) {
-	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	u.MfaAktif = true
 	f := newSSOFixture(t, u)
 
@@ -721,7 +721,7 @@ func TestSSOCallback_AkunMFAAktifMenerimaTantanganBukanSesi(t *testing.T) {
 }
 
 func TestSSOCallback_AkunWajibMFABelumSetupMenerimaKlaimSetup(t *testing.T) {
-	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	u.Peran, u.Lapis = "STRATEGIS_FMIPA", "STRATEGIS"
 	f := newSSOFixture(t, u)
 	f.uc.cfg.MFAEnforce = true
@@ -735,7 +735,7 @@ func TestSSOCallback_AkunWajibMFABelumSetupMenerimaKlaimSetup(t *testing.T) {
 }
 
 func TestSSOCallback_WajibGantiPasswordMembawaKlaim(t *testing.T) {
-	u := ssoUser(uid("u1"), "ani@kemenkeu.go.id")
+	u := ssoUser(uid("u1"), "ani@gardainflasi.id")
 	u.WajibGantiPassword = true
 	f := newSSOFixture(t, u)
 	res, err := f.masuk()
@@ -748,10 +748,10 @@ func TestSSOCallback_WajibGantiPasswordMembawaKlaim(t *testing.T) {
 // ── Penautan: balapan dan keunikan ────────────────────────────────────────
 
 func TestSSOCallback_SubjekSudahDipakaiAkunLain(t *testing.T) {
-	pemilik := ssoUser(uid("u-pemilik"), "pemilik@kemenkeu.go.id")
+	pemilik := ssoUser(uid("u-pemilik"), "pemilik@gardainflasi.id")
 	sub, google := "sub-1", domain.ProviderGoogle
 	pemilik.SSOProvider, pemilik.SSOSubject = &google, &sub
-	f := newSSOFixture(t, pemilik, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, pemilik, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 
 	// Subjek sub-1 sudah milik u-pemilik: masuk sebagai u-pemilik, bukan u1 (subjek mengalahkan email).
 	res, err := f.masuk()
@@ -761,7 +761,7 @@ func TestSSOCallback_SubjekSudahDipakaiAkunLain(t *testing.T) {
 }
 
 func TestSSOCallback_PenautanSerentakDenganSubjekSama(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	f.repo.linkOverride = func(r *memRepo, userID string) (bool, error) {
 		// Permintaan lain menaut lebih dulu dengan subjek yang sama.
 		sub, google, at := "sub-1", domain.ProviderGoogle, time.Now()
@@ -778,7 +778,7 @@ func TestSSOCallback_PenautanSerentakDenganSubjekSama(t *testing.T) {
 }
 
 func TestSSOCallback_PenautanSerentakDenganSubjekLainDitolak(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	f.repo.linkOverride = func(r *memRepo, userID string) (bool, error) {
 		sub, google := "sub-lain", domain.ProviderGoogle
 		r.mu.Lock()
@@ -793,7 +793,7 @@ func TestSSOCallback_PenautanSerentakDenganSubjekLainDitolak(t *testing.T) {
 }
 
 func TestSSOCallback_KunciUnikDilanggarSaatMenaut(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	f.repo.linkOverride = func(*memRepo, string) (bool, error) { return false, gorm.ErrDuplicatedKey }
 	_, err := f.masuk()
 	assert.ErrorIs(t, err, ErrSSOAccountConflict)
@@ -801,7 +801,7 @@ func TestSSOCallback_KunciUnikDilanggarSaatMenaut(t *testing.T) {
 }
 
 func TestSSOCallback_GalatBasisDataBukanAkunTidakDitemukan(t *testing.T) {
-	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@kemenkeu.go.id"))
+	f := newSSOFixture(t, ssoUser(uid("u1"), "ani@gardainflasi.id"))
 	f.repo.linkOverride = func(*memRepo, string) (bool, error) { return false, errors.New("koneksi putus") }
 	_, err := f.masuk()
 	require.Error(t, err)

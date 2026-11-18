@@ -84,7 +84,7 @@ export function LupaPasswordForm() {
             type="email"
             inputMode="email"
             autoComplete="email"
-            placeholder="nama@kemenkeu.go.id"
+            placeholder="nama@gardainflasi.id"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}

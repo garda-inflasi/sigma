@@ -56,9 +56,11 @@ if ! [[ "$KEEP" =~ ^[0-9]+$ ]] || [[ "$KEEP" -lt 1 ]]; then
   die "Nilai --keep tidak valid: '$KEEP'" "Gunakan bilangan bulat ≥ 1 (contoh: --keep=3)."
 fi
 
-# Resolve repo root without requiring .env.deploy (this script runs on the VM too).
+# Resolve repo/VM root without requiring .env.deploy (this script runs on the VM too).
 if [[ -n "${REMOTE_DIR:-}" && -d "${REMOTE_DIR}" ]]; then
   GARDA_ROOT="${REMOTE_DIR}"
+elif [[ -f "$(pwd)/compose/compose.yaml" && -d "$(pwd)/scripts" ]]; then
+  GARDA_ROOT="$(pwd)"
 else
   GARDA_ROOT="$(garda_repo_root "$SCRIPT_DIR")"
 fi
@@ -86,17 +88,23 @@ prune_images() {
     return 0
   fi
 
+  # Load active tags so we never remove an active version even if older.
+  local protected_tags=""
+  if [[ -f "${GARDA_ROOT}/.env.tags" ]]; then
+    protected_tags="$(cut -d= -f2 "${GARDA_ROOT}/.env.tags" 2>/dev/null | tr '\n' '|' | sed 's/|$//')"
+  fi
+
   local svc
   for svc in "${SERVICES[@]}"; do
     local repo="${IMAGE_PREFIX}-${svc}"
 
-    # Collect tags that look like a git SHA (hex, 7-40 chars) — never `latest`.
+    # Collect release tags (vYYYYMMDD-HHMMSS or git SHA hex) — never `latest`.
     local tags
     tags="$(docker image ls "$repo" --format '{{.Tag}}' 2>/dev/null \
-      | grep -E '^[0-9a-f]{7,40}$' || true)"
+      | grep -E '^(v[0-9]{8}-[0-9]{6}|[0-9a-f]{7,40})$' || true)"
 
     if [[ -z "$tags" ]]; then
-      log_debug "${repo}: tidak ada tag SHA — dilewati."
+      log_debug "${repo}: tidak ada tag rilis — dilewati."
       continue
     fi
 
@@ -116,17 +124,21 @@ prune_images() {
     [[ -z "$total" ]] && total=0
 
     if [[ "$total" -le "$KEEP" ]]; then
-      log_info "${repo}: ${total} tag SHA (≤ ${KEEP}) — tidak ada yang dihapus."
+      log_info "${repo}: ${total} tag rilis (≤ ${KEEP}) — tidak ada yang dihapus."
       continue
     fi
 
     local to_remove
     to_remove="$(printf '%s\n' "$sorted" | tail -n +$(( KEEP + 1 )))"
 
-    log_info "${repo}: ${total} tag SHA — menghapus $(( total - KEEP ))."
+    log_info "${repo}: ${total} tag rilis — memeriksa $(( total - KEEP )) kandidat hapus."
     local tag
     while IFS= read -r tag; do
       [[ -z "$tag" ]] && continue
+      if [[ -n "$protected_tags" ]] && printf '%s\n' "$tag" | grep -Eq "^(${protected_tags})$"; then
+        log_debug "Melewati tag aktif: ${repo}:${tag}"
+        continue
+      fi
       if [[ "$DRY_RUN" == "1" ]]; then
         echo_cmd "docker rmi ${repo}:${tag}"
       else

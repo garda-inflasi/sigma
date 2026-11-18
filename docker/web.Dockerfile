@@ -39,6 +39,10 @@ ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 # Pasang dependensi dari store hasil `pnpm fetch` (tanpa jaringan)
 RUN --mount=type=cache,id=garda-pnpm-store,target=/pnpm/store pnpm install --offline --frozen-lockfile
 
+# Batasi heap V8 agar next build aman di VM ber-RAM 3.6 GiB
+ARG NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS=$NODE_OPTIONS
+
 # Build the web app (package name is garda-inflasi-web, not web)
 RUN pnpm --filter garda-inflasi-web build
 

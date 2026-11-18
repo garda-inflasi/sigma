@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web build/gardactl test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/impor/kecamatan ctl/ingest ctl/kpi openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/build deploy/save deploy/transfer deploy/init-env deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web build/gardactl test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/impor/kecamatan ctl/ingest ctl/kpi openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/sync deploy/build deploy/save deploy/transfer deploy/init-env deploy/init-vm deploy/sync-caddy deploy/remote deploy/prune rollback status logs
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -226,8 +226,11 @@ clean: ## Clean build artifacts
 # ── Deploy targets (build di Mac → transfer → jalankan di VM) ───────────
 # Semua target memakai scripts/deploy/*.sh. Lihat docs/DEPLOYMENT.md.
 
-deploy: ## Full deploy: build → save → transfer → up (ARGS=--skip-build dsb)
+deploy: ## Full/selective deploy: sync → build di VM → hapus source → up (ARGS=--only=web dsb)
 	@bash scripts/deploy/deploy.sh $(ARGS)
+
+deploy/sync: ## Sync source & compose sementara ke VM (.build-src)
+	@bash scripts/deploy/sync-source.sh $(ARGS)
 
 deploy/build: ## Build image lokal (ARGS=--only=api,web,caddy --no-cache)
 	@bash scripts/deploy/build-local.sh $(ARGS)
@@ -240,7 +243,13 @@ deploy/transfer: ## Transfer artefak ke VM via rsync/SSH
 
 deploy/init-env: ## Buat .env.deploy dari template
 	@test -f .env.deploy || cp .env.deploy.example .env.deploy
-	@echo "✓ .env.deploy siap — edit nilainya lalu jalankan: make deploy"
+	@echo "✓ .env.deploy siap — edit nilainya lalu jalankan: make deploy/init-vm && make deploy"
+
+deploy/init-vm: ## Bootstrap VM (grup docker, direktori, .env produksi VM)
+	@bash scripts/deploy/init-server.sh $(ARGS)
+
+deploy/sync-caddy: ## Sinkronkan Caddyfile gateway existing + reload Cloudflare TLS
+	@bash scripts/deploy/sync-caddy.sh $(ARGS)
 
 deploy/remote: ## Jalankan deploy di VM saja (tanpa build/transfer)
 	@bash scripts/deploy/deploy.sh --skip-build --skip-transfer $(ARGS)

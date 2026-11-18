@@ -2,14 +2,13 @@
 # ==============================================================================
 #  Garda Inflasi — scripts/deploy/transfer.sh
 #  Transfers the image tarball + compose files + DB assets to the VM over SSH.
-#
-#  NEVER transfers .env — the VM owns its own production .env.
+#  Zero-Git workflow. NEVER transfers local .env.
 #
 #  Usage:
 #      bash scripts/deploy/transfer.sh [options]
 #
 #  Options:
-#      --sha=<sha>     Override the git SHA (default: .last-build-sha)
+#      --tag=<tag>     Override release tag (default: .last-build-tag)
 #      --dry-run       Print commands without touching the VM
 #      -h, --help      Show this help
 # ==============================================================================
@@ -24,10 +23,7 @@ source "${SCRIPT_DIR}/../lib/ssh-wrapper.sh"
 
 install_traps
 
-# ------------------------------------------------------------------------------
-#  Defaults + argument parsing
-# ------------------------------------------------------------------------------
-SHA_OVERRIDE=""
+TAG_OVERRIDE=""
 DRY_RUN="${DRY_RUN:-0}"
 
 usage() {
@@ -36,8 +32,10 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sha=*)   SHA_OVERRIDE="${1#*=}" ;;
-    --sha)     shift; SHA_OVERRIDE="${1:-}" ;;
+    --tag=*)   TAG_OVERRIDE="${1#*=}" ;;
+    --tag)     shift; TAG_OVERRIDE="${1:-}" ;;
+    --sha=*)   TAG_OVERRIDE="${1#*=}" ;;
+    --sha)     shift; TAG_OVERRIDE="${1:-}" ;;
     --dry-run) DRY_RUN=1 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Opsi tidak dikenal: $1" "Jalankan 'bash scripts/deploy/transfer.sh --help'." ;;
@@ -56,21 +54,28 @@ require_cmd ssh   "ssh tersedia secara default di macOS/Linux."
 cd "$GARDA_ROOT"
 
 # ------------------------------------------------------------------------------
-#  Resolve GIT_SHA + tarball
+#  Resolve RELEASE_TAG + tarball
 # ------------------------------------------------------------------------------
-if [[ -n "$SHA_OVERRIDE" ]]; then
-  GIT_SHA="$SHA_OVERRIDE"
+if [[ -n "$TAG_OVERRIDE" ]]; then
+  RELEASE_TAG="$TAG_OVERRIDE"
+elif [[ -f "${GARDA_ROOT}/.last-build-tag" ]]; then
+  RELEASE_TAG="$(tr -d '[:space:]' < "${GARDA_ROOT}/.last-build-tag")"
 elif [[ -f "${GARDA_ROOT}/.last-build-sha" ]]; then
-  GIT_SHA="$(tr -d '[:space:]' < "${GARDA_ROOT}/.last-build-sha")"
+  RELEASE_TAG="$(tr -d '[:space:]' < "${GARDA_ROOT}/.last-build-sha")"
 else
-  GIT_SHA="$(git rev-parse --short HEAD)"
+  RELEASE_TAG=""
 fi
-export GIT_SHA
 
-TARBALL="${GARDA_ROOT}/dist/garda-images-${GIT_SHA}.tar.gz"
+if [[ -z "$RELEASE_TAG" ]]; then
+  die "Tidak bisa menentukan RELEASE_TAG untuk transfer." \
+      "Jalankan save-images dulu (make deploy/save) atau lewatkan --tag=<tag>."
+fi
+export RELEASE_TAG
+
+TARBALL="${GARDA_ROOT}/dist/garda-images-${RELEASE_TAG}.tar.gz"
 
 if [[ "$DRY_RUN" != "1" ]]; then
-  require_file "$TARBALL" "Jalankan dulu: make deploy/save (atau bash scripts/deploy/save-images.sh)."
+  require_file "$TARBALL" "Jalankan dulu: make deploy/save (atau bash scripts/deploy/save-images.sh --tag=${RELEASE_TAG})."
 fi
 
 # ------------------------------------------------------------------------------
@@ -89,12 +94,10 @@ REQUIRED_BYTES=$(( TARBALL_BYTES * 2 ))
 
 check_vm_disk_space() {
   log_info "Pre-flight: cek free space di VM (${REMOTE_DIR}) ..."
-
-  # Ensure the remote dir exists before df-ing it.
   vm_ssh "mkdir -p '${REMOTE_DIR}'" >/dev/null
 
   local avail_gb
-  avail_gb="$(vm_ssh "df -BG '${REMOTE_DIR}' | tail -1 | awk '{print \$4}' | tr -d 'G'" 2>/dev/null || echo '')"
+  avail_gb="$(vm_ssh "df -BG '${REMOTE_DIR}' | tail -1 | awk '{print \$4}' | tr -d 'G'" 2>/dev/null | tr -d '[:space:]' || echo '')"
 
   if [[ -z "$avail_gb" || ! "$avail_gb" =~ ^[0-9]+$ ]]; then
     log_warn "Tidak bisa membaca free space VM — pre-flight disk dilewati."
@@ -106,7 +109,7 @@ check_vm_disk_space() {
 
   if [[ "$avail_bytes" -lt "$REQUIRED_BYTES" ]]; then
     die "Disk VM tidak cukup: ${avail_gb} GB tersisa, butuh ≥ $(human_size "$REQUIRED_BYTES")." \
-        "Bersihkan di VM: ssh ${VM_USER}@${VM_HOST} 'docker system prune -af && rm -f ${REMOTE_DIR}/dist/*.tar.gz'"
+        "Bersihkan di VM: docker system prune -af && rm -f ${REMOTE_DIR}/dist/*.tar.gz"
   fi
 
   log_success "Free space VM OK (${avail_gb} GB)."
@@ -128,12 +131,11 @@ REMOTE_DIRS=(
   "${REMOTE_DIR}/docker/postgres"
   "${REMOTE_DIR}/db/migrations"
   "${REMOTE_DIR}/backups"
+  "${REMOTE_DIR}/data/uploads"
+  "${REMOTE_DIR}/logs"
 )
 
 log_section "Menyiapkan direktori di VM"
-for d in "${REMOTE_DIRS[@]}"; do
-  log_debug "mkdir -p $d"
-done
 vm_ssh "mkdir -p $(printf "'%s' " "${REMOTE_DIRS[@]}")"
 
 # ------------------------------------------------------------------------------
@@ -142,7 +144,7 @@ vm_ssh "mkdir -p $(printf "'%s' " "${REMOTE_DIRS[@]}")"
 check_remote_env() {
   if ! vm_ssh "test -f '${REMOTE_DIR}/.env'"; then
     die "File '${REMOTE_DIR}/.env' tidak ada di VM." \
-        "Buat dulu di VM (lihat docs/DEPLOYMENT.md § First-time VM setup), lalu ulangi transfer. Script ini SENGAJA tidak mengirim .env."
+        "Jalankan dulu: bash scripts/deploy/init-server.sh (atau make deploy ARGS=--init)."
   fi
   log_success "Remote .env ditemukan (tidak ditransfer, sesuai kebijakan)."
 }
@@ -164,7 +166,7 @@ vm_rsync "$TARBALL" "${REMOTE_DIR}/dist/"
 
 # 2. Compose files
 log_info "[2/5] Compose files ..."
-for f in compose.infra.yaml compose.yaml compose.prod.yaml; do
+for f in compose.infra.yaml compose.yaml compose.prod.yaml compose.gateway.yaml; do
   require_file "${GARDA_ROOT}/${f}" "File compose '$f' wajib ada di root repo."
   vm_rsync "${GARDA_ROOT}/${f}" "${REMOTE_DIR}/compose/"
 done
@@ -185,7 +187,7 @@ else
   log_warn "db/migrations/ tidak ada — dilewati."
 fi
 
-# 5. Deploy scripts needed on the VM (remote-deploy + keep-last-n)
+# 5. Deploy scripts needed on the VM
 log_info "[5/5] Script deploy untuk VM ..."
 vm_ssh "mkdir -p '${REMOTE_DIR}/scripts/deploy' '${REMOTE_DIR}/scripts/rollback' '${REMOTE_DIR}/scripts/lib' '${REMOTE_DIR}/scripts/backup'"
 vm_rsync "${GARDA_ROOT}/scripts/backup/" "${REMOTE_DIR}/scripts/backup/"
@@ -194,21 +196,21 @@ vm_rsync "${GARDA_ROOT}/scripts/rollback/keep-last-n-images.sh" "${REMOTE_DIR}/s
 vm_rsync "${GARDA_ROOT}/scripts/lib/common.sh" "${REMOTE_DIR}/scripts/lib/"
 
 # ------------------------------------------------------------------------------
-#  Verify the tarball landed intact (size comparison)
+#  Verify the tarball landed intact
 # ------------------------------------------------------------------------------
 verify_transfer() {
   local remote_bytes
-  remote_bytes="$(vm_ssh "stat -c%s '${REMOTE_DIR}/dist/garda-images-${GIT_SHA}.tar.gz' 2>/dev/null || stat -f%z '${REMOTE_DIR}/dist/garda-images-${GIT_SHA}.tar.gz'" 2>/dev/null || echo 0)"
+  remote_bytes="$(vm_ssh "stat -c%s '${REMOTE_DIR}/dist/garda-images-${RELEASE_TAG}.tar.gz' 2>/dev/null || stat -f%z '${REMOTE_DIR}/dist/garda-images-${RELEASE_TAG}.tar.gz'" 2>/dev/null | tr -d '[:space:]' || echo 0)"
 
   if [[ "$remote_bytes" != "$TARBALL_BYTES" ]]; then
     die "Ukuran tarball di VM tidak cocok (lokal=${TARBALL_BYTES}B, remote=${remote_bytes}B)." \
-        "Transfer kemungkinan terputus. Ulangi: make deploy/transfer (rsync akan melanjutkan dari posisi terakhir)."
+        "Transfer kemungkinan terputus. Ulangi transfer."
   fi
   log_success "Verifikasi tarball OK (${remote_bytes} bytes)."
 }
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  echo_cmd "ssh ${VM_USER}@${VM_HOST} \"stat -c%s ${REMOTE_DIR}/dist/garda-images-${GIT_SHA}.tar.gz\""
+  echo_cmd "ssh ${VM_USER}@${VM_HOST} \"stat -c%s ${REMOTE_DIR}/dist/garda-images-${RELEASE_TAG}.tar.gz\""
 else
   verify_transfer
 fi
@@ -217,9 +219,7 @@ fi
 #  Summary
 # ------------------------------------------------------------------------------
 log_section "Transfer selesai"
-print_kv "VM"        "${VM_USER}@${VM_HOST}:${SSH_PORT}"
-print_kv "Remote dir" "$REMOTE_DIR"
-print_kv "GIT_SHA"   "$GIT_SHA"
-print_kv "Tarball"   "$(human_size "$TARBALL_BYTES")"
-
-log_info "Lanjut: bash scripts/deploy/deploy.sh --skip-build --skip-transfer"
+print_kv "VM"          "${VM_USER}@${VM_HOST}:${SSH_PORT}"
+print_kv "Remote dir"  "$REMOTE_DIR"
+print_kv "Release tag" "$RELEASE_TAG"
+print_kv "Tarball"     "$(human_size "$TARBALL_BYTES")"

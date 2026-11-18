@@ -60,7 +60,12 @@ build/
 .buildx-cache/
 .deploy.lock
 .last-build-sha
+.last-build-tag
+.last-build-services
+.last-save-services
 .last-tarball
+.env.tags
+.env.tags.prev
 
 # === Turbo ===
 .turbo/

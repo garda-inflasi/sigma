@@ -2,19 +2,20 @@
 #  Garda Inflasi — compose.prod.yaml
 #  Production override for the VM.
 #
-#  Purpose: force every service to run a PRE-BUILT image that was transferred
-#  from the Mac. The VM must never build anything, so `build: !reset null`
-#  removes the build section inherited from compose.yaml / compose.infra.yaml.
+#  Purpose: force `docker compose up` on the VM to run pre-built tagged images
+#  (built on the VM from temporary `.build-src` by remote-deploy.sh, after which
+#  `.build-src` is removed cleanly), so `build: !reset null` strips inherited
+#  build sections and `compose up --no-build` never expects local source code.
 #  (`!reset` is the Compose override tag for deleting an inherited key; a plain
 #  `build: null` is rejected by Compose v2.20+ with "must be a string".)
 #
 #  Usage (on the VM):
-#      IMAGE_TAG=<git-sha> docker compose \
+#      API_IMAGE_TAG=<tag> WEB_IMAGE_TAG=<tag> ML_IMAGE_TAG=<tag> docker compose \
 #        -f compose/compose.infra.yaml -f compose/compose.prod.yaml up -d --no-build
-#      IMAGE_TAG=<git-sha> docker compose \
-#        -f compose/compose.yaml -f compose/compose.prod.yaml up -d --no-build
+#      API_IMAGE_TAG=<tag> WEB_IMAGE_TAG=<tag> ML_IMAGE_TAG=<tag> docker compose \
+#        -f compose/compose.yaml -f compose/compose.prod.yaml -f compose/compose.gateway.yaml up -d --no-build
 #
-#  IMAGE_TAG defaults to `latest` so a bare `docker compose up` still works.
+#  Each service falls back to IMAGE_TAG then `latest`.
 # ==============================================================================
 
 # CATATAN PENTING: file ini dipakai bersama oleh stack infra DAN stack aplikasi
@@ -40,22 +41,25 @@ x-prod-database-url: &prod-database-url
 services:
   # ── Application stack (compose.yaml) ────────────────────────────────────
   api:
-    image: garda-api:${IMAGE_TAG:-latest}
+    image: garda-api:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     environment:
       APP_ENV: production
       GIN_MODE: release
       APP_ADDR: ":8080"
+      LAPANGAN_UPLOAD_DIR: "/app/uploads"
       # Login berhak minimum (DB_APP_USER/DB_APP_PASSWORD) bila diisi, selain itu pemilik skema.
       DB_PASSWORD: "${DB_APP_PASSWORD:-${DB_PASSWORD:?DB_PASSWORD wajib diisi}}"
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET wajib diisi}"
       AES_KEY: "${AES_KEY:?AES_KEY wajib diisi}"
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:?APP_ALLOWED_ORIGINS wajib diisi (origin publik)}"
+    volumes:
+      - lapangan_uploads:/app/uploads
     restart: unless-stopped
 
   # Job berkala (refresh dashboard, KPI); api tidak menjalankannya (API_BACKGROUND_JOBS=false).
   worker:
-    image: garda-api:${IMAGE_TAG:-latest}
+    image: garda-api:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     environment:
       APP_ENV: production
@@ -66,7 +70,7 @@ services:
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
   # menghentikan deploy.
   migrate:
-    image: garda-api:${IMAGE_TAG:-latest}
+    image: garda-api:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     environment:
       <<: *prod-database-url
@@ -78,7 +82,7 @@ services:
 
   # Produksi hanya mengisi referensi dan admin awal, tidak pernah demo.
   seed:
-    image: garda-api:${IMAGE_TAG:-latest}
+    image: garda-api:${API_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     command: ["./seed", "reference", "admin"]
     environment:
@@ -86,12 +90,12 @@ services:
       APP_ENV: production
 
   ml:
-    image: garda-ml:${IMAGE_TAG:-latest}
+    image: garda-ml:${ML_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     restart: unless-stopped
 
   web:
-    image: garda-web:${IMAGE_TAG:-latest}
+    image: garda-web:${WEB_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     environment:
       NODE_ENV: production
@@ -102,7 +106,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: garda-caddy:${IMAGE_TAG:-latest}
+    image: garda-caddy:${CADDY_IMAGE_TAG:-${IMAGE_TAG:-latest}}
     build: !reset null
     restart: unless-stopped
 
@@ -125,6 +129,10 @@ services:
     restart: unless-stopped
     ports: !override
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+
+volumes:
+  lapangan_uploads:
+    name: garda_lapangan_uploads
 
 networks:
   garda_inflasi_net:

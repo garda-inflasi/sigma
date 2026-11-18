@@ -46,8 +46,8 @@ ENV MIGRATIONS_DIR=/migrations
 COPY db/seeds /seeds
 ENV SEEDS_DIR=/seeds
 
-# Direktori arsip audit (volume audit_arsip) harus bisa ditulis worker yang berjalan sebagai appuser.
-RUN mkdir -p /app/arsip/audit && chown -R appuser:appgroup /app/arsip
+# Direktori arsip audit (volume audit_arsip) dan upload lampiran lapangan (lapangan_uploads) harus bisa ditulis appuser.
+RUN mkdir -p /app/arsip/audit /app/uploads && chown -R appuser:appgroup /app/arsip /app/uploads
 
 # Use non-root user
 USER appuser

@@ -89,6 +89,9 @@ fi
 #  Build the compose command
 # ------------------------------------------------------------------------------
 compose_files="-f compose/compose.infra.yaml -f compose/compose.yaml -f compose/compose.prod.yaml"
+if [[ "${GATEWAY_MODE:-external}" == "external" ]]; then
+  compose_files+=" -f compose/compose.gateway.yaml"
+fi
 
 log_args=("logs" "--tail=${TAIL}")
 [[ "$FOLLOW" -eq 1 ]] && log_args+=("-f")
@@ -98,7 +101,7 @@ log_args=("logs" "--tail=${TAIL}")
 log_section "Logs — ${SERVICE} (tail=${TAIL}${SINCE:+, since=${SINCE}}${FOLLOW:+, follow})"
 print_kv "VM" "${VM_USER}@${VM_HOST}"
 
-remote_cmd="cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' ${compose_files} ${log_args[*]}"
+remote_cmd="cd '${REMOTE_DIR}' && set -a && . ./.env 2>/dev/null || true && . ./.env.tags 2>/dev/null || true && set +a && export POSTGRES_DB=\${POSTGRES_DB:-garda_inflasi} POSTGRES_USER=\${POSTGRES_USER:-garda} && export DB_USER=\${DB_USER:-\$POSTGRES_USER} DB_PASSWORD=\${DB_PASSWORD:-\$POSTGRES_PASSWORD} DB_NAME=\${DB_NAME:-\$POSTGRES_DB} && docker compose --project-directory '${REMOTE_DIR}' ${compose_files} ${log_args[*]}"
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo_cmd "ssh ${VM_USER}@${VM_HOST} \"${remote_cmd}\""

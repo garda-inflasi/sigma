@@ -1,0 +1,35 @@
+# ==============================================================================
+#  Garda Inflasi — compose.gateway.yaml
+#  Production override when TLS & reverse proxy are owned by an external Caddy
+#  gateway container already running on the VM (/home/ubuntu/caddy-gardainflasi).
+#
+#  Effects:
+#    1. Connects `api` (:8080) and `web` (:3000) to the external Caddy network
+#       (`${GATEWAY_NETWORK:-caddy-gardainflasi_edge}`) in addition to internal
+#       `garda_inflasi_net`.
+#    2. Keeps `postgres`, `redis`, `worker`, `ml` isolated on `garda_inflasi_net`.
+#    3. Prevents the built-in `caddy` service from starting (moved to profile
+#       `builtin-caddy`) so ports 80/443 never conflict with the host gateway.
+# ==============================================================================
+
+services:
+  api:
+    networks:
+      - garda_inflasi_net
+      - caddy_edge
+
+  web:
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    networks:
+      - garda_inflasi_net
+      - caddy_edge
+
+  caddy:
+    profiles: ["builtin-caddy"]
+
+networks:
+  caddy_edge:
+    name: ${GATEWAY_NETWORK:-caddy-gardainflasi_edge}
+    external: true

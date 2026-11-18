@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
 # ==============================================================================
 #  Garda Inflasi — scripts/deploy/deploy.sh
-#  ORCHESTRATOR: build (Mac) → save → transfer (SSH) → load & up (VM).
+#  ORCHESTRATOR (Zero-Git, Server-Build & Clean Server):
+#    sync clean source (Mac → VM .build-src) → build on VM → delete .build-src →
+#    migrate/seed (if api) → compose up selected services → sync Caddy SSL →
+#    verify https://PUBLIC_HOST/healthz → prune old tags.
 #
 #  Usage:
 #      bash scripts/deploy/deploy.sh [options]
 #
 #  Options:
-#      --skip-build           Reuse the images already built locally
-#      --skip-transfer        Reuse the tarball already on the VM
-#      --only=api,web,caddy   Build/deploy only the listed services
-#      --dry-run              Print every command; NEVER touches the VM
-#      --allow-dirty          Allow building from a dirty working tree
-#      --backup               pg_dump the VM database before deploying
-#      --no-rollback          Do not auto-rollback when the remote deploy fails
-#      -h, --help             Show this help
+#      --init                   Bootstrap VM first (docker group, folders, .env)
+#      --only=api,web,ml,worker Sync, build, and update only listed services
+#      --tag=<tag>              Explicit release tag (default: vYYYYMMDD-HHMMSS)
+#      --skip-sync              Skip source sync to VM
+#      --skip-build             Skip remote docker build (reuse tag on VM)
+#      --no-cache               Disable Docker build cache on VM
+#      --keep-src               Keep .build-src on VM for debugging (default: delete)
+#      --sync-caddy             Force sync Caddyfile on external gateway
+#      --skip-caddy             Skip Caddyfile sync even on full deploy
+#      --skip-migrate           Skip DB migrate/seed even when api/worker updated
+#      --with-migrate           Force DB migrate/seed even on partial deploy
+#      --backup                 pg_dump the VM database before deploying
+#      --no-rollback            Do not auto-rollback when remote deploy fails
+#      --dry-run                Print every command; NEVER touches the VM
+#      -h, --help               Show this help
 # ==============================================================================
 
 set -euo pipefail
@@ -27,29 +37,43 @@ source "${SCRIPT_DIR}/../lib/ssh-wrapper.sh"
 
 install_traps
 
-# ------------------------------------------------------------------------------
-#  Defaults + argument parsing
-# ------------------------------------------------------------------------------
+DO_INIT=0
+SKIP_SYNC=0
 SKIP_BUILD=0
-SKIP_TRANSFER=0
+NO_CACHE=0
+KEEP_SRC=0
 ONLY_SERVICES=""
+TAG_OVERRIDE=""
+SYNC_CADDY=-1   # -1 = auto (yes on full deploy, no on --only unless --sync-caddy)
+SKIP_MIGRATE=0
+WITH_MIGRATE=0
 DRY_RUN="${DRY_RUN:-0}"
-ALLOW_DIRTY=0
 DO_BACKUP=0
 AUTO_ROLLBACK=1
 
 usage() {
-  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --init)          DO_INIT=1 ;;
+    --skip-sync)     SKIP_SYNC=1 ;;
     --skip-build)    SKIP_BUILD=1 ;;
-    --skip-transfer) SKIP_TRANSFER=1 ;;
+    --no-cache)      NO_CACHE=1 ;;
+    --keep-src)      KEEP_SRC=1 ;;
     --only=*)        ONLY_SERVICES="${1#*=}" ;;
     --only)          shift; ONLY_SERVICES="${1:-}" ;;
+    --tag=*)         TAG_OVERRIDE="${1#*=}" ;;
+    --tag)           shift; TAG_OVERRIDE="${1:-}" ;;
+    --sha=*)         TAG_OVERRIDE="${1#*=}" ;;
+    --sha)           shift; TAG_OVERRIDE="${1:-}" ;;
+    --sync-caddy)    SYNC_CADDY=1 ;;
+    --skip-caddy)    SYNC_CADDY=0 ;;
+    --skip-migrate)  SKIP_MIGRATE=1 ;;
+    --with-migrate)  WITH_MIGRATE=1 ;;
+    --allow-dirty)   ;; # no-op (zero-git)
     --dry-run)       DRY_RUN=1 ;;
-    --allow-dirty)   ALLOW_DIRTY=1 ;;
     --backup)        DO_BACKUP=1 ;;
     --no-rollback)   AUTO_ROLLBACK=0 ;;
     -h|--help)       usage; exit 0 ;;
@@ -60,41 +84,61 @@ done
 
 export DRY_RUN
 
-# ------------------------------------------------------------------------------
-#  Entry point — everything runs under the deploy lock
-# ------------------------------------------------------------------------------
 main() {
   cd "$GARDA_ROOT"
 
-  log_section "Deploy Garda Inflasi"
+  # Auto-decide Caddyfile sync: enabled on full deploy when GATEWAY_MODE=external
+  if [[ "$SYNC_CADDY" -eq -1 ]]; then
+    if [[ -z "$ONLY_SERVICES" && "${GATEWAY_MODE:-external}" == "external" ]]; then
+      SYNC_CADDY=1
+    else
+      SYNC_CADDY=0
+    fi
+  fi
+
+  # ── Step 1: resolve RELEASE_TAG (no Git) ───────────────────────────────
+  if [[ -n "$TAG_OVERRIDE" ]]; then
+    RELEASE_TAG="$TAG_OVERRIDE"
+  else
+    RELEASE_TAG="v$(date -u +%Y%m%d-%H%M%S)"
+  fi
+  export RELEASE_TAG
+
+  log_section "Deploy Garda Inflasi (Sync → Server Build → Clean)"
   print_kv "Mode"          "$([[ "$DRY_RUN" -eq 1 ]] && echo 'DRY-RUN (VM tidak disentuh)' || echo 'LIVE')"
-  print_kv "Skip build"    "$([[ "$SKIP_BUILD" -eq 1 ]] && echo yes || echo no)"
-  print_kv "Skip transfer" "$([[ "$SKIP_TRANSFER" -eq 1 ]] && echo yes || echo no)"
-  print_kv "Only"          "${ONLY_SERVICES:-<all>}"
+  print_kv "Release tag"   "$RELEASE_TAG"
+  print_kv "Gateway mode"  "${GATEWAY_MODE}"
+  print_kv "Public host"   "${PUBLIC_HOST}"
+  print_kv "Only services" "${ONLY_SERVICES:-<all app services>}"
+  print_kv "Init VM"       "$([[ "$DO_INIT" -eq 1 ]] && echo yes || echo no)"
+  print_kv "Sync source"   "$([[ "$SKIP_SYNC" -eq 1 ]] && echo no || echo yes)"
+  print_kv "Build on VM"   "$([[ "$SKIP_BUILD" -eq 1 ]] && echo no || echo yes)"
+  print_kv "Clean src"     "$([[ "$KEEP_SRC" -eq 1 ]] && echo no || echo yes)"
+  print_kv "Sync Caddy"    "$([[ "$SYNC_CADDY" -eq 1 ]] && echo yes || echo no)"
   print_kv "Backup DB"     "$([[ "$DO_BACKUP" -eq 1 ]] && echo yes || echo no)"
   print_kv "Auto rollback" "$([[ "$AUTO_ROLLBACK" -eq 1 ]] && echo yes || echo no)"
 
-  # ── Step 1: resolve GIT_SHA ────────────────────────────────────────────
-  GIT_SHA="$(git rev-parse --short HEAD)"
-  export GIT_SHA
-  log_info "GIT_SHA: ${GIT_SHA}"
+  # ── Step 2: optional server bootstrap (--init) ─────────────────────────
+  if [[ "$DO_INIT" -eq 1 ]]; then
+    init_args=()
+    [[ "$DRY_RUN" -eq 1 ]] && init_args+=("--dry-run")
+    bash "${SCRIPT_DIR}/init-server.sh" ${init_args[@]+"${init_args[@]}"}
+  fi
 
-  # ── Step 2: pre-flight (skipped entirely in dry-run) ───────────────────
+  # ── Step 3: pre-flight SSH + Docker on VM ──────────────────────────────
   if [[ "$DRY_RUN" != "1" ]]; then
     vm_preflight
   else
     echo_cmd "vm_preflight  # cek SSH + docker + compose v2 di VM"
   fi
 
-  # ── Step 3: record the previous deploy marker on the VM ────────────────
+  # ── Step 4: record previous deploy marker ──────────────────────────────
   log_section "Menyimpan marker deploy sebelumnya"
   vm_ssh "cd '${REMOTE_DIR}' && { [ -f .last-deploy ] && cp .last-deploy .previous-deploy || true; }"
 
-  # ── Step 4: optional database backup ───────────────────────────────────
+  # ── Step 5: optional database backup ───────────────────────────────────
   if [[ "$DO_BACKUP" -eq 1 ]]; then
     log_section "Backup database di VM"
-    # Skrip backup dikirim dulu (transfer penuh baru terjadi setelah langkah ini).
-    # Hasil: dump -Fc + .sha256 + .manifest di ${REMOTE_DIR}/backups (retensi ikut berlaku).
     vm_ssh "mkdir -p '${REMOTE_DIR}/scripts/backup' '${REMOTE_DIR}/backups'"
     vm_rsync "${GARDA_ROOT}/scripts/backup/" "${REMOTE_DIR}/scripts/backup/"
     backup_cmd="cd '${REMOTE_DIR}' && set -a && . ./.env && set +a && BACKUP_DIR=backups sh scripts/backup/backup.sh && ls -lh backups | tail -4"
@@ -104,81 +148,60 @@ main() {
       if vm_ssh "$backup_cmd"; then
         log_success "Backup database selesai."
       else
-        die "Backup database gagal." \
-            "Pastikan container 'garda-postgres' berjalan di VM: ssh ${VM_USER}@${VM_HOST} 'docker ps | grep postgres'"
+        die "Backup database gagal."
       fi
     fi
   fi
 
-  # ── Step 5: build locally ──────────────────────────────────────────────
-  if [[ "$SKIP_BUILD" -eq 1 ]]; then
-    log_section "Build dilewati (--skip-build)"
-    if [[ -f "${GARDA_ROOT}/.last-build-sha" ]]; then
-      GIT_SHA="$(tr -d '[:space:]' < "${GARDA_ROOT}/.last-build-sha")"
-      export GIT_SHA
-      log_info "Memakai GIT_SHA dari build terakhir: ${GIT_SHA}"
-    fi
+  # ── Step 6: sync operational files + clean source code to VM ───────────
+  if [[ "$SKIP_SYNC" -eq 1 ]]; then
+    log_section "Sync source dilewati (--skip-sync)"
   else
-    log_section "Build image lokal"
-    build_args=()
-    [[ -n "$ONLY_SERVICES" ]] && build_args+=("--only=${ONLY_SERVICES}")
-    [[ "$ALLOW_DIRTY" -eq 1 ]] && build_args+=("--allow-dirty")
-    [[ "$DRY_RUN" -eq 1 ]] && build_args+=("--dry-run")
+    sync_args=()
+    [[ -n "$ONLY_SERVICES" ]] && sync_args+=("--only=${ONLY_SERVICES}")
+    [[ "$DRY_RUN" -eq 1 ]] && sync_args+=("--dry-run")
 
-    if ! bash "${SCRIPT_DIR}/build-local.sh" "${build_args[@]}"; then
-      die "Build lokal gagal." "Perbaiki error di atas lalu ulangi: make deploy"
-    fi
-
-    if [[ "$DRY_RUN" != "1" && -f "${GARDA_ROOT}/.last-build-sha" ]]; then
-      GIT_SHA="$(tr -d '[:space:]' < "${GARDA_ROOT}/.last-build-sha")"
-      export GIT_SHA
+    if ! bash "${SCRIPT_DIR}/sync-source.sh" ${sync_args[@]+"${sync_args[@]}"}; then
+      die "Sinkronisasi source ke VM gagal."
     fi
   fi
 
-  # ── Step 6: save images to a tarball ───────────────────────────────────
-  if [[ "$SKIP_TRANSFER" -eq 1 ]]; then
-    log_section "Save dilewati (--skip-transfer)"
-  else
-    log_section "Save image ke tarball"
-    save_args=("--sha=${GIT_SHA}")
-    [[ "$DRY_RUN" -eq 1 ]] && save_args+=("--dry-run")
+  # ── Step 7: run remote-deploy.sh (Build on VM → Clean .build-src → Up) ─
+  log_section "Menjalankan build & deploy di VM"
+  remote_args=(
+    "--tag=${RELEASE_TAG}"
+    "--gateway=${GATEWAY_MODE}"
+    "--public-host=${PUBLIC_HOST}"
+    "--next-public-api-base=${NEXT_PUBLIC_API_BASE_URL:-/api}"
+    "--next-public-app-url=${NEXT_PUBLIC_APP_URL:-https://${PUBLIC_HOST}}"
+  )
+  [[ -n "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]] && remote_args+=("--next-public-mapbox-token=${NEXT_PUBLIC_MAPBOX_TOKEN}")
+  [[ -n "$ONLY_SERVICES" ]] && remote_args+=("--only=${ONLY_SERVICES}")
+  [[ "$NO_CACHE" -eq 1 ]] && remote_args+=("--no-cache")
+  [[ "$SKIP_BUILD" -eq 1 ]] && remote_args+=("--skip-build")
+  [[ "$KEEP_SRC" -eq 1 ]] && remote_args+=("--keep-src")
+  [[ "$SKIP_MIGRATE" -eq 1 ]] && remote_args+=("--skip-migrate")
+  [[ "$WITH_MIGRATE" -eq 1 ]] && remote_args+=("--with-migrate")
 
-    if ! bash "${SCRIPT_DIR}/save-images.sh" "${save_args[@]}"; then
-      die "Save image gagal." "Cek free space lokal (df -h .) lalu ulangi: make deploy/save"
-    fi
-  fi
-
-  # ── Step 7: transfer to the VM ─────────────────────────────────────────
-  if [[ "$SKIP_TRANSFER" -eq 1 ]]; then
-    log_section "Transfer dilewati (--skip-transfer)"
-  else
-    log_section "Transfer ke VM"
-    transfer_args=("--sha=${GIT_SHA}")
-    [[ "$DRY_RUN" -eq 1 ]] && transfer_args+=("--dry-run")
-
-    if ! bash "${SCRIPT_DIR}/transfer.sh" "${transfer_args[@]}"; then
-      die "Transfer ke VM gagal." \
-          "Cek koneksi SSH dan free space VM. rsync aman diulang: make deploy/transfer"
-    fi
-  fi
-
-  # ── Step 8: run the remote deploy ──────────────────────────────────────
-  log_section "Menjalankan deploy di VM"
-  remote_script="${SCRIPT_DIR}/remote-deploy.sh"
-
-  if [[ "$DRY_RUN" == "1" ]]; then
-    echo_cmd "ssh ${VM_USER}@${VM_HOST} 'bash -s -- ${GIT_SHA}' < ${remote_script}"
-    log_section "DRY-RUN selesai — tidak ada perubahan di VM"
-    return 0
-  fi
+  remote_arg_str=""
+  for a in "${remote_args[@]}"; do
+    remote_arg_str+=" $(printf '%q' "$a")"
+  done
 
   remote_rc=0
-  if ! vm_ssh_script "$remote_script" "$GIT_SHA"; then
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo_cmd "ssh ${VM_USER}@${VM_HOST} \"cd ${REMOTE_DIR} && bash scripts/deploy/remote-deploy.sh${remote_arg_str}\""
+  else
+    set +e
+    vm_ssh "cd '${REMOTE_DIR}' && bash scripts/deploy/remote-deploy.sh${remote_arg_str}"
     remote_rc=$?
-    log_error "Deploy di VM gagal (exit ${remote_rc})."
+    set -e
+    if [[ "$remote_rc" -ne 0 ]]; then
+      log_error "Remote build/deploy di VM gagal (exit ${remote_rc})."
+    fi
   fi
 
-  # ── Step 9: auto-rollback on failure ───────────────────────────────────
+  # ── Step 8: auto-rollback on failure ───────────────────────────────────
   if [[ "$remote_rc" -ne 0 ]]; then
     if [[ "$AUTO_ROLLBACK" -eq 1 ]]; then
       log_warn "Menjalankan auto-rollback ..."
@@ -190,47 +213,70 @@ main() {
     else
       log_warn "Auto-rollback dinonaktifkan (--no-rollback)."
     fi
-    die "Deploy gagal pada GIT_SHA=${GIT_SHA}." \
-        "Lihat log di atas. Untuk rollback manual: make rollback"
+    die "Deploy gagal pada RELEASE_TAG=${RELEASE_TAG}."
   fi
 
-  # ── Step 10: prune old images ──────────────────────────────────────────
-  log_section "Membersihkan image lama di VM"
-  if vm_ssh "cd '${REMOTE_DIR}' && KEEP_LAST_N_IMAGES='${KEEP_LAST_N_IMAGES}' bash scripts/rollback/keep-last-n-images.sh"; then
-    log_success "Prune selesai."
-  else
-    log_warn "Prune image lama gagal — tidak fatal, deploy tetap sukses."
+  # ── Step 9: sync external Caddy gateway (Cloudflare SSL + routing) ─────
+  if [[ "$SYNC_CADDY" -eq 1 ]]; then
+    caddy_args=()
+    [[ "$DRY_RUN" -eq 1 ]] && caddy_args+=("--dry-run")
+    bash "${SCRIPT_DIR}/sync-caddy.sh" ${caddy_args[@]+"${caddy_args[@]}"}
   fi
 
-  # ── Step 11: summary ───────────────────────────────────────────────────
-  log_section "Deploy selesai"
-  print_kv "GIT_SHA"   "$GIT_SHA"
-  print_kv "Timestamp" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  print_kv "VM"        "${VM_USER}@${VM_HOST}"
+  # ── Step 10: verify public HTTPS endpoint through Cloudflare & Caddy ───
   if [[ -n "${PUBLIC_HOST:-}" ]]; then
-    print_kv "URL"     "https://${PUBLIC_HOST}"
-    print_kv "Health"  "https://${PUBLIC_HOST}/healthz"
-  else
-    print_kv "URL"     "http://${VM_HOST}"
-    print_kv "Health"  "http://${VM_HOST}/healthz"
+    log_section "Verifikasi publik HTTPS — https://${PUBLIC_HOST}/healthz"
+    if [[ "$DRY_RUN" == "1" ]]; then
+      echo_cmd "curl -fsS https://${PUBLIC_HOST}/healthz"
+    else
+      pub_ok=0
+      for i in $(seq 1 20); do
+        if curl -fsS --max-time 8 "https://${PUBLIC_HOST}/healthz" >/dev/null 2>&1; then
+          pub_ok=1
+          break
+        fi
+        log_info "Menunggu sertifikat TLS Cloudflare / kesiapan gateway (${i}/20) ..."
+        sleep 3
+      done
+      if [[ "$pub_ok" -eq 1 ]]; then
+        log_success "https://${PUBLIC_HOST}/healthz → OK (HTTP 200)"
+      else
+        log_warn "https://${PUBLIC_HOST}/healthz belum merespons 200 (cek log Caddy / DNS Cloudflare)."
+      fi
+    fi
   fi
 
-  log_info "Status container:"
-  vm_ssh "cd '${REMOTE_DIR}' && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.yaml -f compose/compose.prod.yaml ps" || true
+  # ── Step 11: verify server is clean of build source & prune old images ─
+  log_section "Verifikasi kebersihan server & prune image lama (keep=${KEEP_LAST_N_IMAGES})"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo_cmd "vm_ssh 'test ! -d .build-src && KEEP_LAST_N_IMAGES=${KEEP_LAST_N_IMAGES} bash scripts/rollback/keep-last-n-images.sh --images-only'"
+  else
+    if [[ "$KEEP_SRC" -ne 1 ]]; then
+      vm_ssh "rm -rf '${REMOTE_DIR}/.build-src' && test ! -d '${REMOTE_DIR}/.build-src'"
+      log_success "Server bersih: ${REMOTE_DIR}/.build-src tidak ada."
+    fi
+    if vm_ssh "cd '${REMOTE_DIR}' && REMOTE_DIR='${REMOTE_DIR}' KEEP_LAST_N_IMAGES='${KEEP_LAST_N_IMAGES}' bash scripts/rollback/keep-last-n-images.sh --images-only"; then
+      log_success "Prune image VM selesai."
+    else
+      log_warn "Prune image VM gagal — tidak fatal."
+    fi
+  fi
 
-  log_success "Deploy ${GIT_SHA} selesai dengan sukses."
+  # ── Step 12: summary ───────────────────────────────────────────────────
+  log_section "Deploy selesai"
+  print_kv "Release tag" "$RELEASE_TAG"
+  print_kv "Timestamp"   "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  print_kv "VM"          "${VM_USER}@${VM_HOST}"
+  print_kv "URL"         "https://${PUBLIC_HOST}"
+  print_kv "Health"      "https://${PUBLIC_HOST}/healthz"
+  log_success "Deploy ${RELEASE_TAG} selesai dengan sukses."
 }
 
-# ------------------------------------------------------------------------------
-#  Bootstrap: load config, then run main under the lock
-# ------------------------------------------------------------------------------
 load_env_deploy
 validate_ssh_key
 
-require_cmd docker "Install Docker Desktop: brew install --cask docker"
-require_cmd git    "Install git: brew install git"
-require_cmd ssh    "ssh tersedia secara default di macOS/Linux."
-require_cmd rsync  "Install rsync: brew install rsync"
+require_cmd ssh   "ssh tersedia secara default di macOS/Linux."
+require_cmd rsync "Install rsync: brew install rsync"
 
 LOCK_PATH="${GARDA_ROOT}/.deploy.lock"
 with_lock "$LOCK_PATH" main

@@ -9,7 +9,10 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "DENY" },
   // Kamera & GPS hanya untuk origin sendiri (mobile app tim lapangan)
-  { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=()" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(self), geolocation=(self), microphone=()",
+  },
   // NOTE: Strict-Transport-Security is intentionally NOT set here.
   // Next.js cannot tell whether the request arrived over TLS (Caddy
   // terminates it), so emitting HSTS here would also send it over plain
@@ -29,6 +32,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   experimental: {
+    agentUpgrade: "security",
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
   },
   async rewrites() {
@@ -41,7 +45,10 @@ const nextConfig: NextConfig = {
       {
         source: "/sw.js",
         headers: [
-          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
           { key: "Service-Worker-Allowed", value: "/" },
         ],
       },

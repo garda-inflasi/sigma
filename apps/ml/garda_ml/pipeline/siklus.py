@@ -44,11 +44,12 @@ from .penyimpanan import (
     KunciSiklus,
     bersihkan,
     hapus_parsial,
+    hapus_siklus,
     pastikan_indeks,
     tulis_dokumen,
 )
 from .regresi import BASELINES, HasilRegresi, jalankan_regresi
-from .waktu import awal_jam, id_siklus, tanggal_wib
+from .waktu import awal_jam, id_siklus, tanggal_wib, utc
 from .xai import jelaskan_forecast, jelaskan_inflasi
 
 log = logging.getLogger("garda_ml.pipeline")
@@ -263,12 +264,13 @@ def jalankan_siklus(
     klien: MongoClient | None = None,
     sekarang: datetime | None = None,
     progress_cb: Callable[[str, int, str, str | None], None] | None = None,
+    paksa: bool = False,
 ) -> dict:
     """Jalankan siklus untuk jam ``sekarang``. Aman diulang pada jam yang sama."""
     milik_sendiri = klien is None
     klien = klien or MongoClient(cfg.mongo_uri, serverSelectionTimeoutMS=5000, tz_aware=True)
     try:
-        return _jalankan(cfg, klien, sekarang or datetime.now(timezone.utc), progress_cb=progress_cb)
+        return _jalankan(cfg, klien, sekarang or datetime.now(timezone.utc), progress_cb=progress_cb, paksa=paksa)
     finally:
         if milik_sendiri:
             klien.close()
@@ -279,22 +281,26 @@ def _jalankan(
     klien: MongoClient,
     sekarang: datetime,
     progress_cb: Callable[[str, int, str, str | None], None] | None = None,
+    paksa: bool = False,
 ) -> dict:
-    ts = awal_jam(sekarang)
+    aktual = utc(sekarang)
+    ts = awal_jam(aktual)
+    cutoff = aktual if paksa else ts
     cycle_id = id_siklus(ts)
     db_safe, db_unseen = klien[cfg.db_safe], klien[cfg.db_unseen]
     pastikan_indeks(db_safe)
-    ada = db_safe[K_SIKLUS].find_one({"_id": cycle_id}, {"status": 1})
-    if ada and ada["status"] in STATUS_FINAL_TERBACA:
-        log.info("siklus %s sudah final (%s), dilewati", cycle_id, ada["status"])
-        return {"cycle_id": cycle_id, "status": ada["status"], "dilewati": True, "alasan": "sudah final"}
+    if not paksa:
+        ada = db_safe[K_SIKLUS].find_one({"_id": cycle_id}, {"status": 1})
+        if ada and ada["status"] in STATUS_FINAL_TERBACA:
+            log.info("siklus %s sudah final (%s), dilewati", cycle_id, ada["status"])
+            return {"cycle_id": cycle_id, "status": ada["status"], "dilewati": True, "alasan": "sudah final"}
 
     kunci = KunciSiklus(db_safe, cfg.lease_detik)
     if not kunci.ambil():
         log.info("siklus lain sedang berjalan, %s dilewati", cycle_id)
         return {"cycle_id": cycle_id, "status": None, "dilewati": True, "alasan": "kunci dipegang pekerja lain"}
     try:
-        return _dengan_kunci(cfg, db_safe, db_unseen, kunci, ts, cycle_id, progress_cb=progress_cb)
+        return _dengan_kunci(cfg, db_safe, db_unseen, kunci, ts, cutoff, cycle_id, progress_cb=progress_cb, paksa=paksa)
     finally:
         kunci.lepas()
 
@@ -305,19 +311,24 @@ def _dengan_kunci(
     db_unseen: Database,
     kunci: KunciSiklus,
     ts: datetime,
+    cutoff: datetime,
     cycle_id: str,
     progress_cb: Callable[[str, int, str, str | None], None] | None = None,
+    paksa: bool = False,
 ) -> dict:
     mulai = time.perf_counter()
-    # Pemeriksaan ulang setelah memegang kunci: pekerja lain mungkin baru menyelesaikannya.
-    ada = db_safe[K_SIKLUS].find_one({"_id": cycle_id}, {"status": 1})
-    if ada and ada["status"] in STATUS_FINAL_TERBACA:
-        return {"cycle_id": cycle_id, "status": ada["status"], "dilewati": True, "alasan": "sudah final"}
-    bereskan_siklus_terputus(db_safe)
-    hapus_parsial(db_safe, cycle_id)
+    if paksa:
+        hapus_siklus(db_safe, cycle_id)
+    else:
+        # Pemeriksaan ulang setelah memegang kunci: pekerja lain mungkin baru menyelesaikannya.
+        ada = db_safe[K_SIKLUS].find_one({"_id": cycle_id}, {"status": 1})
+        if ada and ada["status"] in STATUS_FINAL_TERBACA:
+            return {"cycle_id": cycle_id, "status": ada["status"], "dilewati": True, "alasan": "sudah final"}
+        bereskan_siklus_terputus(db_safe)
+        hapus_parsial(db_safe, cycle_id)
 
     dasar = {
-        "cycle_id": cycle_id, "cycle_timestamp": ts, "data_cutoff": ts, "duration_ms": None, "status": "BERJALAN",
+        "cycle_id": cycle_id, "cycle_timestamp": ts, "data_cutoff": cutoff, "duration_ms": None, "status": "BERJALAN",
         "pesan": "", "versi_kode": _versi_kode(cfg), "jumlah": {}, "source_freshness": [], "target_inflasi": None, "model_metrics": {},
     }
     try:
@@ -329,7 +340,7 @@ def _dengan_kunci(
         if progress_cb is not None:
             progress_cb("EKSTRAKSI_FITUR", 12, f"Mengekstrak data mentah dataunseen ({cycle_id})...", cycle_id)
         lalu = _siklus_final_terakhir(db_safe, ts)
-        data = ekstrak(db_unseen, ts, cfg.hari_riwayat, lalu["data_cutoff"] if lalu else None)
+        data = ekstrak(db_unseen, cutoff, cfg.hari_riwayat, lalu["data_cutoff"] if lalu else None)
         # Batasi OpenMP/BLAS agar worker tidak merebut seluruh CPU VM.
         with threadpool_limits(limits=cfg.n_jobs):
             hasil = _jalankan_model(data, db_safe, cfg, ts, cycle_id, lalu, progress_cb=progress_cb)

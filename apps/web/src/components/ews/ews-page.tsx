@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import {
@@ -33,6 +34,7 @@ import { PulseRing } from "@/components/motion/pulse-ring";
 import { Button } from "@/components/ui/button";
 import type { EwsAturan } from "@/lib/api/ews";
 import { cocokRujukanAlert, satuanAmbang } from "@/lib/api/ews";
+import { MODE_MOCK } from "@/lib/api/client";
 import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import type { EwsAlert, StatusEws } from "@/lib/data/types";
@@ -40,7 +42,7 @@ import { severityMeta, toneClass, type Severity } from "@/lib/design/tokens";
 import { formatAngka, formatRelatif } from "@/lib/format";
 import { useTabHalaman } from "@/lib/hooks/use-tab-halaman";
 import { labelKode } from "@/lib/kode";
-import { kritisAktif, pesanTutupMassal } from "@/lib/ews/kritis";
+import { dapatDitindaklanjutiEws, kritisAktif, pesanTutupMassal } from "@/lib/ews/kritis";
 import {
   useAksiEws,
   useEvaluasiEws,
@@ -446,7 +448,7 @@ export function EwsPage() {
       icon: Check,
       perm: "ews.akui",
       tone: "data",
-      enabled: (r) => r.every((x) => x.status === "BARU"),
+      enabled: (r) => r.every((x) => x.status === "BARU" && dapatDitindaklanjutiEws(x, MODE_MOCK)),
       run: (r) =>
         mut.mutateAsync({ aksi: "akui", ids: ids(r), label: "Alert diakui" }),
     },
@@ -455,6 +457,7 @@ export function EwsPage() {
       label: "Eskalasi",
       icon: ChevronsUp,
       perm: "ews.eskalasi",
+      enabled: (r) => r.every((x) => dapatDitindaklanjutiEws(x, MODE_MOCK)),
       run: (r) =>
         mut.mutateAsync({
           aksi: "eskalasi",
@@ -467,6 +470,7 @@ export function EwsPage() {
       label: "Tandai selesai",
       icon: CircleCheckBig,
       perm: "ews.akui",
+      enabled: (r) => r.every((x) => dapatDitindaklanjutiEws(x, MODE_MOCK)),
       confirm: {
         title: "Tutup alert terpilih?",
         description: pesanTutupMassal,
@@ -601,7 +605,15 @@ export function EwsPage() {
               rowTone={(a) =>
                 cocokRujukanAlert(a, sorot) ? "data" : undefined
               }
-              onRowClick={(a) => setDetailId(a.id)}
+              onRowClick={(a) => {
+                if (dapatDitindaklanjutiEws(a, MODE_MOCK)) {
+                  setDetailId(a.id);
+                } else {
+                  toast.info("Sinyal ML sedang disinkronkan ke daftar alert EWS", {
+                    description: "Tunggu beberapa detik hingga ID alert tersedia untuk ditindaklanjuti.",
+                  });
+                }
+              }}
               empty={
                 daftar?.length === 0
                   ? {

@@ -37,6 +37,7 @@ import { listTitikDesa, type JenisTitikDesa } from "@/lib/api/spasial-jarak";
 import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
 import { unduhProyeksiCsv } from "@/lib/api/prediksi-ekspor";
 import type { EwsAlert, StokColdStorage } from "@/lib/data/types";
+import { adaSinyalBelumDijembatani } from "@/lib/ews/kritis";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
 import { kunciCachePengguna, type StateTabelPengguna } from "@/lib/pengguna/tabel";
@@ -335,7 +336,9 @@ export const useEwsList = (opsi?: LiveQueryOptions) => {
     queryKey: qk.ews.list(),
     queryFn: api.ews.list,
     enabled: opsi?.enabled ?? true,
-    refetchInterval: opsi?.refetchInterval,
+    refetchInterval:
+      opsi?.refetchInterval ??
+      (MODE_MOCK ? false : (q) => (adaSinyalBelumDijembatani(q.state.data, false) ? 5_000 : false)),
     refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
     placeholderData: keepPreviousData,
   });
@@ -351,7 +354,7 @@ export const useKritisBaru = (enabled: boolean) => {
     queryFn: api.ews.kritisBaru,
     enabled,
     staleTime: 5_000,
-    refetchInterval: MODE_MOCK ? false : LIVE,
+    refetchInterval: MODE_MOCK ? false : (q) => (adaSinyalBelumDijembatani(q.state.data, false) ? 5_000 : LIVE),
     refetchOnWindowFocus: !MODE_MOCK,
   });
 };

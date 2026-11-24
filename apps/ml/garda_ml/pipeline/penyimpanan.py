@@ -92,6 +92,13 @@ def hapus_parsial(db: Database, cycle_id: str) -> None:
         db[nama].delete_many({"cycle_id": cycle_id})
 
 
+def hapus_siklus(db: Database, cycle_id: str) -> None:
+    """Hapus satu siklus beserta dokumen hasilnya (khusus pemicu manual --paksa)."""
+    for nama in KOLEKSI_HASIL:
+        db[nama].delete_many({"cycle_id": cycle_id})
+    db[K_SIKLUS].delete_one({"_id": cycle_id})
+
+
 class KunciHilang(RuntimeError):
     """Lease diambil pekerja lain; siklus ini tidak boleh difinalkan."""
 

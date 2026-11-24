@@ -11,7 +11,7 @@ import { pulihkanSesi } from "@/lib/auth/sesi-client";
 import { useSession } from "@/lib/auth/session-context";
 import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta } from "@/lib/design/tokens";
-import { terapkanPeristiwaKritis } from "@/lib/ews/kritis";
+import { dapatDitindaklanjutiEws, terapkanPeristiwaKritis } from "@/lib/ews/kritis";
 import { useAksiEws } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { can } from "@/lib/rbac/permissions";
@@ -47,9 +47,10 @@ export function useEwsStream() {
       catat(a.id);
       // Toast KRITIS dirender PengelolaToastKritis dari data di atas supaya bertahan sampai ditindaklanjuti.
       if (a.severity !== "KRITIS" && severityMeta[a.severity].rank >= 2) {
+        const siapTindak = dapatDitindaklanjutiEws(a, MODE_MOCK);
         notifyEws(a, {
-          onView: () => router.push(`/ews?id=${a.id}`),
-          onAck: bolehAkui ? () => ackRef.current({ aksi: "akui", ids: [a.id], label: "Alert diakui" }) : undefined,
+          onView: () => router.push(siapTindak ? `/ews?id=${a.id}` : `/ews?severity=${encodeURIComponent(a.severity)}`),
+          onAck: bolehAkui && siapTindak ? () => ackRef.current({ aksi: "akui", ids: [a.id], label: "Alert diakui" }) : undefined,
         });
       }
     };

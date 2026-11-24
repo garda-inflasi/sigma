@@ -8,10 +8,11 @@ import { toast } from "sonner";
 import { PulseRing } from "@/components/motion/pulse-ring";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { MODE_MOCK } from "@/lib/api/client";
 import { useSession } from "@/lib/auth/session-context";
 import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta, toneClass } from "@/lib/design/tokens";
-import { pilihToastKritis } from "@/lib/ews/kritis";
+import { dapatDitindaklanjutiEws, pilihToastKritis } from "@/lib/ews/kritis";
 import { spring } from "@/lib/motion/presets";
 import { useAksiEws } from "@/lib/query/hooks";
 import { useEwsStore } from "@/lib/stores/ews-store";
@@ -66,13 +67,17 @@ export function PengelolaToastKritis({ alerts, bolehAkui }: { alerts: EwsAlert[]
 
   // Handler terbaru tanpa memicu ulang efek penyelarasan.
   const handlerRef = useRef<(a: EwsAlert) => HandlersKritis>(null!);
-  handlerRef.current = (a) => ({
-    onView: () => router.push(`/ews?id=${a.id}`),
-    onAck: bolehAkui
-      ? () => aksi.mutateAsync({ aksi: "akui", ids: [a.id], label: "Alert diakui" }).catch(() => undefined)
-      : undefined,
-    onKecilkan: bolehAkui ? undefined : () => useEwsStore.getState().kecilkan(penggunaId, a.id),
-  });
+  handlerRef.current = (a) => {
+    const siapTindak = dapatDitindaklanjutiEws(a, MODE_MOCK);
+    return {
+      onView: () => router.push(siapTindak ? `/ews?id=${a.id}` : `/ews?severity=${encodeURIComponent(a.severity)}`),
+      onAck:
+        bolehAkui && siapTindak
+          ? () => aksi.mutateAsync({ aksi: "akui", ids: [a.id], label: "Alert diakui" }).catch(() => undefined)
+          : undefined,
+      onKecilkan: bolehAkui && siapTindak ? undefined : () => useEwsStore.getState().kecilkan(penggunaId, a.id),
+    };
+  };
 
   useEffect(() => {
     useEwsStore.getState().muatDikecilkan(penggunaId);

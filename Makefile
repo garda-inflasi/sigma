@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help setup/env dev/api dev/web build/api build/web build/gardactl test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/impor/kecamatan ctl/ingest ctl/kpi openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/sync deploy/build deploy/save deploy/transfer deploy/init-env deploy/init-vm deploy/sync-caddy deploy/remote deploy/prune rollback status logs
+.PHONY: help setup/env dev/api dev/web build/api build/web build/gardactl test/api test/ml test/web test/e2e lint/api lint/web gen-module db/migrate db/migrate/down db/migrate/version db/seed/reference db/seed/admin db/seed/demo db/impor/kecamatan ctl/ingest ctl/kpi openapi/sync openapi/check db/backup db/restore db/backup/verify docker/backup/up docker/up docker/down docker/infra/up docker/infra/down docker/app/up docker/app/down docker/demo/up docker/demo/down clean deploy deploy/sync deploy/build deploy/save deploy/transfer deploy/init-env deploy/init-vm deploy/sync-caddy deploy/remote deploy/prune rollback status logs mongo/tunnel
 
 # Muat konfigurasi root `.env` ke environment semua target (backend, db, dsb).
 # File dibuat dari `make setup/env`. Abaikan error bila belum ada.
@@ -318,4 +318,7 @@ status: ## Status service di VM + resource usage
 
 logs: ## Tail logs dari VM (SERVICE=api|worker|ml|web|caddy TAIL=200)
 	@SERVICE=$(SERVICE) TAIL=$(TAIL) bash scripts/deploy/logs.sh $(ARGS)
+
+mongo/tunnel: ## Buka SSH tunnel dari Mac (127.0.0.1:27018) ke MongoDB produksi di VM
+	@bash scripts/deploy/mongo-tunnel.sh $(ARGS)
 

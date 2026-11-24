@@ -25,9 +25,9 @@ def _muat():
     return Konfigurasi, jalankan_siklus
 
 
-def perintah_run() -> int:
+def perintah_run(paksa: bool = False) -> int:
     Konfigurasi, jalankan_siklus = _muat()
-    hasil = jalankan_siklus(Konfigurasi.dari_env())
+    hasil = jalankan_siklus(Konfigurasi.dari_env(), paksa=paksa)
     print(json.dumps({k: v for k, v in hasil.items() if k != "model_metrics"}, ensure_ascii=False, default=str))
     return 0 if hasil.get("status") in ("BERHASIL", "SEBAGIAN") or hasil.get("dilewati") else 1
 
@@ -41,7 +41,7 @@ def perintah_worker() -> int:
     cfg = Konfigurasi.dari_env()
     henti = threading.Event()
     srv, keadaan = jalankan_server_kontrol_latar(
-        lambda cb: jalankan_siklus(cfg, progress_cb=cb),
+        lambda cb: jalankan_siklus(cfg, progress_cb=cb, paksa=True),
     )
 
     def tangani(signum: int, _frame: object) -> None:
@@ -74,8 +74,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(prog="python -m garda_ml.pipeline", description="Pipeline training Garda Inflasi")
     parser.add_argument("perintah", choices=("run", "worker"), help="run: satu siklus jam berjalan; worker: siklus tiap jam")
+    parser.add_argument("--paksa", action="store_true", help="latih ulang siklus jam berjalan dengan cutoff waktu saat ini")
     args = parser.parse_args(argv)
-    return perintah_run() if args.perintah == "run" else perintah_worker()
+    return perintah_run(paksa=args.paksa) if args.perintah == "run" else perintah_worker()
 
 
 if __name__ == "__main__":

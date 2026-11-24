@@ -11,6 +11,7 @@ import {
   toSumberPipelineProd,
   type LampiranMlResponse,
 } from "./ml-prod";
+import { adaSinyalBelumDijembatani, dapatDitindaklanjutiEws } from "@/lib/ews/kritis";
 import type { SiklusAktifResponse } from "./siklus";
 import { qk } from "@/lib/query/keys";
 import { getLingkunganData, useUi } from "@/lib/stores/ui-store";
@@ -389,6 +390,11 @@ describe("Mapper Prod (MongoDB datasafe/dataunseen) tanpa fallback DEMO", () => 
     assert.equal(res.length, 1);
     assert.equal(res[0].sumber, "ML_DATASAFE");
     assert.equal(res[0].kode, "LH:CBM-KRT:1171");
+    assert.equal(dapatDitindaklanjutiEws(res[0], false), false);
+    assert.equal(adaSinyalBelumDijembatani(res, false), true);
+    assert.equal(dapatDitindaklanjutiEws({ id: "42", sumber: "ML_DATASAFE" }, false), true);
+    assert.equal(dapatDitindaklanjutiEws({ id: "SUMBER_DATA:HARGA:SEMUA", sumber: "ML_DATASAFE" }, false), false);
+    assert.equal(adaSinyalBelumDijembatani([{ id: "42", sumber: "ML_DATASAFE" }], false), false);
   });
 
   it("toSumberPipelineProd tidak pernah mengembalikan demo=true", () => {

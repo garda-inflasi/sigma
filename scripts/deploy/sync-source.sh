@@ -15,7 +15,8 @@
 #
 #  Options:
 #      --only=api,web,ml,ml-worker,crawler,worker   Sync only source needed for those services
-#      --with-pipeline                              Include crawler & ml-worker in default full sync
+#      --with-pipeline                              Include crawler & ml-worker in full sync (default)
+#      --without-pipeline                           Exclude crawler & ml-worker from full sync
 #      --dry-run                                    Print commands without touching the VM
 #      -h, --help                                   Show this help
 # ==============================================================================
@@ -31,7 +32,7 @@ source "${SCRIPT_DIR}/../lib/ssh-wrapper.sh"
 install_traps
 
 ONLY_RAW=""
-WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
+WITH_PIPELINE=""
 DRY_RUN="${DRY_RUN:-0}"
 
 usage() {
@@ -42,7 +43,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --only=*)        ONLY_RAW="${1#*=}" ;;
     --only)          shift; ONLY_RAW="${1:-}" ;;
-    --with-pipeline) WITH_PIPELINE=1 ;;
+    --with-pipeline)    WITH_PIPELINE=1 ;;
+    --without-pipeline) WITH_PIPELINE=0 ;;
     --dry-run)       DRY_RUN=1 ;;
     -h|--help)       usage; exit 0 ;;
     *) die "Opsi tidak dikenal: $1" "Jalankan 'bash scripts/deploy/sync-source.sh --help'." ;;
@@ -53,6 +55,7 @@ done
 export DRY_RUN
 
 load_env_deploy
+WITH_PIPELINE="${WITH_PIPELINE:-${ENABLE_PIPELINE:-1}}"
 validate_ssh_key
 
 require_cmd rsync "Install rsync: brew install rsync"

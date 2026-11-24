@@ -67,6 +67,38 @@ ${APEX_HOST} {
 "
 fi
 
+# Build optional pgAdmin /pgm Basic-Auth block from VM .env (if configured) or local env.
+PGADMIN_HTTP_USER="${PGADMIN_HTTP_USER:-}"
+PGADMIN_HTTP_HASH="${PGADMIN_HTTP_HASH:-}"
+if [[ -z "$PGADMIN_HTTP_USER" || -z "$PGADMIN_HTTP_HASH" ]]; then
+  PGM_ENV_OUT="$(vm_ssh "grep -E '^PGADMIN_HTTP_(USER|HASH)=' '${REMOTE_DIR}/.env' 2>/dev/null || true")"
+  while IFS='=' read -r k v; do
+    v="${v%\"}"; v="${v#\"}"
+    v="${v%\'}"; v="${v#\'}"
+    case "$k" in
+      PGADMIN_HTTP_USER) [[ -z "$PGADMIN_HTTP_USER" ]] && PGADMIN_HTTP_USER="$v" ;;
+      PGADMIN_HTTP_HASH) [[ -z "$PGADMIN_HTTP_HASH" ]] && PGADMIN_HTTP_HASH="$v" ;;
+    esac
+  done <<< "$PGM_ENV_OUT"
+fi
+
+PGADMIN_BLOCK=""
+if [[ -n "$PGADMIN_HTTP_USER" && -n "$PGADMIN_HTTP_HASH" ]]; then
+  PGADMIN_BLOCK="
+    handle /pgm* {
+        basic_auth {
+            ${PGADMIN_HTTP_USER} ${PGADMIN_HTTP_HASH}
+        }
+        @pgm_root path /pgm
+        redir @pgm_root /pgm/ permanent
+        header X-Frame-Options \"SAMEORIGIN\"
+        reverse_proxy garda-pgadmin:80 {
+            header_up X-Script-Name /pgm
+        }
+    }
+"
+fi
+
 CADDYFILE_CONTENT=$(cat <<EOF
 {
     email {\$ACME_EMAIL}
@@ -88,12 +120,14 @@ ${PUBLIC_HOST} {
 
     header {
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
         Cross-Origin-Opener-Policy "same-origin"
         -Server
     }
+
+    @not_pgm not path /pgm*
+    header @not_pgm X-Frame-Options "DENY"
 
     @https protocol https
     header @https Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -117,7 +151,7 @@ ${PUBLIC_HOST} {
     handle /api/* {
         reverse_proxy garda-web:3000
     }
-
+${PGADMIN_BLOCK}
     handle {
         reverse_proxy garda-web:3000
     }

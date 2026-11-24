@@ -11,11 +11,12 @@ import { PanelTitle } from "@/components/garda/page-header";
 import { EmptyState } from "@/components/garda/empty-state";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { MODE_MOCK } from "@/lib/api/client";
 import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta, toneClass } from "@/lib/design/tokens";
 import { formatRelatif } from "@/lib/format";
 import { feedItem } from "@/lib/motion/presets";
-import { isiFeed } from "@/lib/ews/kritis";
+import { dapatDitindaklanjutiEws, isiFeed } from "@/lib/ews/kritis";
 import { useAksiEws, useEwsList } from "@/lib/query/hooks";
 import { useEwsStore } from "@/lib/stores/ews-store";
 import { cn } from "@/lib/utils";
@@ -42,8 +43,8 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
   const items = isiFeed(data ?? [], baru, limit);
   const selectedRows = items.filter((i) => sel.includes(i.id));
   const actions: BulkAction<EwsAlert>[] = [
-    { id: "akui", label: "Akui", icon: Check, perm: "ews.akui", tone: "data", run: (rows) => mutate.mutateAsync({ aksi: "akui", ids: rows.map((r) => r.id), label: "Alert diakui" }) },
-    { id: "eskalasi", label: "Eskalasi", icon: ChevronsUp, perm: "ews.eskalasi", run: (rows) => mutate.mutateAsync({ aksi: "eskalasi", ids: rows.map((r) => r.id), label: "Alert dieskalasi" }) },
+    { id: "akui", label: "Akui", icon: Check, perm: "ews.akui", tone: "data", enabled: (rows) => rows.every((r) => r.status === "BARU" && dapatDitindaklanjutiEws(r, MODE_MOCK)), run: (rows) => mutate.mutateAsync({ aksi: "akui", ids: rows.map((r) => r.id), label: "Alert diakui" }) },
+    { id: "eskalasi", label: "Eskalasi", icon: ChevronsUp, perm: "ews.eskalasi", enabled: (rows) => rows.every((r) => dapatDitindaklanjutiEws(r, MODE_MOCK)), run: (rows) => mutate.mutateAsync({ aksi: "eskalasi", ids: rows.map((r) => r.id), label: "Alert dieskalasi" }) },
   ];
 
   return (

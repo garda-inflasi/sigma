@@ -58,6 +58,7 @@ services:
       MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
       CRAWLER_SERVICE_URL: "${CRAWLER_SERVICE_URL:-http://crawler:8091}"
       ML_PIPELINE_SERVICE_URL: "${ML_PIPELINE_SERVICE_URL:-http://ml-worker:8092}"
+      JOB_ML_JEMBATAN_EWS_INTERVAL: "${JOB_ML_JEMBATAN_EWS_INTERVAL:-30s}"
     volumes:
       - lapangan_uploads:/app/uploads
     restart: unless-stopped
@@ -75,6 +76,7 @@ services:
       MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
       CRAWLER_SERVICE_URL: "${CRAWLER_SERVICE_URL:-http://crawler:8091}"
       ML_PIPELINE_SERVICE_URL: "${ML_PIPELINE_SERVICE_URL:-http://ml-worker:8092}"
+      JOB_ML_JEMBATAN_EWS_INTERVAL: "${JOB_ML_JEMBATAN_EWS_INTERVAL:-30s}"
     restart: unless-stopped
 
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
@@ -160,6 +162,19 @@ services:
       MONGO_INITDB_DATABASE: "${MONGO_DB:-garda_inflasi}"
     ports: !override
       - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "${PGADMIN_EMAIL:-admin@gardainflasi.id}"
+      PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_PASSWORD:?PGADMIN_PASSWORD wajib diisi}"
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      SCRIPT_NAME: "${PGADMIN_SCRIPT_NAME:-/pgm}"
+    ports: !override
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
 
 volumes:
   lapangan_uploads:

@@ -73,7 +73,7 @@ NO_CACHE=0
 SKIP_BUILD=0
 SKIP_MIGRATE=0
 WITH_MIGRATE=0
-WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
+WITH_PIPELINE="${ENABLE_PIPELINE:-1}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -82,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --only=*)                    ONLY_RAW="${1#*=}" ;;
     --only)                      shift; ONLY_RAW="${1:-}" ;;
     --with-pipeline)             WITH_PIPELINE=1 ;;
+    --without-pipeline)          WITH_PIPELINE=0 ;;
     --gateway=*)                 GATEWAY_MODE="${1#*=}" ;;
     --gateway)                   shift; GATEWAY_MODE="${1:-}" ;;
     --public-host=*)             PUBLIC_HOST="${1#*=}" ;;

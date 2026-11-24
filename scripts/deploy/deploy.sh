@@ -12,7 +12,8 @@
 #  Options:
 #      --init                   Bootstrap VM first (docker group, folders, .env)
 #      --only=api,web,ml,ml-worker,crawler,worker Sync, build, and update only listed services
-#      --with-pipeline          Include crawler & ml-worker in default full deploy
+#      --with-pipeline          Include crawler & ml-worker in full deploy (default)
+#      --without-pipeline       Exclude crawler & ml-worker in full deploy
 #      --tag=<tag>              Explicit release tag (default: vYYYYMMDD-HHMMSS)
 #      --skip-sync              Skip source sync to VM
 #      --skip-build             Skip remote docker build (reuse tag on VM)
@@ -44,7 +45,7 @@ SKIP_BUILD=0
 NO_CACHE=0
 KEEP_SRC=0
 ONLY_SERVICES=""
-WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
+WITH_PIPELINE=""
 TAG_OVERRIDE=""
 SYNC_CADDY=-1   # -1 = auto (yes on full deploy, no on --only unless --sync-caddy)
 SKIP_MIGRATE=0
@@ -66,7 +67,8 @@ while [[ $# -gt 0 ]]; do
     --keep-src)      KEEP_SRC=1 ;;
     --only=*)        ONLY_SERVICES="${1#*=}" ;;
     --only)          shift; ONLY_SERVICES="${1:-}" ;;
-    --with-pipeline) WITH_PIPELINE=1 ;;
+    --with-pipeline)    WITH_PIPELINE=1 ;;
+    --without-pipeline) WITH_PIPELINE=0 ;;
     --tag=*)         TAG_OVERRIDE="${1#*=}" ;;
     --tag)           shift; TAG_OVERRIDE="${1:-}" ;;
     --sha=*)         TAG_OVERRIDE="${1#*=}" ;;
@@ -193,7 +195,11 @@ main() {
   else
     sync_args=()
     [[ -n "$ONLY_SERVICES" ]] && sync_args+=("--only=${ONLY_SERVICES}")
-    [[ "$WITH_PIPELINE" -eq 1 ]] && sync_args+=("--with-pipeline")
+    if [[ "$WITH_PIPELINE" -eq 1 ]]; then
+      sync_args+=("--with-pipeline")
+    else
+      sync_args+=("--without-pipeline")
+    fi
     [[ "$DRY_RUN" -eq 1 ]] && sync_args+=("--dry-run")
 
     if ! bash "${SCRIPT_DIR}/sync-source.sh" ${sync_args[@]+"${sync_args[@]}"}; then
@@ -211,7 +217,11 @@ main() {
     "--next-public-app-url=${NEXT_PUBLIC_APP_URL:-https://${PUBLIC_HOST}}"
   )
   [[ -n "$ONLY_SERVICES" ]] && remote_args+=("--only=${ONLY_SERVICES}")
-  [[ "$WITH_PIPELINE" -eq 1 ]] && remote_args+=("--with-pipeline")
+  if [[ "$WITH_PIPELINE" -eq 1 ]]; then
+    remote_args+=("--with-pipeline")
+  else
+    remote_args+=("--without-pipeline")
+  fi
   [[ "$NO_CACHE" -eq 1 ]] && remote_args+=("--no-cache")
   [[ "$SKIP_BUILD" -eq 1 ]] && remote_args+=("--skip-build")
   [[ "$KEEP_SRC" -eq 1 ]] && remote_args+=("--keep-src")
@@ -308,6 +318,7 @@ main() {
 }
 
 load_env_deploy
+WITH_PIPELINE="${WITH_PIPELINE:-${ENABLE_PIPELINE:-1}}"
 validate_ssh_key
 
 require_cmd ssh   "ssh tersedia secara default di macOS/Linux."

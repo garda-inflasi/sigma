@@ -17,7 +17,8 @@
 #
 #  Options:
 #      --only=api,web,ml,ml-worker,crawler,worker   Build only the listed services
-#      --with-pipeline                              Include crawler & ml-worker
+#      --with-pipeline                              Include crawler & ml-worker (default)
+#      --without-pipeline                           Exclude crawler & ml-worker
 #      --tag=<tag>                                  Explicit release tag (default: vYYYYMMDD-HHMMSS)
 #      --no-cache                 Disable buildx cache (slow, but clean)
 #      --push-registry            Also push to a registry (off by default)
@@ -39,7 +40,7 @@ install_traps
 #  Defaults + argument parsing
 # ------------------------------------------------------------------------------
 ONLY_RAW=""
-WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
+WITH_PIPELINE=""
 TAG_OVERRIDE=""
 NO_CACHE=0
 PUSH_REGISTRY=0
@@ -53,7 +54,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --only=*)        ONLY_RAW="${1#*=}" ;;
     --only)          shift; ONLY_RAW="${1:-}" ;;
-    --with-pipeline) WITH_PIPELINE=1 ;;
+    --with-pipeline)    WITH_PIPELINE=1 ;;
+    --without-pipeline) WITH_PIPELINE=0 ;;
     --tag=*)         TAG_OVERRIDE="${1#*=}" ;;
     --tag)           shift; TAG_OVERRIDE="${1:-}" ;;
     --sha=*)         TAG_OVERRIDE="${1#*=}" ;;
@@ -73,6 +75,7 @@ done
 export DRY_RUN
 
 load_env_deploy
+WITH_PIPELINE="${WITH_PIPELINE:-${ENABLE_PIPELINE:-1}}"
 
 require_cmd docker "Install Docker Desktop: brew install --cask docker"
 

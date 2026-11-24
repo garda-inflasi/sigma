@@ -17,6 +17,27 @@ export const kritisBelumDitindaklanjuti = (a: SeverityStatus) =>
 export const kritisAktif = (a: SeverityStatus) =>
   a.severity === "KRITIS" && a.status !== "SELESAI";
 
+/**
+ * Alert bisa ditindaklanjuti ke endpoint EWS (/v1/ews/bulk, detail) bila sudah punya ID baris PostgreSQL
+ * (bilangan bulat positif), atau di mode mock. Sinyal ML mentah yang belum dijembatani masih memakai
+ * `sinyal_kunci` (mis. `SUMBER_DATA:HARGA:SEMUA`) sehingga belum bisa diakui/dieskalasi lewat `/v1/ews/bulk`.
+ */
+export function dapatDitindaklanjutiEws(
+  a: Pick<EwsAlert, "id" | "sumber">,
+  mock = false,
+): boolean {
+  if (mock) return true;
+  if (a.sumber === "ML_DATASAFE") return /^\d+$/.test(a.id);
+  return /^\d+$/.test(a.id) || /^EWS-/i.test(a.id);
+}
+
+export function adaSinyalBelumDijembatani(
+  daftar: readonly Pick<EwsAlert, "id" | "sumber">[] | undefined,
+  mock = false,
+): boolean {
+  return Boolean(daftar?.some((a) => !dapatDitindaklanjutiEws(a, mock)));
+}
+
 /** Urutan stabil dengan KRITIS aktif di depan. */
 export function kritisDulu<T extends SeverityStatus>(daftar: readonly T[]): T[] {
   return [...daftar.filter(kritisAktif), ...daftar.filter((a) => !kritisAktif(a))];

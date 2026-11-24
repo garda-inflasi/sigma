@@ -26,6 +26,11 @@ services:
       - garda_inflasi_net
       - caddy_edge
 
+  pgadmin:
+    networks:
+      - garda_inflasi_net
+      - caddy_edge
+
   caddy:
     profiles: ["builtin-caddy"]
 

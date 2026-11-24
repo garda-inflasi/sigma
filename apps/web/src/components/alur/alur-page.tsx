@@ -201,50 +201,51 @@ const KEPUTUSAN: NodeAlur[] = [
   },
 ];
 
-const TAB = ["arsitektur", "pipeline", "entri", "siklus", "keputusan"] as const;
+const TAB = ["arsitektur", "siklus"] as const;
 
-const DIAGRAM: Record<
-  Exclude<(typeof TAB)[number], "siklus">,
-  {
-    judul: string;
-    deskripsi: string;
-    nodes: NodeAlur[];
-    aliran?: boolean;
-    catatan?: string;
-  }
-> = {
-  arsitektur: {
-    judul: "Arsitektur 4 lapis",
-    deskripsi: "Klik lapis untuk membuka modulnya",
-    nodes: ARSITEKTUR,
-  },
-  pipeline: {
-    judul: "Pipeline data",
-    deskripsi:
-      "Bronze → silver → gold dengan lineage dan audit trail di setiap rekaman",
-    nodes: DATA,
-    aliran: true,
-    catatan:
-      "Validasi lintas sumber: harga lapangan dibandingkan dengan PIHPS dan scraper; selisih di atas ambang memicu alert anomali data.",
-  },
-  entri: {
-    judul: "Alur entri harga lapangan",
-    deskripsi: "Draf → diajukan → divalidasi → dipublikasi",
-    nodes: ENTRI,
-    catatan:
-      "Entri yang ditolak kembali ke agen dengan permintaan survei ulang dan tercatat di riwayat perangkat.",
-  },
-  keputusan: {
-    judul: "Dari peringatan ke keputusan",
-    deskripsi: "Human-in-the-loop di setiap titik keputusan",
-    nodes: KEPUTUSAN,
-  },
-};
+const BAGIAN_ALUR: {
+  id: string;
+  judul: string;
+  deskripsi: string;
+  nodes: NodeAlur[];
+  aliran?: boolean;
+  catatan?: string;
+}[] = [
+    {
+      id: "arsitektur",
+      judul: "Arsitektur 4 lapis",
+      deskripsi: "Klik lapis untuk membuka modulnya",
+      nodes: ARSITEKTUR,
+    },
+    {
+      id: "pipeline",
+      judul: "Pipeline data",
+      deskripsi:
+        "Bronze → silver → gold dengan lineage dan audit trail di setiap rekaman",
+      nodes: DATA,
+      aliran: true,
+      catatan:
+        "Validasi lintas sumber: harga lapangan dibandingkan dengan PIHPS dan scraper; selisih di atas ambang memicu alert anomali data.",
+    },
+    {
+      id: "entri",
+      judul: "Alur entri harga lapangan",
+      deskripsi: "Draf → diajukan → divalidasi → dipublikasi",
+      nodes: ENTRI,
+      catatan:
+        "Entri yang ditolak kembali ke agen dengan permintaan survei ulang dan tercatat di riwayat perangkat.",
+    },
+    {
+      id: "keputusan",
+      judul: "Dari peringatan ke keputusan",
+      deskripsi: "Human-in-the-loop di setiap titik keputusan",
+      nodes: KEPUTUSAN,
+    },
+  ];
 
-/** Halaman alur sistem & data — peta mental platform untuk seluruh peran. */
+/** Halaman alur sistem & data — peta mental platform untuk seluruh peran (2 tab: alur terpadu & siklus intervensi). */
 export function AlurPage() {
   const [tab, setTab] = useTabHalaman(TAB, "arsitektur");
-  const diagram = tab === "siklus" ? null : DIAGRAM[tab];
 
   return (
     <HalamanPas>
@@ -258,32 +259,32 @@ export function AlurPage() {
             value={tab}
             onChange={setTab}
             tabs={[
-              { value: "arsitektur", label: "Arsitektur" },
-              { value: "pipeline", label: "Pipeline data" },
-              { value: "entri", label: "Entri harga" },
+              { value: "arsitektur", label: "Arsitektur & alur data" },
               { value: "siklus", label: "Siklus intervensi" },
-              { value: "keputusan", label: "Keputusan" },
             ]}
           />
         }
       />
 
-      {diagram ? (
-        <PanelPas
-          key={tab}
-          judul={diagram.judul}
-          deskripsi={diagram.deskripsi}
-          penuh
-          isiClassName="lg:flex lg:flex-col"
-        >
-          <DiagramAlur
-            nodes={diagram.nodes}
-            aliran={diagram.aliran}
-            catatan={diagram.catatan}
-            mengisi
-            className="w-full lg:my-auto"
-          />
-        </PanelPas>
+      {tab === "arsitektur" ? (
+        <IsiPas className="scrollbar-thin lg:overflow-y-auto lg:pr-1">
+          {BAGIAN_ALUR.map((d) => (
+            <PanelPas
+              key={d.id}
+              judul={d.judul}
+              deskripsi={d.deskripsi}
+              className="shrink-0"
+            >
+              <DiagramAlur
+                nodes={d.nodes}
+                aliran={d.aliran}
+                catatan={d.catatan}
+                mengisi
+                className="w-full"
+              />
+            </PanelPas>
+          ))}
+        </IsiPas>
       ) : (
         <IsiPas>
           <p className="shrink-0 text-[13px] text-muted-foreground">
@@ -299,7 +300,7 @@ export function AlurPage() {
                   key={s}
                   data-siklus={s}
                   judul={
-                    <span className={cn("flex items-center gap-2", t.text)}>
+                    <span className={cn("flex gap-2", t.text)}>
                       <Workflow className="size-4 shrink-0" />
                       {m.label}
                     </span>
@@ -310,10 +311,10 @@ export function AlurPage() {
                     {SIKLUS_TAHAP[s].map((tahap, i) => (
                       <li
                         key={tahap.id}
-                        className="flex items-center gap-2.5 rounded-md bg-secondary px-2.5 py-2 text-[13px]"
+                        className="flex gap-2.5 rounded-md bg-secondary px-2.5 py-2 text-[13px]"
                       >
                         <span
-                          className="num grid size-5 shrink-0 place-items-center rounded-md text-[11px] font-semibold text-white"
+                          className="num grid size-5 shrink-0 rounded-md text-[11px] font-semibold text-white"
                           style={{
                             background: "var(--siklus)",
                             opacity:
@@ -339,7 +340,7 @@ export function AlurPage() {
         </IsiPas>
       )}
 
-      <p className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+      <p className="flex shrink-0 gap-2 text-xs text-muted-foreground">
         <FileText className="size-3.5" /> Versi teks diagram ini (Mermaid) ada
         di docs/FLOW.md.
       </p>

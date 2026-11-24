@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Crawler harian Garda Inflasi: menulis data mentah ke MongoDB dataunseen"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "boto3>=1.35,<2",
     "certifi>=2024.7.4",
     "httpx>=0.27,<1",
     "psycopg[binary]>=3.2,<4",

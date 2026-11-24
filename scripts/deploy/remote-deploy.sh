@@ -222,7 +222,13 @@ export MONGO_VOLUME="${MONGO_VOLUME:-garda_pipeline_mongo_data}"
 export MONGO_USER="${MONGO_USER:-garda}"
 export MONGO_DB="${MONGO_DB:-garda_inflasi}"
 export MONGO_DB_UNSEEN="${MONGO_DB_UNSEEN:-dataunseen}"
-export MONGO_DB_SAFE="${MONGO_DB_SAFE:-datasafe}"
+export MONGO_DB_PREDICTIONS="${MONGO_DB_PREDICTIONS:-ml_predictions}"
+export MONGO_DB_SAFE="${MONGO_DB_SAFE:-${MONGO_DB_PREDICTIONS}}"
+export CRAWLER_BRONZE_ONLY="${CRAWLER_BRONZE_ONLY:-true}"
+export DATA_RAW_DIR="${DATA_RAW_DIR:-/app/data/raw}"
+export DATA_SILVER_DIR="${DATA_SILVER_DIR:-/app/data/silver}"
+export DATA_GOLD_DIR="${DATA_GOLD_DIR:-/app/data/gold}"
+export ML_ARTIFACT_DIR="${ML_ARTIFACT_DIR:-/app/data/models}"
 if [[ -n "${MONGO_PASSWORD:-}" && -z "${MONGO_URI:-}" ]]; then
   export MONGO_URI="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@garda-mongodb:27017/?authSource=admin"
 fi
@@ -240,6 +246,12 @@ if [[ "$NEED_PIPELINE" -eq 1 ]]; then
       printf 'MONGO_VOLUME=%s\n' "$MONGO_VOLUME"
       printf 'MONGO_DB_UNSEEN=%s\n' "$MONGO_DB_UNSEEN"
       printf 'MONGO_DB_SAFE=%s\n' "$MONGO_DB_SAFE"
+      printf 'MONGO_DB_PREDICTIONS=%s\n' "$MONGO_DB_PREDICTIONS"
+      printf 'CRAWLER_BRONZE_ONLY=%s\n' "$CRAWLER_BRONZE_ONLY"
+      printf 'DATA_RAW_DIR=%s\n' "$DATA_RAW_DIR"
+      printf 'DATA_SILVER_DIR=%s\n' "$DATA_SILVER_DIR"
+      printf 'DATA_GOLD_DIR=%s\n' "$DATA_GOLD_DIR"
+      printf 'ML_ARTIFACT_DIR=%s\n' "$ML_ARTIFACT_DIR"
       printf 'ML_N_JOBS=%s\n' "${ML_N_JOBS:-4}"
       printf 'ML_INTERVAL_SELEKSI_JAM=%s\n' "${ML_INTERVAL_SELEKSI_JAM:-24}"
     } >> ./.env
@@ -249,6 +261,7 @@ if [[ "$NEED_PIPELINE" -eq 1 ]]; then
   export MONGO_URI="${MONGO_URI:-mongodb://${MONGO_USER}:${MONGO_PASSWORD}@garda-mongodb:27017/?authSource=admin}"
   export ML_N_JOBS="${ML_N_JOBS:-4}"
   export ML_INTERVAL_SELEKSI_JAM="${ML_INTERVAL_SELEKSI_JAM:-24}"
+  mkdir -p ./data/raw ./data/silver ./data/gold ./data/models
 fi
 
 if [[ -f ./.env.tags ]]; then

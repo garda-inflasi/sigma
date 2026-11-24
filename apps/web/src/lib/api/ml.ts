@@ -1,5 +1,5 @@
 /**
- * Lampiran `ml` (hasil training MongoDB `datasafe` dan kesegaran `dataunseen`, dibaca API Go) dalam bentuk camelCase
+ * Lampiran `ml` (hasil training MongoDB `ml_predictions` dan kesegaran Medallion Bronze/PostgreSQL, dibaca API Go) dalam bentuk camelCase
  * untuk UI, beserta daftar siklus training (`GET /v1/ml/cycles`). Kontrak: docs/PIPELINE-DATA-ML.md §5.
  *
  * `data` endpoint lama tidak pernah disentuh di sini: modul ini hanya membaca kunci `ml` di samping `data`. Mode mock
@@ -252,6 +252,14 @@ export interface LampiranMlMentah {
             siklus?: string | null;
             target?: string | null;
             label_target?: string | null;
+          } | null;
+          klaster?: {
+            cluster_id: number;
+            cluster_label: string;
+            centroid_distance: number;
+            volatility_score: number;
+            climate_exposure_score: number;
+            silhouette_score?: number | null;
           } | null;
           sinyal_aktif?: RingkasanEwsMentah;
         }[]
@@ -526,7 +534,17 @@ export interface WilayahMl {
     target: string | null;
     labelTarget: string | null;
   } | null;
+  klaster: KlasterWilayahMl | null;
   sinyalAktif: RingkasanEwsMl;
+}
+
+export interface KlasterWilayahMl {
+  clusterId: number;
+  clusterLabel: string;
+  centroidDistance: number;
+  volatilityScore: number;
+  climateExposureScore: number;
+  silhouetteScore: number | null;
 }
 
 export interface BlokWilayahMl extends MetaBlokMl {
@@ -975,6 +993,16 @@ export function toLampiranMl(
               siklus: str(w.inflasi.siklus),
               target: str(w.inflasi.target),
               labelTarget: str(w.inflasi.label_target),
+            }
+          : null,
+        klaster: w.klaster
+          ? {
+              clusterId: w.klaster.cluster_id,
+              clusterLabel: w.klaster.cluster_label,
+              centroidDistance: w.klaster.centroid_distance,
+              volatilityScore: w.klaster.volatility_score,
+              climateExposureScore: w.klaster.climate_exposure_score,
+              silhouetteScore: num(w.klaster.silhouette_score),
             }
           : null,
         sinyalAktif: toRingkasanEws(w.sinyal_aktif),

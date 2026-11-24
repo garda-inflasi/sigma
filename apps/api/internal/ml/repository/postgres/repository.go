@@ -131,3 +131,50 @@ func (r *Repository) KodeMaster(ctx context.Context) (komoditas, kabupaten map[s
 	}
 	return komoditas, kabupaten, nil
 }
+
+// KlasterSiklus membaca klaster K-Means wilayah dari tabel PostgreSQL `region_clusters` untuk cycle_id tertentu
+// sebagai cadangan apabila koleksi MongoDB `datasafe_region_clusters` belum terisi.
+func (r *Repository) KlasterSiklus(ctx context.Context, cycleID string) ([]domain.KlasterWilayah, error) {
+	if cycleID == "" {
+		return nil, nil
+	}
+	var rows []struct {
+		CycleID              string   `gorm:"column:cycle_id"`
+		KodeBPS              string   `gorm:"column:kode_bps"`
+		ClusterID            int      `gorm:"column:cluster_id"`
+		ClusterLabel         string   `gorm:"column:cluster_label"`
+		CentroidDistance     float64  `gorm:"column:centroid_distance"`
+		VolatilityScore      float64  `gorm:"column:volatility_score"`
+		ClimateExposureScore float64  `gorm:"column:climate_exposure_score"`
+		SilhouetteScore      *float64 `gorm:"column:silhouette_score"`
+	}
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT cycle_id,
+		       kode_bps,
+		       cluster_id,
+		       cluster_label,
+		       COALESCE(centroid_distance, 0) AS centroid_distance,
+		       COALESCE((feature_summary->>'volatility_score')::double precision, 0) AS volatility_score,
+		       COALESCE((feature_summary->>'climate_exposure_score')::double precision, 0) AS climate_exposure_score,
+		       silhouette_score
+		  FROM region_clusters
+		 WHERE cycle_id = ?
+		 ORDER BY kode_bps ASC`, cycleID).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("baca region_clusters: %w", err)
+	}
+	out := make([]domain.KlasterWilayah, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, domain.KlasterWilayah{
+			CycleID:              row.CycleID,
+			RegencyCode:          row.KodeBPS,
+			ClusterID:            row.ClusterID,
+			ClusterLabel:         row.ClusterLabel,
+			CentroidDistance:     row.CentroidDistance,
+			VolatilityScore:      row.VolatilityScore,
+			ClimateExposureScore: row.ClimateExposureScore,
+			SilhouetteScore:      row.SilhouetteScore,
+		})
+	}
+	return out, nil
+}

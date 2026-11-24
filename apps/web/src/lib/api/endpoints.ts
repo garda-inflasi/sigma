@@ -195,7 +195,7 @@ export const api = {
     xai: async (kode: string): Promise<ProyeksiXai> => {
       if (MODE_MOCK) {
         if (isProd()) {
-          throw new ApiError(404, "Belum ada hasil training MongoDB (datasafe) pada mode mock.");
+          throw new ApiError(404, "Belum ada hasil training MongoDB (ml_predictions) pada mode mock.");
         }
         return mockDelay(() => m.mockXai(kode));
       }

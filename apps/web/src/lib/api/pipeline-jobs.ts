@@ -245,7 +245,7 @@ let mockSnapshot: PipelineJobsSnapshot = {
     cycle_id: "C20261124T04Z",
     tahap: "SELESAI",
     progress_pct: 100,
-    logs: ["[04:03:18 UTC] Siklus C20261124T04Z disimpan ke datasafe."],
+    logs: ["[04:03:18 UTC] Siklus C20261124T04Z disimpan ke ml_predictions."],
     jadwal: { interval_jam: 1 },
   },
   chain: {
@@ -330,7 +330,7 @@ export async function triggerPipelineJob(): Promise<PipelineJobsSnapshot> {
         tahap: "SELESAI",
         progress_pct: 100,
         logs: [
-          `[${new Date().toISOString().slice(11, 19)} UTC] Training ulang ML datasafe selesai.`,
+          `[${new Date().toISOString().slice(11, 19)} UTC] Training ulang ML ml_predictions selesai.`,
         ],
       },
     };

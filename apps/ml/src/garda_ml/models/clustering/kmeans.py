@@ -21,6 +21,8 @@ class RegencyKMeansClusterer:
         self._seed = seed
         self.best_silhouette: float | None = None
         self.selected_k: int = 1
+        self.scaler: StandardScaler | None = None
+        self.model: KMeans | None = None
 
     def fit_predict(self, profiles: pd.DataFrame) -> dict[str, RegionCluster]:
         """Cluster regency profiles choosing k that maximizes silhouette score."""
@@ -46,7 +48,8 @@ class RegencyKMeansClusterer:
                 for i, code in enumerate(codes)
             }
 
-        X_scaled = StandardScaler().fit_transform(X_raw)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_raw)
         valid_ks = [k for k in self._k_range if 2 <= k < len(codes)]
         if not valid_ks:
             valid_ks = [2]
@@ -69,6 +72,8 @@ class RegencyKMeansClusterer:
 
         self.selected_k = int(best_model.n_clusters)
         self.best_silhouette = round(best_score, 4)
+        self.scaler = scaler
+        self.model = best_model
 
         raw_labels = best_model.predict(X_scaled)
         # Order clusters deterministically from lowest volatility to highest risk.

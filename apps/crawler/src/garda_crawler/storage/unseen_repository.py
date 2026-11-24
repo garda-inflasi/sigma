@@ -81,41 +81,60 @@ class UnseenRepository:
         covered_keys: set[str] = set()
         new_count = 0
         ops_by_collection: dict[str, list[Any]] = {}
+        latest_cache: dict[tuple[str, str, str], dict[tuple[str, Any], tuple[float, str]]] = {}
+        seen_doc_ids: set[tuple[str, str]] = set()
+        cleared_daily_series: set[tuple[str, str, str, str]] = set()
 
         for point in points:
             covered_keys.add(point.series.series_key)
-            collection = self.db[point.series.collection]
+            col_name = point.series.collection
+            src = point.series.source_code
+            ds = point.series.dataset_name
+            cache_key = (col_name, src, ds)
+            if cache_key not in latest_cache:
+                existing_map: dict[tuple[str, Any], tuple[float, str]] = {}
+                cursor = self.db[col_name].find(
+                    {
+                        "sumber": src,
+                        "dataset": ds,
+                        "is_carried_forward": False,
+                        "nilai": {"$ne": None},
+                    },
+                    {"kunci_seri": 1, "periode": 1, "nilai": 1, "crawl_date": 1, "crawled_at": 1},
+                    sort=[("crawled_at", -1)],
+                )
+                for row in cursor:
+                    k = (row.get("kunci_seri", ""), row.get("periode"))
+                    if k not in existing_map:
+                        existing_map[k] = (float(row["nilai"]), str(row.get("crawl_date", "")))
+                latest_cache[cache_key] = existing_map
+
+            collection = self.db[col_name]
             period_midnight = to_midnight_utc(point.period)
 
-            # Avoid adding duplicate vintage rows if the exact (series, period, value) is unchanged.
-            latest_same_period = collection.find_one(
-                {
-                    "sumber": point.series.source_code,
-                    "dataset": point.series.dataset_name,
-                    "kunci_seri": point.series.series_key,
-                    "periode": period_midnight,
-                    "is_carried_forward": False,
-                    "nilai": {"$ne": None},
-                },
-                sort=[("crawled_at", -1)],
-            )
-
+            cached = latest_cache[cache_key].get((point.series.series_key, period_midnight))
             doc = serialize_point_document(point, now_utc, crawl_date, run_id, is_backfill=is_backfill)
-            ops = ops_by_collection.setdefault(point.series.collection, [])
+            if (col_name, doc["_id"]) in seen_doc_ids:
+                continue
+            seen_doc_ids.add((col_name, doc["_id"]))
 
-            if latest_same_period is not None and float(latest_same_period["nilai"]) == float(point.value):
+            ops = ops_by_collection.setdefault(col_name, [])
+
+            if cached is not None and cached[0] == float(point.value):
                 # Same day same value is idempotent; still keep `new_count` true only when inserted today.
-                if latest_same_period.get("crawl_date") == crawl_date:
+                if cached[1] == crawl_date:
                     new_count += 1
                 continue
 
-            # Clear earlier-same-day carried-forward or morning ERROR placeholders for this series.
-            if not is_backfill:
+            # Clear earlier-same-day carried-forward or morning ERROR placeholders once per series.
+            series_marker = (col_name, src, ds, point.series.series_key)
+            if not is_backfill and series_marker not in cleared_daily_series:
+                cleared_daily_series.add(series_marker)
                 ops.append(
                     DeleteMany(
                         {
-                            "sumber": point.series.source_code,
-                            "dataset": point.series.dataset_name,
+                            "sumber": src,
+                            "dataset": ds,
                             "kunci_seri": point.series.series_key,
                             "crawl_date": crawl_date,
                             "$or": [
@@ -130,8 +149,8 @@ class UnseenRepository:
             new_count += 1
 
         for collection_name, ops in ops_by_collection.items():
-            if ops:
-                self.db[collection_name].bulk_write(ops, ordered=True)
+            for i in range(0, len(ops), 2000):
+                self.db[collection_name].bulk_write(ops[i : i + 2000], ordered=True)
 
         return new_count, covered_keys
 

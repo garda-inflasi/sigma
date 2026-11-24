@@ -16,7 +16,7 @@ func TestConfigDariEnv(t *testing.T) {
 	cfg := ConfigDariEnv(env(nil))
 	assert.False(t, cfg.Dikonfigurasi())
 	assert.Equal(t, "dataunseen", cfg.DBUnseen)
-	assert.Equal(t, "datasafe", cfg.DBSafe)
+	assert.Equal(t, "ml_predictions", cfg.DBSafe)
 	assert.Equal(t, DefaultTimeout, cfg.Timeout)
 
 	cfg = ConfigDariEnv(env(map[string]string{"MONGO_URL": " mongodb://a:27017 "}))

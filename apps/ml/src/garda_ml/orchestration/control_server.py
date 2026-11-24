@@ -83,7 +83,7 @@ class PipelineControlState:
                     "selesai": None,
                     "durasi_ms": None,
                     "logs": [
-                        f"[{datetime.now(UTC).strftime('%H:%M:%S')} UTC] Menyiapkan siklus training ML datasafe..."
+                        f"[{datetime.now(UTC).strftime('%H:%M:%S')} UTC] Menyiapkan siklus training ML (Bronze -> Silver -> Gold -> ml_predictions)..."
                     ],
                     "hasil": None,
                     "error": None,

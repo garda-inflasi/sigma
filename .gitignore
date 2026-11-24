@@ -54,6 +54,9 @@ dist/
 backups/
 build/
 *.log
+/data/raw/
+/data/gold/
+mlruns/
 
 # === Deploy (build di Mac → transfer ke VM) ===
 .env.deploy

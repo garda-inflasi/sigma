@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from garda_crawler.adapters.bapanas import BapanasPanelAdapter
 from garda_crawler.adapters.bmkg import BmkgForecastAdapter
 from garda_crawler.adapters.bps import BpsWebApiAdapter
+from garda_crawler.adapters.bps_tables import BpsStatTablesAdapter
+from garda_crawler.adapters.djpk import DjpkKemenkeuAdapter
 from garda_crawler.adapters.open_meteo import OpenMeteoArchiveAdapter
 from garda_crawler.adapters.pihps import PihpsBiAdapter
 from garda_crawler.adapters.sp2kp import Sp2kpKemendagAdapter
@@ -14,8 +16,8 @@ from garda_crawler.domain.protocols import SourceAdapter
 
 AdapterFactory = Callable[[CrawlerSettings, Iterable[str] | None], SourceAdapter]
 
-DAILY_ORDER: tuple[str, ...] = ("PIHPS", "BMKG", "OPEN_METEO", "BPS", "SP2KP", "BAPANAS")
-DEFAULT_ACTIVE_SOURCES: tuple[str, ...] = ("PIHPS", "BMKG", "OPEN_METEO", "BPS", "SP2KP", "BAPANAS")
+DAILY_ORDER: tuple[str, ...] = ("PIHPS", "BMKG", "OPEN_METEO", "BPS_TABLES", "DJPK", "SP2KP", "BAPANAS")
+DEFAULT_ACTIVE_SOURCES: tuple[str, ...] = ("PIHPS", "BMKG", "OPEN_METEO", "BPS_TABLES", "DJPK", "SP2KP", "BAPANAS")
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,16 @@ def build_default_registry() -> SourceRegistry:
     registry.register(
         "SP2KP",
         lambda cfg, regions: Sp2kpKemendagAdapter(api_key=cfg.sp2kp_api_key, regions=regions),
+        supports_backfill=False,
+    )
+    registry.register(
+        "DJPK",
+        lambda cfg, regions: DjpkKemenkeuAdapter(base_url=cfg.djpk_base_url, regions=regions),
+        supports_backfill=True,
+    )
+    registry.register(
+        "BPS_TABLES",
+        lambda _cfg, regions: BpsStatTablesAdapter(regions=regions),
         supports_backfill=False,
     )
     return registry

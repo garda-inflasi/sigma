@@ -96,7 +96,8 @@ export MONGO_PASSWORD="\${MONGO_PASSWORD:-}"
 export MONGO_DB="\${MONGO_DB:-garda_inflasi}"
 export MONGO_VOLUME="\${MONGO_VOLUME:-garda_pipeline_mongo_data}"
 export MONGO_DB_UNSEEN="\${MONGO_DB_UNSEEN:-dataunseen}"
-export MONGO_DB_SAFE="\${MONGO_DB_SAFE:-datasafe}"
+export MONGO_DB_PREDICTIONS="\${MONGO_DB_PREDICTIONS:-ml_predictions}"
+export MONGO_DB_SAFE="\${MONGO_DB_SAFE:-\${MONGO_DB_PREDICTIONS}}"
 
 if [ -n "${TARGET_TAG}" ]; then
   export IMAGE_TAG="${TARGET_TAG}"

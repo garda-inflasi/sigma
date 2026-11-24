@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { Shimmer } from "@/components/garda/shimmer";
 import type { GeometriWilayah } from "@/lib/api/spasial";
-import type { GarisUkurPeta } from "./region-map-leaflet";
+import type { GangguanPeta, GarisUkurPeta } from "./region-map-leaflet";
 import {
   META_STATUS,
   formatDelta,
@@ -36,6 +36,8 @@ export function RegionMap({
   titikLain,
   titikCari,
   garisUkur,
+  gangguanJalan,
+  onSelectRute,
   isLoading,
   selected,
   onSelect,
@@ -50,6 +52,8 @@ export function RegionMap({
   titikLain?: TitikPeta[];
   titikCari?: { lat: number; lng: number };
   garisUkur?: GarisUkurPeta | null;
+  gangguanJalan?: GangguanPeta[];
+  onSelectRute?: (idx: number) => void;
   isLoading?: boolean;
   selected?: string;
   onSelect?: (kode: string) => void;
@@ -102,6 +106,8 @@ export function RegionMap({
             titikLain={titikTampil}
             titikCari={titikCari}
             garisUkur={garisUkur}
+            gangguanJalan={gangguanJalan}
+            onSelectRute={onSelectRute}
             selected={selected}
             onSelect={onSelect}
             onKlikPeta={onKlikPeta}

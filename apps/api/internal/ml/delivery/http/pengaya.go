@@ -57,7 +57,7 @@ type aturanRute struct {
 // galat tidak berubah. Daftar ini sumber kebenaran docs/PIPELINE-DATA-ML.md §5.2.
 var petaRute = []aturanRute{
 	{pola: "/v1/siklus/aktif", blok: []blok{blokInflasi}},
-	{pola: "/v1/dashboard/eksekutif", blok: []blok{blokInflasi, blokModel, blokEwsRingkas, blokKesegaran, blokMakro}},
+	{pola: "/v1/dashboard/eksekutif", blok: []blok{blokInflasi, blokModel, blokEwsRingkas, blokKesegaran, blokMakro, blokWilayah}},
 	{pola: "/v1/dashboard/operasional/", awalan: true, blok: []blok{blokForecastRingkas, blokEwsRingkas}},
 	{pola: "/v1/prediksi", blok: []blok{blokForecastRingkas, blokModel}},
 	{pola: "/v1/prediksi/registri", blok: []blok{blokModel}},
@@ -487,6 +487,21 @@ func (r *perakit) wilayah() *dto.BlokWilayah {
 			}
 		}
 	}
+	klaster := r.snap.Klaster
+	if len(klaster) == 0 && r.p.pg != nil {
+		if pgReader, ok := r.p.pg.(interface {
+			KlasterSiklus(context.Context, string) ([]domain.KlasterWilayah, error)
+		}); ok {
+			if rows, err := pgReader.KlasterSiklus(r.ctx, r.snap.Siklus.CycleID); err == nil {
+				klaster = rows
+			}
+		}
+	}
+	for _, k := range klaster {
+		if k.RegencyCode != "" && r.boleh(k.RegencyCode) {
+			ambil(k.RegencyCode).Klaster = dto.ToKlasterWilayah(k)
+		}
+	}
 	for _, s := range r.snap.Ews {
 		if !s.Aktif || s.KabupatenKode == nil || !r.boleh(*s.KabupatenKode) {
 			continue
@@ -529,6 +544,8 @@ func (r *perakit) makro() *dto.BlokMakro {
 	if !ok {
 		return out
 	}
+	terfilter := make([]domain.Makro, 0, min(len(r.snap.Makro), 500))
+	hitungDomain := map[string]int{}
 	for _, m := range r.snap.Makro {
 		// Indikator wilayah dibatasi cakupan; indikator nasional/provinsi (tanpa kabupaten) untuk peran provinsi.
 		kode := ""
@@ -541,6 +558,23 @@ func (r *perakit) makro() *dto.BlokMakro {
 		if (kode == "" || len(kode) <= 2) && !r.boleh("") {
 			continue
 		}
+		terfilter = append(terfilter, m)
+		hitungDomain[m.Domain]++
+	}
+	const batasTotal = 600
+	const batasDomainBesar = 200
+	const kuotaDomainBesar = 80
+	dipakaiPerDomain := map[string]int{}
+	// Jika dokumen sangat besar (mis. ribuan seri konsumsi BPS), sertakan penuh domain ringkas (INFLASI, TENAGA_KERJA, NERACA_EKONOMI)
+	// serta wakil untuk domain beribu baris agar respons JSON tetap cepat.
+	ringkasBesar := len(terfilter) > batasTotal
+	for _, m := range terfilter {
+		if ringkasBesar && hitungDomain[m.Domain] > batasDomainBesar {
+			if dipakaiPerDomain[m.Domain] >= kuotaDomainBesar {
+				continue
+			}
+		}
+		dipakaiPerDomain[m.Domain]++
 		out.Items = append(out.Items, dto.ToMakro(m))
 	}
 	if len(out.Items) == 0 {

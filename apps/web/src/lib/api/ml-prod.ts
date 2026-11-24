@@ -1,5 +1,5 @@
 /**
- * Pemetaan payload `ml` (MongoDB datasafe & dataunseen) ke model UI ketika pengguna memilih mode `Prod (Real)`.
+ * Pemetaan payload `ml` (MongoDB ml_predictions & Medallion pipeline) ke model UI ketika pengguna memilih mode `Prod (Real)`.
  * Menjamin tidak pernah melakukan fallback diam-diam ke data bertanda DEMO dari PostgreSQL.
  */
 
@@ -222,6 +222,35 @@ export interface LampiranMlResponse {
     };
     sumber: SumberKesegaranMlResponse[];
   };
+  wilayah?: MetaMlResponse & {
+    items: {
+      wilayah_kode: string;
+      tingkat: string;
+      komoditas_forecast: string[];
+      klaster?: {
+        cluster_id: number;
+        cluster_label: string;
+        centroid_distance: number;
+        volatility_score: number;
+        climate_exposure_score: number;
+        silhouette_score?: number | null;
+      } | null;
+    }[];
+  };
+  makro?: MetaMlResponse & {
+    items: {
+      domain: string;
+      indikator: string;
+      wilayah_kode: string | null;
+      periode: string | null;
+      nilai: number | null;
+      satuan: string;
+      perubahan: number | null;
+      sumber: string;
+      is_carried_forward: boolean;
+      last_available_date: string | null;
+    }[];
+  };
 }
 
 const namaKomoditas = (kode: string): string =>
@@ -357,7 +386,7 @@ export function toSiklusAktifProd(
       sejak: (ml.siklus?.cycle_timestamp ?? pg.sejak).slice(0, 10),
       otomatis: true,
       alasan: {
-        ringkasan: `Siklus ${siklus.toUpperCase()} dari model ML datasafe (${ml.siklus?.cycle_id ?? "aktif"}).`,
+        ringkasan: `Siklus ${siklus.toUpperCase()} dari model ML ml_predictions (${ml.siklus?.cycle_id ?? "aktif"}).`,
         pemicu: [],
         ditekan: [],
       },
@@ -418,7 +447,7 @@ export function toProyeksiXaiProd(
   if (!ml?.tersedia || !ml.forecast?.tersedia || !ml.forecast.item) {
     throw new ApiError(
       404,
-      `Belum ada hasil training MongoDB (datasafe) untuk ${namaKomoditas(komoditasKode)}.`,
+      `Belum ada hasil training MongoDB (ml_predictions) untuk ${namaKomoditas(komoditasKode)}.`,
     );
   }
   const f = ml.forecast.item;
@@ -469,7 +498,7 @@ export function toProyeksiXaiProd(
     model: {
       // Baseline ditulis jujur: "Persistensi (belum ada model yang mengalahkan baseline)".
       nama: labelModelForecast({ nama: f.model.nama, adalahBaseline: namaBaseline(f.model.nama) }),
-      versi: ml.siklus?.cycle_id ?? "datasafe",
+      versi: ml.siklus?.cycle_id ?? "ml_predictions",
       mape: f.metrik.mape ?? 0,
       dilatih: ml.siklus?.cycle_timestamp ?? f.tanggal_terakhir ?? "",
     },
@@ -482,7 +511,7 @@ export function toBarisModelProd(ml?: LampiranMlResponse): BarisModel[] {
   if (!ml?.tersedia || !ml.model?.tersedia) return [];
   const rows: BarisModel[] = [];
   const dilatih = ml.siklus?.cycle_timestamp ?? "";
-  const cycleId = ml.siklus?.cycle_id ?? "datasafe";
+  const cycleId = ml.siklus?.cycle_id ?? "ml_predictions";
 
   if (ml.forecast_ringkas?.tersedia) {
     for (const f of ml.forecast_ringkas.items) {

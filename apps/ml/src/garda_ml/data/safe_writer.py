@@ -18,6 +18,7 @@ XAI_COLLECTION = "datasafe_xai_explanations"
 EWS_COLLECTION = "datasafe_ews_signals"
 MACRO_COLLECTION = "datasafe_macro_indicators"
 REGION_CLUSTERS_COLLECTION = "datasafe_region_clusters"
+CRAWL_RUNS_COLLECTION = "crawl_runs"
 
 OUTPUT_COLLECTIONS: tuple[str, ...] = (
     MACRO_COLLECTION,

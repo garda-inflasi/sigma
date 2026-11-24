@@ -159,7 +159,7 @@ export const LiveFeedPanel = memo(function LiveFeedPanel({
         )}
       </div>
 
-      {/* Denyut Logistik, Cold Storage & ML datasafe */}
+      {/* Denyut Logistik, Cold Storage & ML ml_predictions */}
       <div className="shrink-0 space-y-2 border-t border-border bg-muted/25 px-3 py-2.5">
         <div className="flex items-center justify-between text-[11px]">
           <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">

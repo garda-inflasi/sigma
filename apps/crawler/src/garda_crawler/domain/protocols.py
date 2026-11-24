@@ -4,7 +4,13 @@ from collections.abc import Iterable, Iterator
 from datetime import date, datetime
 from typing import Any, Protocol, runtime_checkable
 
-from garda_crawler.domain.entities import DataPoint, DatasetDefinition, FetchOutcome, TimeSeriesSpec
+from garda_crawler.domain.entities import (
+    DataPoint,
+    DatasetDefinition,
+    FetchOutcome,
+    RawBronzeCapture,
+    TimeSeriesSpec,
+)
 
 
 @runtime_checkable
@@ -13,6 +19,9 @@ class HttpTransport(Protocol):
 
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
         """Execute a throttled, robots-checked GET returning parsed JSON."""
+
+    def get_text(self, url: str, params: dict[str, Any] | None = None) -> str:
+        """Execute a throttled, robots-checked GET returning raw response text."""
 
     def redact_secrets(self, text: str) -> str:
         """Mask registered secrets before logging or raising messages."""

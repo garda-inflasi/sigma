@@ -1,5 +1,7 @@
 """Polite HTTP client with per-host rate limiting, robots.txt cache, retries, and secret redaction."""
 
+import asyncio
+import random
 import re
 import time
 from collections.abc import Callable, Iterable
@@ -103,7 +105,8 @@ def _retry_delay_seconds(exc: BaseException, attempt: int) -> float:
         retry_after = exc.response.headers.get("retry-after", "").strip()
         if retry_after.isdigit():
             return min(60.0, float(retry_after))
-    return min(30.0, float(2 ** max(0, attempt - 1)))
+    base = min(30.0, float(2 ** max(0, attempt - 1)))
+    return base + random.uniform(0.05, 0.35)
 
 
 class PoliteHttpClient:
@@ -239,3 +242,122 @@ class PoliteHttpClient:
             raise SchemaValidationError(
                 f"respons bukan JSON sah dari {self.redact_secrets(url)}"
             ) from exc
+
+    def get_text(self, url: str, params: dict[str, Any] | None = None) -> str:
+        """Fetch raw UTF-8 response text over HTTPS after checking robots.txt and rate limits."""
+        policy = self._get_robots_policy(url)
+        request = self._client.build_request("GET", url, params=params)
+        target_path = request.url.raw_path.decode("ascii", errors="ignore")
+        if not policy.is_allowed(target_path):
+            raise RobotsDisallowedError(self.redact_secrets(str(request.url)))
+
+        try:
+            response = self._perform_raw_get(url, params=params)
+        except TransientFetchError:
+            raise
+        except httpx.HTTPError as exc:
+            raise HttpFetchError(
+                f"gagal HTTP ke {self.redact_secrets(url)}: {self.redact_secrets(str(exc))}"
+            ) from exc
+
+        if response.is_redirect or response.status_code >= 400:
+            raise HttpFetchError(
+                f"HTTP {response.status_code} dari {self.redact_secrets(str(response.request.url))}"
+            )
+        return response.text
+
+
+class AsyncPoliteHttpClient:
+    """Async httpx + tenacity XHR/JSON client with per-host throttling and secret redaction."""
+
+    def __init__(
+        self,
+        user_agent: str,
+        *,
+        delay_ms: int = 800,
+        max_attempts: int = 3,
+        timeout_seconds: float = 25.0,
+        secrets: Iterable[str] = (),
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._user_agent = user_agent
+        self._delay_ms = max(0, delay_ms)
+        self._max_attempts = max(1, max_attempts)
+        self._secrets = tuple(s for s in secrets if s)
+        self._last_request_ts: dict[str, float] = {}
+        self._robots_cache: dict[str, RobotsPolicy] = {}
+
+        client_kwargs: dict[str, Any] = {
+            "timeout": timeout_seconds,
+            "headers": {"User-Agent": user_agent, "Accept": "application/json,text/plain"},
+            "follow_redirects": False,
+        }
+        if transport is not None:
+            client_kwargs["transport"] = transport
+        else:
+            client_kwargs["verify"] = certifi.where()
+        self._client = httpx.AsyncClient(**client_kwargs)
+
+    async def __aenter__(self) -> "AsyncPoliteHttpClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    def redact_secrets(self, text: str) -> str:
+        return redact_secrets(text, self._secrets)
+
+    async def _throttle_host(self, host: str) -> None:
+        floor_ms = max(self._delay_ms, MIN_HOST_DELAY_MS.get(host, 0))
+        if floor_ms <= 0:
+            return
+        last = self._last_request_ts.get(host)
+        if last is not None:
+            remaining = (floor_ms / 1000.0) - (time.monotonic() - last)
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+        self._last_request_ts[host] = time.monotonic()
+
+    async def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """Execute an async throttled, retried XHR/JSON GET returning parsed JSON."""
+        parsed = urlsplit(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if origin not in self._robots_cache:
+            await self._throttle_host(parsed.netloc)
+            try:
+                rob = await self._client.get(urljoin(origin, "/robots.txt"))
+                policy = parse_robots(rob.text, self._user_agent) if rob.status_code == 200 else RobotsPolicy(())
+            except httpx.HTTPError:
+                policy = RobotsPolicy(())
+            self._robots_cache[origin] = policy
+
+        request = self._client.build_request("GET", url, params=params)
+        target_path = request.url.raw_path.decode("ascii", errors="ignore")
+        if not self._robots_cache[origin].is_allowed(target_path):
+            raise RobotsDisallowedError(self.redact_secrets(str(request.url)))
+
+        attempt = 0
+        while True:
+            attempt += 1
+            await self._throttle_host(parsed.netloc)
+            try:
+                resp = await self._client.get(url, params=params)
+                if resp.status_code >= 500 or resp.status_code == 429:
+                    raise TransientFetchError(f"HTTP {resp.status_code} dari {self.redact_secrets(str(resp.request.url))}")
+                break
+            except (TransientFetchError, httpx.TransportError) as exc:
+                if attempt >= self._max_attempts:
+                    if isinstance(exc, TransientFetchError):
+                        raise
+                    raise HttpFetchError(f"gagal HTTP async ke {self.redact_secrets(url)}: {exc}") from exc
+                await asyncio.sleep(_retry_delay_seconds(exc, attempt))
+
+        if resp.is_redirect or resp.status_code >= 400:
+            raise HttpFetchError(f"HTTP {resp.status_code} dari {self.redact_secrets(str(resp.request.url))}")
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise SchemaValidationError(f"respons bukan JSON sah dari {self.redact_secrets(url)}") from exc

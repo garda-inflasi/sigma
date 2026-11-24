@@ -9,6 +9,8 @@ from garda_crawler.domain.entities import DatasetDefinition, RunSummary
 from garda_crawler.domain.enums import SourceStatus, TriggerType
 from garda_crawler.domain.protocols import HttpTransport, RawStorageRepository
 from garda_crawler.orchestration.runner import DatasetRunner
+from garda_crawler.storage.bronze_store import BronzeStore
+from garda_crawler.storage.crawl_log_repository import PostgresCrawlLogRepository
 from garda_crawler.transport.polite_http import PoliteHttpClient
 from garda_crawler.transport.time_utils import utc_now
 
@@ -26,12 +28,28 @@ class CrawlOrchestrator:
         registry: SourceRegistry = DEFAULT_REGISTRY,
         runner: DatasetRunner | None = None,
         client_factory: Callable[[CrawlerSettings], HttpTransport] | None = None,
+        bronze_store: BronzeStore | None = None,
     ) -> None:
         self._settings = settings
         self._repository = repository
         self._registry = registry
         self._runner = runner or DatasetRunner()
         self._client_factory = client_factory or self._default_client_factory
+        if bronze_store is not None:
+            self._bronze_store: BronzeStore | None = bronze_store
+        elif settings.minio_endpoint or settings.bronze_dir:
+            logs = PostgresCrawlLogRepository(settings.postgres_url) if settings.postgres_url else None
+            self._bronze_store = BronzeStore(
+                local_dir=settings.bronze_dir,
+                minio_endpoint=settings.minio_endpoint,
+                minio_access_key=settings.minio_access_key,
+                minio_secret_key=settings.minio_secret_key,
+                minio_bucket=settings.minio_bucket_raw,
+                minio_secure=settings.minio_secure,
+                crawl_logs=logs,
+            )
+        else:
+            self._bronze_store = None
 
     @staticmethod
     def _default_client_factory(settings: CrawlerSettings) -> PoliteHttpClient:
@@ -89,6 +107,7 @@ class CrawlOrchestrator:
                         trigger=trigger,
                         start_date=start_date,
                         end_date=end_date,
+                        bronze_store=self._bronze_store,
                     )
                 except Exception as exc:
                     summary = RunSummary(

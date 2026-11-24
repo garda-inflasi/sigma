@@ -316,7 +316,7 @@ export function WorkspaceSwitcher({
                 Prod (Real)
               </p>
               <p className="text-[11px] text-muted-foreground">
-                MongoDB datasafe · Hasil training ML
+                MongoDB ml_predictions · Medallion ML
               </p>
               {lingkunganData === "prod" && mlInfo?.cycleTimestamp && (
                 <p className="mt-0.5 text-[10px] text-data-600 dark:text-data-300">

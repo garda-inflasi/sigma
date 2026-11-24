@@ -1,5 +1,7 @@
 """BPS WebAPI v1 adapter plugin for macro, inflation, labor, and primary-sector datasets."""
 
+import base64
+import json
 import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
@@ -18,6 +20,7 @@ from garda_crawler.domain.entities import (
     DataPoint,
     DatasetDefinition,
     FetchOutcome,
+    RawBronzeCapture,
     TimeSeriesSpec,
 )
 from garda_crawler.domain.errors import CrawlerError, HttpFetchError, RobotsDisallowedError, SchemaValidationError
@@ -26,8 +29,36 @@ from garda_crawler.validation.normalizers import normalize_alias
 
 BPS_WEBAPI_BASE_URL = "https://webapi.bps.go.id/v1/api"
 BPS_ACEH_DOMAIN = "1100"
+BPS_NATIONAL_DOMAIN = "0000"
 BPS_BASE_YEAR = 1900
 MAX_VAR_PAGES = 50
+BPS_IHK150_TABLE_TOKEN = "MjI0NSMy"
+BPS_IHK150_TABLE_URL = (
+    "https://www.bps.go.id/id/statistics-table/2/MjI0NSMy/"
+    "indeks-harga-konsumen-150-kabupaten-kota-2022-100.html"
+)
+
+
+def decode_bps_table_token(token: str) -> tuple[str, str]:
+    """Decode a base64 BPS table path token like `MjI0NSMy` into `(var_id, table_type)`."""
+    padded = token.strip() + "=" * (-len(token.strip()) % 4)
+    decoded = base64.b64decode(padded).decode("utf-8")
+    parts = decoded.split("#", 1)
+    if len(parts) != 2:
+        raise SchemaValidationError(f"token tabel BPS tidak valid: {token!r}")
+    return parts[0], parts[1]
+
+
+def extract_bps_table_json_from_html(html: str) -> dict[str, Any]:
+    """Extract the embedded Next.js RSC JSON table payload (`status`, `var`, `vervar`, `datacontent`)."""
+    match = re.search(r'(\{\\"status\\":\\"OK\\".*?\\"datacontent\\":\{.*?\}\})', html)
+    if not match:
+        raise SchemaValidationError("payload JSON tabel BPS tidak ditemukan pada respons portal")
+    raw_json = match.group(1).replace('\\"', '"').replace("\\\\", "\\")
+    parsed = json.loads(raw_json)
+    if not isinstance(parsed, dict) or "datacontent" not in parsed:
+        raise SchemaValidationError("struktur JSON tabel BPS tidak lengkap")
+    return parsed
 
 MISSING_KEY_MESSAGE = format_skip_message(
     "BPS_API_KEY belum diisi, halaman tabel BPS tidak di-scrape sebagai gantinya",
@@ -46,7 +77,7 @@ QUARTER_START_MONTHS: dict[str, int] = {
     "4": 10,
 }
 
-_ALL_ALLOWED_CODES = frozenset({BPS_ACEH_PROVINCE_CODE, *REGENCIES.keys()})
+_ALL_ALLOWED_CODES = frozenset({"0000", BPS_ACEH_PROVINCE_CODE, *REGENCIES.keys()})
 
 
 def _build_series(dataset: DatasetDefinition, spec: BpsIndicatorSpec, region_code: str) -> TimeSeriesSpec:
@@ -237,7 +268,7 @@ class BpsWebApiAdapter(BaseAdapter):
     ) -> None:
         # BPS supports province code "11" in addition to the 23 regencies.
         if regions is None:
-            self.regions = (BPS_ACEH_PROVINCE_CODE, *REGENCIES.keys())
+            self.regions = ("0000", BPS_ACEH_PROVINCE_CODE, *REGENCIES.keys())
         else:
             selected = tuple(dict.fromkeys(code.strip() for code in regions if code.strip()))
             unknown = sorted(set(selected) - _ALL_ALLOWED_CODES)
@@ -268,6 +299,7 @@ class BpsWebApiAdapter(BaseAdapter):
         client: HttpTransport,
         start_year: int,
         end_year: int,
+        capture_date: date | None = None,
     ) -> FetchOutcome:
         combined = FetchOutcome()
         if not self.api_key:
@@ -277,9 +309,12 @@ class BpsWebApiAdapter(BaseAdapter):
 
         for spec in BPS_DATASET_SPECS[dataset]:
             expected_for_spec = [_build_series(dataset, spec, w) for w in spec.regions if self._includes_region(w)]
+            domain = spec.domain_override or BPS_ACEH_DOMAIN
             try:
-                var_id = self.variables.get(spec.key) or lookup_var_id(
-                    client, self.api_key, BPS_ACEH_DOMAIN, spec, self._var_cache
+                var_id = (
+                    self.variables.get(spec.key)
+                    or spec.fallback_var_id
+                    or lookup_var_id(client, self.api_key, domain, spec, self._var_cache)
                 )
             except RobotsDisallowedError as exc:
                 combined.skipped_reason = format_skip_message(client.redact_secrets(str(exc)), ROBOTS_ACTION_HINT)
@@ -295,10 +330,12 @@ class BpsWebApiAdapter(BaseAdapter):
             any_year_succeeded = False
             for year in range(start_year, end_year + 1):
                 combined.request_count += 1
-                url = build_bps_data_url(BPS_ACEH_DOMAIN, var_id, year - BPS_BASE_YEAR, self.api_key)
+                th_id = year - BPS_BASE_YEAR
+                url = build_bps_data_url(domain, var_id, th_id, self.api_key)
+                safe_endpoint = strip_bps_key(url)
                 try:
                     payload = client.get_json(url)
-                    parsed = parse_bps_payload(payload, dataset, spec, strip_bps_key(url))
+                    parsed = parse_bps_payload(payload, dataset, spec, safe_endpoint)
                 except RobotsDisallowedError as exc:
                     combined.request_count -= 1
                     combined.skipped_reason = format_skip_message(client.redact_secrets(str(exc)), ROBOTS_ACTION_HINT)
@@ -310,6 +347,17 @@ class BpsWebApiAdapter(BaseAdapter):
                     continue
 
                 any_year_succeeded = True
+                combined.raw_captures.append(
+                    RawBronzeCapture(
+                        source_code=self.source_code,
+                        dataset_name=dataset.name,
+                        endpoint=safe_endpoint,
+                        params={"domain": domain, "var_id": var_id, "th": th_id, "tahun": year},
+                        payload=payload,
+                        partition_year=year,
+                        capture_date=capture_date,
+                    )
+                )
                 combined.points.extend(p for p in parsed.points if self._includes_region(p.series.regency_code or ""))
                 combined.rejected_counts.update(parsed.rejected_counts)
 
@@ -324,7 +372,13 @@ class BpsWebApiAdapter(BaseAdapter):
         client: HttpTransport,
         target_date: date,
     ) -> Iterator[FetchOutcome]:
-        yield self._fetch_year_range(dataset, client, target_date.year - 1, target_date.year)
+        yield self._fetch_year_range(
+            dataset,
+            client,
+            target_date.year - 1,
+            target_date.year,
+            capture_date=target_date,
+        )
 
     def fetch_backfill(
         self,
@@ -333,4 +387,10 @@ class BpsWebApiAdapter(BaseAdapter):
         start_date: date,
         end_date: date,
     ) -> Iterator[FetchOutcome]:
-        yield self._fetch_year_range(dataset, client, start_date.year, end_date.year)
+        yield self._fetch_year_range(
+            dataset,
+            client,
+            start_date.year,
+            end_date.year,
+            capture_date=end_date,
+        )

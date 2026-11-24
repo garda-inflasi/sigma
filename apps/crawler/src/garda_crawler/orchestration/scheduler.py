@@ -19,11 +19,14 @@ from garda_crawler.orchestration.control_server import (
     start_control_server_background,
 )
 from garda_crawler.orchestration.orchestrator import CrawlOrchestrator
+from garda_crawler.storage.bronze_store import BronzeOnlyRepository, BronzeStore
+from garda_crawler.storage.crawl_log_repository import PostgresCrawlLogRepository
 from garda_crawler.storage.lock_manager import MongoLeaseLock, default_lock_owner
 from garda_crawler.storage.run_ledger import SCHEDULE_COLLECTION, RunLedger
 from garda_crawler.storage.unseen_repository import UnseenRepository
+from garda_crawler.domain.entities import RawBronzeCapture
 from garda_crawler.transport.postgres_reader import PostgresFieldReader
-from garda_crawler.transport.time_utils import WIB_TZ, utc_now
+from garda_crawler.transport.time_utils import WIB_TZ, to_wib_date, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +85,42 @@ def run_if_due(
         return True
 
 
-def _run_daily_cycle(settings: CrawlerSettings, db: Database) -> None:
-    repo = UnseenRepository(db)
+def _run_daily_cycle(settings: CrawlerSettings, db: Database | None) -> None:
+    repo = BronzeOnlyRepository() if (settings.bronze_only or db is None) else UnseenRepository(db)
     orchestrator = CrawlOrchestrator(settings, repo)
     orchestrator.run_sources(DEFAULT_ACTIVE_SOURCES, trigger=TriggerType.SCHEDULED, now_utc=utc_now())
 
 
-def _run_field_sync_cycle(settings: CrawlerSettings, db: Database) -> None:
+def _run_field_sync_cycle(settings: CrawlerSettings, db: Database | None) -> None:
+    if settings.bronze_only or db is None:
+        if not settings.postgres_url:
+            return
+        now = utc_now()
+        with PostgresFieldReader(settings.postgres_url) as reader:
+            entries = reader.fetch_all()
+        logs = PostgresCrawlLogRepository(settings.postgres_url)
+        store = BronzeStore(
+            local_dir=settings.bronze_dir,
+            minio_endpoint=settings.minio_endpoint,
+            minio_access_key=settings.minio_access_key,
+            minio_secret_key=settings.minio_secret_key,
+            minio_bucket=settings.minio_bucket_raw,
+            minio_secure=settings.minio_secure,
+            crawl_logs=logs,
+        )
+        store.persist_capture(
+            RawBronzeCapture(
+                source_code="LAPANGAN",
+                dataset_name="entri_harga",
+                endpoint="postgres://entri_harga",
+                params={"sumber": "LAPANGAN"},
+                payload={"records": entries},
+                capture_date=to_wib_date(now),
+            ),
+            to_wib_date(now),
+        )
+        return
+
     repo = UnseenRepository(db)
     repo.ensure_indexes()
     reader = PostgresFieldReader(settings.postgres_url) if settings.postgres_url else None
@@ -106,11 +138,12 @@ class CrawlerWorker:
     ) -> None:
         self._settings = settings
         self._mongo_client: MongoClient[Any] | None = None
-        if db is None:
+        if db is None and not settings.bronze_only and settings.mongo_uri:
             self._mongo_client = MongoClient(settings.mongo_uri, tz_aware=True)
-            self._db = self._mongo_client[settings.mongo_db_unseen]
+            self._db: Database | None = self._mongo_client[settings.mongo_db_unseen]
         else:
             self._db = db
+        self._local_slots: dict[str, str] = {}
         self._stop_event = threading.Event()
         self.control_state = CrawlerControlState(self._db)
 
@@ -122,23 +155,31 @@ class CrawlerWorker:
         hourly_slot = local_wib.strftime("%Y-%m-%dT%H")
 
         try:
-            run_if_due(
-                self._db,
-                "lapangan",
-                hourly_slot,
-                lambda: _run_field_sync_cycle(self._settings, self._db),
-            )
+            if self._db is not None:
+                run_if_due(
+                    self._db,
+                    "lapangan",
+                    hourly_slot,
+                    lambda: _run_field_sync_cycle(self._settings, self._db),
+                )
+            elif self._local_slots.get("lapangan") != hourly_slot:
+                _run_field_sync_cycle(self._settings, None)
+                self._local_slots["lapangan"] = hourly_slot
         except Exception as exc:
             logger.exception("hourly field sync error: %s", exc)
 
         if local_wib.hour >= DAILY_RUN_HOUR_WIB:
             try:
-                run_if_due(
-                    self._db,
-                    "harian",
-                    daily_slot,
-                    lambda: _run_daily_cycle(self._settings, self._db),
-                )
+                if self._db is not None:
+                    run_if_due(
+                        self._db,
+                        "harian",
+                        daily_slot,
+                        lambda: _run_daily_cycle(self._settings, self._db),
+                    )
+                elif self._local_slots.get("harian") != daily_slot:
+                    _run_daily_cycle(self._settings, None)
+                    self._local_slots["harian"] = daily_slot
             except Exception as exc:
                 logger.exception("daily scheduled crawl error: %s", exc)
 
@@ -146,7 +187,8 @@ class CrawlerWorker:
 
     def run_forever(self) -> None:
         """Start internal HTTP control server and block until stopped."""
-        UnseenRepository(self._db).ensure_indexes()
+        if self._db is not None and not self._settings.bronze_only:
+            UnseenRepository(self._db).ensure_indexes()
         server = start_control_server_background(
             self.control_state,
             settings=self._settings,

@@ -217,6 +217,8 @@ export function ExecutiveDashboard() {
     lampiran.data?.inflasi,
     lampiran.isLoading,
   );
+  const kMakro = keadaanBlok(lampiran.data, lampiran.data?.makro);
+  const kWilayah = keadaanBlok(lampiran.data, lampiran.data?.wilayah);
   const kKesegaran = keadaanBlok(lampiran.data, lampiran.data?.kesegaran);
   const [kabupatenMl, setKabupatenMl] = useState(KABUPATEN_ML_BAWAAN);
   const proyeksiMl = usePrediksiMl(kode, kabupatenMl, tab === "proyeksi");
@@ -247,8 +249,10 @@ export function ExecutiveDashboard() {
     lingkunganData === "prod" &&
     !isLoading &&
     kInflasi.jenis === "sembunyi" &&
+    kMakro.jenis !== "tampil" &&
+    kWilayah.jenis !== "tampil" &&
     (!data?.inflasi || mlInfo?.tersedia === false)
-      ? "Mode Prod (Real) aktif — belum ada hasil training MongoDB (datasafe) untuk ditampilkan pada blok yang kosong."
+      ? "Mode Prod (Real) aktif — belum ada hasil training MongoDB (ml_predictions) untuk ditampilkan pada blok yang kosong."
       : null;
 
   return (
@@ -322,6 +326,8 @@ export function ExecutiveDashboard() {
               <PanelTekananMl
                 inflasi={kInflasi}
                 kesegaran={kKesegaran}
+                makro={kMakro}
+                wilayah={kWilayah}
                 cycleId={cycleId}
               />
               {lihatBrief && <LatestBrief />}

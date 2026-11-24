@@ -24,10 +24,39 @@ type KoleksiFitur = GeoJSON.FeatureCollection<
   GeoJSON.Polygon | GeoJSON.MultiPolygon
 >;
 
+export interface RuteGarisPeta {
+  tipe: string;
+  ringkasanJalan?: string;
+  jarakKm: number;
+  durasiMenit: number;
+  terdampakGangguan?: boolean;
+  selisihKm?: number;
+  selisihMenit?: number;
+  /** GeoJSON [lng, lat][] dari engine routing */
+  coordinates: [number, number][];
+}
+
+export interface GangguanPeta {
+  id: string;
+  kode: string;
+  judul: string;
+  jenis: string;
+  tingkat: "TUTUP_TOTAL" | "TERHAMBAT";
+  ruasJalan: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+  aktif: boolean;
+}
+
 export interface GarisUkurPeta {
   asal: [number, number];
   tujuan: [number, number];
   label?: string;
+  rute?: RuteGarisPeta[];
+  ruteTerpilihIdx?: number;
+  ruteDiblokir?: RuteGarisPeta | null;
+  sumberRute?: string;
 }
 
 export interface PropsPetaLeaflet {
@@ -36,6 +65,8 @@ export interface PropsPetaLeaflet {
   titikLain?: TitikPeta[];
   titikCari?: { lat: number; lng: number };
   garisUkur?: GarisUkurPeta | null;
+  gangguanJalan?: GangguanPeta[];
+  onSelectRute?: (idx: number) => void;
   selected?: string;
   onSelect?: (kode: string) => void;
   onKlikPeta?: (lat: number, lng: number) => void;
@@ -155,6 +186,8 @@ export default function PetaLeaflet({
   titikLain,
   titikCari,
   garisUkur,
+  gangguanJalan,
+  onSelectRute,
   selected,
   onSelect,
   onKlikPeta,
@@ -174,6 +207,7 @@ export default function PetaLeaflet({
     onSelect,
     onKlikPeta,
     onKlikTitik,
+    onSelectRute,
     aksiPopup,
     selected,
     fokusPilihan,
@@ -183,6 +217,7 @@ export default function PetaLeaflet({
       onSelect,
       onKlikPeta,
       onKlikTitik,
+      onSelectRute,
       aksiPopup,
       selected,
       fokusPilihan,
@@ -534,29 +569,135 @@ export default function PetaLeaflet({
     };
   }, [peta, titikLain]);
 
-  // Garis pengukur jarak antara dua titik (mis. sentra pertanian/perkampungan <-> pasar/cold storage).
+  // Garis pengukur jarak & rute jaringan jalan (utama / pengalihan / alternatif + gangguan jalan).
   useEffect(() => {
-    if (!peta || !garisUkur) return;
-    const line = L.polyline([garisUkur.asal, garisUkur.tujuan], {
-      color: "#0284c7",
-      weight: 3,
-      dashArray: "6 6",
-      opacity: 0.9,
-    }).addTo(peta);
-    if (garisUkur.label) {
-      line
-        .bindTooltip(garisUkur.label, {
-          permanent: true,
-          direction: "center",
-          className: "garda-peta-tooltip",
-        })
-        .openTooltip();
+    if (!peta || (!garisUkur && !gangguanJalan?.length)) return;
+    const grup = L.layerGroup().addTo(peta);
+    let boundsTarget: L.Polyline | null = null;
+
+    if (garisUkur) {
+      const keLatLngs = (coords?: [number, number][]): [number, number][] =>
+        coords && coords.length >= 2
+          ? coords.map(([lng, lat]) => [lat, lng])
+          : [garisUkur.asal, garisUkur.tujuan];
+
+      if (garisUkur.ruteDiblokir?.coordinates?.length) {
+        const blocked = L.polyline(keLatLngs(garisUkur.ruteDiblokir.coordinates), {
+          color: "#dc2626",
+          weight: 3.5,
+          dashArray: "5 7",
+          opacity: 0.78,
+        }).addTo(grup);
+        blocked.bindTooltip(
+          `Jalur terdampak: ${garisUkur.ruteDiblokir.ringkasanJalan ?? "Ruas terblokir"} (${garisUkur.ruteDiblokir.jarakKm} km)`,
+          { sticky: true, className: "garda-peta-tooltip" },
+        );
+      }
+
+      const daftar = garisUkur.rute ?? [];
+      if (daftar.length > 0) {
+        const aktifIdx =
+          typeof garisUkur.ruteTerpilihIdx === "number" &&
+          garisUkur.ruteTerpilihIdx >= 0 &&
+          garisUkur.ruteTerpilihIdx < daftar.length
+            ? garisUkur.ruteTerpilihIdx
+            : 0;
+
+        daftar.forEach((opt, idx) => {
+          if (idx === aktifIdx) return;
+          const altLine = L.polyline(keLatLngs(opt.coordinates), {
+            color: opt.terdampakGangguan ? "#d97706" : "#64748b",
+            weight: 3,
+            dashArray: "7 6",
+            opacity: 0.72,
+          }).addTo(grup);
+          altLine.on("click", () => {
+            terbaru.current.onSelectRute?.(idx);
+          });
+          altLine.bindTooltip(
+            `${opt.tipe}: ${opt.jarakKm} km · ~${opt.durasiMenit} mnt${opt.ringkasanJalan ? ` (${opt.ringkasanJalan})` : ""} — klik untuk pilih`,
+            { sticky: true, className: "garda-peta-tooltip" },
+          );
+        });
+
+        const selectedOpt = daftar[aktifIdx];
+        const selectedColor =
+          selectedOpt.tipe === "Jalur Pengalihan"
+            ? "#059669"
+            : selectedOpt.terdampakGangguan
+              ? "#d97706"
+              : selectedOpt.tipe === "Jalur Alternatif"
+                ? "#4f46e5"
+                : "#0284c7";
+        const mainLine = L.polyline(keLatLngs(selectedOpt.coordinates), {
+          color: selectedColor,
+          weight: 4.5,
+          opacity: 0.95,
+        }).addTo(grup);
+        mainLine
+          .bindTooltip(
+            garisUkur.label ??
+              `${selectedOpt.tipe} · ${selectedOpt.jarakKm} km · ~${selectedOpt.durasiMenit} mnt`,
+            {
+              permanent: true,
+              direction: "center",
+              className: "garda-peta-tooltip",
+            },
+          )
+          .openTooltip();
+        boundsTarget = mainLine;
+      } else {
+        const line = L.polyline([garisUkur.asal, garisUkur.tujuan], {
+          color: "#0284c7",
+          weight: 3,
+          dashArray: "6 6",
+          opacity: 0.9,
+        }).addTo(grup);
+        if (garisUkur.label) {
+          line
+            .bindTooltip(garisUkur.label, {
+              permanent: true,
+              direction: "center",
+              className: "garda-peta-tooltip",
+            })
+            .openTooltip();
+        }
+        boundsTarget = line;
+      }
     }
-    peta.fitBounds(line.getBounds(), { padding: [48, 48], maxZoom: 11, animate: geserHalus() });
+
+    for (const g of gangguanJalan ?? []) {
+      if (!g.aktif) continue;
+      const isTotal = g.tingkat === "TUTUP_TOTAL";
+      L.circle([g.lat, g.lng], {
+        radius: Math.max(g.radiusM, 150),
+        color: isTotal ? "#dc2626" : "#d97706",
+        weight: 1.5,
+        fillColor: isTotal ? "#ef4444" : "#f59e0b",
+        fillOpacity: 0.16,
+      }).addTo(grup);
+      const pin = L.marker([g.lat, g.lng], {
+        icon: L.divIcon({
+          className: "garda-pin-wadah",
+          html: `<span class="garda-pin-gangguan${isTotal ? "" : " garda-pin-gangguan-peringatan"}">!</span>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        }),
+        zIndexOffset: 750,
+      }).addTo(grup);
+      pin.bindTooltip(
+        `${g.judul} (${g.jenis.replaceAll("_", " ")} · ${isTotal ? "Tutup Total" : "Terhambat"})${g.ruasJalan ? ` — ${g.ruasJalan}` : ""}`,
+        { direction: "top", offset: [0, -10], className: "garda-peta-tooltip" },
+      );
+    }
+
+    if (boundsTarget) {
+      peta.fitBounds(boundsTarget.getBounds(), { padding: [48, 48], maxZoom: 11, animate: geserHalus() });
+    }
     return () => {
-      line.remove();
+      grup.remove();
     };
-  }, [peta, garisUkur]);
+  }, [peta, garisUkur, gangguanJalan]);
 
   // Pin titik yang sedang dicari (geolokasi atau klik peta).
   useEffect(() => {

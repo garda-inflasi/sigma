@@ -140,10 +140,14 @@ services:
       ML_SERVICE_URL: "${ML_SERVICE_URL:-http://ml:8000}"
       CRAWLER_SERVICE_URL: "${CRAWLER_SERVICE_URL:-http://crawler:8091}"
       ML_PIPELINE_SERVICE_URL: "${ML_PIPELINE_SERVICE_URL:-http://ml-worker:8092}"
+      VALHALLA_URL: "${VALHALLA_URL:-}"
+      OSRM_URL: "${OSRM_URL:-https://router.project-osrm.org}"
+      ROUTING_PROFILE: "${ROUTING_PROFILE:-truck}"
       # MONGO_URI di .env menunjuk localhost (untuk `make dev/api`), jadi kontainer memakai MONGO_URI_DOCKER.
       MONGO_URI: "${MONGO_URI_DOCKER:-mongodb://${MONGO_USER:-garda}:${MONGO_PASSWORD:-garda_secret}@garda-mongodb:27017/?authSource=admin}"
       MONGO_DB_UNSEEN: "${MONGO_DB_UNSEEN:-dataunseen}"
-      MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
+      MONGO_DB_SAFE: "${MONGO_DB_PREDICTIONS:-${MONGO_DB_SAFE:-ml_predictions}}"
+      MONGO_DB_PREDICTIONS: "${MONGO_DB_PREDICTIONS:-ml_predictions}"
       # Narasi policy brief oleh LLM aktif hanya bila kunci ada; kosong => templat deterministik.
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       LLM_MODEL: "${LLM_MODEL:-claude-opus-5-5}"
@@ -210,7 +214,8 @@ services:
       MONGO_URI: "${MONGO_URI_DOCKER:-mongodb://${MONGO_USER:-garda}:${MONGO_PASSWORD:-garda_secret}@garda-mongodb:27017/?authSource=admin}"
       JOB_ML_JEMBATAN_EWS_INTERVAL: "${JOB_ML_JEMBATAN_EWS_INTERVAL:-5m}"
       MONGO_DB_UNSEEN: "${MONGO_DB_UNSEEN:-dataunseen}"
-      MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
+      MONGO_DB_SAFE: "${MONGO_DB_PREDICTIONS:-${MONGO_DB_SAFE:-ml_predictions}}"
+      MONGO_DB_PREDICTIONS: "${MONGO_DB_PREDICTIONS:-ml_predictions}"
       <<: [*notifikasi-env, *ews-env]
     volumes:
       - audit_arsip:/app/arsip
@@ -256,8 +261,7 @@ services:
     container_name: garda-crawler
     restart: unless-stopped
     environment:
-      MONGO_URI: "mongodb://${MONGO_USER:-garda}:${MONGO_PASSWORD:-garda_secret}@garda-mongodb:27017/?authSource=admin"
-      MONGO_DB_UNSEEN: "${MONGO_DB_UNSEEN:-dataunseen}"
+      CRAWLER_BRONZE_ONLY: "${CRAWLER_BRONZE_ONLY:-true}"
       # Disarankan peran baca-saja. Bila kosong, memakai DB_* di bawah.
       CRAWLER_DATABASE_URL: "${CRAWLER_DATABASE_URL:-}"
       DB_HOST: postgres
@@ -270,10 +274,17 @@ services:
       BPS_VARIABEL_JSON: "${BPS_VARIABEL_JSON:-}"
       INGEST_USER_AGENT: "${INGEST_USER_AGENT:-garda-crawler/1.0}"
       INGEST_JEDA_MS: "${INGEST_JEDA_MS:-2000}"
+      DATA_RAW_DIR: "/app/data/raw"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-}"
+      MINIO_BUCKET_RAW: "${MINIO_BUCKET_RAW:-data-raw}"
+    volumes:
+      - ./data/raw:/app/data/raw
     networks:
       - garda_inflasi_net
 
-  # Training dan scoring tiap 1 jam. Hasil ditulis append-only ke MongoDB datasafe.
+  # Training dan scoring tiap 1 jam. Membaca Bronze -> Silver Parquet -> Gold DuckDB Parquet -> Serving (ml_predictions + PG + artifacts).
   ml-worker:
     profiles: ["pipeline"]
     build:
@@ -287,10 +298,31 @@ services:
     mem_limit: 3g
     environment:
       MONGO_URI: "mongodb://${MONGO_USER:-garda}:${MONGO_PASSWORD:-garda_secret}@garda-mongodb:27017/?authSource=admin"
-      MONGO_DB_UNSEEN: "${MONGO_DB_UNSEEN:-dataunseen}"
-      MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
+      MONGO_DB_SAFE: "${MONGO_DB_PREDICTIONS:-${MONGO_DB_SAFE:-ml_predictions}}"
+      MONGO_DB_PREDICTIONS: "${MONGO_DB_PREDICTIONS:-ml_predictions}"
       ML_N_JOBS: "${ML_N_JOBS:-4}"
       ML_INTERVAL_SELEKSI_JAM: "${ML_INTERVAL_SELEKSI_JAM:-24}"
+      ML_DATABASE_URL: "${ML_DATABASE_URL:-}"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: "${DB_USER:-garda}"
+      DB_PASSWORD: "${DB_PASSWORD:-garda_secret}"
+      DB_NAME: "${DB_NAME:-garda_inflasi}"
+      DB_SSLMODE: disable
+      DATA_RAW_DIR: "/app/data/raw"
+      DATA_SILVER_DIR: "/app/data/silver"
+      DATA_GOLD_DIR: "/app/data/gold"
+      ML_ARTIFACT_DIR: "/app/data/models"
+      MINIO_ENDPOINT: "${MINIO_ENDPOINT:-}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-}"
+      MINIO_BUCKET_RAW: "${MINIO_BUCKET_RAW:-data-raw}"
+      MINIO_BUCKET_SILVER: "${MINIO_BUCKET_SILVER:-data-silver}"
+      MINIO_BUCKET_GOLD: "${MINIO_BUCKET_GOLD:-data-gold}"
+      MINIO_BUCKET_MODELS: "${MINIO_BUCKET_MODELS:-ml-models}"
+      MLFLOW_TRACKING_URI: "${MLFLOW_TRACKING_URI:-}"
+    volumes:
+      - ./data:/app/data
     networks:
       - garda_inflasi_net
 
@@ -390,6 +422,26 @@ services:
     networks:
       - garda_inflasi_net
 
+  # Routing engine OSM jaringan jalan raya (opsional, nyalakan dengan --profile routing + VALHALLA_URL=http://valhalla:8002).
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: garda-valhalla
+    profiles: ["routing"]
+    restart: unless-stopped
+    environment:
+      tile_urls: "${VALHALLA_TILE_URL:-https://download.geofabrik.de/asia/indonesia/sumatra-latest.osm.pbf}"
+      serve_tiles: "True"
+      build_elevation: "False"
+      build_admins: "True"
+      build_time_zones: "False"
+      use_tiles_ignore_pbf: "True"
+    ports:
+      - "127.0.0.1:8002:8002"
+    volumes:
+      - valhalla_data:/custom_files
+    networks:
+      - garda_inflasi_net
+
 networks:
   garda_inflasi_net:
     name: garda_inflasi_net
@@ -398,3 +450,4 @@ networks:
 volumes:
   # Berkas arsip partisi audit_log yang dilepas oleh retensi (penyimpanan dingin).
   audit_arsip:
+  valhalla_data:

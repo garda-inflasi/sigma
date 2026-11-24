@@ -12,6 +12,7 @@ from garda_crawler.domain.entities import (
     DataPoint,
     DatasetDefinition,
     FetchOutcome,
+    RawBronzeCapture,
     TimeSeriesSpec,
 )
 from garda_crawler.domain.enums import Frequency
@@ -181,4 +182,16 @@ class BapanasPanelAdapter(BaseAdapter):
             yield outcome
             return
 
-        yield parse_bapanas_panel(payload, target_date, masked_url)
+        outcome = parse_bapanas_panel(payload, target_date, masked_url)
+        outcome.raw_captures.append(
+            RawBronzeCapture(
+                source_code="BAPANAS",
+                dataset_name=dataset.name,
+                endpoint=endpoint,
+                params={"province_id": ACEH_PROVINCE_ID, "date": target_date.isoformat()},
+                payload=payload,
+                capture_date=target_date,
+                partition_year=target_date.year,
+            )
+        )
+        yield outcome

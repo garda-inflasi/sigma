@@ -48,6 +48,7 @@ import {
 import {
   useCariLokasi,
   useColdStorage,
+  useGangguanJalan,
   useGeometriWilayah,
   useKandidatColdStorage,
   useMarkerWilayah,
@@ -85,7 +86,9 @@ export function PetaPage() {
   const { data: pasar } = useMasterPasar(useCan("master.lihat"));
   const { data: cold } = useColdStorage(PARAM_CS, useCan("coldstorage.lihat"));
   const { data: titikDesa } = useTitikDesa();
+  const { data: gangguanJalan } = useGangguanJalan(true);
   const [garisUkur, setGarisUkur] = useState<GarisUkurPeta | null>(null);
+  const [ruteTerpilihIdx, setRuteTerpilihIdx] = useState(0);
 
   const titikLain = useMemo<TitikPeta[]>(
     () => [
@@ -287,6 +290,19 @@ export function PetaPage() {
                 titikLain={titikLain}
                 titikCari={titik}
                 garisUkur={garisUkur}
+                gangguanJalan={(gangguanJalan ?? []).map((g) => ({
+                  id: g.id,
+                  kode: g.kode,
+                  judul: g.judul,
+                  jenis: g.jenis,
+                  tingkat: g.tingkat,
+                  ruasJalan: g.ruas_jalan,
+                  lat: g.lat,
+                  lng: g.lng,
+                  radiusM: g.radius_m,
+                  aktif: g.aktif,
+                }))}
+                onSelectRute={setRuteTerpilihIdx}
                 isLoading={isLoading}
                 selected={pilih}
                 onSelect={setPilih}
@@ -298,6 +314,8 @@ export function PetaPage() {
                 titikLain={titikLain}
                 garisUkur={garisUkur}
                 onChangeGaris={setGarisUkur}
+                ruteTerpilihIdx={ruteTerpilihIdx}
+                onSelectRute={setRuteTerpilihIdx}
               />
             </section>
             <div className={KOLOM_PAS}>

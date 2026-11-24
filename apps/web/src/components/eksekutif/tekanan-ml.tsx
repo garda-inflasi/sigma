@@ -15,7 +15,10 @@ import {
 import type {
   BlokInflasiMl,
   BlokKesegaranMl,
+  BlokMakroMl,
+  BlokWilayahMl,
   InflasiWilayahMl,
+  MakroMl,
 } from "@/lib/api/ml";
 import { useCan } from "@/lib/auth/session-context";
 import { toneClass } from "@/lib/design/tokens";
@@ -50,26 +53,47 @@ const pct = (v: number | null) =>
 export function PanelTekananMl({
   inflasi,
   kesegaran,
+  makro,
+  wilayah,
   cycleId,
 }: {
   inflasi: KeadaanBlok<BlokInflasiMl>;
   kesegaran: KeadaanBlok<BlokKesegaranMl>;
+  makro?: KeadaanBlok<BlokMakroMl>;
+  wilayah?: KeadaanBlok<BlokWilayahMl>;
   cycleId: string | undefined;
 }) {
   const [pilih, setPilih] = useState<string>();
-  if (inflasi.jenis === "sembunyi") return null;
+  const adaMakro = makro?.jenis === "tampil" && makro.blok.items.length > 0;
+  const adaKlaster =
+    wilayah?.jenis === "tampil" &&
+    wilayah.blok.items.some((w) => w.klaster !== null);
+  if (inflasi.jenis === "sembunyi" && !adaMakro && !adaKlaster) return null;
   if (inflasi.jenis === "memuat")
     return <Shimmer className="h-72 w-full shrink-0 rounded-lg" />;
 
   const blok = inflasi.jenis === "tampil" ? inflasi.blok : null;
-  const wilayah = blok?.wilayah ?? [];
-  const aktif = wilayah.find((w) => w.wilayahKode === pilih) ?? wilayah[0];
+  const daftarWilayah = blok?.wilayah ?? [];
+  const aktif =
+    daftarWilayah.find((w) => w.wilayahKode === pilih) ?? daftarWilayah[0];
   const andal = blok ? dapatDiandalkan(blok.kelayakan) : false;
 
   return (
     <PanelPas
-      judul="Tekanan harga per wilayah"
-      deskripsi={<LabelTargetMl target={blok?.target ?? null} />}
+      judul={
+        blok || inflasi.jenis === "siklus"
+          ? "Tekanan harga per wilayah"
+          : "Indikator makro BPS & klaster wilayah"
+      }
+      deskripsi={
+        blok ? (
+          <LabelTargetMl target={blok.target} />
+        ) : adaMakro ? (
+          "Indikator BPS Aceh (70 tabel) & klaster K-Means hasil siklus ML"
+        ) : (
+          <LabelTargetMl target={null} />
+        )
+      }
       className="shrink-0 lg:max-h-none"
       isiClassName="lg:overflow-visible"
     >
@@ -84,12 +108,12 @@ export function PanelTekananMl({
             alasan={`${alasanBelumAndal(blok.kelayakan, blok.alasanKelayakan)} Kelas, skor tekanan, dan siklus tidak ditampilkan sebagai prediksi.`}
           />
         )}
-        {wilayah.length > 0 && (
+        {daftarWilayah.length > 0 && (
           <ul
             aria-label="Sinyal tekanan per wilayah"
             className="grid gap-2 sm:grid-cols-3"
           >
-            {wilayah.map((w) => (
+            {daftarWilayah.map((w) => (
               <li key={w.wilayahKode} className="min-w-0">
                 <KartuWilayah
                   w={w}
@@ -101,6 +125,12 @@ export function PanelTekananMl({
           </ul>
         )}
         {aktif && <RincianWilayah w={aktif} cycleId={cycleId} />}
+        {adaMakro && makro?.jenis === "tampil" && (
+          <MakroRingkas blok={makro.blok} />
+        )}
+        {adaKlaster && wilayah?.jenis === "tampil" && (
+          <KlasterRingkas blok={wilayah.blok} />
+        )}
         {kesegaran.jenis === "tampil" && (
           <KesegaranRingkas blok={kesegaran.blok} />
         )}
@@ -312,6 +342,127 @@ function RincianWilayah({
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+function formatNamaIndikatorMakro(indikator: string): string {
+  return indikator
+    .replace(/^indeks_harga_konsumen_bps_tbl_\d+_ihk_\d+_/i, "IHK ")
+    .replace(/^inflasi_yoy_bps_tbl_\d+_inflasi_yoy_\d+_/i, "Inflasi YoY ")
+    .replace(/^inflasi_ytd_bps_tbl_\d+_inflasi_ytd_\d+_/i, "Inflasi YtD ")
+    .replace(/^bps_tbl_\d+_/i, "")
+    .replaceAll("_", " ")
+    .trim();
+}
+
+function nilaiMakroUtama(items: MakroMl[]): MakroMl[] {
+  const urutan = ["INFLASI", "TENAGA_KERJA", "NERACA_EKONOMI", "KONSUMSI_PENDAPATAN"];
+  const terurut = [...items].sort((a, b) => {
+    const da = urutan.indexOf(a.domain);
+    const db = urutan.indexOf(b.domain);
+    if (da !== db) return (da === -1 ? 99 : da) - (db === -1 ? 99 : db);
+    const ya = a.indikator.includes("inflasi_yoy") ? 0 : 1;
+    const yb = b.indikator.includes("inflasi_yoy") ? 0 : 1;
+    if (ya !== yb) return ya - yb;
+    return (a.wilayahKode ?? "").localeCompare(b.wilayahKode ?? "");
+  });
+  const hasil: MakroMl[] = [];
+  const terlihat = new Set<string>();
+  for (const item of terurut) {
+    if (item.nilai === null) continue;
+    const kunci = `${item.domain}:${item.wilayahKode ?? "11"}`;
+    if (terlihat.has(kunci) && item.domain !== "INFLASI") continue;
+    terlihat.add(kunci);
+    hasil.push(item);
+    if (hasil.length >= 6) break;
+  }
+  return hasil;
+}
+
+function MakroRingkas({ blok }: { blok: BlokMakroMl }) {
+  const sorotan = nilaiMakroUtama(blok.items);
+  if (sorotan.length === 0) return null;
+  const perDomain = new Map<string, number>();
+  for (const item of blok.items) {
+    perDomain.set(item.domain, (perDomain.get(item.domain) ?? 0) + 1);
+  }
+  return (
+    <div className="border-t border-border pt-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <p className="font-medium text-foreground">
+          Indikator Makro BPS Aceh (70 tabel)
+        </p>
+        <p className="text-muted-foreground">
+          {[...perDomain.entries()]
+            .map(([d, n]) => `${d.replaceAll("_", " ").toLowerCase()}: ${n}`)
+            .join(" · ")}
+        </p>
+      </div>
+      <ul
+        aria-label="Sorotan indikator makro BPS"
+        className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        {sorotan.map((m, idx) => (
+          <li
+            key={`${m.domain}:${m.indikator}:${m.wilayahKode ?? "11"}:${idx}`}
+            className="rounded-md border border-border bg-secondary/25 px-2.5 py-2 text-xs"
+          >
+            <p className="truncate font-medium text-foreground" title={m.indikator}>
+              {formatNamaIndikatorMakro(m.indikator)}
+            </p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {m.wilayahKode ? namaWilayahMl(m.wilayahKode) : "Aceh"}
+              {m.periode ? ` · ${tanggalBisnis(m.periode)}` : ""}
+            </p>
+            <p className="num mt-1 text-sm font-semibold text-foreground">
+              {m.nilai !== null ? formatAngka(m.nilai, 2) : "–"}{" "}
+              <span className="text-[11px] font-normal text-muted-foreground">
+                {m.satuan}
+              </span>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function KlasterRingkas({ blok }: { blok: BlokWilayahMl }) {
+  const klasterItems = blok.items.filter((w) => w.klaster !== null);
+  if (klasterItems.length === 0) return null;
+  return (
+    <div className="border-t border-border pt-2.5">
+      <p className="text-xs font-medium text-foreground">
+        Klaster Volatilitas Wilayah (K-Means)
+      </p>
+      <ul
+        aria-label="Klaster volatilitas K-Means per wilayah"
+        className="mt-2 flex flex-wrap gap-1.5"
+      >
+        {klasterItems.map((w) => {
+          const k = w.klaster!;
+          const tone = k.clusterLabel.toLowerCase().includes("tinggi") ||
+            k.clusterLabel.toLowerCase().includes("gejolak")
+            ? "defisit"
+            : k.clusterLabel.toLowerCase().includes("sedang") ||
+                k.clusterLabel.toLowerCase().includes("waspada")
+              ? "waspada"
+              : "normal";
+          return (
+            <li
+              key={w.wilayahKode}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-2 py-1 text-xs"
+            >
+              <span className="font-medium">{namaWilayahMl(w.wilayahKode)}</span>
+              <StatusBadge tone={tone}>{k.clusterLabel}</StatusBadge>
+              <span className="num text-[11px] text-muted-foreground">
+                σ {formatAngka(k.volatilityScore, 3)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

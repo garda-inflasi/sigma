@@ -2,10 +2,12 @@
 
 from dataclasses import dataclass
 
+from garda_crawler.config.bps_table_catalog import BPS_70_TABLES
 from garda_crawler.config.reference_catalog import BPS_ACEH_PROVINCE_CODE, REGENCIES
 from garda_crawler.domain.entities import DatasetDefinition
 
-_IHK_REGIONS: tuple[str, ...] = (BPS_ACEH_PROVINCE_CODE, "1171", "1174", "1107")
+_IHK_REGIONS: tuple[str, ...] = (BPS_ACEH_PROVINCE_CODE, "1171", "1174", "1107", "1106", "1114")
+_IHK150_REGIONS: tuple[str, ...] = ("0000", "1106", "1107", "1114", "1171", "1174")
 _ALL_BPS_REGIONS: tuple[str, ...] = (BPS_ACEH_PROVINCE_CODE, *REGENCIES.keys())
 _PROVINCE_ONLY: tuple[str, ...] = (BPS_ACEH_PROVINCE_CODE,)
 
@@ -31,6 +33,7 @@ class BpsIndicatorSpec:
     title_pattern: str
     regions: tuple[str, ...]
     fallback_var_id: str = ""
+    domain_override: str = ""
 
 
 PIHPS_DAILY_DATASET = DatasetDefinition(
@@ -83,7 +86,27 @@ FIELD_ENTRIES_DATASET = DatasetDefinition(
     stale_sla_days=1,
 )
 
+DJPK_APBD_DATASET = DatasetDefinition(
+    name="apbd_pemda",
+    collection="raw_neraca_ekonomi",
+    schedule_tier="daily",
+    stale_sla_days=90,
+    default_backfill_days=730,
+)
+
 BPS_DATASET_SPECS: dict[DatasetDefinition, tuple[BpsIndicatorSpec, ...]] = {
+    DatasetDefinition("ihk_150_kabkota", "raw_bps_makro", "daily", 35, default_backfill_days=1095): (
+        BpsIndicatorSpec(
+            "ihk_150",
+            "indeks_harga_konsumen_150_kabkota",
+            "indeks",
+            "BULANAN",
+            r"indeks harga konsumen 150 kabupaten/kota",
+            _IHK150_REGIONS,
+            fallback_var_id="2245",
+            domain_override="0000",
+        ),
+    ),
     DatasetDefinition("bps_inflasi", "raw_bps_makro", "daily", 35): (
         BpsIndicatorSpec(
             "inflasi_yoy",
@@ -229,12 +252,23 @@ BPS_DATASET_SPECS: dict[DatasetDefinition, tuple[BpsIndicatorSpec, ...]] = {
 }
 
 BPS_DATASETS: tuple[DatasetDefinition, ...] = tuple(BPS_DATASET_SPECS.keys())
+BPS_70_DATASETS: tuple[DatasetDefinition, ...] = tuple(
+    DatasetDefinition(
+        name=f"bps_tbl_{spec.index:02d}_{spec.dataset_slug}",
+        collection=spec.collection,
+        schedule_tier="daily",
+        stale_sla_days=35,
+    )
+    for spec in BPS_70_TABLES
+)
 
 SOURCE_SPECS: dict[str, SourceSpec] = {
     "PIHPS": SourceSpec("PIHPS", "daily", 2, (PIHPS_DAILY_DATASET,)),
     "BMKG": SourceSpec("BMKG", "daily", 1, (BMKG_FORECAST_DATASET, BMKG_WARNINGS_DATASET)),
     "OPEN_METEO": SourceSpec("OPEN_METEO", "daily", 7, (OPEN_METEO_ARCHIVE_DATASET,)),
     "BPS": SourceSpec("BPS", "daily", 35, BPS_DATASETS),
+    "BPS_TABLES": SourceSpec("BPS_TABLES", "daily", 35, BPS_70_DATASETS),
+    "DJPK": SourceSpec("DJPK", "daily", 90, (DJPK_APBD_DATASET,)),
     "BAPANAS": SourceSpec("BAPANAS", "daily", 2, (BAPANAS_DATASET,)),
     "SP2KP": SourceSpec("SP2KP", "daily", 2, (SP2KP_DATASET,)),
     "LAPANGAN": SourceSpec("LAPANGAN", "hourly", 1, (FIELD_ENTRIES_DATASET,)),

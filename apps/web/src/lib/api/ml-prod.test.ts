@@ -418,4 +418,51 @@ describe("Mapper Prod (MongoDB datasafe/dataunseen) tanpa fallback DEMO", () => 
     assert.equal(got.silver, 4);
     assert.equal(got.gold, 1);
   });
+
+  it("siklus Medallion ml_predictions saat inflasi kosong namun makro & forecast terisi tetap memetakan forecast & model tanpa fallback demo", () => {
+    const medallionOnly: LampiranMlResponse = {
+      ...ML_NYATA,
+      inflasi: {
+        tersedia: false,
+        alasan: "TIDAK_ADA_DATA",
+        target: "INDEKS_PANGAN",
+        label_target: "Indeks harga pangan (bukan inflasi resmi BPS)",
+        bukan_inflasi_resmi: true,
+        wilayah: [],
+      },
+      makro: {
+        tersedia: true,
+        items: [
+          {
+            domain: "INFLASI",
+            indikator: "indeks_harga_konsumen_bps_tbl_01_ihk_01_makanan",
+            wilayah_kode: "1171",
+            periode: "2026-10-01",
+            nilai: 130.61,
+            satuan: "indeks",
+            perubahan: 0,
+            sumber: "BPS_TABLES",
+            is_carried_forward: false,
+            last_available_date: "2026-10-01",
+          },
+        ],
+      },
+    };
+    const ringkas = toRingkasanEksekutifProd(
+      {
+        inflasi: null,
+        neraca: null,
+        fiskal: null,
+        ews: { KRITIS: 0, SIAGA: 0, WASPADA: 0, INFO: 0 },
+        intervensi: {},
+        siklus_dominan: "normal",
+        demo: true,
+      },
+      medallionOnly,
+    );
+    assert.equal(ringkas.demo, false);
+    assert.equal(ringkas.inflasi, null);
+    assert.equal(toBarisProyeksiProd(medallionOnly).length, 1);
+    assert.equal(toBarisModelProd(medallionOnly).length, 1);
+  });
 });

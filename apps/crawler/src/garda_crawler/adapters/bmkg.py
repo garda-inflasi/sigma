@@ -13,6 +13,7 @@ from garda_crawler.domain.entities import (
     DataPoint,
     DatasetDefinition,
     FetchOutcome,
+    RawBronzeCapture,
     TimeSeriesSpec,
 )
 from garda_crawler.domain.enums import Frequency
@@ -169,6 +170,16 @@ class BmkgForecastAdapter(BaseAdapter):
 
             outcome.points.extend(parsed.points)
             outcome.rejected_counts.update(parsed.rejected_counts)
+            outcome.raw_captures.append(
+                RawBronzeCapture(
+                    source_code="BMKG",
+                    dataset_name=dataset.name,
+                    endpoint=BMKG_FORECAST_URL,
+                    params={"kabupaten_kode": regency_code, "adm4": adm4_code},
+                    payload=payload,
+                    capture_date=target_date,
+                )
+            )
         yield outcome
 
     def fetch_backfill(

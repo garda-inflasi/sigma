@@ -19,6 +19,7 @@ from garda_crawler.domain.entities import (
     DataPoint,
     DatasetDefinition,
     FetchOutcome,
+    RawBronzeCapture,
     TimeSeriesSpec,
 )
 from garda_crawler.domain.enums import Frequency
@@ -171,6 +172,17 @@ class PihpsBiAdapter(BaseAdapter):
                 outcome.warnings.append(f"{regency_code}: {exc}")
                 continue
 
+            outcome.raw_captures.append(
+                RawBronzeCapture(
+                    source_code=self.source_code,
+                    dataset_name=PIHPS_DAILY_DATASET.name,
+                    endpoint=PIHPS_GRID_URL,
+                    params=params,
+                    payload=payload,
+                    partition_year=end_date.year,
+                    capture_date=end_date,
+                )
+            )
             outcome.points.extend(parsed.points)
             outcome.rejected_counts.update(parsed.rejected_counts)
         return outcome

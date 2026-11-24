@@ -280,4 +280,49 @@ describe("cycle_id", () => {
     assert.equal(denganCycleId("/v1/ews", "x"), "/v1/ews");
   });
 
+  it("memetakan klaster K-Means dan indikator makro BPS dari ml_predictions", () => {
+    const l = toLampiranMl({
+      tersedia: true,
+      data_utama: "DATASAFE",
+      wilayah: {
+        tersedia: true,
+        items: [
+          {
+            wilayah_kode: "1108",
+            tingkat: "KABUPATEN",
+            komoditas_forecast: ["BRS-MED"],
+            klaster: {
+              cluster_id: 0,
+              cluster_label: "Relatif Stabil",
+              centroid_distance: 0.6282,
+              volatility_score: 0.0205,
+              climate_exposure_score: 0,
+            },
+          },
+        ],
+      },
+      makro: {
+        tersedia: true,
+        items: [
+          {
+            domain: "INFLASI",
+            indikator: "inflasi_yoy_bps_tbl_22_inflasi_yoy_01_makanan",
+            wilayah_kode: "1171",
+            periode: "2026-10-01",
+            nilai: 3.12,
+            satuan: "%",
+            perubahan: 0.1,
+            sumber: "BPS_TABLES",
+            is_carried_forward: false,
+            last_available_date: "2026-10-01",
+          },
+        ],
+      },
+    });
+    assert.equal(l.wilayah?.items[0].klaster?.clusterLabel, "Relatif Stabil");
+    assert.equal(l.wilayah?.items[0].klaster?.volatilityScore, 0.0205);
+    assert.equal(l.makro?.tersedia, true);
+    assert.equal(l.makro?.items[0].nilai, 3.12);
+    assert.equal(l.makro?.items[0].sumber, "BPS_TABLES");
+  });
 });

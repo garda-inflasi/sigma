@@ -174,7 +174,7 @@ export function CrawlerPage() {
       tone: (ringkasanData?.gagal ?? 0) > 0 ? "defisit" : "netral",
     },
     {
-      label: "Siklus ML datasafe",
+      label: "Siklus ML ml_predictions",
       nilai: cycles.data?.items?.[0]?.cycle_id ?? "Belum ada",
       tone: cycles.data?.items?.[0]?.status === "BERHASIL" ? "normal" : "data",
       keterangan: cycles.data?.items?.[0]?.status ?? "Menunggu siklus",
@@ -395,7 +395,7 @@ export function CrawlerPage() {
     <HalamanPas>
       <PageHeader
         title="Pipeline & Crawler"
-        description="Monitoring jadwal crawler dataunseen, retry manual sumber gagal, serta orkestrasi training ML datasafe realtime."
+        description="Monitoring jadwal crawler Medallion Bronze, retry manual sumber gagal, serta orkestrasi training ML ml_predictions realtime."
         tabs={
           <ViewTabs
             layoutId="tab-crawler"
@@ -599,7 +599,7 @@ export function CrawlerPage() {
               title: "Belum ada catatan run crawler",
               description:
                 freshness.data?.alasan ??
-                "Jalankan worker crawler atau tekan tombol Crawl untuk mengisi koleksi crawl_runs di MongoDB dataunseen.",
+                "Jalankan worker crawler atau tekan tombol Crawl untuk mengisi koleksi crawl_runs di MongoDB ml_predictions.",
             }}
           />
         ) : (
@@ -627,7 +627,7 @@ export function CrawlerPage() {
               title: "Belum ada riwayat siklus ML",
               description:
                 cycles.data?.alasan ??
-                "Picu ML pipeline setelah crawler selesai untuk menghasilkan siklus baru di MongoDB datasafe.",
+                "Picu ML pipeline setelah crawler selesai untuk menghasilkan siklus baru di MongoDB ml_predictions.",
             }}
           />
         )}

@@ -501,12 +501,34 @@ type InflasiRingkasResponse struct {
 	LabelTarget  string   `json:"label_target"`
 }
 
+// KlasterWilayahResponse merangkum hasil pengelompokan K-Means risiko inflasi/volatilitas wilayah.
+type KlasterWilayahResponse struct {
+	ClusterID            int      `json:"cluster_id"`
+	ClusterLabel         string   `json:"cluster_label"`
+	CentroidDistance     float64  `json:"centroid_distance"`
+	VolatilityScore      float64  `json:"volatility_score"`
+	ClimateExposureScore float64  `json:"climate_exposure_score"`
+	SilhouetteScore      *float64 `json:"silhouette_score,omitempty"`
+}
+
+func ToKlasterWilayah(k domain.KlasterWilayah) *KlasterWilayahResponse {
+	return &KlasterWilayahResponse{
+		ClusterID:            k.ClusterID,
+		ClusterLabel:         k.ClusterLabel,
+		CentroidDistance:     k.CentroidDistance,
+		VolatilityScore:      k.VolatilityScore,
+		ClimateExposureScore: k.ClimateExposureScore,
+		SilhouetteScore:      k.SilhouetteScore,
+	}
+}
+
 // WilayahMLResponse merangkum cakupan hasil ML satu wilayah.
 type WilayahMLResponse struct {
 	WilayahKode       string                  `json:"wilayah_kode"`
 	Tingkat           string                  `json:"tingkat"`
 	KomoditasForecast []string                `json:"komoditas_forecast"`
 	Inflasi           *InflasiRingkasResponse `json:"inflasi"`
+	Klaster           *KlasterWilayahResponse `json:"klaster,omitempty"`
 	SinyalAktif       RingkasanEwsResponse    `json:"sinyal_aktif"`
 }
 

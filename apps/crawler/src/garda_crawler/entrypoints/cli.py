@@ -17,10 +17,13 @@ from garda_crawler.domain.entities import RunSummary
 from garda_crawler.domain.enums import SourceStatus, TriggerType
 from garda_crawler.orchestration.orchestrator import CrawlOrchestrator
 from garda_crawler.orchestration.scheduler import CrawlerWorker, is_heartbeat_healthy
+from garda_crawler.storage.bronze_store import BronzeOnlyRepository, BronzeStore
+from garda_crawler.storage.crawl_log_repository import PostgresCrawlLogRepository
 from garda_crawler.storage.run_ledger import SCHEDULE_COLLECTION
 from garda_crawler.storage.unseen_repository import UnseenRepository
+from garda_crawler.domain.entities import RawBronzeCapture
 from garda_crawler.transport.postgres_reader import PostgresFieldReader
-from garda_crawler.transport.time_utils import utc_now
+from garda_crawler.transport.time_utils import to_wib_date, utc_now
 
 
 def _parse_csv(raw: str | None) -> list[str] | None:
@@ -62,12 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_cmd.add_argument("--sumber", "--source", dest="sources", default=None)
     run_cmd.add_argument("--wilayah", "--regions", dest="regions", default=None)
     run_cmd.add_argument("--pemicu", "--trigger", dest="trigger", default=TriggerType.MANUAL)
+    run_cmd.add_argument("--bronze-only", action="store_true", help="Write directly to Bronze + crawl_logs without MongoDB")
 
     bf_cmd = sub.add_parser("backfill", help="Run historical backfill over [start, end]")
     bf_cmd.add_argument("--sumber", "--source", dest="sources", required=True)
     bf_cmd.add_argument("--dari", "--from", dest="start_date", required=True)
     bf_cmd.add_argument("--sampai", "--to", dest="end_date", required=True)
     bf_cmd.add_argument("--wilayah", "--regions", dest="regions", default=None)
+    bf_cmd.add_argument("--bronze-only", action="store_true", help="Write directly to Bronze + crawl_logs without MongoDB")
 
     for sync_name in ("sync-lapangan", "sync-field"):
         sync_cmd = sub.add_parser(sync_name, help="Sync internal field price entries from PostgreSQL")
@@ -90,7 +95,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    settings = CrawlerSettings.from_env()
+    settings = CrawlerSettings.from_env(require_mongo=False)
+    use_bronze_only = bool(getattr(args, "bronze_only", False)) or settings.bronze_only
 
     if args.command == "health":
         healthy = is_heartbeat_healthy(settings.heartbeat_path, max_age_seconds=args.max_age)
@@ -101,7 +107,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         CrawlerWorker(settings).run_forever()
         return 0
 
-    client, repository = _open_repository(settings)
+    if use_bronze_only or not settings.mongo_uri:
+        client, repository = None, BronzeOnlyRepository()
+    else:
+        client, repository = _open_repository(settings)
     try:
         if args.command == "run":
             orchestrator = CrawlOrchestrator(settings, repository)
@@ -133,6 +142,47 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command in ("sync-lapangan", "sync-field"):
             repository.ensure_indexes()
             reader = PostgresFieldReader(settings.postgres_url) if settings.postgres_url else None
+            if isinstance(repository, BronzeOnlyRepository):
+                if reader is None:
+                    payload_out = {"status": SourceStatus.ERROR, "ditulis": 0, "pesan": "DATABASE_URL kosong"}
+                    print(json.dumps(payload_out, ensure_ascii=False, indent=2))
+                    return 1
+                with reader:
+                    entries = reader.fetch_all()
+                now = utc_now()
+                logs = PostgresCrawlLogRepository(settings.postgres_url) if settings.postgres_url else None
+                store = BronzeStore(
+                    local_dir=settings.bronze_dir,
+                    minio_endpoint=settings.minio_endpoint,
+                    minio_access_key=settings.minio_access_key,
+                    minio_secret_key=settings.minio_secret_key,
+                    minio_bucket=settings.minio_bucket_raw,
+                    minio_secure=settings.minio_secure,
+                    crawl_logs=logs,
+                )
+                capture = RawBronzeCapture(
+                    source_code="LAPANGAN",
+                    dataset_name="entri_harga",
+                    endpoint="postgres://entri_harga",
+                    params={"sumber": "LAPANGAN"},
+                    payload={"records": entries},
+                    capture_date=to_wib_date(now),
+                )
+                res = store.persist_capture(capture, to_wib_date(now))
+                print(
+                    json.dumps(
+                        {
+                            "status": SourceStatus.FRESH,
+                            "ditulis": len(entries),
+                            "bronze_uri": res.uri,
+                            "bronze_status": res.status,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return 0
+
             outcome = sync_field_entries(reader, repository, utc_now(), args.trigger)
             print(
                 json.dumps(
@@ -152,10 +202,37 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1 if outcome.status == SourceStatus.ERROR else 0
 
         if args.command == "status":
+            if isinstance(repository, BronzeOnlyRepository):
+                summary: dict[str, Any] = {"mode": "bronze", "bronze_dir": settings.bronze_dir, "datasets": []}
+                if settings.postgres_url:
+                    import psycopg
+                    with psycopg.connect(settings.postgres_url, connect_timeout=5) as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                SELECT DISTINCT ON (source_code, dataset_code)
+                                    source_code, dataset_code, status, bronze_uri, crawled_at
+                                FROM crawl_logs
+                                ORDER BY source_code, dataset_code, crawled_at DESC, id DESC
+                                """
+                            )
+                            summary["datasets"] = [
+                                {
+                                    "sumber": r[0],
+                                    "dataset": r[1],
+                                    "status": r[2],
+                                    "bronze_uri": r[3],
+                                    "crawled_at": r[4].isoformat() if r[4] else None,
+                                }
+                                for r in cur.fetchall()
+                            ]
+                print(json.dumps(summary, default=str, ensure_ascii=False, indent=2))
+                return 0
             slots = list(repository.db[SCHEDULE_COLLECTION].find())
             print(json.dumps({"jadwal": slots}, default=str, ensure_ascii=False, indent=2))
             return 0
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
     return 2

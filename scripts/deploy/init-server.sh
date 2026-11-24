@@ -134,14 +134,20 @@ AES_KEY=\$(openssl rand -hex 16)
 # Redis
 REDIS_PORT=6379
 
-# MongoDB & Pipeline Data/ML (crawler -> dataunseen, ml-worker -> datasafe)
+# MongoDB & Pipeline Data/ML Medallion (crawler Bronze -> ml-worker -> MongoDB ml_predictions)
 MONGO_USER=garda
 MONGO_PASSWORD=\$(openssl rand -hex 24)
 MONGO_DB=garda_inflasi
 MONGO_PORT=27017
 MONGO_VOLUME=garda_pipeline_mongo_data
 MONGO_DB_UNSEEN=dataunseen
-MONGO_DB_SAFE=datasafe
+MONGO_DB_SAFE=ml_predictions
+MONGO_DB_PREDICTIONS=ml_predictions
+CRAWLER_BRONZE_ONLY=true
+DATA_RAW_DIR=/app/data/raw
+DATA_SILVER_DIR=/app/data/silver
+DATA_GOLD_DIR=/app/data/gold
+ML_ARTIFACT_DIR=/app/data/models
 ML_N_JOBS=4
 ML_INTERVAL_SELEKSI_JAM=24
 

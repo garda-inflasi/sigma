@@ -13,6 +13,7 @@ from garda_crawler.domain.entities import (
 from garda_crawler.domain.enums import SourceStatus, TriggerType
 from garda_crawler.domain.errors import CrawlerError, RobotsDisallowedError
 from garda_crawler.domain.protocols import BackfillCapableAdapter, HttpTransport, RawStorageRepository, SourceAdapter
+from garda_crawler.storage.bronze_store import BronzeStore
 from garda_crawler.transport.time_utils import to_wib_date, utc_now
 
 
@@ -54,6 +55,7 @@ class DatasetRunner:
         trigger: str,
         start_date: date | None = None,
         end_date: date | None = None,
+        bronze_store: BronzeStore | None = None,
     ) -> RunSummary:
         """Fetch chunks for a dataset, persist valid points, write carry-forward markers, and log crawl_runs."""
         crawl_day = to_wib_date(now_utc)
@@ -100,6 +102,10 @@ class DatasetRunner:
                 rejected.update(outcome.rejected_counts)
                 warnings.extend(client.redact_secrets(w) for w in outcome.warnings)
                 failed_series.extend(outcome.failed_series)
+
+                if bronze_store is not None and outcome.raw_captures:
+                    for capture in outcome.raw_captures:
+                        bronze_store.persist_capture(capture, crawl_day)
 
                 if outcome.points:
                     saved, keys = repository.save_points(

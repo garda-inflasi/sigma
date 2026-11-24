@@ -677,6 +677,24 @@
   background: var(--ring);
   transform: translate(-50%, -50%);
 }
+.garda-pin-gangguan {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.45);
+}
+.garda-pin-gangguan-peringatan {
+  background: #d97706;
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.4);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

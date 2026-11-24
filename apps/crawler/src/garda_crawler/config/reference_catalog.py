@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
 BPS_ACEH_PROVINCE_CODE = "11"
 
@@ -187,16 +188,104 @@ def _build_bps_region_aliases() -> dict[str, str]:
         "aceh": BPS_ACEH_PROVINCE_CODE,
         "provinsi aceh": BPS_ACEH_PROVINCE_CODE,
         "meulaboh": "1107",
+        "indonesia": "0000",
     }
     for regency in REGENCIES.values():
         key = normalize_alias(regency.name)
         aliases[key] = regency.code
-        short = re.sub(r"^(kab\.|kota)\s+", "", key)
+        aliases[key.replace("kab. ", "kab ")] = regency.code
+        short = re.sub(r"^(kab|kota)\.?\s+", "", key)
         aliases[short] = regency.code
     return aliases
 
 
 BPS_REGIONS: dict[str, str] = _build_bps_region_aliases()
+
+
+def _build_aceh_bps_whitelist() -> dict[str, str]:
+    """Strict whitelist mapping Provinsi Aceh + 18 Kabupaten + 5 Kota + alias Meulaboh -> kode_bps."""
+    mapping: dict[str, str] = {
+        "aceh": BPS_ACEH_PROVINCE_CODE,
+        "provinsi aceh": BPS_ACEH_PROVINCE_CODE,
+        "prov aceh": BPS_ACEH_PROVINCE_CODE,
+        "prov. aceh": BPS_ACEH_PROVINCE_CODE,
+        "meulaboh": "1107",
+    }
+    for regency in REGENCIES.values():
+        norm = normalize_alias(regency.name)
+        bare = re.sub(r"^(kabupaten|kab|kota)\.?\s+", "", norm).strip()
+        for variant in (
+            norm,
+            bare,
+            f"kab {bare}",
+            f"kab. {bare}",
+            f"kabupaten {bare}",
+            f"kota {bare}",
+        ):
+            mapping[variant] = regency.code
+    return mapping
+
+
+ACEH_BPS_WHITELIST: dict[str, str] = _build_aceh_bps_whitelist()
+
+
+def match_aceh_bps_region(raw_label: str, wilayah_code: Any = None) -> tuple[str, str] | None:
+    """Match row label/code strictly against Aceh whitelist; return `(kode_bps, canonical_name)` or None."""
+    if wilayah_code is not None:
+        code_str = re.sub(r"\D", "", str(wilayah_code))
+        if len(code_str) >= 4 and code_str[:4] in REGENCIES:
+            code4 = code_str[:4]
+            return code4, REGENCIES[code4].name
+        if code_str in {"11", "1100", "1100000"}:
+            return BPS_ACEH_PROVINCE_CODE, "Provinsi Aceh"
+
+    cleaned = normalize_alias(str(raw_label or ""))
+    # Bersihkan prefix spasi/titik berlebih pada KAB. / KABUPATEN / PROV.
+    cleaned_nodot = re.sub(r"\s+", " ", cleaned.replace(".", " ")).strip()
+    for candidate in (cleaned, cleaned_nodot):
+        kode = ACEH_BPS_WHITELIST.get(candidate)
+        if kode is not None:
+            name = "Provinsi Aceh" if kode == BPS_ACEH_PROVINCE_CODE else REGENCIES[kode].name
+            return kode, name
+
+    # Coba buang prefix "kabupaten " / "kab " / "kota " / "provinsi "
+    stripped = re.sub(r"^(provinsi|prov|kabupaten|kab|kota)\.?\s+", "", cleaned_nodot).strip()
+    kode = ACEH_BPS_WHITELIST.get(stripped)
+    if kode is not None:
+        name = "Provinsi Aceh" if kode == BPS_ACEH_PROVINCE_CODE else REGENCIES[kode].name
+        return kode, name
+    return None
+
+# Cross-source DJPK (provinsi, pemda) <-> canonical BPS code mapping matching dim_wilayah.
+DJPK_TO_BPS_REGIONS: dict[tuple[str, str], str] = {
+    ("01", "00"): "11",
+    ("01", "12"): "1101",
+    ("01", "10"): "1102",
+    ("01", "02"): "1103",
+    ("01", "03"): "1104",
+    ("01", "04"): "1105",
+    ("01", "05"): "1106",
+    ("01", "01"): "1107",
+    ("01", "06"): "1108",
+    ("01", "07"): "1109",
+    ("01", "11"): "1110",
+    ("01", "08"): "1111",
+    ("01", "13"): "1112",
+    ("01", "14"): "1113",
+    ("01", "17"): "1114",
+    ("01", "16"): "1115",
+    ("01", "15"): "1116",
+    ("01", "18"): "1117",
+    ("01", "19"): "1118",
+    ("01", "09"): "1171",
+    ("01", "51"): "1172",
+    ("01", "53"): "1173",
+    ("01", "52"): "1174",
+    ("01", "54"): "1175",
+}
+BPS_TO_DJPK_REGIONS: dict[str, tuple[str, str]] = {
+    bps: djpk for djpk, bps in DJPK_TO_BPS_REGIONS.items()
+}
 
 # Common Indonesian month names for parsing BPS monthly labels.
 INDONESIAN_MONTHS: dict[str, int] = {

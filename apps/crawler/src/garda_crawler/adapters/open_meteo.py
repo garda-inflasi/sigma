@@ -13,6 +13,7 @@ from garda_crawler.domain.entities import (
     DataPoint,
     DatasetDefinition,
     FetchOutcome,
+    RawBronzeCapture,
     TimeSeriesSpec,
 )
 from garda_crawler.domain.enums import Frequency
@@ -128,6 +129,21 @@ class OpenMeteoArchiveAdapter(BaseAdapter):
 
             outcome.points.extend(parsed.points)
             outcome.rejected_counts.update(parsed.rejected_counts)
+            outcome.raw_captures.append(
+                RawBronzeCapture(
+                    source_code="OPEN_METEO",
+                    dataset_name=OPEN_METEO_ARCHIVE_DATASET.name,
+                    endpoint=OPEN_METEO_ARCHIVE_URL,
+                    params={
+                        "kabupaten_kode": regency_code,
+                        "start_date": start_date.isoformat(),
+                        "end_date": end_date.isoformat(),
+                    },
+                    payload=payload,
+                    capture_date=end_date,
+                    partition_year=end_date.year,
+                )
+            )
         return outcome
 
     def fetch_daily(

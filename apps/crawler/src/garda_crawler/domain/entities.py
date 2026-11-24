@@ -49,11 +49,25 @@ class DataPoint:
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class RawBronzeCapture:
+    """Original unaltered upstream JSON/XHR payload queued for immutable Bronze storage."""
+
+    source_code: str
+    dataset_name: str
+    endpoint: str
+    params: dict[str, Any]
+    payload: Any
+    partition_year: int | None = None
+    capture_date: date | None = None
+
+
 @dataclass
 class FetchOutcome:
     """Result returned by pure parsers and adapter fetch methods."""
 
     points: list[DataPoint] = field(default_factory=list)
+    raw_captures: list[RawBronzeCapture] = field(default_factory=list)
     rejected_counts: Counter[str] = field(default_factory=Counter)
     warnings: list[str] = field(default_factory=list)
     failed_series: list[TimeSeriesSpec] = field(default_factory=list)

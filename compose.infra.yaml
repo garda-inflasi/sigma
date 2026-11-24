@@ -138,6 +138,50 @@ services:
     networks:
       - garda_inflasi_net
 
+  # Medallion Object Storage (opsional, nyalakan dengan --profile medallion)
+  minio:
+    image: minio/minio:latest
+    container_name: garda-minio
+    profiles: ["medallion"]
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-garda_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-garda_minio_secret}
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - garda_inflasi_net
+
+  # Experiment tracking server MLflow (opsional, metadata backend di PostgreSQL; nyalakan dengan --profile medallion)
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    container_name: garda-mlflow
+    profiles: ["medallion"]
+    restart: unless-stopped
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER:-garda}:${POSTGRES_PASSWORD:-garda_secret}@postgres:5432/${POSTGRES_DB:-garda_inflasi}
+      --default-artifact-root s3://ml-models/mlflow
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-garda_minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-garda_minio_secret}
+    ports:
+      - "127.0.0.1:${MLFLOW_PORT:-5005}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - garda_inflasi_net
+
 volumes:
   postgres_data:
     name: ${POSTGRES_VOLUME:-garda_postgres_data}
@@ -146,7 +190,9 @@ volumes:
   pgadmin_data:
     name: ${PGADMIN_VOLUME:-garda_pgadmin_data}
   mongo_data:
-    name: ${MONGO_VOLUME:-garda_mongo_data}
+    name: ${MONGO_VOLUME:-garda_pipeline_mongo_data}
+  minio_data:
+    name: ${MINIO_VOLUME:-garda_minio_data}
 
 networks:
   garda_inflasi_net:

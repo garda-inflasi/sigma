@@ -2,6 +2,7 @@
 
 import { PanelPas } from "@/components/garda/halaman-pas";
 import { Shimmer } from "@/components/garda/shimmer";
+import { StatusBadge } from "@/components/garda/status-badge";
 import {
   BadgeSiklusMl,
   KosongMl,
@@ -10,6 +11,7 @@ import {
 import type { BlokWilayahMl, WilayahMl } from "@/lib/api/ml";
 import { KABUPATEN } from "@/lib/data/reference";
 import { severityMeta, toneClass, type Severity } from "@/lib/design/tokens";
+import { formatAngka } from "@/lib/format";
 import {
   alasanBelumAndal,
   keadaanBlok,
@@ -126,9 +128,13 @@ function IsiWilayah({
                   {namaWilayahMl(w.wilayahKode)}
                 </span>
                 <span className="block truncate text-muted-foreground">
-                  {w.komoditasForecast.length > 0
-                    ? `${w.komoditasForecast.length} komoditas ber-forecast`
-                    : LABEL_WILAYAH_TANPA_DATA}
+                  {w.komoditasForecast.length > 0 && w.klaster
+                    ? `${w.komoditasForecast.length} komoditas · ${w.klaster.clusterLabel}`
+                    : w.komoditasForecast.length > 0
+                      ? `${w.komoditasForecast.length} komoditas ber-forecast`
+                      : w.klaster
+                        ? `Klaster: ${w.klaster.clusterLabel}`
+                        : LABEL_WILAYAH_TANPA_DATA}
                 </span>
               </span>
               <HitungSinyal w={w} />
@@ -197,6 +203,29 @@ function RincianWilayah({ w }: { w: WilayahMl }) {
             : LABEL_WILAYAH_TANPA_DATA}
         </dd>
       </div>
+      {w.klaster && (
+        <div className="flex items-center justify-between gap-2">
+          <dt className="text-muted-foreground">Klaster K-Means</dt>
+          <dd className="flex items-center gap-1.5">
+            <StatusBadge
+              tone={
+                w.klaster.clusterLabel.toLowerCase().includes("tinggi") ||
+                w.klaster.clusterLabel.toLowerCase().includes("gejolak")
+                  ? "defisit"
+                  : w.klaster.clusterLabel.toLowerCase().includes("sedang") ||
+                      w.klaster.clusterLabel.toLowerCase().includes("waspada")
+                    ? "waspada"
+                    : "normal"
+              }
+            >
+              {w.klaster.clusterLabel}
+            </StatusBadge>
+            <span className="num text-muted-foreground">
+              (σ {formatAngka(w.klaster.volatilityScore, 3)})
+            </span>
+          </dd>
+        </div>
+      )}
       {inf && s && (
         <div>
           <dt className="text-muted-foreground">{labelTargetMl(inf.target)}</dt>

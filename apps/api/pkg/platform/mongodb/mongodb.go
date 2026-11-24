@@ -20,7 +20,7 @@ import (
 // Nilai bawaan konfigurasi.
 const (
 	DefaultDBUnseen = "dataunseen"
-	DefaultDBSafe   = "datasafe"
+	DefaultDBSafe   = "ml_predictions"
 	// DefaultTimeout membatasi pemilihan server, koneksi, dan setiap operasi (CSOT).
 	DefaultTimeout = 1500 * time.Millisecond
 )
@@ -44,10 +44,14 @@ func ConfigDariEnv(getenv func(string) string) Config {
 	if uri == "" {
 		uri = strings.TrimSpace(getenv("MONGO_URL"))
 	}
+	dbSafe := strings.TrimSpace(getenv("MONGO_DB_PREDICTIONS"))
+	if dbSafe == "" {
+		dbSafe = strings.TrimSpace(getenv("MONGO_DB_SAFE"))
+	}
 	cfg := Config{
 		URI:      uri,
 		DBUnseen: strings.TrimSpace(getenv("MONGO_DB_UNSEEN")),
-		DBSafe:   strings.TrimSpace(getenv("MONGO_DB_SAFE")),
+		DBSafe:   dbSafe,
 		Timeout:  DefaultTimeout,
 	}
 	if cfg.DBUnseen == "" {

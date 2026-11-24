@@ -24,6 +24,7 @@ const (
 	KoleksiXai       = "datasafe_xai_explanations"
 	KoleksiEws       = "datasafe_ews_signals"
 	KoleksiMakro     = "datasafe_macro_indicators"
+	KoleksiKlaster   = "datasafe_region_clusters"
 	KoleksiCrawlRuns = "crawl_runs"
 )
 
@@ -134,7 +135,7 @@ func (r *Repository) semua(ctx context.Context, koleksi, cycleID string, proyeks
 func (r *Repository) Snapshot(ctx context.Context, s domain.Siklus) (*domain.Snapshot, error) {
 	snap := &domain.Snapshot{
 		Siklus: s, Inflasi: []domain.SinyalInflasi{}, Forecast: []domain.Forecast{}, Xai: []domain.Xai{},
-		Ews: []domain.SinyalEws{}, Makro: []domain.Makro{},
+		Ews: []domain.SinyalEws{}, Makro: []domain.Makro{}, Klaster: []domain.KlasterWilayah{},
 	}
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return r.semua(gctx, KoleksiInflasi, s.CycleID, nil, &snap.Inflasi) })
@@ -144,6 +145,7 @@ func (r *Repository) Snapshot(ctx context.Context, s domain.Siklus) (*domain.Sna
 	g.Go(func() error { return r.semua(gctx, KoleksiXai, s.CycleID, nil, &snap.Xai) })
 	g.Go(func() error { return r.semua(gctx, KoleksiEws, s.CycleID, nil, &snap.Ews) })
 	g.Go(func() error { return r.semua(gctx, KoleksiMakro, s.CycleID, nil, &snap.Makro) })
+	g.Go(func() error { return r.semua(gctx, KoleksiKlaster, s.CycleID, nil, &snap.Klaster) })
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
@@ -169,6 +171,7 @@ func urutkan(s *domain.Snapshot) {
 		}
 		return a.Indikator < b.Indikator
 	})
+	sort.SliceStable(s.Klaster, func(i, j int) bool { return s.Klaster[i].RegencyCode < s.Klaster[j].RegencyCode })
 }
 
 func (r *Repository) Forecast(ctx context.Context, cycleID, komoditasKode, kabupatenKode string) (*domain.Forecast, error) {
@@ -198,11 +201,7 @@ var pipaRunSumber = drv.Pipeline{
 }
 
 func (r *Repository) RunSumber(ctx context.Context) ([]domain.RunSumber, error) {
-	cur, err := r.unseen.Collection(KoleksiCrawlRuns).Aggregate(ctx, pipaRunSumber)
-	if err != nil {
-		return nil, fmt.Errorf("run crawl terakhir: %w", err)
-	}
-	var rows []struct {
+	type runRow struct {
 		ID struct {
 			Sumber   string `bson:"sumber"`
 			Dataset  string `bson:"dataset"`
@@ -210,8 +209,24 @@ func (r *Repository) RunSumber(ctx context.Context) ([]domain.RunSumber, error) 
 		} `bson:"_id"`
 		Run domain.CrawlRun `bson:"run"`
 	}
-	if err := cur.All(ctx, &rows); err != nil {
-		return nil, fmt.Errorf("baca run crawl terakhir: %w", err)
+	var rows []runRow
+	if r.safe != nil {
+		cur, err := r.safe.Collection(KoleksiCrawlRuns).Aggregate(ctx, pipaRunSumber)
+		if err != nil {
+			return nil, fmt.Errorf("run crawl terakhir: %w", err)
+		}
+		if err := cur.All(ctx, &rows); err != nil {
+			return nil, fmt.Errorf("baca run crawl terakhir: %w", err)
+		}
+	}
+	if len(rows) == 0 && r.unseen != nil {
+		cur, err := r.unseen.Collection(KoleksiCrawlRuns).Aggregate(ctx, pipaRunSumber)
+		if err != nil {
+			return nil, fmt.Errorf("run crawl terakhir: %w", err)
+		}
+		if err := cur.All(ctx, &rows); err != nil {
+			return nil, fmt.Errorf("baca run crawl terakhir: %w", err)
+		}
 	}
 	per := map[[2]string]*domain.RunSumber{}
 	for i := range rows {

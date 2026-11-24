@@ -15,6 +15,7 @@ from garda_crawler.config.settings import CrawlerSettings
 from garda_crawler.domain.entities import RunSummary
 from garda_crawler.domain.enums import SKIPPED_MESSAGE_PREFIX, SourceStatus, TriggerType
 from garda_crawler.orchestration.orchestrator import CrawlOrchestrator
+from garda_crawler.storage.bronze_store import BronzeOnlyRepository
 from garda_crawler.storage.lock_manager import MongoLeaseLock
 from garda_crawler.storage.run_ledger import RUNS_COLLECTION, SCHEDULE_COLLECTION
 from garda_crawler.storage.unseen_repository import UnseenRepository
@@ -29,8 +30,10 @@ SCHEDULE_METADATA: dict[str, str] = {
 }
 
 
-def find_last_failed_sources(db: Database) -> list[str]:
+def find_last_failed_sources(db: Database | None) -> list[str]:
     """Identify retryable ERROR sources (excluding intentional DILEWATI/skipped sources)."""
+    if db is None:
+        return []
     latest_by_dataset: dict[tuple[str, str], dict[str, Any]] = {}
     cursor = db[RUNS_COLLECTION].find(
         {"sumber": {"$in": list(DEFAULT_ACTIVE_SOURCES)}},
@@ -60,7 +63,7 @@ def find_last_failed_sources(db: Database) -> list[str]:
 class CrawlerControlState:
     """Thread-safe shared execution state mirrored by GET /status."""
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database | None = None) -> None:
         self._db = db
         self._lock = threading.Lock()
         self._running = False
@@ -81,6 +84,8 @@ class CrawlerControlState:
 
     def _read_last_slots(self) -> dict[str, str | None]:
         slots: dict[str, str | None] = {"harian": None, "lapangan": None}
+        if self._db is None:
+            return slots
         for doc in self._db[SCHEDULE_COLLECTION].find({"_id": {"$in": ["harian", "lapangan"]}}):
             slot_id = str(doc["_id"])
             val = doc.get("terakhir")
@@ -193,17 +198,25 @@ def _default_run_executor(
     def _worker() -> None:
         error_msg: str | None = None
         try:
-            with MongoLeaseLock(state._db, "manual-control") as lock:  # noqa: SLF001
-                if not lock.acquired:
-                    error_msg = "kunci crawler sedang dipakai proses lain"
-                else:
-                    repo = UnseenRepository(state._db)
-                    orchestrator = CrawlOrchestrator(settings, repo)
-                    orchestrator.run_sources(
-                        sources,
-                        trigger=TriggerType.MANUAL,
-                        on_progress=state.record_progress,
-                    )
+            if settings.bronze_only or state._db is None:  # noqa: SLF001
+                orchestrator = CrawlOrchestrator(settings, BronzeOnlyRepository())
+                orchestrator.run_sources(
+                    sources,
+                    trigger=TriggerType.MANUAL,
+                    on_progress=state.record_progress,
+                )
+            else:
+                with MongoLeaseLock(state._db, "manual-control") as lock:  # noqa: SLF001
+                    if not lock.acquired:
+                        error_msg = "kunci crawler sedang dipakai proses lain"
+                    else:
+                        repo = UnseenRepository(state._db)
+                        orchestrator = CrawlOrchestrator(settings, repo)
+                        orchestrator.run_sources(
+                            sources,
+                            trigger=TriggerType.MANUAL,
+                            on_progress=state.record_progress,
+                        )
         except Exception as exc:
             error_msg = f"{type(exc).__name__}: {exc}"
         finally:

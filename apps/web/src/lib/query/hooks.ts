@@ -33,7 +33,17 @@ import {
   type EntitasLangsung,
   type LokasiSpasialParams,
 } from "@/lib/api/master-langsung";
-import { listTitikDesa, type JenisTitikDesa } from "@/lib/api/spasial-jarak";
+import {
+  createGangguanJalan,
+  deleteGangguanJalan,
+  hitungJarakSpasial,
+  listGangguanJalan,
+  listTitikDesa,
+  updateGangguanJalan,
+  type CreateGangguanInput,
+  type JenisTitikDesa,
+  type UpdateGangguanInput,
+} from "@/lib/api/spasial-jarak";
 import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
 import { unduhProyeksiCsv } from "@/lib/api/prediksi-ekspor";
 import type { EwsAlert, StokColdStorage } from "@/lib/data/types";
@@ -1073,7 +1083,7 @@ export function useColdStorageBulk() {
   });
 }
 
-// ── Pipeline & Crawler (dataunseen / datasafe & trigger realtime) ───────────
+// ── Pipeline & Crawler (Medallion Bronze / ml_predictions & trigger realtime) ─
 
 export const useCrawlerFreshness = () => {
   useDataEnv();
@@ -1134,7 +1144,7 @@ export function useTriggerPipeline() {
     onSuccess: (snap) => {
       qc.setQueryData(qk.crawler.jobs(), snap);
       qc.invalidateQueries({ queryKey: qk.crawler.cycles(24) });
-      toast.success("Training ulang ML datasafe dimulai", {
+      toast.success("Training ulang ML ml_predictions dimulai", {
         description: "Hasil model & proyeksi akan otomatis diperbarui begitu siklus selesai.",
       });
     },
@@ -1156,6 +1166,111 @@ export const useTitikDesa = (jenis?: JenisTitikDesa, enabled = true) => {
     enabled,
   });
 };
+
+export interface JarakSpasialQueryParams {
+  asalKode?: string;
+  tujuanKode?: string;
+  asalLat: number;
+  asalLng: number;
+  tujuanLat?: number;
+  tujuanLng?: number;
+  faktorJalan?: number;
+  profil?: "truck" | "auto";
+}
+
+export const useJarakSpasial = (
+  params: JarakSpasialQueryParams | null,
+  enabled = true,
+) => {
+  useDataEnv();
+  const keyParams = params
+    ? {
+        asal_kode: params.asalKode ?? "",
+        tujuan_kode: params.tujuanKode ?? "",
+        asal_lat: Number(params.asalLat.toFixed(4)),
+        asal_lng: Number(params.asalLng.toFixed(4)),
+        tujuan_lat:
+          params.tujuanLat !== undefined
+            ? Number(params.tujuanLat.toFixed(4))
+            : null,
+        tujuan_lng:
+          params.tujuanLng !== undefined
+            ? Number(params.tujuanLng.toFixed(4))
+            : null,
+        faktor_jalan: params.faktorJalan ?? 1.3,
+        profil: params.profil ?? "truck",
+      }
+    : { empty: true };
+  return useQuery({
+    queryKey: qk.spasial.jarak(keyParams),
+    queryFn: () => hitungJarakSpasial(params!),
+    placeholderData: keepPreviousData,
+    enabled: Boolean(params) && enabled,
+    staleTime: 60_000,
+  });
+};
+
+export const useGangguanJalan = (aktif?: boolean, enabled = true) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.spasial.gangguanJalan(aktif),
+    queryFn: () => listGangguanJalan(aktif),
+    enabled,
+  });
+};
+
+export function useCreateGangguanJalan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateGangguanInput) => createGangguanJalan(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["spasial", "gangguan-jalan"] });
+      qc.invalidateQueries({ queryKey: ["spasial", "jarak"] });
+      toast.success("Titik gangguan jalan dicatat", {
+        description: "Kalkulasi rute otomatis menyesuaikan pengalihan jalan.",
+      });
+    },
+    onError: (err) => {
+      toast.error("Gagal mencatat gangguan jalan", {
+        description: err instanceof Error ? err.message : "Periksa kembali isian.",
+      });
+    },
+  });
+}
+
+export function useUpdateGangguanJalan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateGangguanInput }) =>
+      updateGangguanJalan(id, payload),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ["spasial", "gangguan-jalan"] });
+      qc.invalidateQueries({ queryKey: ["spasial", "jarak"] });
+      toast.success(
+        vars.payload.aktif === false
+          ? "Gangguan jalan ditandai selesai"
+          : "Status gangguan jalan diperbarui",
+      );
+    },
+    onError: (err) => {
+      toast.error("Gagal memperbarui gangguan jalan", {
+        description: err instanceof Error ? err.message : "Coba lagi.",
+      });
+    },
+  });
+}
+
+export function useDeleteGangguanJalan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteGangguanJalan(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["spasial", "gangguan-jalan"] });
+      qc.invalidateQueries({ queryKey: ["spasial", "jarak"] });
+      toast.success("Data gangguan jalan dihapus");
+    },
+  });
+}
 
 export const useLokasiSpasial = (params: LokasiSpasialParams = {}, enabled = true) =>
   useQuery({

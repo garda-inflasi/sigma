@@ -317,7 +317,19 @@ type Makro struct {
 	LastAvailableDate *time.Time `bson:"last_available_date"`
 }
 
-// CrawlRun adalah satu dokumen dataunseen.crawl_runs.
+// KlasterWilayah adalah satu dokumen datasafe_region_clusters (atau baris PostgreSQL region_clusters).
+type KlasterWilayah struct {
+	CycleID              string   `bson:"cycle_id"`
+	RegencyCode          string   `bson:"regency_code"`
+	ClusterID            int      `bson:"cluster_id"`
+	ClusterLabel         string   `bson:"cluster_label"`
+	CentroidDistance     float64  `bson:"centroid_distance"`
+	VolatilityScore      float64  `bson:"volatility_score"`
+	ClimateExposureScore float64  `bson:"climate_exposure_score"`
+	SilhouetteScore      *float64 `bson:"silhouette_score,omitempty"`
+}
+
+// CrawlRun adalah satu dokumen crawl_runs.
 type CrawlRun struct {
 	RunID             string     `bson:"_id"`
 	Crawler           string     `bson:"crawler"`
@@ -352,4 +364,5 @@ type Snapshot struct {
 	Xai      []Xai
 	Ews      []SinyalEws
 	Makro    []Makro
+	Klaster  []KlasterWilayah
 }

@@ -17,8 +17,11 @@ from garda_ml import __pipeline_version__, __version__
 from garda_ml.config.constants import DEFAULT_HORIZONS
 from garda_ml.config.settings import PipelineSettings
 from garda_ml.data.artifact_store import ArtifactStore
+from garda_ml.data.bronze_reader import BronzeReader
 from garda_ml.data.lock_manager import CycleLeaseLock
+from garda_ml.data.postgres_serving_writer import PostgresServingWriter
 from garda_ml.data.safe_writer import (
+    CRAWL_RUNS_COLLECTION,
     CYCLE_COLLECTION,
     EWS_COLLECTION,
     FINAL_READABLE_STATUSES,
@@ -39,9 +42,12 @@ from garda_ml.data.unseen_reader import extract_unseen_snapshot
 from garda_ml.domain.entities import FeaturePanel, RawMarketDataset, RegionCluster
 from garda_ml.domain.enums import CycleStatus, ModelFamily
 from garda_ml.evaluation.calibration import ClassificationSummary, run_risk_classification
+from garda_ml.evaluation.mlflow_tracker import LoggedRunMetrics, MlflowExperimentTracker
 from garda_ml.evaluation.selector import BASELINES, RegressionSummary, run_regression_tournament
 from garda_ml.features.builder import build_feature_panel
 from garda_ml.features.cluster_features import inject_cluster_features, summarize_regency_profiles
+from garda_ml.features.gold_builder import GoldBuildManifest, GoldFeatureStoreBuilder
+from garda_ml.features.silver_transformer import SilverBundle, SilverParquetStore
 from garda_ml.models.backend_resolver import ResolvedBackend, resolve_boosting_backend
 from garda_ml.models.clustering.kmeans import RegencyKMeansClusterer
 from garda_ml.postprocessing.anomaly_detector import detect_price_anomalies
@@ -257,6 +263,61 @@ def _build_regression_metrics(
     }
 
 
+def _summarize_macro_regency_profiles(silver_bundle: SilverBundle) -> pd.DataFrame:
+    """Build fallback regional clustering profiles from Silver BPS macro tables when daily prices are absent."""
+    macro = silver_bundle.macro
+    if macro.empty:
+        return pd.DataFrame(columns=["regency_code", "volatility_mean", "abs_momentum_30", "climate_exposure"])
+    reg_df = macro[(macro["kode_bps"].astype(str).str.len() == 4) & (macro["kode_bps"].astype(str) != "0000") & macro["nilai"].notna()].copy()
+    if reg_df.empty:
+        return pd.DataFrame(columns=["regency_code", "volatility_mean", "abs_momentum_30", "climate_exposure"])
+
+    rows: list[dict[str, Any]] = []
+    for code, grp in reg_df.groupby("kode_bps", sort=True):
+        infl = grp[grp["domain"] == "INFLASI"]["nilai"]
+        cons = grp[grp["domain"] == "KONSUMSI_PENDAPATAN"]["nilai"]
+        labor = grp[grp["domain"] == "TENAGA_KERJA"]["nilai"]
+        rows.append(
+            {
+                "regency_code": str(code),
+                "volatility_mean": float(infl.std(ddof=0) if len(infl) > 1 else (grp["nilai"].std(ddof=0) or 0.0)),
+                "abs_momentum_30": float(abs(infl.mean()) if not infl.empty else (abs(cons.mean()) if not cons.empty else 0.0)),
+                "climate_exposure": float(labor.mean() if not labor.empty else 0.0),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _build_crawl_runs_docs(freshness: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    docs: list[dict[str, Any]] = []
+    for item in freshness:
+        src = str(item.get("sumber") or "")
+        ds = str(item.get("dataset") or "")
+        if not (src and ds):
+            continue
+        crawled_at = item.get("crawled_at") or datetime.now(UTC)
+        lad = item.get("last_available_date")
+        crawl_date = to_wib_date(crawled_at).isoformat() if isinstance(crawled_at, datetime) else str(crawled_at)[:10]
+        docs.append(
+            {
+                "_id": f"{crawl_date}:{src}:{ds}:BRONZE",
+                "crawler": "garda-crawler",
+                "sumber": src,
+                "dataset": ds,
+                "crawl_date": crawl_date,
+                "mulai": crawled_at,
+                "selesai": crawled_at,
+                "status": "FRESH" if item.get("status") in {"FRESH", "WRITTEN", "SKIPPED_DUPLICATE"} else "ERROR",
+                "jumlah_baru": 1,
+                "jumlah_diteruskan": 0,
+                "last_available_date": lad,
+                "pesan": str(item.get("pesan") or "Bronze"),
+                "pemicu": "SCHEDULED",
+            }
+        )
+    return docs
+
+
 def _resolve_final_status(
     dataset: RawMarketDataset,
     reg: RegressionSummary,
@@ -269,20 +330,66 @@ def _resolve_final_status(
 
 
 class CycleOrchestrator:
-    """Executes one deterministic training, clustering, forecasting, XAI, and EWS commit cycle."""
+    """Executes one deterministic Bronze -> Silver -> Gold -> Training & Serving cycle."""
 
     def __init__(self, settings: PipelineSettings) -> None:
         self._settings = settings
-        self._artifacts = ArtifactStore(settings.artifact_dir or None)
+        self._bronze_reader = BronzeReader(
+            data_raw_dir=settings.data_raw_dir or None,
+            postgres_url=settings.postgres_url,
+            minio_endpoint=settings.minio_endpoint,
+            minio_access_key=settings.minio_access_key,
+            minio_secret_key=settings.minio_secret_key,
+            minio_bucket_raw=settings.minio_bucket_raw,
+            minio_secure=settings.minio_secure,
+        )
+        self._silver_store = SilverParquetStore(
+            local_dir=settings.data_silver_dir or None,
+            minio_endpoint=settings.minio_endpoint,
+            minio_access_key=settings.minio_access_key,
+            minio_secret_key=settings.minio_secret_key,
+            minio_bucket=settings.minio_bucket_silver,
+            minio_secure=settings.minio_secure,
+        )
+        self._artifacts = ArtifactStore(
+            settings.artifact_dir or None,
+            minio_endpoint=settings.minio_endpoint,
+            minio_access_key=settings.minio_access_key,
+            minio_secret_key=settings.minio_secret_key,
+            minio_bucket=settings.minio_bucket_models,
+            minio_secure=settings.minio_secure,
+        )
+        self._gold_builder = GoldFeatureStoreBuilder(
+            local_dir=settings.data_gold_dir or None,
+            minio_endpoint=settings.minio_endpoint,
+            minio_access_key=settings.minio_access_key,
+            minio_secret_key=settings.minio_secret_key,
+            minio_bucket=settings.minio_bucket_gold,
+            minio_secure=settings.minio_secure,
+        )
+        self._mlflow = MlflowExperimentTracker(
+            tracking_uri=settings.mlflow_tracking_uri,
+            experiment_name=settings.mlflow_experiment,
+        )
+        self._pg_serving = PostgresServingWriter(
+            postgres_url=settings.postgres_url,
+            gold_dir=settings.data_gold_dir or None,
+            minio_endpoint=settings.minio_endpoint,
+            minio_access_key=settings.minio_access_key,
+            minio_secret_key=settings.minio_secret_key,
+            minio_bucket=settings.minio_bucket_gold,
+            minio_secure=settings.minio_secure,
+        )
 
     def _run_models(
         self,
         dataset: RawMarketDataset,
-        db_safe: Database,
+        db_safe: Database | None,
         ts: datetime,
         cycle_id: str,
         previous_cycle: dict[str, Any] | None,
         progress_cb: ProgressCallback | None = None,
+        silver_bundle: SilverBundle | None = None,
     ) -> dict[str, Any]:
         stage_ms: dict[str, int] = {}
         notes: list[str] = []
@@ -299,10 +406,50 @@ class CycleOrchestrator:
         if backend.is_fallback:
             notes.append(f"backend {backend.name}: {backend.fallback_reason}")
 
-        _report("BANGUN_PANEL", 25, "Membangun panel fitur deret waktu, klaster K-Means & variabel makro...")
+        _report("BANGUN_PANEL", 25, "Mematerialkan Silver/Gold Parquet via DuckDB & klaster wilayah K-Means...")
         t0 = time.perf_counter()
         cutoff_date = pd.Timestamp(to_wib_date(ts))
         panel: FeaturePanel = build_feature_panel(dataset, cutoff_date)
+        effective_silver = silver_bundle
+        if effective_silver is None:
+            prices_silver = (
+                dataset.prices.rename(columns={"kabupaten_kode": "kode_bps", "tanggal": "periode"})[
+                    ["kode_bps", "komoditas_kode", "periode", "nilai", "sumber"]
+                ]
+                if not dataset.prices.empty
+                else pd.DataFrame(columns=["kode_bps", "komoditas_kode", "periode", "nilai", "sumber"])
+            )
+            macro_silver = (
+                dataset.macro.rename(columns={"wilayah_kode": "kode_bps"})[
+                    ["kode_bps", "domain", "indikator", "periode", "nilai", "sumber"]
+                ].assign(kode_bps=lambda d: d["kode_bps"].fillna("0000").astype(str))
+                if not dataset.macro.empty
+                else pd.DataFrame(columns=["kode_bps", "domain", "indikator", "periode", "nilai", "sumber"])
+            )
+            djpk_mask = macro_silver["sumber"] == "DJPK" if not macro_silver.empty else pd.Series(dtype=bool)
+            effective_silver = SilverBundle(
+                prices=prices_silver,
+                macro=macro_silver[~djpk_mask] if not macro_silver.empty else macro_silver,
+                djpk=macro_silver[djpk_mask] if not macro_silver.empty else macro_silver,
+                weather=dataset.weather,
+            )
+
+        try:
+            self._silver_store.write_bundle(effective_silver)
+        except Exception as exc:
+            logger.warning("gagal menulis Silver Parquet: %s", exc)
+
+        gold_manifest: GoldBuildManifest | None = None
+        has_gold_input = (
+            not effective_silver.prices.empty
+            or not effective_silver.macro.empty
+            or not effective_silver.djpk.empty
+        )
+        if has_gold_input and (self._gold_builder.local_dir is not None or self._settings.minio_endpoint):
+            try:
+                gold_manifest = self._gold_builder.build_and_export(effective_silver)
+            except Exception as exc:
+                logger.warning("gagal membangun Gold Parquet fitur: %s", exc)
 
         clusterer = RegencyKMeansClusterer()
         clusters: dict[str, RegionCluster] = {}
@@ -310,6 +457,10 @@ class CycleOrchestrator:
             profiles = summarize_regency_profiles(panel)
             clusters = clusterer.fit_predict(profiles)
             panel = inject_cluster_features(panel, clusters)
+        else:
+            macro_profiles = _summarize_macro_regency_profiles(effective_silver)
+            if not macro_profiles.empty:
+                clusters = clusterer.fit_predict(macro_profiles)
         stage_ms["fitur"] = int((time.perf_counter() - t0) * 1000)
 
         _report("TRAIN_REGRESI", 45, "Melatih & memilih model proyeksi harga H+7, H+14, H+30...")
@@ -320,7 +471,7 @@ class CycleOrchestrator:
             self._settings.selection_interval_hours,
             backend.quantile_model_key,
         )
-        champions = {} if is_full else _load_previous_champions(db_safe, previous_cycle)
+        champions = {} if (is_full or db_safe is None) else _load_previous_champions(db_safe, previous_cycle)
         reg = run_regression_tournament(
             panel,
             backend,
@@ -383,7 +534,7 @@ class CycleOrchestrator:
 
         prev_active_ews = (
             list(db_safe[EWS_COLLECTION].find({"cycle_id": previous_cycle["_id"], "aktif": True}))
-            if previous_cycle
+            if (previous_cycle and db_safe is not None)
             else []
         )
         ews = consolidate_ews_signals(
@@ -399,6 +550,7 @@ class CycleOrchestrator:
 
         return {
             "panel": panel,
+            "gold_manifest": gold_manifest,
             "clusters": clusters,
             "clusterer": clusterer,
             "reg": reg,
@@ -452,29 +604,148 @@ class CycleOrchestrator:
         }
 
         t_write = time.perf_counter()
-        for col_name in OUTPUT_COLLECTIONS:
-            lock.assert_held()
-            write_documents(db_safe, col_name, documents[col_name])
+        if db_safe is not None and lock is not None:
+            for col_name in OUTPUT_COLLECTIONS:
+                lock.assert_held()
+                write_documents(db_safe, col_name, documents[col_name])
 
-        cluster_docs = _build_cluster_docs(res["clusters"], meta)
-        if cluster_docs:
-            lock.assert_held()
-            write_documents(db_safe, REGION_CLUSTERS_COLLECTION, cluster_docs)
+            cluster_docs = _build_cluster_docs(res["clusters"], meta)
+            if cluster_docs:
+                lock.assert_held()
+                write_documents(db_safe, REGION_CLUSTERS_COLLECTION, cluster_docs)
+
+            crawl_run_docs = _build_crawl_runs_docs(dataset.freshness)
+            for run_doc in crawl_run_docs:
+                lock.assert_held()
+                db_safe[CRAWL_RUNS_COLLECTION].replace_one({"_id": run_doc["_id"]}, sanitize_bson(run_doc), upsert=True)
 
         res["stage_ms"]["tulis"] = int((time.perf_counter() - t_write) * 1000)
 
+        gold_manifest: GoldBuildManifest | None = res.get("gold_manifest")
+        parquet_version = gold_manifest.gold_dataset_version if gold_manifest is not None else ""
+        clusterer: RegencyKMeansClusterer = res["clusterer"]
+
         if self._artifacts.enabled and reg.global_models:
-            self._artifacts.save_joblib(
+            self._artifacts.save_model_bundle(
                 cycle_id,
                 f"global_{res['backend'].quantile_model_key}",
                 reg.global_models,
-                metadata={"cycle_id": cycle_id, "features": reg.feature_columns},
+                metadata={
+                    "cycle_id": cycle_id,
+                    "features": reg.feature_columns,
+                    "gold_dataset_version": parquet_version,
+                },
+            )
+        if self._artifacts.enabled and clusterer.model is not None:
+            self._artifacts.save_model_bundle(
+                cycle_id,
+                "kmeans_clusters",
+                clusterer.model,
+                preprocessor=clusterer.scaler,
+                metadata={
+                    "cycle_id": cycle_id,
+                    "k": clusterer.selected_k,
+                    "silhouette_score": clusterer.best_silhouette,
+                },
             )
 
-        counts = {col_name: db_safe[col_name].count_documents({"cycle_id": cycle_id}) for col_name in OUTPUT_COLLECTIONS}
-        for col_name, items in documents.items():
-            if counts[col_name] != len(items):
-                raise RuntimeError(f"jumlah dokumen {col_name} tidak cocok: {counts[col_name]} != {len(items)}")
+        reg_metrics_summary = _build_regression_metrics(
+            reg,
+            res["backend"].quantile_model_key,
+            res["selection_id"],
+            res["selection_ts"],
+        )
+        if self._mlflow.enabled:
+            self._mlflow.log_training_run(
+                LoggedRunMetrics(
+                    run_name=f"cycle-{cycle_id}",
+                    cycle_id=cycle_id,
+                    model_family=res["backend"].quantile_model_key,
+                    gold_dataset_version=parquet_version,
+                    params=reg.params,
+                    metrics={
+                        k: float(v)
+                        for k, v in {
+                            "rmse": reg_metrics_summary.get("rmse_median"),
+                            "mape": reg_metrics_summary.get("mape_median"),
+                            "f1": (cls.metrics or {}).get("f1"),
+                            "roc_auc": (cls.metrics or {}).get("roc_auc"),
+                            "silhouette_score": clusterer.best_silhouette,
+                        }.items()
+                        if v is not None
+                    },
+                )
+            )
+
+        if self._pg_serving.postgres_url or self._pg_serving.gold_dir is not None or self._settings.minio_endpoint:
+            try:
+                batch_dt = to_wib_date(ts)
+                pg_preds = [
+                    {
+                        "kode_bps": r.series.regency_code,
+                        "komoditas_kode": r.series.commodity_code,
+                        "periode": batch_dt,
+                        "horizon_hari": int(horizon_hari),
+                        "task_type": "FORECAST",
+                        "yhat": round(float(r.quantiles[h_idx, 1]), 2),
+                        "yhat_lower": round(float(r.quantiles[h_idx, 0]), 2),
+                        "yhat_upper": round(float(r.quantiles[h_idx, 2]), 2),
+                        "model_family": r.model_name,
+                        "model_version": cycle_id,
+                        "parquet_version": parquet_version,
+                    }
+                    for r in reg.results
+                    for h_idx, horizon_hari in enumerate(DEFAULT_HORIZONS[: len(r.quantiles)])
+                ]
+                for sig in cls.signals:
+                    pg_preds.append(
+                        {
+                            "kode_bps": str(sig["wilayah_kode"]),
+                            "komoditas_kode": "ALL",
+                            "periode": batch_dt,
+                            "horizon_hari": 30,
+                            "task_type": "RISK_CLASSIFICATION",
+                            "risk_prob": sig.get("probabilitas"),
+                            "risk_level": sig.get("kelas") or sig.get("siklus"),
+                            "model_family": str((cls.metrics or {}).get("model") or res["backend"].name),
+                            "model_version": cycle_id,
+                            "parquet_version": parquet_version,
+                        }
+                    )
+                pg_clus = [
+                    {
+                        "kode_bps": code,
+                        "periode": batch_dt,
+                        "cluster_id": c.cluster_id,
+                        "cluster_label": c.cluster_label,
+                        "silhouette_score": clusterer.best_silhouette,
+                        "centroid_distance": c.centroid_distance,
+                        "feature_summary": {
+                            "volatility_score": c.volatility_score,
+                            "climate_exposure_score": c.climate_exposure_score,
+                        },
+                        "model_version": cycle_id,
+                    }
+                    for code, c in sorted(res["clusters"].items())
+                ]
+                self._pg_serving.write_cycle_outputs(
+                    cycle_id=cycle_id,
+                    batch_date=batch_dt,
+                    predictions=pg_preds,
+                    clusters=pg_clus,
+                )
+            except Exception as exc:
+                logger.warning("gagal menulis serving PostgreSQL/Parquet: %s", exc)
+
+        if db_safe is not None and lock is not None:
+            counts = {col_name: db_safe[col_name].count_documents({"cycle_id": cycle_id}) for col_name in OUTPUT_COLLECTIONS}
+            for col_name, items in documents.items():
+                if counts[col_name] != len(items):
+                    raise RuntimeError(f"jumlah dokumen {col_name} tidak cocok: {counts[col_name]} != {len(items)}")
+            counts[REGION_CLUSTERS_COLLECTION] = db_safe[REGION_CLUSTERS_COLLECTION].count_documents({"cycle_id": cycle_id})
+        else:
+            counts = {col_name: len(items) for col_name, items in documents.items()}
+            counts[REGION_CLUSTERS_COLLECTION] = len(res["clusters"])
 
         status = _resolve_final_status(dataset, reg, cls, res["failures"])
         notes = list(res["notes"])
@@ -506,27 +777,29 @@ class CycleOrchestrator:
             "durasi_tahap_ms": res["stage_ms"],
             "kegagalan": res["failures"][:50],
             "jumlah_data_baru": dataset.new_points_count,
+            "gold_dataset_version": parquet_version,
         }
 
-        lock.assert_held()
-        update_res = db_safe[CYCLE_COLLECTION].update_one(
-            {"_id": cycle_id, "status": CycleStatus.RUNNING},
-            {
-                "$set": sanitize_bson(
-                    {
-                        "status": status,
-                        "pesan": "; ".join(notes),
-                        "duration_ms": duration_ms,
-                        "jumlah": counts,
-                        "source_freshness": dataset.freshness,
-                        "target_inflasi": cls.cycle_target if cls.signals else None,
-                        "model_metrics": metrics,
-                    }
-                )
-            },
-        )
-        if update_res.modified_count != 1:
-            raise RuntimeError(f"gagal memfinalkan siklus {cycle_id}")
+        if db_safe is not None and lock is not None:
+            lock.assert_held()
+            update_res = db_safe[CYCLE_COLLECTION].update_one(
+                {"_id": cycle_id, "status": CycleStatus.RUNNING},
+                {
+                    "$set": sanitize_bson(
+                        {
+                            "status": status,
+                            "pesan": "; ".join(notes),
+                            "duration_ms": duration_ms,
+                            "jumlah": counts,
+                            "source_freshness": dataset.freshness,
+                            "target_inflasi": cls.cycle_target if cls.signals else None,
+                            "model_metrics": metrics,
+                        }
+                    )
+                },
+            )
+            if update_res.modified_count != 1:
+                raise RuntimeError(f"gagal memfinalkan siklus {cycle_id}")
 
         logger.info("siklus %s %s dalam %.1f dtk: %s", cycle_id, status, duration_ms / 1000, counts)
         return {
@@ -547,16 +820,53 @@ class CycleOrchestrator:
         now: datetime | None = None,
         progress_cb: ProgressCallback | None = None,
         force: bool = False,
+        use_bronze: bool = True,
     ) -> dict[str, Any]:
-        """Run one isolated cycle guarded by MongoDB lease lock."""
-        owns_client = client is None
-        mongo_client = client or MongoClient(self._settings.mongo_uri, serverSelectionTimeoutMS=5000, tz_aware=True)
+        """Run one isolated Bronze -> Silver -> Gold -> Training & Serving cycle."""
+        moment = ensure_utc(now or datetime.now(UTC))
+        ts = hour_floor_utc(moment)
+        cutoff = moment if force else ts
+        cycle_id = build_cycle_id(ts)
+        started_perf = time.perf_counter()
+
+        owns_client = client is None and bool(self._settings.mongo_uri)
+        mongo_client: MongoClient[Any] | None = (
+            client
+            if client is not None
+            else (MongoClient(self._settings.mongo_uri, serverSelectionTimeoutMS=5000, tz_aware=True) if self._settings.mongo_uri else None)
+        )
         try:
-            moment = ensure_utc(now or datetime.now(UTC))
-            ts = hour_floor_utc(moment)
-            cutoff = moment if force else ts
-            cycle_id = build_cycle_id(ts)
-            db_safe, db_unseen = mongo_client[self._settings.db_safe], mongo_client[self._settings.db_unseen]
+            if mongo_client is None:
+                if progress_cb is not None:
+                    progress_cb("EKSTRAKSI_FITUR", 12, f"Membaca layer Bronze ke Silver ({cycle_id})...", cycle_id)
+                silver_bundle, dataset = self._bronze_reader.load_silver_and_market(
+                    cutoff=cutoff,
+                    history_days=self._settings.history_days,
+                )
+                with threadpool_limits(limits=self._settings.n_jobs):
+                    computed = self._run_models(
+                        dataset,
+                        None,
+                        ts,
+                        cycle_id,
+                        None,
+                        progress_cb=progress_cb,
+                        silver_bundle=silver_bundle,
+                    )
+                if progress_cb is not None:
+                    progress_cb("SIMPAN_SERVING", 96, f"Menyimpan Parquet, PostgreSQL & artefak ({cycle_id})...", cycle_id)
+                return self._commit_datasafe(
+                    None,
+                    None,
+                    ts,
+                    cycle_id,
+                    dataset,
+                    computed,
+                    None,
+                    started_perf,
+                )
+
+            db_safe = mongo_client[self._settings.db_safe]
             ensure_datasafe_indexes(db_safe)
 
             if not force:
@@ -601,14 +911,21 @@ class CycleOrchestrator:
 
                 try:
                     if progress_cb is not None:
-                        progress_cb("EKSTRAKSI_FITUR", 12, f"Mengekstrak data mentah dataunseen ({cycle_id})...", cycle_id)
+                        progress_cb("EKSTRAKSI_FITUR", 12, f"Membaca layer Bronze ke Silver ({cycle_id})...", cycle_id)
                     previous_cycle = _latest_final_cycle(db_safe, ts)
-                    dataset = extract_unseen_snapshot(
-                        db_unseen,
-                        cutoff=cutoff,
-                        history_days=self._settings.history_days,
-                        previous_cutoff=previous_cycle["data_cutoff"] if previous_cycle else None,
-                    )
+                    silver_bundle: SilverBundle | None = None
+                    if use_bronze:
+                        silver_bundle, dataset = self._bronze_reader.load_silver_and_market(
+                            cutoff=cutoff,
+                            history_days=self._settings.history_days,
+                        )
+                    else:
+                        dataset = extract_unseen_snapshot(
+                            mongo_client[self._settings.db_unseen],
+                            cutoff=cutoff,
+                            history_days=self._settings.history_days,
+                            previous_cutoff=previous_cycle["data_cutoff"] if previous_cycle else None,
+                        )
                     with threadpool_limits(limits=self._settings.n_jobs):
                         computed = self._run_models(
                             dataset,
@@ -617,9 +934,10 @@ class CycleOrchestrator:
                             cycle_id,
                             previous_cycle,
                             progress_cb=progress_cb,
+                            silver_bundle=silver_bundle,
                         )
                     if progress_cb is not None:
-                        progress_cb("SIMPAN_DATASAFE", 96, f"Menyimpan hasil & memfinalkan siklus {cycle_id} di datasafe...", cycle_id)
+                        progress_cb("SIMPAN_DATASAFE", 96, f"Menyimpan hasil ke MongoDB {self._settings.db_safe}, PG & Parquet...", cycle_id)
                     return self._commit_datasafe(
                         db_safe,
                         lock,
@@ -651,7 +969,7 @@ class CycleOrchestrator:
             finally:
                 lock.release()
         finally:
-            if owns_client:
+            if owns_client and mongo_client is not None:
                 mongo_client.close()
 
 

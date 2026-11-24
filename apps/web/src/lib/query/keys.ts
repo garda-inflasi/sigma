@@ -39,6 +39,9 @@ export const qk = {
     neraca: (komoditas: string) => ["spasial", "neraca", komoditas, env()] as const,
     riwayat: () => ["spasial", "riwayat", env()] as const,
     titikDesa: (jenis?: string) => ["spasial", "titik-desa", jenis ?? "ALL", env()] as const,
+    jarak: (params: Record<string, unknown>) => ["spasial", "jarak", params, env()] as const,
+    gangguanJalan: (aktif?: boolean) =>
+      ["spasial", "gangguan-jalan", aktif === undefined ? "all" : String(aktif), env()] as const,
   },
   prediksi: {
     all: () => ["prediksi"] as const,

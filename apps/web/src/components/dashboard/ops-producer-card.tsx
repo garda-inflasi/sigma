@@ -25,7 +25,7 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
   return (
     <section
       className={cn(
-        "glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0",
+        "glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0",
         className,
       )}
     >
@@ -38,7 +38,7 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
         }
       />
 
-      <div className="scrollbar-thin mt-3 flex-1 overflow-x-auto lg:min-h-0 lg:overflow-y-auto">
+      <div className="scrollbar-thin mt-3 overflow-x-auto lg:min-h-0 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-44 w-full" />
         ) : !data ? (

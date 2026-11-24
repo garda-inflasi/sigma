@@ -94,7 +94,7 @@ function PerWilayah() {
     return <p className="mt-5 text-sm text-muted-foreground">{KOSONG}</p>;
 
   return (
-    <ul className="scrollbar-thin mt-3 grid content-start gap-3 pr-1 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:gap-x-8 lg:overflow-y-auto">
+    <ul className="scrollbar-thin mt-3 grid content-start gap-3 pr-1 lg:min-h-0 lg:grid-cols-2 lg:gap-x-8 lg:overflow-y-auto">
       {perKab.map((k, i) => (
         <li key={k.kode}>
           <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -262,7 +262,7 @@ function PerPetugas() {
         role="region"
         aria-label="Daftar petugas lapangan"
         tabIndex={0}
-        className="scrollbar-thin mt-3 max-h-[26rem] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1"
+        className="scrollbar-thin mt-3 max-h-[26rem] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0"
       >
         <ul className="grid content-start gap-3.5 lg:grid-cols-2 lg:gap-x-8">
           {tampil.map(({ p, pct }, i) => (
@@ -305,7 +305,7 @@ export function FieldActivity() {
   const [tampilan, setTampilan] = useState<Tampilan>("wilayah");
 
   return (
-    <section className="glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0">
+    <section className="glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0">
       <PanelTitle
         title="Aktivitas tim lapangan"
         description={DESKRIPSI[tampilan]}

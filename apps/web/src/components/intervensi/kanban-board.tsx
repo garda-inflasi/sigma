@@ -630,7 +630,7 @@ export function KanbanBoard() {
           </p>
         )}
         {view === "persetujuan" ? (
-          <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:grid-rows-[minmax(0,1fr)]">
+          <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
             <PersetujuanPanel />
             <AlurPersetujuanPanel />
           </IsiPas>

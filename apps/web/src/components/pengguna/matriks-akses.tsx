@@ -103,7 +103,7 @@ export function MatriksAksesEditor() {
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
+    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <p className="min-w-0 flex-1 basis-64 text-xs text-muted-foreground">
           Klik sel untuk mengubah izin sebuah peran, lalu simpan per peran.
@@ -129,7 +129,7 @@ export function MatriksAksesEditor() {
         )}
       </div>
 
-      <div className="scrollbar-thin max-h-[75dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="scrollbar-thin max-h-[75dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0">
         <table
           aria-label="Matriks akses peran dan izin"
           className="w-full min-w-[1500px] border-separate border-spacing-0 text-[13px]"

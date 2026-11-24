@@ -73,6 +73,7 @@ export function PanelProyeksi({
       judul={`Proyeksi harga ${data.nama}`}
       deskripsi={`Kota Banda Aceh, ${data.horizonHari} hari ke depan`}
       aksi={aksiModel}
+      penuh
       isiClassName="flex flex-col gap-2 lg:overflow-hidden"
     >
       <div className="shrink-0">

@@ -280,10 +280,9 @@ export function KpiPage() {
           judul="Indikator kinerja gagal dimuat."
           error={error}
           onCoba={() => void refetch()}
-          className="lg:flex-1"
         />
       ) : (
-        <IsiPas className="lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
+        <IsiPas className="lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,auto)_minmax(0,auto)] lg:content-start lg:items-start lg:*:max-h-full">
           {KPI_KELOMPOK.map((kel) => {
             const semua = data.filter((k) => k.kelompok === kel);
             if (semua.length === 0) return null;

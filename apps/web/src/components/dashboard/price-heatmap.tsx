@@ -37,7 +37,7 @@ export function PriceHeatmap({ className }: { className?: string } = {}) {
   const kab = data?.kabupaten ?? [];
 
   return (
-    <section className={cn("glass flex min-w-0 flex-col rounded-lg p-3.5 lg:h-full lg:min-h-0", className)}>
+    <section className={cn("glass flex w-full min-w-0 flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0", className)}>
       <PanelTitle
         title="Peta panas harga"
         description="Perubahan harga konsumen terhadap rata-rata 7 hari"
@@ -56,15 +56,15 @@ export function PriceHeatmap({ className }: { className?: string } = {}) {
         )}
       </p>
 
-      <div className="scrollbar-thin mt-2 overflow-x-auto pb-1 lg:min-h-0 lg:flex-1 lg:overflow-auto">
+      <div className="scrollbar-thin mt-2 overflow-x-auto pb-1 lg:min-h-0 lg:overflow-auto">
         {isLoading ? (
-          <Shimmer className="h-64 w-full rounded-lg lg:h-full" />
+          <Shimmer className="h-64 w-full rounded-lg" />
         ) : !data ? (
-          <PanelGalat judul="Peta panas harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-64 lg:h-full" />
+          <PanelGalat judul="Peta panas harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-64" />
         ) : kab.length === 0 || data.komoditas.length === 0 ? (
-          <EmptyState title="Belum ada harga tervalidasi untuk dipetakan di wilayah ini." className="h-64 lg:h-full" />
+          <EmptyState title="Belum ada harga tervalidasi untuk dipetakan di wilayah ini." className="h-64" />
         ) : komoditas.length === 0 ? (
-          <EmptyState title="Tidak ada komoditas pilot pada data ini." className="h-64 lg:h-full" />
+          <EmptyState title="Tidak ada komoditas pilot pada data ini." className="h-64" />
         ) : (
           <motion.div
             initial="hidden"

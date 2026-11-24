@@ -22,7 +22,7 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
   const utilisasiTinggi = (r?.utilisasiPct ?? 0) >= 90;
 
   return (
-    <section className={cn("glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0", className)}>
+    <section className={cn("glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0", className)}>
       <PanelTitle
         title="Stok cold storage"
         description={
@@ -32,7 +32,7 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
         }
       />
 
-      <div className="scrollbar-thin mt-3 flex-1 lg:min-h-0 lg:overflow-y-auto">
+      <div className="scrollbar-thin mt-3 lg:min-h-0 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-44 w-full" />
         ) : !data || !r ? (

@@ -126,7 +126,7 @@ function EditorKebijakan({ kebijakan }: { kebijakan: KebijakanWire }) {
           },
         ]}
       />
-      <div className="grid min-w-0 gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-start lg:*:max-h-full">
         <section
           aria-labelledby="judul-umum"
           className="glass scrollbar-thin grid min-w-0 content-start gap-4 rounded-lg p-4 lg:min-h-0 lg:overflow-y-auto"

@@ -246,8 +246,8 @@ export function PetaPage() {
             items={ringkasan}
             label="Ringkasan status wilayah"
           />
-          <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_19rem]">
-            <section className="glass flex min-w-0 flex-col overflow-hidden rounded-lg lg:min-h-0">
+          <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_19rem]">
+            <section className="glass flex min-w-0 flex-col overflow-hidden rounded-lg lg:h-full lg:min-h-0">
               <div className="shrink-0 border-b border-border px-3 py-2">
                 <LokasiPanel
                   titik={titik}
@@ -410,7 +410,6 @@ export function PetaPage() {
         <PanelPas
           judul="Kandidat lokasi cold storage"
           deskripsi="Skor gabungan surplus musiman, akses jalan, dan permintaan. Makin tinggi makin layak."
-          className="lg:flex-1"
         >
           {(kandidat ?? []).length === 0 ? (
             <EmptyState

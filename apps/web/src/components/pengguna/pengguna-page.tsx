@@ -132,7 +132,7 @@ function MatriksAkses() {
   const { izin, izinPeran } = katalog;
   const grup = [...new Set(izin.map((p) => p.split(".")[0]))];
   return (
-    <div className="scrollbar-thin max-h-[75dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0 lg:flex-1">
+    <div className="scrollbar-thin max-h-[75dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0">
       <table className="w-full min-w-[1100px] border-separate border-spacing-0 text-xs">
         <thead className="sticky top-0 z-10">
           <tr>

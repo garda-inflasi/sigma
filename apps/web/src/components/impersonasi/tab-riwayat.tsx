@@ -95,7 +95,7 @@ export function TabRiwayat() {
           description="Setiap sesi impersonasi yang dimulai akan tercatat di sini dan di audit trail."
         />
       ) : (
-        <div className="scrollbar-thin relative max-h-[70dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0 lg:flex-1">
+        <div className="scrollbar-thin relative max-h-[70dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0">
           <table className="w-full min-w-[820px] text-sm">
             <thead className="sticky top-0 z-10 text-left">
               <tr>

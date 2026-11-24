@@ -47,7 +47,7 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
   ];
 
   return (
-    <section className={cn("glass h-full flex flex-col rounded-xl p-5 sm:p-6", className)}>
+    <section className={cn("glass flex w-full flex-col rounded-xl p-5 sm:p-6 lg:max-h-full", className)}>
       <PanelTitle
         title="Peringatan dini"
         description="Alert aktif yang memerlukan tindakan cepat"
@@ -66,7 +66,7 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
         }
       />
 
-      <div className="mt-4 flex-1 min-h-0 overflow-y-auto pr-1.5 space-y-3 scrollbar-thin">
+      <div className="mt-4 min-h-0 overflow-y-auto pr-1.5 space-y-3 scrollbar-thin">
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -78,7 +78,7 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
             icon={BellRing}
             title="Semua alert sudah ditangani"
             description="Tidak ada peringatan dini yang memerlukan tindakan saat ini. Peringatan baru akan otomatis masuk secara live."
-            className="h-full min-h-[220px] rounded-lg border border-dashed border-border"
+            className="min-h-40 rounded-lg border border-dashed border-border"
           />
         ) : (
           <AnimatePresence initial={false}>

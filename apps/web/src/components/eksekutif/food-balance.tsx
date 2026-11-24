@@ -17,13 +17,13 @@ export function FoodBalance({ data, sumber }: { data: NonNullable<RingkasanEksek
     .sort((a, b) => b.rasio - a.rasio);
 
   return (
-    <section className="glass flex flex-col rounded-lg p-3.5 lg:h-full lg:min-h-0">
+    <section className="glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0">
       <PanelTitle title="Neraca pangan" description={`Produksi terhadap kebutuhan bulanan provinsi, ${sumber === "DEMO" ? "data demo" : sumber}`} />
       <div className="mt-2 grid shrink-0 grid-cols-[128px_1fr_92px] gap-3 pr-1 text-[11px] text-muted-foreground max-sm:grid-cols-[100px_1fr_80px]">
         <span aria-hidden />
         <span className="flex justify-between"><span>Defisit</span><span>Surplus</span></span>
       </div>
-      <ul className="scrollbar-thin mt-2 flex flex-col gap-2 pr-1 lg:min-h-0 lg:flex-1 lg:justify-around lg:overflow-y-auto">
+      <ul className="scrollbar-thin mt-2 flex flex-col gap-2 pr-1 lg:min-h-0 lg:overflow-y-auto">
         {rows.map((r, i) => {
           const surplus = r.rasio >= 0;
           const w = (Math.min(Math.abs(r.rasio), BATAS) / BATAS) * 50;

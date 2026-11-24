@@ -20,6 +20,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import {
   HalamanPas,
   IsiPas,
+  KOLOM_PAS,
   PanelPas,
   RingkasanKeputusan,
   type ItemRingkas,
@@ -98,7 +99,7 @@ function AturanAmbang() {
     [aktif],
   );
   return (
-    <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_18rem]">
       <PanelPas
         judul="Ambang peringatan"
         deskripsi="Per komoditas dan jenis. Satuan: Δ% terhadap rata-rata jendela, atau mm hujan."
@@ -532,7 +533,7 @@ export function EwsPage() {
             items={ringkasan}
             label="Ringkasan peringatan aktif per tingkat"
           />
-          <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_17rem]">
+          <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_17rem]">
             {/* Filter tingkat ada di luar tabel: remount mengembalikan tabel ke halaman pertama. */}
             <DataTable
               key={`${saring ?? "semua"}-${tampilSelesai}`}
@@ -613,7 +614,7 @@ export function EwsPage() {
                   : undefined
               }
             />
-            <div className="flex min-w-0 flex-col gap-3 lg:min-h-0">
+            <div className={KOLOM_PAS}>
               <PanelPas judul="Arti tingkat" className="lg:shrink-0">
                 <dl className="space-y-2">
                   {URUTAN_TINGKAT.map((s) => (

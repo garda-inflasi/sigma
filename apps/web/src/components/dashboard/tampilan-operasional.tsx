@@ -11,7 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { TrendChart } from "@/components/charts/trend-chart";
 import { EwsLiveFeed } from "@/components/ews/ews-live-feed";
-import { HalamanPas, IsiPas } from "@/components/garda/halaman-pas";
+import { HalamanPas, IsiPas, KOLOM_PAS } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
 import { SpringLink } from "@/components/garda/spring-button";
 import { ViewTabs, type ViewTab } from "@/components/garda/view-tabs";
@@ -41,19 +41,26 @@ const TAB_PENUH: readonly TabOps[] = [
 ];
 const TAB_TANPA_HARGA: readonly TabOps[] = ["ringkasan", "harga", "pasokan"];
 
-const BARIS_TUNGGAL = "lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1fr)]";
-
+/** Sel bento mengikuti tinggi isinya; `penuh` hanya untuk visualisasi yang harus mengisi baris. */
 function SelBento({
   judul,
   className,
+  penuh,
   children,
 }: {
   judul: string;
   className?: string;
+  penuh?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className={cn("min-w-0 lg:min-h-0", className)}>
+    <div
+      className={cn(
+        "flex w-full min-w-0 flex-col lg:max-h-full lg:min-h-0",
+        penuh && "lg:h-full",
+        className,
+      )}
+    >
       <WidgetErrorBoundary fallbackTitle={judul} className="h-full">
         {children}
       </WidgetErrorBoundary>
@@ -138,11 +145,12 @@ export function TampilanOperasional({
           <WidgetErrorBoundary fallbackTitle="Indikator KPI operasional">
             <KpiGrid />
           </WidgetErrorBoundary>
-          <IsiPas className={BARIS_TUNGGAL}>
+          <IsiPas kolom="lg:grid-cols-12">
             {lihatPeta ? (
               <>
                 <SelBento
                   judul="Peta status wilayah"
+                  penuh
                   className={lihatEws ? "lg:col-span-5" : "lg:col-span-8"}
                 >
                   <OpsMap />
@@ -151,7 +159,7 @@ export function TampilanOperasional({
                   judul="Wilayah prioritas"
                   className={lihatEws ? "lg:col-span-3" : "lg:col-span-4"}
                 >
-                  <OpsWilayahPrioritas className="h-full" />
+                  <OpsWilayahPrioritas />
                 </SelBento>
               </>
             ) : (
@@ -164,7 +172,7 @@ export function TampilanOperasional({
             )}
             {lihatEws && (
               <SelBento judul="Peringatan dini (EWS)" className="lg:col-span-4">
-                <EwsLiveFeed className="max-h-[70dvh] p-3.5 sm:p-3.5 lg:max-h-none lg:min-h-0" />
+                <EwsLiveFeed className="max-h-[70dvh] p-3.5 sm:p-3.5 lg:max-h-full lg:min-h-0" />
               </SelBento>
             )}
           </IsiPas>
@@ -172,39 +180,42 @@ export function TampilanOperasional({
       )}
 
       {tab === "harga" && (
-        <IsiPas className="lg:grid lg:grid-cols-12 lg:grid-rows-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <IsiPas kolom="lg:grid-cols-12">
           <SelBento
             judul="Peta panas harga"
-            className="lg:col-span-7 lg:row-span-2 xl:col-span-8"
+            className="lg:col-span-7 xl:col-span-8"
           >
             <PriceHeatmap />
           </SelBento>
-          <SelBento judul="Tren harga" className="lg:col-span-5 xl:col-span-4">
-            <TrendChart isiPenuh />
-          </SelBento>
-          <SelBento
-            judul="Validasi silang harga"
-            className="lg:col-span-5 xl:col-span-4"
+          <div
+            className={cn(KOLOM_PAS, "lg:col-span-5 lg:h-full xl:col-span-4")}
           >
-            <PembandingHargaCard />
-          </SelBento>
+            <SelBento judul="Tren harga" className="lg:min-h-56 lg:flex-1">
+              <TrendChart isiPenuh />
+            </SelBento>
+            <SelBento judul="Validasi silang harga" className="lg:max-h-[45%]">
+              <PembandingHargaCard />
+            </SelBento>
+          </div>
         </IsiPas>
       )}
 
       {tab === "pasokan" && (
-        <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
-          <SelBento judul="Stok cold storage" className="lg:row-span-2">
+        <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
+          <SelBento judul="Stok cold storage">
             <OpsStockCard />
           </SelBento>
-          <SelBento judul="Harga produsen & margin" className="lg:row-span-2">
+          <SelBento judul="Harga produsen & margin">
             <OpsProducerCard />
           </SelBento>
-          <SelBento judul="Pergerakan logistik">
-            <OpsLogisticsCard />
-          </SelBento>
-          <SelBento judul="Cuaca wilayah">
-            <CuacaWilayahCard />
-          </SelBento>
+          <div className={KOLOM_PAS}>
+            <SelBento judul="Pergerakan logistik">
+              <OpsLogisticsCard />
+            </SelBento>
+            <SelBento judul="Cuaca wilayah">
+              <CuacaWilayahCard />
+            </SelBento>
+          </div>
         </IsiPas>
       )}
 
@@ -212,7 +223,7 @@ export function TampilanOperasional({
         <IsiPas>
           <SelBento
             judul="Antrean validasi"
-            className="scrollbar-thin lg:flex-1 lg:overflow-y-auto"
+            className="scrollbar-thin lg:overflow-y-auto"
           >
             <ValidationQueue />
           </SelBento>
@@ -221,7 +232,7 @@ export function TampilanOperasional({
 
       {tab === "lapangan" && lihatHarga && (
         <IsiPas>
-          <SelBento judul="Aktivitas tim lapangan" className="lg:flex-1">
+          <SelBento judul="Aktivitas tim lapangan">
             <FieldActivity />
           </SelBento>
         </IsiPas>

@@ -402,7 +402,8 @@ export function DataTable<T>({
     <div
       className={cn(
         "glass min-w-0 overflow-hidden rounded-lg",
-        isiPenuh && "flex flex-col lg:min-h-0 lg:flex-1",
+        isiPenuh &&
+          "flex w-full flex-col lg:max-h-full lg:min-h-0 lg:self-start",
         className,
       )}
     >
@@ -554,14 +555,14 @@ export function DataTable<T>({
       )}
 
       {/* Tabel */}
-      <div className={cn("relative min-w-0", isiPenuh && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col")}>
+      <div className={cn("relative min-w-0", isiPenuh && "lg:flex lg:min-h-0 lg:flex-col")}>
         <div
           ref={gulirRef}
           aria-busy={server?.isFetching || undefined}
           className={cn(
             // Batas tinggi membuat header sticky benar-benar menempel saat daftar panjang digulir.
             "scrollbar-thin max-h-[75dvh] overflow-auto transition-opacity",
-          isiPenuh && "lg:max-h-none lg:min-h-0 lg:flex-1",
+          isiPenuh && "lg:max-h-none lg:min-h-0",
             server?.isFetching && "opacity-60",
           )}
         >

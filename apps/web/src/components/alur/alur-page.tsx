@@ -273,7 +273,7 @@ export function AlurPage() {
           key={tab}
           judul={diagram.judul}
           deskripsi={diagram.deskripsi}
-          className="lg:flex-1"
+          penuh
           isiClassName="lg:flex lg:flex-col"
         >
           <DiagramAlur

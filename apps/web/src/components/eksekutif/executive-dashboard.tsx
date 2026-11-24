@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   HalamanPas,
   IsiPas,
+  KOLOM_PAS,
   RingkasanKeputusan,
   type ItemRingkas,
 } from "@/components/garda/halaman-pas";
@@ -19,6 +20,7 @@ import { GLOSARIUM } from "@/lib/glosarium";
 import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
 import { useTabHalaman } from "@/lib/hooks/use-tab-halaman";
 import { useRingkasanEksekutif } from "@/lib/query/hooks";
+import { cn } from "@/lib/utils";
 import {
   EwsSummary,
   InterventionSummary,
@@ -35,12 +37,10 @@ type TabEksekutif = "ringkasan" | "proyeksi" | "neraca";
 const TAB_PENUH: readonly TabEksekutif[] = ["ringkasan", "proyeksi", "neraca"];
 const TAB_TANPA_PROYEKSI: readonly TabEksekutif[] = ["ringkasan", "neraca"];
 
-const BARIS_TUNGGAL = "lg:grid lg:grid-cols-12 lg:items-start";
-
 /** Panel kosong: blok yang datanya belum ada, bukan galat. */
 function Kosong({ judul, pesan }: { judul: string; pesan: string }) {
   return (
-    <section className="glass rounded-lg p-3.5 lg:h-full">
+    <section className="glass w-full rounded-lg p-3.5">
       <PanelTitle title={judul} description={pesan} />
     </section>
   );
@@ -252,8 +252,8 @@ export function ExecutiveDashboard() {
               bukaNeraca: () => setTab("neraca"),
             })}
           />
-          <IsiPas className={BARIS_TUNGGAL}>
-            <div className="flex min-w-0 flex-col gap-2.5 lg:col-span-8 lg:min-h-0">
+          <IsiPas kolom="lg:grid-cols-12">
+            <div className="scrollbar-thin flex min-w-0 flex-col gap-2.5 lg:col-span-8 lg:max-h-full lg:min-h-0 lg:overflow-y-auto">
               {isLoading || !data ? (
                 <Shimmer className="h-80 w-full rounded-lg" />
               ) : data.inflasi ? (
@@ -289,16 +289,10 @@ export function ExecutiveDashboard() {
       )}
 
       {tab === "neraca" && (
-        <IsiPas className={lihatFiskal ? BARIS_TUNGGAL : undefined}>
-          <div
-            className={
-              lihatFiskal
-                ? "min-w-0 lg:col-span-7 lg:min-h-0"
-                : "min-w-0 lg:min-h-0 lg:flex-1"
-            }
-          >
+        <IsiPas kolom={lihatFiskal ? "lg:grid-cols-12" : undefined}>
+          <div className={cn(KOLOM_PAS, lihatFiskal && "lg:col-span-7")}>
             {!data ? (
-              <PanelSkeleton className="lg:h-full" />
+              <PanelSkeleton />
             ) : data.neraca ? (
               <FoodBalance
                 data={data.neraca.items}
@@ -312,9 +306,9 @@ export function ExecutiveDashboard() {
             )}
           </div>
           {lihatFiskal && (
-            <div className="min-w-0 lg:col-span-5 lg:min-h-0">
+            <div className={cn(KOLOM_PAS, "lg:col-span-5")}>
               {!data ? (
-                <PanelSkeleton className="lg:h-full" />
+                <PanelSkeleton />
               ) : data.fiskal ? (
                 <FiscalSpace data={data.fiskal} />
               ) : (

@@ -131,10 +131,8 @@ function SimulasiSkenario({
 
   return (
     <IsiPas
-      className={cn(
-        "lg:grid lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]",
-        className,
-      )}
+      kolom="lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]"
+      className={className}
     >
       <PanelPas
         judul="Simulasi skenario"
@@ -642,7 +640,7 @@ export function PrediksiPage() {
       {tab === "proyeksi" && (
         <>
           <RingkasanKeputusan items={ringkasan} label="Ringkasan proyeksi" />
-          <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_22rem]">
             {xai ? (
               <>
                 <PanelProyeksi

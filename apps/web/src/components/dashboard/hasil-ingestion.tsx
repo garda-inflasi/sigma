@@ -21,7 +21,7 @@ export function PembandingHargaCard() {
   const demo = data?.items.some((i) => i.demo) ?? false;
 
   return (
-    <section className="glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0">
+    <section className="glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0">
       <PanelTitle
         title="Validasi silang harga"
         description={
@@ -30,7 +30,7 @@ export function PembandingHargaCard() {
             : "Harga lapangan tervalidasi vs harga eksternal, 7 hari terakhir"
         }
       />
-      <div className="scrollbar-thin mt-2 overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+      <div className="scrollbar-thin mt-2 overflow-x-auto lg:min-h-0 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-40 w-full" />
         ) : !data ? (
@@ -98,7 +98,7 @@ export function CuacaWilayahCard() {
   const demo = data?.some((c) => c.demo) ?? false;
 
   return (
-    <section className="glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0">
+    <section className="glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0">
       <PanelTitle
         title="Cuaca wilayah"
         description={
@@ -107,7 +107,7 @@ export function CuacaWilayahCard() {
             : "Prakiraan harian BMKG per kabupaten/kota"
         }
       />
-      <ul className="scrollbar-thin mt-2 max-h-80 space-y-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
+      <ul className="scrollbar-thin mt-2 max-h-80 space-y-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <Shimmer key={i} className="h-9 w-full" />

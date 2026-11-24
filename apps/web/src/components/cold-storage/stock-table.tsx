@@ -317,9 +317,9 @@ export function StockTable({
     <>
       {/* Wadah container query; sengaja terpisah dari panel kaca dan BulkActionBar: keduanya
           (backdrop-filter / containment) menjadi containing block bagi elemen `fixed`. */}
-      <div className="@container lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <div className="@container w-full lg:flex lg:max-h-full lg:min-h-0 lg:flex-col">
         <div
-          className="glass relative overflow-hidden rounded-lg lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+          className="glass relative overflow-hidden rounded-lg lg:flex lg:min-h-0 lg:flex-col"
           aria-busy={sibuk}
         >
           {/* Penanda muat ulang (pindah halaman, urutan, atau filter) */}
@@ -513,7 +513,7 @@ export function StockTable({
           ) : error && !view ? (
             <div
               role="alert"
-              className="grid place-items-center gap-2 px-6 py-16 text-center lg:flex-1 lg:content-center"
+              className="grid place-items-center gap-2 px-6 py-16 text-center"
             >
               <span className="grid size-12 place-items-center rounded-lg bg-defisit-soft text-defisit-ink dark:bg-defisit/15">
                 <AlertTriangle className="size-5" />
@@ -529,7 +529,7 @@ export function StockTable({
               </SpringButton>
             </div>
           ) : rows.length === 0 ? (
-            <div className="grid place-items-center gap-2 px-6 py-16 text-center lg:flex-1 lg:content-center">
+            <div className="grid place-items-center gap-2 px-6 py-16 text-center">
               <span className="grid size-12 place-items-center rounded-lg bg-secondary text-muted-foreground">
                 <Inbox className="size-5" />
               </span>
@@ -552,12 +552,12 @@ export function StockTable({
           ) : (
             <div
               className={cn(
-                "transition-opacity duration-200 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col",
+                "transition-opacity duration-200 lg:flex lg:min-h-0 lg:flex-col",
                 sibuk && "opacity-60",
               )}
             >
               {/* Panel ≥ 56rem: tabel */}
-              <div className="scrollbar-thin hidden overflow-x-auto @4xl:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              <div className="scrollbar-thin hidden overflow-x-auto @4xl:block lg:min-h-0 lg:overflow-y-auto">
                 <table className="w-full min-w-[880px] border-separate border-spacing-0 text-[13px]">
                   <caption className="sr-only">
                     Stok tersimpan di cold storage
@@ -721,14 +721,14 @@ export function StockTable({
               </div>
 
               {/* Panel < 56rem: daftar kartu (dua kolom dari 42rem) */}
-              <div className="flex flex-col @4xl:hidden lg:min-h-0 lg:flex-1">
+              <div className="flex flex-col @4xl:hidden lg:min-h-0">
                 <label className="flex shrink-0 items-center gap-3 border-b border-border bg-secondary px-4 py-2">
                   {pilihSemuaHalaman}
                   <span className="text-xs text-muted-foreground">
                     Pilih semua di halaman ini
                   </span>
                 </label>
-                <ul className="scrollbar-thin grid grid-cols-1 content-start @2xl:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                <ul className="scrollbar-thin grid grid-cols-1 content-start @2xl:grid-cols-2 lg:min-h-0 lg:overflow-y-auto">
                   {rows.map((r, i) => {
                     const dipilih = Boolean(selected[r.id]);
                     return (

@@ -81,7 +81,6 @@ export function NotifikasiPreferensi() {
     <PanelPas
       judul="Notifikasi saya"
       deskripsi="Kanal dan tingkat minimum"
-      className="lg:flex-1"
     >
       <div className="space-y-3">
         <p className="text-xs leading-snug text-muted-foreground">

@@ -15,13 +15,13 @@ export function FiscalSpace({ data }: { data: NonNullable<RingkasanEksekutif["fi
   const sisa = data.pagu - data.realisasi;
   const tone = data.status === "MEMADAI" ? "normal" : data.status === "TERBATAS" ? "waspada" : "defisit";
   return (
-    <section className="glass flex flex-col rounded-lg p-3.5 lg:h-full lg:min-h-0">
+    <section className="glass flex w-full flex-col rounded-lg p-3.5 lg:max-h-full lg:min-h-0">
       <PanelTitle
         title="Ruang fiskal"
         description={`${data.sumber === "DEMO" ? "Data demo" : "Kanwil DJPb"}, per ${formatTanggal(data.perTanggal)}`}
         actions={<StatusBadge tone={tone}>{data.status === "MEMADAI" ? "Memadai" : data.status === "TERBATAS" ? "Terbatas" : "Kritis"}</StatusBadge>}
       />
-      <div className="scrollbar-thin mt-3 flex flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+      <div className="scrollbar-thin mt-3 flex flex-col lg:min-h-0 lg:overflow-y-auto">
       <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[150px_1fr]">
         <div className="relative mx-auto size-[150px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -46,7 +46,7 @@ export function FiscalSpace({ data }: { data: NonNullable<RingkasanEksekutif["fi
           </div>
         </dl>
       </div>
-      <ul className="mt-4 flex flex-col gap-3 pr-1 lg:flex-1 lg:justify-around">
+      <ul className="mt-4 flex flex-col gap-3 pr-1">
         {data.instrumen.map((ins, i) => {
           const p = (ins.realisasi / ins.pagu) * 100;
           return (

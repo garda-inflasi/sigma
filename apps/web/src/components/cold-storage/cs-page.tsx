@@ -251,7 +251,7 @@ export function ColdStoragePage() {
       )}
 
       {tab === "fasilitas" && (
-        <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_19rem]">
           <PanelPas
             judul="Fasilitas"
             deskripsi={

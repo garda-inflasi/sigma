@@ -61,7 +61,7 @@ export function TabCepat() {
   }
 
   return (
-    <IsiPas className="lg:grid lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_20rem]">
       <DampakImpersonasi className="lg:order-2 lg:self-start">
         <li>
           {data.durasi_maks_menit

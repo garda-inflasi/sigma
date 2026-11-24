@@ -26,18 +26,31 @@ export function HalamanPas({
   );
 }
 
-/** Area sisa di bawah header dan ringkasan. Beri `className` grid untuk tata letak bento atau split-pane. */
+/** Kolom panel bertumpuk di dalam `IsiPas`: tiap panel mengikuti isinya, dan menyusut bergulir bila kolom penuh. */
+export const KOLOM_PAS =
+  "flex w-full min-w-0 flex-col gap-3 lg:max-h-full lg:min-h-0";
+
+/**
+ * Area sisa di bawah header dan ringkasan, sekaligus batas tinggi isinya. `kolom` (kelas `lg:grid-cols-*`) menyusun
+ * panel berdampingan: baris setinggi area ini, tetapi tiap panel berhenti mengikuti isinya. Panel visual yang memang
+ * harus mengisi baris (peta, grafik utama) memakai `lg:h-full`.
+ */
 export function IsiPas({
   children,
   className,
+  kolom,
 }: {
   children: ReactNode;
   className?: string;
+  kolom?: string;
 }) {
   return (
     <div
       className={cn(
         "flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1",
+        kolom &&
+          "lg:grid lg:grid-rows-[minmax(0,1fr)] lg:items-start lg:*:max-h-full",
+        kolom,
         className,
       )}
     >
@@ -47,8 +60,9 @@ export function IsiPas({
 }
 
 /**
- * Panel dengan judul tetap dan isi yang bergulir sendiri di desktop. `tanpaPadding` untuk tabel atau peta yang
- * mengisi panel sampai ke tepinya.
+ * Panel dengan judul tetap. Tingginya mengikuti isi dan isinya bergulir sendiri saat melebihi ruang di desktop.
+ * `penuh` hanya untuk visualisasi yang harus mengisi area (diagram, grafik). `tanpaPadding` untuk tabel atau peta
+ * yang mengisi panel sampai ke tepinya.
  */
 export function PanelPas({
   judul,
@@ -58,6 +72,7 @@ export function PanelPas({
   className,
   isiClassName,
   tanpaPadding,
+  penuh,
   ...props
 }: {
   judul?: ReactNode;
@@ -67,11 +82,13 @@ export function PanelPas({
   className?: string;
   isiClassName?: string;
   tanpaPadding?: boolean;
+  penuh?: boolean;
 } & Omit<React.ComponentProps<"section">, "children" | "className">) {
   return (
     <section
       className={cn(
-        "glass flex min-w-0 flex-col overflow-hidden rounded-lg lg:min-h-0",
+        "glass flex w-full min-w-0 flex-col overflow-hidden rounded-lg lg:max-h-full lg:min-h-0 lg:self-start",
+        penuh && "lg:h-full lg:flex-1 lg:self-stretch",
         className,
       )}
       {...props}

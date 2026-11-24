@@ -155,17 +155,8 @@ export function PerubahanPage() {
               }
             : undefined
         }
-        toolbar={
-          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
-            <Segmented<Tab>
-              layoutId="perubahan-tab"
-              value={tab}
-              onChange={gantiTab}
-              options={[
-                { value: "menunggu", label: "Menunggu" },
-                { value: "riwayat", label: "Riwayat" },
-              ]}
-            />
+        filterBar={
+          <>
             <FilterSelect
               label="Entitas"
               value={entitas}
@@ -185,7 +176,18 @@ export function PerubahanPage() {
                 ]}
               />
             )}
-          </div>
+          </>
+        }
+        toolbar={
+          <Segmented<Tab>
+            layoutId="perubahan-tab"
+            value={tab}
+            onChange={gantiTab}
+            options={[
+              { value: "menunggu", label: "Menunggu" },
+              { value: "riwayat", label: "Riwayat" },
+            ]}
+          />
         }
       />
       <PerubahanDetailSheet id={detail} onClose={() => setDetail(null)} />

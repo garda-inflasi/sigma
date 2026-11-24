@@ -158,40 +158,41 @@ export function NeracaPanel({
             description:
               "Belum ada data neraca pasokan untuk komoditas ini pada periode terbaru.",
           }}
+          filterBar={
+            <Select value={komoditas} onValueChange={setKomoditas}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Komoditas neraca"
+                className="w-full min-w-0 text-[13px] sm:w-auto sm:min-w-36 sm:max-w-48 md:text-[13px]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEMUA}>Semua komoditas</SelectItem>
+                {KOMODITAS.map((k) => (
+                  <SelectItem key={k.kode} value={k.kode}>
+                    {k.nama}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
           toolbar={
-            <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:w-auto">
-              <Select value={komoditas} onValueChange={setKomoditas}>
-                <SelectTrigger
-                  aria-label="Komoditas neraca"
-                  className="w-full sm:w-52 text-[13px] md:text-[13px]"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SEMUA}>Semua komoditas</SelectItem>
-                  {KOMODITAS.map((k) => (
-                    <SelectItem key={k.kode} value={k.kode}>
-                      {k.nama}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {data && data.length > 0 && (
-                <p
-                  className="min-w-0 text-xs text-muted-foreground"
-                  aria-live="polite"
-                >
-                  <span className="num font-semibold text-surplus-ink dark:text-blue-300">
-                    Surplus {formatAngka(ringkas.surplusTon, 1)} ton
-                  </span>{" "}
-                  di {ringkas.jumlahSurplus} wilayah ·{" "}
-                  <span className="num font-semibold text-defisit-ink dark:text-rose-300">
-                    Defisit {formatAngka(ringkas.defisitTon, 1)} ton
-                  </span>{" "}
-                  di {ringkas.jumlahDefisit} wilayah
-                </p>
-              )}
-            </div>
+            data && data.length > 0 ? (
+              <p
+                className="min-w-0 text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                <span className="num font-semibold text-surplus-ink dark:text-blue-300">
+                  Surplus {formatAngka(ringkas.surplusTon, 1)} ton
+                </span>{" "}
+                di {ringkas.jumlahSurplus} wilayah ·{" "}
+                <span className="num font-semibold text-defisit-ink dark:text-rose-300">
+                  Defisit {formatAngka(ringkas.defisitTon, 1)} ton
+                </span>{" "}
+                di {ringkas.jumlahDefisit} wilayah
+              </p>
+            ) : undefined
           }
         />
       )}

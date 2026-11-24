@@ -87,7 +87,7 @@ export function FilterPengguna({
     <div
       role="group"
       aria-label="Filter pengguna"
-      className="flex flex-wrap items-center gap-2"
+      className="contents"
     >
       {KONTROL.map((k) => (
         <Select
@@ -98,9 +98,10 @@ export function FilterPengguna({
           }
         >
           <SelectTrigger
+            size="sm"
             aria-label={`Filter ${k.label.toLowerCase()}`}
             className={cn(
-              "w-[calc(50%-0.25rem)] text-[13px] sm:w-44 md:text-[13px]",
+              "w-[calc(50%-0.2rem)] min-w-0 text-[13px] sm:w-auto sm:min-w-24 sm:max-w-36 md:text-[13px]",
               k.kunci === "terkunci" && "max-sm:w-full",
             )}
           >
@@ -120,7 +121,7 @@ export function FilterPengguna({
         <Button
           variant="ghost"
           size="sm"
-          className="h-9 text-[13px]"
+          className="h-8 px-2.5 text-[12.5px]"
           onClick={onReset}
         >
           <X /> Reset filter ({aktif})

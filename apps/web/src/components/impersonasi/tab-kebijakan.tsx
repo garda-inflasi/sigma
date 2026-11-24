@@ -11,6 +11,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   PERAN_DAPAT_DIPILIH,
   PERAN_OPERASIONAL,
   aturPeranTarget,
@@ -35,9 +42,6 @@ import {
 import { ROLES, type Role } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
 import { PemilihPengguna } from "./pemilih-pengguna";
-
-const kelasPilihan =
-  "h-9 w-full rounded-lg border border-input bg-card px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 /** Tab "Kebijakan": pengaturan global, pelaku tambahan, dan target per pelaku. Hanya superadmin (API Go menegakkan). */
 export function TabKebijakan() {
@@ -240,24 +244,26 @@ function EditorKebijakan({ kebijakan }: { kebijakan: KebijakanWire }) {
               <Label htmlFor="tambah-pelaku-peran">
                 Tambah pelaku berdasarkan peran
               </Label>
-              <select
-                id="tambah-pelaku-peran"
-                className={kelasPilihan}
+              <Select
                 value=""
-                onChange={(e) => {
-                  const peran = e.target.value as Role;
+                onValueChange={(v) => {
+                  const peran = v as Role;
                   if (peran) tambahPelaku({ tipe: "PERAN", peran });
                 }}
               >
-                <option value="">Pilih peran…</option>
-                {PERAN_DAPAT_DIPILIH.filter(
-                  (r) => !sudahPelakuPeran.has(r),
-                ).map((r) => (
-                  <option key={r} value={r}>
-                    {ROLES[r].label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="tambah-pelaku-peran" className="text-[13px] md:text-[13px]">
+                  <SelectValue placeholder="Pilih peran…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERAN_DAPAT_DIPILIH.filter(
+                    (r) => !sudahPelakuPeran.has(r),
+                  ).map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ROLES[r].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-1.5">
               <Label>Tambah pelaku berdasarkan akun</Label>

@@ -66,7 +66,7 @@ test/api/integration: ## Run Go integration tests (requires Docker)
 	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1
 
 test/ml: ## Jalankan tes unit layanan ML (Python, tanpa dependensi)
-	cd apps/ml && python3 -m unittest discover -s tests -t .
+	cd apps/ml && PYTHONPATH=src python3 -m unittest discover -s tests/unit/inference -t .
 
 test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test

@@ -569,35 +569,35 @@ export function EwsPage() {
                   })),
                 },
               ]}
+              filterBar={
+                saring ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 px-2.5 text-[12.5px]"
+                    aria-label={`Hapus filter tingkat ${severityMeta[saring].label}`}
+                    onClick={() => setSaring(undefined)}
+                  >
+                    <X /> {severityMeta[saring].label}
+                  </Button>
+                ) : undefined
+              }
               toolbar={
-                <>
-                  {saring && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-9 text-[13px]"
-                      aria-label={`Hapus filter tingkat ${severityMeta[saring].label}`}
-                      onClick={() => setSaring(undefined)}
-                    >
-                      <X /> {severityMeta[saring].label}
-                    </Button>
-                  )}
-                  {jumlahSelesai > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 text-[13px]"
-                      aria-pressed={tampilSelesai}
-                      title="Tampilkan juga alert yang sudah selesai"
-                      onClick={() => setTampilSelesai((v) => !v)}
-                    >
-                      <History />
-                      {tampilSelesai
-                        ? "Sembunyikan selesai"
-                        : `Selesai (${jumlahSelesai})`}
-                    </Button>
-                  )}
-                </>
+                jumlahSelesai > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2.5 text-[12.5px]"
+                    aria-pressed={tampilSelesai}
+                    title="Tampilkan juga alert yang sudah selesai"
+                    onClick={() => setTampilSelesai((v) => !v)}
+                  >
+                    <History />
+                    {tampilSelesai
+                      ? "Sembunyikan selesai"
+                      : `Selesai (${jumlahSelesai})`}
+                  </Button>
+                ) : undefined
               }
               initialSorting={[{ id: "skorDampak", desc: true }]}
               urutanTetap={URUTAN_KRITIS}

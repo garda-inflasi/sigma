@@ -452,11 +452,12 @@ export function BriefPage() {
         getRowId={(r) => r.id}
         entityLabel="brief"
         searchPlaceholder="Cari judul, periode, atau penyusun"
-        toolbar={
+        filterBar={
           saring ? (
             <Button
               variant="ghost"
               size="sm"
+              className="h-8 px-2.5 text-[12.5px]"
               onClick={() => setSaring(undefined)}
             >
               Reset filter

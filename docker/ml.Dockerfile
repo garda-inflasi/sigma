@@ -33,7 +33,7 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 COPY --from=pipeline-deps /opt/venv /opt/venv
 WORKDIR /app
-COPY apps/ml/garda_ml ./garda_ml
+COPY apps/ml/src/garda_ml ./garda_ml
 
 USER appuser
 
@@ -52,7 +52,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 WORKDIR /app
-COPY apps/ml/garda_ml ./garda_ml
+COPY apps/ml/src/garda_ml ./garda_ml
 
 USER appuser
 

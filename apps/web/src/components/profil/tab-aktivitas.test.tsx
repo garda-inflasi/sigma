@@ -83,9 +83,12 @@ describe("TabAktivitas: aktivitas akun", () => {
     const { user } = renderHalaman(<TabAktivitas />, { url: "/profil?tab=aktivitas" });
     await screen.findByText("Belum ada aktivitas tercatat.");
 
-    await user.selectOptions(screen.getByLabelText("Jenis aktivitas"), "LOGIN");
-    await user.selectOptions(screen.getByLabelText("Hasil"), "GAGAL");
-    await user.selectOptions(screen.getByLabelText("Pelaku"), "pelaku");
+    await user.click(screen.getByRole("combobox", { name: "Jenis aktivitas" }));
+    await user.click(await screen.findByRole("option", { name: "Masuk" }));
+    await user.click(screen.getByRole("combobox", { name: "Hasil" }));
+    await user.click(await screen.findByRole("option", { name: "Gagal" }));
+    await user.click(screen.getByRole("combobox", { name: "Pelaku" }));
+    await user.click(await screen.findByRole("option", { name: "Dilakukan saya" }));
     await user.type(screen.getByLabelText("Dari tanggal"), "2026-11-01");
 
     await waitFor(() => {
@@ -180,7 +183,8 @@ describe("TabAktivitas: riwayat masuk", () => {
     const { user } = renderHalaman(<TabAktivitas />, { url: "/profil?tab=aktivitas" });
     await screen.findByText("Belum ada sesi yang cocok.");
 
-    await user.selectOptions(screen.getByLabelText("Status sesi"), "berakhir");
+    await user.click(screen.getByRole("combobox", { name: "Status sesi" }));
+    await user.click(await screen.findByRole("option", { name: "Sudah berakhir" }));
 
     await waitFor(() => assert.equal(api.ke("GET", PATH_SESI).at(-1)!.query.get("status"), "berakhir"));
   });

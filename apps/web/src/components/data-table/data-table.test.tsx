@@ -42,4 +42,27 @@ describe("DataTable", () => {
     await waitFor(() => assert.ok(screen.getByText("1 / 3")));
     assert.equal(screen.queryByRole("button", { name: /Reset filter/ }), null);
   });
+
+  it("merender pencarian, filterBar, dan toolbar aksi dalam satu baris toolbar tanpa filterBar terpisah", () => {
+    const { container } = renderHalaman(
+      <DataTable
+        data={BARIS}
+        columns={[{ accessorKey: "nama", header: "Nama" }]}
+        getRowId={(r) => r.id}
+        entityLabel="baris"
+        searchPlaceholder="Cari baris"
+        filterBar={<button type="button">Filter kustom</button>}
+        toolbar={<button type="button">Aksi kustom</button>}
+      />,
+    );
+
+    const toolbar = container.querySelector('[data-slot="datatable-toolbar"]');
+    const filters = container.querySelector('[data-slot="datatable-filters"]');
+    const actions = container.querySelector('[data-slot="datatable-actions"]');
+    assert.ok(toolbar && filters && actions);
+    assert.equal(container.querySelector('[data-slot="datatable-filterbar"]'), null);
+    assert.ok(filters.contains(screen.getByRole("textbox", { name: "Cari baris" })));
+    assert.ok(filters.contains(screen.getByRole("button", { name: "Filter kustom" })));
+    assert.ok(actions.contains(screen.getByRole("button", { name: "Aksi kustom" })));
+  });
 });

@@ -3,15 +3,18 @@
 import { Calendar, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
-import { kelasKontrol } from "@/components/ui/kontrol";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { KABUPATEN, KOMODITAS } from "@/lib/data/reference";
 import { cn } from "@/lib/utils";
 import { useFilterOperasional } from "./use-filter-operasional";
 
-const INPUT_CLASS = cn(
-  kelasKontrol,
-  "h-9 w-full min-w-0 px-2.5 text-sm text-foreground md:text-[13px]",
-);
+const SEMUA = "__semua";
 // Di desktop bilah menjadi satu baris: label tetap ada untuk pembaca layar, nilainya sudah menjelaskan isi kontrol.
 const LABEL_CLASS =
   "mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground lg:sr-only";
@@ -36,42 +39,48 @@ export function OpsFilterBar() {
             <Filter className="size-3.5 shrink-0" />
             <span className="truncate">Wilayah Kabupaten/Kota</span>
           </label>
-          <select
-            id="ops-filter-kabupaten"
-            value={mentah.kabupatenKode ?? ""}
-            onChange={(e) =>
-              setFilter({ kabupatenKode: e.target.value || undefined })
+          <Select
+            value={mentah.kabupatenKode ?? SEMUA}
+            onValueChange={(v) =>
+              setFilter({ kabupatenKode: v === SEMUA ? undefined : v })
             }
-            className={INPUT_CLASS}
           >
-            <option value="">Seluruh Aceh</option>
-            {KABUPATEN.map((k) => (
-              <option key={k.kode} value={k.kode}>
-                {k.nama}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="ops-filter-kabupaten" className="text-[13px] md:text-[13px]">
+              <SelectValue placeholder="Seluruh Aceh" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SEMUA}>Seluruh Aceh</SelectItem>
+              {KABUPATEN.map((k) => (
+                <SelectItem key={k.kode} value={k.kode}>
+                  {k.nama}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="min-w-0 lg:w-48 xl:w-60">
           <label htmlFor="ops-filter-komoditas" className={LABEL_CLASS}>
             Komoditas Pangan
           </label>
-          <select
-            id="ops-filter-komoditas"
-            value={mentah.komoditasKode ?? ""}
-            onChange={(e) =>
-              setFilter({ komoditasKode: e.target.value || undefined })
+          <Select
+            value={mentah.komoditasKode ?? SEMUA}
+            onValueChange={(v) =>
+              setFilter({ komoditasKode: v === SEMUA ? undefined : v })
             }
-            className={INPUT_CLASS}
           >
-            <option value="">Semua komoditas</option>
-            {KOMODITAS.map((k) => (
-              <option key={k.kode} value={k.kode}>
-                {k.nama}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="ops-filter-komoditas" className="text-[13px] md:text-[13px]">
+              <SelectValue placeholder="Semua komoditas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SEMUA}>Semua komoditas</SelectItem>
+              {KOMODITAS.map((k) => (
+                <SelectItem key={k.kode} value={k.kode}>
+                  {k.nama}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <span

@@ -22,8 +22,9 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]
 addopts = "-ra"
 markers = [
-    "integrasi: butuh MongoDB sungguhan lewat GARDA_UJI_MONGO_URI",
+    "integrasi: membutuhkan MongoDB nyata melalui GARDA_UJI_MONGO_URI",
+    "integration: requires real MongoDB via GARDA_UJI_MONGO_URI",
 ]

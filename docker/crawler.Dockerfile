@@ -23,7 +23,7 @@ RUN addgroup --system --gid 10001 crawler \
 
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
-COPY apps/crawler/garda_crawler ./garda_crawler
+COPY apps/crawler/src/garda_crawler ./garda_crawler
 
 USER crawler
 

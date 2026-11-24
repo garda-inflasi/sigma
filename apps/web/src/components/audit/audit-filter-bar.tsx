@@ -51,29 +51,29 @@ export function AuditFilterBar({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2"
+      className="contents"
       role="search"
       aria-label="Filter audit"
     >
-      <label className="w-full min-w-0 sm:w-44">
+      <label className="w-full min-w-0 sm:w-36">
         <span className="sr-only">Cari</span>
         <Input
           type="search"
           value={filter.q ?? ""}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="Aksi, objek, atau ID"
-          className="md:text-[13px]"
+          className="h-8 md:text-[13px]"
         />
       </label>
 
-      <label className="w-full min-w-0 sm:w-32">
+      <label className="w-full min-w-0 sm:w-28">
         <span className="sr-only">Aktor</span>
         <Input
           value={filter.aktor ?? ""}
           onChange={(e) => set({ aktor: e.target.value })}
           placeholder="Aktor"
           title="Nama, email, atau ID aktor"
-          className="md:text-[13px]"
+          className="h-8 md:text-[13px]"
         />
       </label>
 
@@ -84,8 +84,9 @@ export function AuditFilterBar({
         }
       >
         <SelectTrigger
+          size="sm"
           aria-label="Aksi"
-          className="w-[calc(50%-0.25rem)] text-[13px] sm:w-36 md:text-[13px]"
+          className="w-[calc(50%-0.2rem)] min-w-0 text-[13px] sm:w-auto sm:min-w-28 sm:max-w-36 md:text-[13px]"
         >
           <SelectValue />
         </SelectTrigger>
@@ -108,8 +109,9 @@ export function AuditFilterBar({
         }
       >
         <SelectTrigger
+          size="sm"
           aria-label="Hasil"
-          className="w-[calc(50%-0.25rem)] text-[13px] sm:w-32 md:text-[13px]"
+          className="w-[calc(50%-0.2rem)] min-w-0 text-[13px] sm:w-auto sm:min-w-24 sm:max-w-32 md:text-[13px]"
         >
           <SelectValue />
         </SelectTrigger>
@@ -123,26 +125,26 @@ export function AuditFilterBar({
         </SelectContent>
       </Select>
 
-      <label className="flex w-[calc(50%-0.25rem)] min-w-0 flex-col gap-0.5 text-xs text-muted-foreground sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
+      <label className="flex w-[calc(50%-0.2rem)] min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">
         <span className="sr-only">Dari tanggal</span>
         <span aria-hidden>Dari</span>
         <DateField
           value={filter.dari ?? ""}
           max={filter.sampai || undefined}
           onValueChange={(v) => set({ dari: v || undefined })}
-          className="sm:w-[8.5rem]"
-          kelasInput="text-foreground md:text-[13px]"
+          className="w-full sm:w-[7.75rem]"
+          kelasInput="h-8 text-foreground md:text-[13px]"
         />
       </label>
-      <label className="flex w-[calc(50%-0.25rem)] min-w-0 flex-col gap-0.5 text-xs text-muted-foreground sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
+      <label className="flex w-[calc(50%-0.2rem)] min-w-0 items-center gap-1 text-xs text-muted-foreground sm:w-auto">
         <span className="sr-only">Sampai tanggal</span>
         <span aria-hidden>Sampai</span>
         <DateField
           value={filter.sampai ?? ""}
           min={filter.dari || undefined}
           onValueChange={(v) => set({ sampai: v || undefined })}
-          className="sm:w-[8.5rem]"
-          kelasInput="text-foreground md:text-[13px]"
+          className="w-full sm:w-[7.75rem]"
+          kelasInput="h-8 text-foreground md:text-[13px]"
         />
       </label>
 
@@ -170,10 +172,10 @@ export function AuditFilterBar({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-9 text-[13px]"
+          className="h-8 px-2.5 text-[12.5px]"
           onClick={() => onChange({})}
         >
-          <X className="size-4" /> Reset
+          <X className="size-3.5" /> Reset
         </Button>
       )}
     </div>

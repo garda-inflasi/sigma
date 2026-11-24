@@ -15,8 +15,14 @@ import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Button } from "@/components/ui/button";
 import { DateField } from "@/components/ui/date-field";
-import { kelasKontrol } from "@/components/ui/kontrol";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AKSI_FILTER,
   LABEL_HASIL,
@@ -33,12 +39,7 @@ import { cn } from "@/lib/utils";
 
 const POLA_WAKTU = "d MMM yyyy, HH:mm";
 const UKURAN_FILTER = "h-11 sm:h-9 md:text-[13px]";
-// `scheme-dark`: daftar opsi bawaan peramban ikut gelap; latar opsi butuh warna solid.
-const KELAS_SELECT = cn(
-  kelasKontrol,
-  UKURAN_FILTER,
-  "w-full min-w-0 px-3 text-base dark:bg-card dark:scheme-dark",
-);
+const SEMUA_OPSI = "__semua";
 
 const adalahPonsel = (perangkat: string) =>
   /Android|iOS|iPadOS/.test(perangkat);
@@ -182,16 +183,19 @@ export function RiwayatSesiPanel() {
       <div className="shrink-0 border-b border-border bg-secondary/25 px-3.5 py-2.5 dark:bg-white/[0.02]">
         <Kolom label="Status sesi">
           {(id) => (
-            <select
-              id={id}
+            <Select
               value={status}
-              onChange={(e) => setStatus(e.target.value as FilterStatusSesi)}
-              className={KELAS_SELECT}
+              onValueChange={(v) => setStatus(v as FilterStatusSesi)}
             >
-              <option value="semua">Semua</option>
-              <option value="aktif">Aktif</option>
-              <option value="berakhir">Sudah berakhir</option>
-            </select>
+              <SelectTrigger id={id} className={UKURAN_FILTER}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="semua">Semua</SelectItem>
+                <SelectItem value="aktif">Aktif</SelectItem>
+                <SelectItem value="berakhir">Sudah berakhir</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </Kolom>
       </div>
@@ -303,55 +307,63 @@ export function AktivitasAkunPanel() {
       >
         <Kolom label="Jenis aktivitas">
           {(id) => (
-            <select
-              id={id}
-              value={filter.aksi ?? ""}
-              onChange={(e) => ubah({ aksi: e.target.value || undefined })}
-              className={KELAS_SELECT}
+            <Select
+              value={filter.aksi ?? SEMUA_OPSI}
+              onValueChange={(v) => ubah({ aksi: v === SEMUA_OPSI ? undefined : v })}
             >
-              <option value="">Semua aktivitas</option>
-              {AKSI_FILTER.map((k) => (
-                <option key={k} value={k}>
-                  {labelAksi(k)}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id={id} className={UKURAN_FILTER}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEMUA_OPSI}>Semua aktivitas</SelectItem>
+                {AKSI_FILTER.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {labelAksi(k)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </Kolom>
         <Kolom label="Hasil">
           {(id) => (
-            <select
-              id={id}
-              value={filter.hasil ?? ""}
-              onChange={(e) =>
+            <Select
+              value={filter.hasil ?? SEMUA_OPSI}
+              onValueChange={(v) =>
                 ubah({
-                  hasil: (e.target.value ||
-                    undefined) as FilterAktivitas["hasil"],
+                  hasil: (v === SEMUA_OPSI ? undefined : v) as FilterAktivitas["hasil"],
                 })
               }
-              className={KELAS_SELECT}
             >
-              <option value="">Semua hasil</option>
-              <option value="BERHASIL">Berhasil</option>
-              <option value="GAGAL">Gagal</option>
-              <option value="DITOLAK">Ditolak</option>
-            </select>
+              <SelectTrigger id={id} className={UKURAN_FILTER}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEMUA_OPSI}>Semua hasil</SelectItem>
+                <SelectItem value="BERHASIL">Berhasil</SelectItem>
+                <SelectItem value="GAGAL">Gagal</SelectItem>
+                <SelectItem value="DITOLAK">Ditolak</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </Kolom>
         <Kolom label="Pelaku">
           {(id) => (
-            <select
-              id={id}
+            <Select
               value={filter.sebagai ?? "semua"}
-              onChange={(e) =>
-                ubah({ sebagai: e.target.value as FilterAktivitas["sebagai"] })
+              onValueChange={(v) =>
+                ubah({ sebagai: v as FilterAktivitas["sebagai"] })
               }
-              className={KELAS_SELECT}
             >
-              <option value="semua">Saya dan orang lain</option>
-              <option value="pelaku">Dilakukan saya</option>
-              <option value="sasaran">Dilakukan orang lain</option>
-            </select>
+              <SelectTrigger id={id} className={UKURAN_FILTER}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="semua">Saya dan orang lain</SelectItem>
+                <SelectItem value="pelaku">Dilakukan saya</SelectItem>
+                <SelectItem value="sasaran">Dilakukan orang lain</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </Kolom>
         <Kolom label="Dari tanggal">

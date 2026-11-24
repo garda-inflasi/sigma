@@ -287,17 +287,17 @@ export function SumberPage() {
                   ],
                 },
               ]}
-              toolbar={
-                saring && (
+              filterBar={
+                saring ? (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 text-[13px]"
+                    className="h-8 px-2.5 text-[12.5px]"
                     onClick={() => setSaring(undefined)}
                   >
                     Semua status
                   </Button>
-                )
+                ) : undefined
               }
               empty={
                 saring

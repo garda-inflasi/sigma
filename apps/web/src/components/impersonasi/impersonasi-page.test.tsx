@@ -203,9 +203,10 @@ describe("Tab Kebijakan", () => {
     await screen.findByText("Pengaturan umum");
     assert.ok(screen.getByText(/Belum ada pelaku tambahan/));
 
-    const pilih = screen.getByLabelText("Tambah pelaku berdasarkan peran") as HTMLSelectElement;
-    assert.ok(![...pilih.options].some((o) => o.textContent === "Administrator Sistem"), "ADMIN_SISTEM tidak ditawarkan");
-    await user.selectOptions(pilih, "MANAJER_RISIKO");
+    const pilih = screen.getByRole("combobox", { name: "Tambah pelaku berdasarkan peran" });
+    await user.click(pilih);
+    assert.equal(screen.queryByRole("option", { name: "Administrator Sistem" }), null, "ADMIN_SISTEM tidak ditawarkan");
+    await user.click(await screen.findByRole("option", { name: "Unit Monitoring & Risiko" }));
 
     const kartu = await screen.findByRole("article", { name: "Pelaku Unit Monitoring & Risiko" });
     assert.match((await screen.findByRole("alert")).textContent ?? "", /aktif tetapi belum punya target/);

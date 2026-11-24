@@ -172,7 +172,7 @@ export function PedagangPanel() {
       toolbar={
           <SpringButton
             variant="soft"
-            size="md"
+            size="sm"
             onClick={() => void eksporSemua()}
             disabled={mengekspor}
           >

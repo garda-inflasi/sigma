@@ -31,8 +31,9 @@ export function FilterSelect({
       disabled={disabled}
     >
       <SelectTrigger
+        size="sm"
         aria-label={label}
-        className="w-full sm:w-48 text-[13px] md:text-[13px]"
+        className="w-full min-w-0 text-[13px] sm:w-auto sm:min-w-28 sm:max-w-44 md:text-[13px]"
       >
         <SelectValue placeholder={label} />
       </SelectTrigger>

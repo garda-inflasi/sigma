@@ -428,23 +428,26 @@ export function DataTable<T>({
         className,
       )}
     >
-      {/* Toolbar: kiri = Cari + Facet/Filter + Reset; kanan = Jumlah baris + Aksi sekunder */}
+      {/* Toolbar 1 baris: kiri = Cari + Facet/Filter + filterBar + Reset; kanan = Aksi sekunder */}
       <div
         data-slot="datatable-toolbar"
-        className="flex shrink-0 flex-col gap-2.5 border-b border-border p-3 lg:flex-row lg:items-center lg:justify-between"
+        className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2"
       >
         <div
           data-slot="datatable-filters"
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
         >
           <label
             className={cn(
-              "relative w-full min-w-0 sm:w-64 lg:w-72 shrink-0",
+              "relative w-full min-w-0 shrink-0",
+              facets.length > 0 || filterBar
+                ? "sm:w-48 lg:w-52"
+                : "sm:w-56 lg:w-64",
               tanpaCari && "hidden",
             )}
           >
             <Search
-              className="pointer-events-none absolute top-1/2 left-2.5 z-[1] size-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute top-1/2 left-2.5 z-[1] size-3.5 -translate-y-1/2 text-muted-foreground"
               strokeWidth={1.75}
             />
             <Input
@@ -465,7 +468,7 @@ export function DataTable<T>({
               }}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
-              className="h-9 pr-3 pl-8 md:text-[13px]"
+              className="h-8 pr-2.5 pl-8 md:text-[13px]"
             />
           </label>
           {facets.map((f) => {
@@ -482,7 +485,10 @@ export function DataTable<T>({
                     ?.setFilterValue(v === "__semua" ? undefined : v)
                 }
               >
-                <SelectTrigger className="h-9 w-full min-w-36 sm:w-auto sm:max-w-56 text-[13px] md:text-[13px]">
+                <SelectTrigger
+                  size="sm"
+                  className="w-full min-w-0 text-[13px] sm:w-auto sm:min-w-28 sm:max-w-44 md:text-[13px]"
+                >
                   <SelectValue placeholder={f.label} />
                 </SelectTrigger>
                 <SelectContent>
@@ -496,11 +502,12 @@ export function DataTable<T>({
               </Select>
             );
           })}
+          {filterBar}
           {!server && jumlahFilter > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-9 text-[13px]"
+              className="h-8 px-2.5 text-[12.5px]"
               onClick={() => {
                 setColumnFilters([]);
                 setGlobalFilter("");
@@ -511,23 +518,15 @@ export function DataTable<T>({
             </Button>
           )}
         </div>
-        {(toolbar || !isLoading) && (
+        {toolbar && (
           <div
             data-slot="datatable-actions"
-            className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:justify-end"
+            className="flex min-w-0 shrink-0 flex-wrap items-center gap-1.5 sm:ml-auto sm:justify-end"
           >
             {toolbar}
           </div>
         )}
       </div>
-      {filterBar && (
-        <div
-          data-slot="datatable-filterbar"
-          className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-3 py-2"
-        >
-          {filterBar}
-        </div>
-      )}
 
       {/* Banner pilih-semua lintas halaman */}
       <AnimatePresence initial={false}>

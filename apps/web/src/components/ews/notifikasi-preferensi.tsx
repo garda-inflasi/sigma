@@ -5,7 +5,13 @@ import { toast } from "sonner";
 import { PanelPas } from "@/components/garda/halaman-pas";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { kelasKontrol } from "@/components/ui/kontrol";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { KanalNotifikasi, PreferensiNotifikasi } from "@/lib/api/ews";
 import { severityMeta, type Severity } from "@/lib/design/tokens";
 import { useCan } from "@/lib/auth/session-context";
@@ -94,24 +100,27 @@ export function NotifikasiPreferensi() {
                 />
                 {KANAL_LABEL[p.kanal]}
               </label>
-              <select
-                aria-label={`Tingkat minimum ${KANAL_LABEL[p.kanal]}`}
+              <Select
                 value={p.severityMin}
                 disabled={!p.aktif || simpan.isPending}
-                onChange={(e) =>
-                  ubah(p.kanal, { severityMin: e.target.value as Severity })
+                onValueChange={(v) =>
+                  ubah(p.kanal, { severityMin: v as Severity })
                 }
-                className={cn(
-                  kelasKontrol,
-                  "h-9 w-full px-2.5 text-base md:text-[13px] dark:bg-card dark:scheme-dark",
-                )}
               >
-                {TINGKAT.map((s) => (
-                  <option key={s} value={s}>
-                    ≥ {severityMeta[s].label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-label={`Tingkat minimum ${KANAL_LABEL[p.kanal]}`}
+                  className="md:text-[13px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TINGKAT.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      ≥ {severityMeta[s].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {!p.tersedia && (
               <p className="text-xs text-muted-foreground">

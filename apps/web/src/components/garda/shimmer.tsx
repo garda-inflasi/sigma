@@ -23,7 +23,7 @@ export function TableSkeleton({ rows = 8, cols = 6 }: { rows?: number; cols?: nu
     <div className="space-y-2.5 p-4" role="status" aria-label="Memuat data">
       {Array.from({ length: rows }).map((_, r) => (
         <div key={r} className="flex items-center gap-4">
-          <Shimmer className="size-4 rounded-md" />
+          <Shimmer className="size-4 shrink-0 rounded-md" />
           {Array.from({ length: cols }).map((__, c) => (
             <Shimmer key={c} className={cn("h-4", c === 0 ? "w-40" : c === cols - 1 ? "w-16" : "flex-1")} />
           ))}
@@ -64,7 +64,7 @@ export function ListSkeleton({ rows = 5 }: { rows?: number }) {
 /** Deretan kartu KPI yang sedang dimuat. */
 export function KpiRowSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" role="status" aria-label="Memuat ringkasan">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="status" aria-label="Memuat ringkasan">
       {Array.from({ length: count }).map((_, i) => (
         <KpiSkeleton key={i} />
       ))}

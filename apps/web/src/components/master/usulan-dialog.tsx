@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { FormBff, PesanField } from "@/components/form/form-bff";
+import { useMemo, useState } from "react";
+import { FormDialog } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -57,31 +59,6 @@ export type TargetUsulan =
 
 const KOSONG = "__kosong";
 
-function Field({
-  id,
-  label,
-  galat,
-  bantuan,
-  children,
-}: {
-  id: string;
-  label: string;
-  galat?: string;
-  bantuan?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      {children}
-      {bantuan && !galat && (
-        <p className="text-xs text-muted-foreground">{bantuan}</p>
-      )}
-      <PesanField field={id} pesan={galat} />
-    </div>
-  );
-}
-
 /** Dialog "Ajukan perubahan" / "Tambah" komoditas dan pasar (POST /v1/master/perubahan, izin master.ajukan). */
 export function UsulanDialog({
   target,
@@ -94,7 +71,7 @@ export function UsulanDialog({
 }) {
   return (
     <Dialog open={open && !!target} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         {target?.entitas === "komoditas" && (
           <FormKomoditas awal={target.awal} onOpenChange={onOpenChange} />
         )}
@@ -125,55 +102,51 @@ function Alasan({
   onChange: (v: string) => void;
 }) {
   return (
-    <Field
+    <FormField
       id="usulan-alasan"
       label="Alasan pengajuan"
       galat={galat}
-      bantuan={`${BATAS.alasan.min}–${BATAS.alasan.max} karakter. Dibaca penyetuju dan tercatat di audit trail.`}
+      bantuan={
+        galat
+          ? undefined
+          : `${BATAS.alasan.min}–${BATAS.alasan.max} karakter. Dibaca penyetuju dan tercatat di audit trail.`
+      }
     >
       <Textarea
         id="usulan-alasan"
         value={nilai}
         rows={3}
         maxLength={BATAS.alasan.max}
+        placeholder="Mis. harga acuan disesuaikan dengan HET terbaru"
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={!!galat}
       />
-    </Field>
+    </FormField>
   );
 }
 
 function Kaki({
   pending,
   tambah,
-  galat,
   onBatal,
 }: {
   pending: boolean;
   tambah: boolean;
-  galat?: string;
   onBatal: () => void;
 }) {
   return (
-    <>
-      {galat && (
-        <p role="alert" className="text-sm text-defisit-ink dark:text-rose-300">
-          {galat}
-        </p>
-      )}
-      <DialogFooter>
-        <SpringButton variant="soft" onClick={onBatal} disabled={pending}>
-          Batal
-        </SpringButton>
-        <SpringButton type="submit" variant="primary" disabled={pending}>
-          {pending
-            ? "Mengajukan…"
-            : tambah
-              ? "Ajukan data baru"
-              : "Ajukan perubahan"}
-        </SpringButton>
-      </DialogFooter>
-    </>
+    <DialogFooter>
+      <SpringButton variant="soft" onClick={onBatal} disabled={pending}>
+        Batal
+      </SpringButton>
+      <SpringButton type="submit" variant="primary" disabled={pending}>
+        {pending
+          ? "Mengajukan…"
+          : tambah
+            ? "Ajukan data baru"
+            : "Ajukan perubahan"}
+      </SpringButton>
+    </DialogFooter>
   );
 }
 
@@ -221,133 +194,144 @@ function FormKomoditas({
   const g = form.galatField;
 
   return (
-    <FormBff
-      onKirim={form.kirimDari(() => isian)}
-      sibuk={form.pending}
-      className="space-y-4"
-    >
+    <FormDialog onKirim={form.kirimDari(() => isian)} sibuk={form.pending}>
       <Kepala
         judul={awal ? `Ajukan perubahan ${awal.nama}` : "Tambah komoditas"}
         deskripsi={
           awal
-            ? "Hanya bidang yang Anda ubah yang diajukan. Perubahan berlaku sesudah disetujui orang lain."
-            : "Komoditas baru aktif sesudah usulan disetujui orang lain."
+            ? `Hanya bidang yang Anda ubah yang diajukan. Data ${awal.nama} tetap berlaku sampai usulan disetujui orang lain di Antrean perubahan.`
+            : "Usulan masuk ke Antrean perubahan. Komoditas baru aktif sesudah disetujui orang lain."
         }
       />
-      {!awal && (
-        <Field
-          id="usulan-kode"
-          label="Kode"
-          galat={g.kode}
-          bantuan="Huruf kapital, angka, atau tanda hubung (mis. KDL-HJU). Tidak dapat diubah kemudian."
-        >
-          <Input
+      <DialogBody>
+        {!awal && (
+          <FormField
             id="usulan-kode"
-            value={isian.kode}
-            maxLength={BATAS.kodeKomoditas.max}
-            onChange={(e) => set("kode", e.target.value.toUpperCase())}
-            aria-invalid={!!g.kode}
-          />
-        </Field>
-      )}
-      <Field id="usulan-nama" label="Nama" galat={g.nama}>
-        <Input
-          id="usulan-nama"
-          value={isian.nama}
-          maxLength={BATAS.nama.max}
-          onChange={(e) => set("nama", e.target.value)}
-          aria-invalid={!!g.nama}
-        />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="usulan-kategori" label="Kategori" galat={g.kategori}>
-          <Input
-            id="usulan-kategori"
-            value={isian.kategori}
-            maxLength={BATAS.kategori.max}
-            onChange={(e) => set("kategori", e.target.value)}
-            aria-invalid={!!g.kategori}
-          />
-        </Field>
-        <Field
-          id="usulan-satuan"
-          label="Satuan"
-          galat={
-            g.satuan ??
-            (satuan.isError ? "Daftar satuan tidak dapat dimuat." : undefined)
-          }
-        >
-          <Select
-            value={isian.satuan}
-            onValueChange={(v) => set("satuan", v)}
-            disabled={satuan.isLoading}
+            label="Kode"
+            galat={g.kode}
+            bantuan={
+              g.kode
+                ? undefined
+                : "Huruf kapital, angka, atau tanda hubung (mis. KDL-HJU). Tidak dapat diubah kemudian."
+            }
           >
-            <SelectTrigger
-              id="usulan-satuan"
-              className="w-full"
-              aria-invalid={!!g.satuan}
+            <Input
+              id="usulan-kode"
+              value={isian.kode}
+              placeholder="KDL-HJU"
+              maxLength={BATAS.kodeKomoditas.max}
+              onChange={(e) => set("kode", e.target.value.toUpperCase())}
+              aria-invalid={!!g.kode}
+            />
+          </FormField>
+        )}
+        <FormField id="usulan-nama" label="Nama" galat={g.nama}>
+          <Input
+            id="usulan-nama"
+            value={isian.nama}
+            placeholder="Kedelai hijau"
+            maxLength={BATAS.nama.max}
+            onChange={(e) => set("nama", e.target.value)}
+            aria-invalid={!!g.nama}
+          />
+        </FormField>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField id="usulan-kategori" label="Kategori" galat={g.kategori}>
+            <Input
+              id="usulan-kategori"
+              value={isian.kategori}
+              placeholder="Kacang-kacangan"
+              maxLength={BATAS.kategori.max}
+              onChange={(e) => set("kategori", e.target.value)}
+              aria-invalid={!!g.kategori}
+            />
+          </FormField>
+          <FormField
+            id="usulan-satuan"
+            label="Satuan"
+            galat={
+              g.satuan ??
+              (satuan.isError ? "Daftar satuan tidak dapat dimuat." : undefined)
+            }
+          >
+            <Select
+              value={isian.satuan}
+              onValueChange={(v) => set("satuan", v)}
+              disabled={satuan.isLoading}
             >
-              <SelectValue
-                placeholder={
-                  satuan.isLoading ? "Memuat satuan…" : "Pilih satuan"
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {(satuan.data ?? []).map((s) => (
-                <SelectItem key={s.kode} value={s.kode}>
-                  {s.nama} ({s.kode})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field id="usulan-harga" label="Harga acuan (Rp)" galat={g.harga_acuan}>
-          <Input
+              <SelectTrigger id="usulan-satuan" aria-invalid={!!g.satuan}>
+                <SelectValue
+                  placeholder={
+                    satuan.isLoading ? "Memuat satuan…" : "Pilih satuan"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(satuan.data ?? []).map((s) => (
+                  <SelectItem key={s.kode} value={s.kode}>
+                    {s.nama} ({s.kode})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField
             id="usulan-harga"
-            inputMode="numeric"
-            value={isian.harga_acuan}
-            onChange={(e) => set("harga_acuan", e.target.value)}
-            aria-invalid={!!g.harga_acuan}
-          />
-        </Field>
-        <Field
-          id="usulan-umur"
-          label="Umur simpan (hari)"
-          galat={g.shelf_life_hari}
-          bantuan={`${BATAS.shelfLife.min}–${BATAS.shelfLife.max} hari`}
-        >
-          <Input
+            label="Harga acuan (Rp)"
+            galat={g.harga_acuan}
+          >
+            <Input
+              id="usulan-harga"
+              inputMode="numeric"
+              value={isian.harga_acuan}
+              placeholder="12500"
+              onChange={(e) => set("harga_acuan", e.target.value)}
+              aria-invalid={!!g.harga_acuan}
+            />
+          </FormField>
+          <FormField
             id="usulan-umur"
-            inputMode="numeric"
-            value={isian.shelf_life_hari}
-            onChange={(e) => set("shelf_life_hari", e.target.value)}
-            aria-invalid={!!g.shelf_life_hari}
+            label="Umur simpan (hari)"
+            galat={g.shelf_life_hari}
+            bantuan={
+              g.shelf_life_hari
+                ? undefined
+                : `${BATAS.shelfLife.min}–${BATAS.shelfLife.max} hari`
+            }
+          >
+            <Input
+              id="usulan-umur"
+              inputMode="numeric"
+              value={isian.shelf_life_hari}
+              placeholder="14"
+              onChange={(e) => set("shelf_life_hari", e.target.value)}
+              aria-invalid={!!g.shelf_life_hari}
+            />
+          </FormField>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="usulan-pilot"
+            checked={isian.pilot}
+            onCheckedChange={(v) => set("pilot", v === true)}
           />
-        </Field>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="usulan-pilot"
-          checked={isian.pilot}
-          onCheckedChange={(v) => set("pilot", v === true)}
+          <Label htmlFor="usulan-pilot" className="font-normal">
+            Komoditas pilot
+          </Label>
+        </div>
+        <Alasan
+          nilai={isian.alasan}
+          galat={g.alasan}
+          onChange={(v) => set("alasan", v)}
         />
-        <Label htmlFor="usulan-pilot" className="font-normal">
-          Komoditas pilot
-        </Label>
-      </div>
-      <Alasan
-        nilai={isian.alasan}
-        galat={g.alasan}
-        onChange={(v) => set("alasan", v)}
-      />
+        <FormAlert>{form.galat?.pesan}</FormAlert>
+      </DialogBody>
       <Kaki
         pending={form.pending}
         tambah={!awal}
-        galat={form.galat?.pesan}
         onBatal={() => onOpenChange(false)}
       />
-    </FormBff>
+    </FormDialog>
   );
 }
 
@@ -399,178 +383,185 @@ function FormPasar({
   }
 
   return (
-    <FormBff
-      onKirim={form.kirimDari(() => isian)}
-      sibuk={form.pending}
-      className="space-y-4"
-    >
+    <FormDialog onKirim={form.kirimDari(() => isian)} sibuk={form.pending}>
       <Kepala
         judul={awal ? `Ajukan perubahan ${awal.nama}` : "Tambah pasar"}
         deskripsi={
           awal
-            ? "Hanya bidang yang Anda ubah yang diajukan. Perubahan berlaku sesudah disetujui orang lain."
-            : "Pasar baru aktif sesudah usulan disetujui orang lain."
+            ? `Hanya bidang yang Anda ubah yang diajukan. Data ${awal.nama} tetap berlaku sampai usulan disetujui orang lain di Antrean perubahan.`
+            : "Usulan masuk ke Antrean perubahan. Pasar baru aktif sesudah disetujui orang lain."
         }
       />
-      {!awal && (
-        <>
-          <Field
-            id="usulan-kabupaten"
-            label="Kabupaten/kota"
-            galat={g.kabupaten_kode}
-          >
-            <Select
-              value={isian.kabupaten_kode}
-              onValueChange={pilihKabupaten}
-              disabled={wilayah.isLoading}
+      <DialogBody>
+        {!awal && (
+          <>
+            <FormField
+              id="usulan-kabupaten"
+              label="Kabupaten/kota"
+              galat={g.kabupaten_kode}
             >
-              <SelectTrigger
-                id="usulan-kabupaten"
-                className="w-full"
-                aria-invalid={!!g.kabupaten_kode}
+              <Select
+                value={isian.kabupaten_kode}
+                onValueChange={pilihKabupaten}
+                disabled={wilayah.isLoading}
               >
-                <SelectValue
-                  placeholder={
-                    wilayah.isLoading
-                      ? "Memuat wilayah…"
-                      : "Pilih kabupaten/kota"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {(wilayah.data ?? []).map((w) => (
-                  <SelectItem key={w.kode} value={w.kode}>
-                    {w.nama}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field
-            id="usulan-id"
-            label="ID pasar"
-            galat={g.id}
-            bantuan="Mis. PSR-1171-05. Tidak dapat diubah kemudian."
+                <SelectTrigger
+                  id="usulan-kabupaten"
+                  aria-invalid={!!g.kabupaten_kode}
+                >
+                  <SelectValue
+                    placeholder={
+                      wilayah.isLoading
+                        ? "Memuat wilayah…"
+                        : "Pilih kabupaten/kota"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(wilayah.data ?? []).map((w) => (
+                    <SelectItem key={w.kode} value={w.kode}>
+                      {w.nama}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField
+              id="usulan-id"
+              label="ID pasar"
+              galat={g.id}
+              bantuan={
+                g.id
+                  ? undefined
+                  : "Mis. PSR-1171-05. Tidak dapat diubah kemudian."
+              }
+            >
+              <Input
+                id="usulan-id"
+                value={isian.id}
+                placeholder="PSR-1171-05"
+                maxLength={BATAS.kodeKomoditas.max}
+                onChange={(e) => set("id", e.target.value.toUpperCase())}
+                aria-invalid={!!g.id}
+              />
+            </FormField>
+          </>
+        )}
+        <FormField id="usulan-nama" label="Nama" galat={g.nama}>
+          <Input
+            id="usulan-nama"
+            value={isian.nama}
+            placeholder="Pasar Peunayong"
+            maxLength={BATAS.nama.max}
+            onChange={(e) => set("nama", e.target.value)}
+            aria-invalid={!!g.nama}
+          />
+        </FormField>
+        {awal && (
+          <p className="text-xs text-muted-foreground">
+            Kabupaten/kota: {awal.kabupaten}. Tidak dapat diubah lewat usulan.
+          </p>
+        )}
+        <FormField
+          id="usulan-kecamatan"
+          label="Kecamatan"
+          galat={
+            g.kecamatan_kode ??
+            (kecamatan.isError
+              ? "Daftar kecamatan tidak dapat dimuat."
+              : undefined)
+          }
+          bantuan={
+            isian.kabupaten_kode || g.kecamatan_kode || kecamatan.isError
+              ? undefined
+              : "Pilih kabupaten/kota lebih dulu."
+          }
+        >
+          <Select
+            value={isian.kecamatan_kode || KOSONG}
+            onValueChange={(v) => set("kecamatan_kode", v === KOSONG ? "" : v)}
+            disabled={!isian.kabupaten_kode || kecamatan.isLoading}
+          >
+            <SelectTrigger
+              id="usulan-kecamatan"
+              aria-invalid={!!g.kecamatan_kode}
+            >
+              <SelectValue
+                placeholder={
+                  kecamatan.isLoading ? "Memuat kecamatan…" : "Tanpa kecamatan"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={KOSONG}>Tanpa kecamatan</SelectItem>
+              {(kecamatan.data ?? []).map((k) => (
+                <SelectItem key={k.kode} value={k.kode}>
+                  {k.nama} ({k.kode})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <FormField id="usulan-lat" label="Lintang" galat={g.lat}>
+            <Input
+              id="usulan-lat"
+              inputMode="decimal"
+              value={isian.lat}
+              placeholder="5.54831"
+              onChange={(e) => set("lat", e.target.value)}
+              aria-invalid={!!g.lat}
+            />
+          </FormField>
+          <FormField id="usulan-lng" label="Bujur" galat={g.lng}>
+            <Input
+              id="usulan-lng"
+              inputMode="decimal"
+              value={isian.lng}
+              placeholder="95.32371"
+              onChange={(e) => set("lng", e.target.value)}
+              aria-invalid={!!g.lng}
+            />
+          </FormField>
+          <FormField
+            id="usulan-radius"
+            label="Radius geofence (m)"
+            galat={g.radius_meter}
           >
             <Input
-              id="usulan-id"
-              value={isian.id}
-              maxLength={BATAS.kodeKomoditas.max}
-              onChange={(e) => set("id", e.target.value.toUpperCase())}
-              aria-invalid={!!g.id}
+              id="usulan-radius"
+              inputMode="numeric"
+              value={isian.radius_meter}
+              placeholder="250"
+              onChange={(e) => set("radius_meter", e.target.value)}
+              aria-invalid={!!g.radius_meter}
             />
-          </Field>
-        </>
-      )}
-      <Field id="usulan-nama" label="Nama" galat={g.nama}>
-        <Input
-          id="usulan-nama"
-          value={isian.nama}
-          maxLength={BATAS.nama.max}
-          onChange={(e) => set("nama", e.target.value)}
-          aria-invalid={!!g.nama}
-        />
-      </Field>
-      {awal && (
-        <p className="text-xs text-muted-foreground">
-          Kabupaten/kota: {awal.kabupaten}. Tidak dapat diubah lewat usulan.
-        </p>
-      )}
-      <Field
-        id="usulan-kecamatan"
-        label="Kecamatan"
-        galat={
-          g.kecamatan_kode ??
-          (kecamatan.isError
-            ? "Daftar kecamatan tidak dapat dimuat."
-            : undefined)
-        }
-        bantuan={
-          isian.kabupaten_kode ? undefined : "Pilih kabupaten/kota lebih dulu."
-        }
-      >
-        <Select
-          value={isian.kecamatan_kode || KOSONG}
-          onValueChange={(v) => set("kecamatan_kode", v === KOSONG ? "" : v)}
-          disabled={!isian.kabupaten_kode || kecamatan.isLoading}
-        >
-          <SelectTrigger
-            id="usulan-kecamatan"
-            className="w-full"
-            aria-invalid={!!g.kecamatan_kode}
-          >
-            <SelectValue
-              placeholder={
-                kecamatan.isLoading ? "Memuat kecamatan…" : "Tanpa kecamatan"
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={KOSONG}>Tanpa kecamatan</SelectItem>
-            {(kecamatan.data ?? []).map((k) => (
-              <SelectItem key={k.kode} value={k.kode}>
-                {k.nama} ({k.kode})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Field id="usulan-lat" label="Lintang" galat={g.lat}>
-          <Input
-            id="usulan-lat"
-            inputMode="decimal"
-            value={isian.lat}
-            onChange={(e) => set("lat", e.target.value)}
-            aria-invalid={!!g.lat}
-          />
-        </Field>
-        <Field id="usulan-lng" label="Bujur" galat={g.lng}>
-          <Input
-            id="usulan-lng"
-            inputMode="decimal"
-            value={isian.lng}
-            onChange={(e) => set("lng", e.target.value)}
-            aria-invalid={!!g.lng}
-          />
-        </Field>
-        <Field
-          id="usulan-radius"
-          label="Radius geofence (m)"
-          galat={g.radius_meter}
-        >
-          <Input
-            id="usulan-radius"
-            inputMode="numeric"
-            value={isian.radius_meter}
-            onChange={(e) => set("radius_meter", e.target.value)}
-            aria-invalid={!!g.radius_meter}
-          />
-        </Field>
-      </div>
-      {awal && (
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="usulan-aktif"
-            checked={isian.aktif}
-            onCheckedChange={(v) => set("aktif", v === true)}
-          />
-          <Label htmlFor="usulan-aktif" className="font-normal">
-            Pasar aktif (muncul di tugas lapangan)
-          </Label>
+          </FormField>
         </div>
-      )}
-      <Alasan
-        nilai={isian.alasan}
-        galat={g.alasan}
-        onChange={(v) => set("alasan", v)}
-      />
+        {awal && (
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="usulan-aktif"
+              checked={isian.aktif}
+              onCheckedChange={(v) => set("aktif", v === true)}
+            />
+            <Label htmlFor="usulan-aktif" className="font-normal">
+              Pasar aktif (muncul di tugas lapangan)
+            </Label>
+          </div>
+        )}
+        <Alasan
+          nilai={isian.alasan}
+          galat={g.alasan}
+          onChange={(v) => set("alasan", v)}
+        />
+        <FormAlert>{form.galat?.pesan}</FormAlert>
+      </DialogBody>
       <Kaki
         pending={form.pending}
         tambah={!awal}
-        galat={form.galat?.pesan}
         onBatal={() => onOpenChange(false)}
       />
-    </FormBff>
+    </FormDialog>
   );
 }

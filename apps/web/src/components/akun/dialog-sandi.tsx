@@ -3,11 +3,13 @@
 import { Loader2 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { KolomSandi } from "@/components/auth/kolom-sandi";
-import { FormBff } from "@/components/form/form-bff";
+import { FormDialog } from "@/components/form/form-bff";
+import { FormAlert } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -53,26 +55,24 @@ export function DialogSandi({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !sibuk && onTutup()}>
       <DialogContent className="sm:max-w-md">
-        <FormBff onKirim={onKirim} sibuk={sibuk} className="contents">
+        <FormDialog onKirim={onKirim} sibuk={sibuk}>
           <DialogHeader>
             <DialogTitle>{judul}</DialogTitle>
             <DialogDescription>{deskripsi}</DialogDescription>
           </DialogHeader>
-          <KolomSandi
-            id="sandi"
-            label="Kata sandi (untuk mengonfirmasi)"
-            value={sandi}
-            onChange={onSandi}
-            disabled={sibuk}
-            galat={galatField}
-            autoComplete="current-password"
-          />
-          {/* Galat isian sudah tampil di bawah kolom; galat tingkat form hanya bila tidak ada galat isian. */}
-          {galat && !galatField && (
-            <p role="alert" className="text-sm font-medium text-destructive">
-              {galat}
-            </p>
-          )}
+          <DialogBody>
+            <KolomSandi
+              id="sandi"
+              label="Kata sandi (untuk mengonfirmasi)"
+              value={sandi}
+              onChange={onSandi}
+              disabled={sibuk}
+              galat={galatField}
+              autoComplete="current-password"
+            />
+            {/* Galat isian sudah tampil di bawah kolom; galat tingkat form hanya bila tidak ada galat isian. */}
+            <FormAlert>{galatField ? null : galat}</FormAlert>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={onTutup} disabled={sibuk}>
               Batal
@@ -87,7 +87,7 @@ export function DialogSandi({
               {tombol}
             </SpringButton>
           </DialogFooter>
-        </FormBff>
+        </FormDialog>
       </DialogContent>
     </Dialog>
   );

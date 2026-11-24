@@ -11,16 +11,34 @@ export function OpsMap() {
   const { data, isLoading, error, refetch } = useMarkerWilayah();
   const router = useRouter();
   return (
-    <section className="glass flex h-full flex-col rounded-xl p-5 sm:p-6">
+    <section className="glass flex h-full min-h-0 flex-col rounded-lg p-3.5">
       <PanelTitle
         title="Peta status wilayah"
-        description="Status harga per kabupaten/kota berdasarkan pergerakan terbesar"
-        actions={<SpringLink href="/peta" size="sm" variant="soft">Peta lengkap</SpringLink>}
+        description="Klik wilayah untuk melihat status dan pemicu harganya"
+        actions={
+          <SpringLink href="/peta" size="sm" variant="soft">
+            Peta lengkap
+          </SpringLink>
+        }
       />
       {!isLoading && !data ? (
-        <PanelGalat judul="Peta status wilayah gagal dimuat" error={error} onCoba={() => void refetch()} className="mt-4 h-[380px] flex-1" />
+        <PanelGalat
+          judul="Peta status wilayah gagal dimuat"
+          error={error}
+          onCoba={() => void refetch()}
+          className="mt-2 h-72 lg:h-auto lg:min-h-0 lg:flex-1"
+        />
       ) : (
-        <RegionMap markers={data} isLoading={isLoading} className="mt-4 h-[380px] flex-1" onSelect={(kode) => router.prefetch(`/peta?wilayah=${kode}`)} />
+        <RegionMap
+          markers={data}
+          isLoading={isLoading}
+          className="mt-2 h-72 lg:h-auto lg:min-h-0 lg:flex-1"
+          onSelect={(kode) => router.prefetch(`/peta?wilayah=${kode}`)}
+          aksiPopup={{
+            label: "Buka detail",
+            onClick: (kode) => router.push(`/peta?wilayah=${kode}`),
+          }}
+        />
       )}
     </section>
   );

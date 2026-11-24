@@ -2,10 +2,12 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
+import { HalamanPas } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
 import { Segmented } from "@/components/garda/segmented";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { Button } from "@/components/ui/button";
 import {
   ENTITAS_LABEL,
   JENIS_LABEL,
@@ -27,27 +29,20 @@ type Tab = "menunggu" | "riwayat";
 
 const kolom: ColumnDef<PerubahanMaster>[] = [
   {
-    id: "entitas",
-    header: "Entitas",
-    enableSorting: false,
-    accessorFn: (p) => ENTITAS_LABEL[p.entitas],
-    cell: ({ getValue }) => (
-      <span className="text-muted-foreground">{getValue<string>()}</span>
-    ),
-  },
-  {
     id: "data",
     header: "Data",
     enableSorting: false,
     accessorFn: (p) => p.entitasNama ?? p.entitasId,
     cell: ({ row: { original: p } }) => (
       <span className="block">
-        <span className="font-medium">{p.entitasNama ?? p.entitasId}</span>
-        {p.entitasNama && (
-          <span className="num block text-xs text-muted-foreground">
-            {p.entitasId}
-          </span>
-        )}
+        <SelTeks className="font-medium">
+          {p.entitasNama ?? p.entitasId}
+        </SelTeks>
+        <SelTeks className="num text-xs text-muted-foreground">
+          {p.entitasNama
+            ? `${ENTITAS_LABEL[p.entitas]} · ${p.entitasId}`
+            : ENTITAS_LABEL[p.entitas]}
+        </SelTeks>
       </span>
     ),
   },
@@ -64,7 +59,9 @@ const kolom: ColumnDef<PerubahanMaster>[] = [
     enableSorting: false,
     accessorFn: (p) => ringkasDiff(p),
     cell: ({ getValue }) => (
-      <span className="text-muted-foreground">{getValue<string>()}</span>
+      <SelTeks className="max-w-[24rem] text-muted-foreground">
+        {getValue<string>()}
+      </SelTeks>
     ),
   },
   {
@@ -72,15 +69,15 @@ const kolom: ColumnDef<PerubahanMaster>[] = [
     header: "Pengaju",
     enableSorting: false,
     accessorFn: (p) => p.diajukanOleh?.nama ?? "—",
-    cell: ({ getValue }) => <span>{getValue<string>()}</span>,
-  },
-  {
-    id: "waktu",
-    header: "Diajukan",
-    enableSorting: false,
-    accessorFn: (p) => formatTanggal(p.dibuatPada, "d MMM yyyy HH.mm"),
-    cell: ({ getValue }) => (
-      <span className="num text-xs">{getValue<string>()}</span>
+    cell: ({ row: { original: p } }) => (
+      <span className="block">
+        <SelTeks className="max-w-[12rem]">
+          {p.diajukanOleh?.nama ?? "—"}
+        </SelTeks>
+        <span className="num block text-xs whitespace-nowrap text-muted-foreground">
+          {formatTanggal(p.dibuatPada, "d MMM yyyy HH.mm")}
+        </span>
+      </span>
     ),
   },
   {
@@ -118,27 +115,20 @@ export function PerubahanPage() {
     [tab, state.filter.status, entitas, state.page, state.limit],
   );
   const { data, isLoading, isPlaceholderData } = usePerubahanHalaman(params);
+  const gantiTab = (v: Tab) => {
+    setFilter("tab", v);
+    setFilter("status", undefined);
+  };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <HalamanPas>
       <PageHeader
         title="Master data"
-        description="Usulan perubahan komoditas dan pasar menunggu keputusan di sini. Pengaju tidak dapat menyetujui usulannya sendiri."
-      />
-      <MasterTabs aktif="perubahan" />
-      <Segmented<Tab>
-        layoutId="perubahan-tab"
-        value={tab}
-        onChange={(v) => {
-          setFilter("tab", v);
-          setFilter("status", undefined);
-        }}
-        options={[
-          { value: "menunggu", label: "Menunggu" },
-          { value: "riwayat", label: "Riwayat" },
-        ]}
+        description="Setujui atau tolak usulan dari pengaju lain."
+        tabs={<MasterTabs aktif="perubahan" />}
       />
       <DataTable
+        isiPenuh
         data={data?.rows}
         isLoading={isLoading}
         columns={kolom}
@@ -151,12 +141,31 @@ export function PerubahanPage() {
           tab === "menunggu"
             ? {
                 title: "Tidak ada usulan yang menunggu",
-                description: "Semua usulan perubahan sudah diputuskan.",
+                description:
+                  "Semua usulan perubahan sudah diputuskan. Keputusan sebelumnya ada di riwayat.",
+                action: (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => gantiTab("riwayat")}
+                  >
+                    Lihat riwayat
+                  </Button>
+                ),
               }
             : undefined
         }
-        filterBar={
-          <div className="flex flex-wrap gap-2">
+        toolbar={
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
+            <Segmented<Tab>
+              layoutId="perubahan-tab"
+              value={tab}
+              onChange={gantiTab}
+              options={[
+                { value: "menunggu", label: "Menunggu" },
+                { value: "riwayat", label: "Riwayat" },
+              ]}
+            />
             <FilterSelect
               label="Entitas"
               value={entitas}
@@ -180,6 +189,6 @@ export function PerubahanPage() {
         }
       />
       <PerubahanDetailSheet id={detail} onClose={() => setDetail(null)} />
-    </div>
+    </HalamanPas>
   );
 }

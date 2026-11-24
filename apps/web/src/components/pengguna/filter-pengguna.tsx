@@ -16,6 +16,7 @@ import {
   type StateTabelPengguna,
 } from "@/lib/pengguna/tabel";
 import { LAPIS_META, ROLES, ROLE_IDS, type Lapis } from "@/lib/rbac/roles";
+import { cn } from "@/lib/utils";
 
 const SEMUA = "__semua";
 
@@ -98,11 +99,14 @@ export function FilterPengguna({
         >
           <SelectTrigger
             aria-label={`Filter ${k.label.toLowerCase()}`}
-            className="h-9 min-w-36 rounded-md bg-white/70 dark:bg-white/5"
+            className={cn(
+              "w-[calc(50%-0.25rem)] text-[13px] sm:w-44 md:text-[13px]",
+              k.kunci === "terkunci" && "max-sm:w-full",
+            )}
           >
             <SelectValue placeholder={k.label} />
           </SelectTrigger>
-          <SelectContent className="rounded-xl">
+          <SelectContent>
             <SelectItem value={SEMUA}>{k.label}: semua</SelectItem>
             {k.options.map((o) => (
               <SelectItem key={o.value} value={o.value}>
@@ -113,7 +117,12 @@ export function FilterPengguna({
         </Select>
       ))}
       {aktif > 0 && (
-        <Button variant="ghost" size="sm" onClick={onReset}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 text-[13px]"
+          onClick={onReset}
+        >
           <X /> Reset filter ({aktif})
         </Button>
       )}

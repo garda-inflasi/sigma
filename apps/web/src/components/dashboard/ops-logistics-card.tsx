@@ -2,6 +2,7 @@
 
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Truck } from "lucide-react";
 import { PanelTitle } from "@/components/garda/page-header";
+import { EmptyState } from "@/components/garda/empty-state";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
@@ -19,7 +20,7 @@ export function OpsLogisticsCard({ className }: { className?: string } = {}) {
   const ringkas = data?.ringkasan;
 
   return (
-    <section className={cn("glass flex h-full flex-col rounded-xl p-5 sm:p-6", className)}>
+    <section className={cn("glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0", className)}>
       <PanelTitle
         title="Pergerakan logistik & rute aktif"
         description={
@@ -29,7 +30,7 @@ export function OpsLogisticsCard({ className }: { className?: string } = {}) {
         }
       />
 
-      <div className="mt-4 flex-1">
+      <div className="scrollbar-thin mt-2 flex-1 lg:min-h-0 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-44 w-full" />
         ) : !data || !ringkas ? (
@@ -39,9 +40,9 @@ export function OpsLogisticsCard({ className }: { className?: string } = {}) {
             onCoba={() => void refetch()}
           />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2.5">
-              <div className="rounded-lg border border-border/60 bg-white/40 p-2.5 dark:bg-white/5">
+              <div className="rounded-lg border border-border bg-card p-2.5">
                 <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                   <ArrowDownToLine className="size-3.5 text-normal" />
                   Masuk
@@ -53,7 +54,7 @@ export function OpsLogisticsCard({ className }: { className?: string } = {}) {
                   {formatAngka(ringkas.masuk.jumlah)} transaksi
                 </p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-white/40 p-2.5 dark:bg-white/5">
+              <div className="rounded-lg border border-border bg-card p-2.5">
                 <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                   <ArrowUpFromLine className="size-3.5 text-waspada-ink" />
                   Keluar
@@ -65,7 +66,7 @@ export function OpsLogisticsCard({ className }: { className?: string } = {}) {
                   {formatAngka(ringkas.keluar.jumlah)} transaksi
                 </p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-white/40 p-2.5 dark:bg-white/5">
+              <div className="rounded-lg border border-border bg-card p-2.5">
                 <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                   <ArrowLeftRight className="size-3.5 text-data-600" />
                   Pindah
@@ -80,19 +81,23 @@ export function OpsLogisticsCard({ className }: { className?: string } = {}) {
             </div>
 
             {data.rute.items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada rute distribusi aktif pada cakupan ini.
-              </p>
+              <EmptyState
+                title="Belum ada rute distribusi aktif pada cakupan ini."
+                className="py-6"
+              />
             ) : (
               <div className="space-y-2">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Truck className="size-3.5" /> Rute distribusi aktif
                 </p>
-                <ul className="divide-y divide-border/50 rounded-lg border border-border/50 bg-white/30 dark:bg-white/[0.03]">
+                <ul className="divide-y divide-border rounded-lg border border-border">
                   {data.rute.items.slice(0, 5).map((r) => (
                     <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-foreground">
+                        <p
+                          title={`${r.asalNama} → ${r.tujuanNama}`}
+                          className="truncate font-medium text-foreground"
+                        >
                           {r.asalNama} → {r.tujuanNama}
                         </p>
                         <p className="truncate text-[11px] text-muted-foreground">

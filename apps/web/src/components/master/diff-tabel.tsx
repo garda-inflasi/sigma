@@ -8,6 +8,10 @@ import {
 } from "@/lib/api/master-perubahan";
 import { useKecamatanByKode } from "@/lib/query/hooks";
 
+const KEPALA =
+  "h-9 border-b border-border bg-secondary px-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase";
+const SEL = "h-11 border-b border-border px-3 py-3";
+
 /** Nilai satu bidang; kode kecamatan dilengkapi nama dari server (kode tetap tampil bila nama belum ada). */
 export function NilaiBidang({
   bidang,
@@ -53,22 +57,26 @@ export function DiffTabel({
   }
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-secondary/60 text-muted-foreground">
+      <table className="w-full text-left text-[13px]">
+        <thead>
           <tr>
-            <th className="px-2 py-1.5 font-medium">Bidang</th>
-            <th className="px-2 py-1.5 font-medium">Sebelum</th>
-            <th className="px-2 py-1.5 font-medium">Sesudah</th>
+            <th className={KEPALA}>Bidang</th>
+            <th className={KEPALA}>Sebelum</th>
+            <th className={KEPALA}>Sesudah</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="[&>tr:last-child>td]:border-b-0">
           {diff.map((d) => (
-            <tr key={d.bidang} className="border-t border-border align-top">
-              <td className="px-2 py-1.5">{labelBidang(d.bidang)}</td>
-              <td className="num break-all px-2 py-1.5 text-defisit-ink dark:text-rose-300">
+            <tr key={d.bidang} className="align-top hover:bg-secondary/60">
+              <td className={SEL}>{labelBidang(d.bidang)}</td>
+              <td
+                className={`${SEL} num [overflow-wrap:anywhere] text-defisit-ink dark:text-rose-300`}
+              >
                 <NilaiBidang bidang={d.bidang} nilai={d.sebelum} />
               </td>
-              <td className="num break-all px-2 py-1.5 text-normal-ink dark:text-emerald-300">
+              <td
+                className={`${SEL} num [overflow-wrap:anywhere] text-normal-ink dark:text-emerald-300`}
+              >
                 <NilaiBidang bidang={d.bidang} nilai={d.sesudah} />
               </td>
             </tr>

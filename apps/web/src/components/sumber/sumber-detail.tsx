@@ -3,12 +3,22 @@
 import { Loader2, Play } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { EmptyState } from "@/components/garda/empty-state";
+import {
+  InspectorRingkasan,
+  InspectorSection,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
+import { Shimmer } from "@/components/garda/shimmer";
+import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
-import { Button } from "@/components/ui/button";
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -19,7 +29,7 @@ import type {
 } from "@/lib/data/types";
 import type { Tone } from "@/lib/design/tokens";
 import { useCan } from "@/lib/auth/session-context";
-import { formatAngka, formatRelatif } from "@/lib/format";
+import { formatAngka, formatPersen, formatRelatif } from "@/lib/format";
 import {
   useSumberDetail,
   useSumberEksekusi,
@@ -27,6 +37,7 @@ import {
   useSumberSampel,
 } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
+import { STATUS_SUMBER, langkahSumber } from "./status";
 
 const STATUS_EKSEKUSI: Record<StatusEksekusi, { tone: Tone; label: string }> = {
   BERJALAN: { tone: "data", label: "Berjalan" },
@@ -45,8 +56,8 @@ const PEMICU: Record<EksekusiSumber["pemicu"], string> = {
 function BarisEksekusi({ e }: { e: EksekusiSumber }) {
   const s = STATUS_EKSEKUSI[e.status];
   return (
-    <li className="space-y-1.5 rounded-xl bg-white/50 p-3 text-sm dark:bg-white/5">
-      <div className="flex items-center justify-between gap-2">
+    <li className="space-y-1.5 rounded-lg border border-border bg-card p-3 text-[13px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <StatusBadge tone={s.tone}>{s.label}</StatusBadge>
         <span className="text-xs text-muted-foreground">
           {PEMICU[e.pemicu]}, {formatRelatif(e.mulai)}
@@ -58,7 +69,7 @@ function BarisEksekusi({ e }: { e: EksekusiSumber }) {
         {e.durasiMs !== null && `, ${formatAngka(e.durasiMs / 1000, 1)} dtk`}
       </p>
       {e.galat && (
-        <p className="break-words text-xs text-defisit-ink">{e.galat}</p>
+        <p className="text-xs break-words text-defisit-ink">{e.galat}</p>
       )}
       {e.takTerpetakan.length > 0 && (
         <details className="text-xs">
@@ -91,15 +102,6 @@ function BarisEksekusi({ e }: { e: EksekusiSumber }) {
   );
 }
 
-function BarisInfo({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="text-right">{children}</dd>
-    </div>
-  );
-}
-
 /** Panel samping: riwayat eksekusi, galat, sampel data mentah, dan tombol jalankan sekarang. */
 export function SumberDetail({
   sumber,
@@ -120,6 +122,7 @@ export function SumberDetail({
 
   // Saat run berjalan selesai, katalog (status, sukses 7 hari) dan sampel ikut disegarkan.
   const berjalan = riwayat?.some((e) => e.status === "BERJALAN") ?? false;
+  const galatTerakhir = riwayat?.find((e) => e.status === "GAGAL")?.galat;
   const sebelumnya = useRef(false);
   useEffect(() => {
     if (sebelumnya.current && !berjalan && id) {
@@ -131,7 +134,7 @@ export function SumberDetail({
 
   return (
     <Sheet open={!!sumber} onOpenChange={(o: boolean) => !o && onClose()}>
-      <SheetContent className="glass-strong w-full overflow-y-auto border-0 sm:max-w-md">
+      <SheetContent className="sm:max-w-lg">
         {info && (
           <>
             <SheetHeader>
@@ -140,112 +143,164 @@ export function SumberDetail({
                 {info.penyedia}, {info.jadwal}
               </SheetDescription>
             </SheetHeader>
-            <div className="space-y-5 px-4 pb-6">
+            <SheetBody>
               {detailGagal && (
-                <p className="text-xs text-muted-foreground">
+                <p className="border-b border-border bg-secondary px-5 py-2 text-xs text-muted-foreground">
                   Data terbaru gagal dimuat; menampilkan data dari daftar.
                 </p>
               )}
 
-              {segar && (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-medium">Informasi sumber</h3>
-                  <dl className="space-y-1.5 rounded-xl bg-white/50 p-3 text-sm dark:bg-white/5">
-                    <BarisInfo label="Kode">
-                      <code className="text-xs">{segar.kode}</code>
-                    </BarisInfo>
-                    <BarisInfo label="Jenis">{segar.jenis === "SCRAPER" ? "Scraper" : "API"}</BarisInfo>
-                    <BarisInfo label="Cakupan">{segar.cakupan}</BarisInfo>
-                    <BarisInfo label="Jadwal cron (WIB)">
-                      <code className="text-xs">{segar.jadwalCron}</code>
-                    </BarisInfo>
-                    <BarisInfo label="Terakhir dijalankan">
-                      {segar.terakhir ? formatRelatif(segar.terakhir) : "Belum pernah"}
-                    </BarisInfo>
-                    <BarisInfo label="Keberhasilan 7 hari">
-                      {segar.keberhasilan7h === null ? "Belum ada data" : `${formatAngka(segar.keberhasilan7h, 1)}%`}
-                    </BarisInfo>
-                    <BarisInfo label="Latensi">{formatAngka(segar.latensiMs)} ms</BarisInfo>
-                    <BarisInfo label="Kepatuhan robots.txt">{segar.robotsTxtPatuh ? "Patuh" : "Tidak patuh"}</BarisInfo>
-                    <BarisInfo label="URL dasar">
-                      {segar.urlDasar ? <span className="break-all">{segar.urlDasar}</span> : "Tidak ada"}
-                    </BarisInfo>
-                    <BarisInfo label="Atribusi">{segar.atribusi}</BarisInfo>
-                  </dl>
-                </section>
-              )}
-
-              {bolehKelola && (
-                <div className="space-y-1.5">
-                  <Button
-                    onClick={() => jalankan.mutate(info.id)}
-                    disabled={
-                      !info.bisaDijalankan ||
-                      info.status === "DIJEDA" ||
-                      berjalan ||
-                      jalankan.isPending
-                    }
-                    className="w-full"
-                  >
-                    {berjalan || jalankan.isPending ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <Play />
+              <InspectorRingkasan
+                className="border-b-0"
+                status={
+                  <StatusBadge tone={STATUS_SUMBER[info.status].tone}>
+                    {STATUS_SUMBER[info.status].label}
+                  </StatusBadge>
+                }
+                nilai={
+                  info.keberhasilan7h === null
+                    ? "Belum ada eksekusi"
+                    : `${formatPersen(info.keberhasilan7h)} sukses`
+                }
+                keterangan={
+                  <>
+                    Langkah berikutnya: {langkahSumber(info, bolehKelola)}.
+                    {info.status === "GAGAL" && galatTerakhir && (
+                      <span className="mt-1 block text-xs break-words text-defisit-ink">
+                        Galat terakhir: {galatTerakhir}
+                      </span>
                     )}
-                    Jalankan sekarang
-                  </Button>
-                  {!info.bisaDijalankan && (
-                    <p className="text-xs text-muted-foreground">
-                      Sumber ini belum memiliki konektor ingestion.
-                    </p>
-                  )}
-                  {info.status === "DIJEDA" && (
-                    <p className="text-xs text-muted-foreground">
-                      Sumber dijeda; lanjutkan lebih dulu.
-                    </p>
-                  )}
-                </div>
+                  </>
+                }
+              />
+
+              {segar && (
+                <InspectorSection title="Informasi sumber">
+                  <MetaGrid>
+                    <MetaItem label="Kode">
+                      <code className="num text-xs">{segar.kode}</code>
+                    </MetaItem>
+                    <MetaItem label="Jenis">
+                      {segar.jenis === "SCRAPER" ? "Scraper" : "API"}
+                    </MetaItem>
+                    <MetaItem label="Cakupan">{segar.cakupan}</MetaItem>
+                    <MetaItem label="Jadwal cron (WIB)">
+                      <code className="num text-xs">{segar.jadwalCron}</code>
+                    </MetaItem>
+                    <MetaItem label="Terakhir dijalankan">
+                      {segar.terakhir
+                        ? formatRelatif(segar.terakhir)
+                        : "Belum pernah"}
+                    </MetaItem>
+                    <MetaItem label="Keberhasilan 7 hari">
+                      <span className="num">
+                        {segar.keberhasilan7h === null
+                          ? "Belum ada data"
+                          : `${formatAngka(segar.keberhasilan7h, 1)}%`}
+                      </span>
+                    </MetaItem>
+                    <MetaItem label="Latensi">
+                      <span className="num">
+                        {formatAngka(segar.latensiMs)} ms
+                      </span>
+                    </MetaItem>
+                    <MetaItem label="Kepatuhan robots.txt">
+                      {segar.robotsTxtPatuh ? "Patuh" : "Tidak patuh"}
+                    </MetaItem>
+                    <MetaItem label="URL dasar" wide>
+                      {segar.urlDasar ? (
+                        <span className="break-all">{segar.urlDasar}</span>
+                      ) : (
+                        "Tidak ada"
+                      )}
+                    </MetaItem>
+                    <MetaItem label="Atribusi" wide>
+                      {segar.atribusi}
+                    </MetaItem>
+                  </MetaGrid>
+                </InspectorSection>
               )}
 
-              <section className="space-y-2">
-                <h3 className="text-sm font-medium">Riwayat eksekusi</h3>
+              <InspectorSection title="Riwayat eksekusi">
                 {isLoading && (
-                  <p className="text-sm text-muted-foreground">Memuat…</p>
+                  <div
+                    role="status"
+                    aria-label="Memuat riwayat"
+                    className="space-y-2"
+                  >
+                    <Shimmer className="h-16 w-full" />
+                    <Shimmer className="h-16 w-full" />
+                  </div>
                 )}
                 {riwayat && riwayat.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Belum pernah dijalankan.
-                  </p>
+                  <EmptyState
+                    title="Belum pernah dijalankan."
+                    className="py-6"
+                  />
                 )}
-                <ul className="space-y-2">
-                  {riwayat?.map((e) => (
-                    <BarisEksekusi key={e.id} e={e} />
-                  ))}
-                </ul>
-              </section>
+                {riwayat && riwayat.length > 0 && (
+                  <ul className="space-y-2">
+                    {riwayat.map((e) => (
+                      <BarisEksekusi key={e.id} e={e} />
+                    ))}
+                  </ul>
+                )}
+              </InspectorSection>
 
               {sampel && sampel.length > 0 && (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-medium">
-                    Sampel data mentah (bronze)
-                  </h3>
-                  {sampel.map((s) => (
-                    <details
-                      key={s.id}
-                      className="rounded-xl bg-white/50 p-3 text-xs dark:bg-white/5"
-                    >
-                      <summary className="cursor-pointer">
-                        {s.kunci}, {formatAngka(s.ukuran)} karakter,{" "}
-                        {formatRelatif(s.diambilPada)}
-                      </summary>
-                      <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all text-[11px] text-muted-foreground">
-                        {s.cuplikan}
-                      </pre>
-                    </details>
-                  ))}
-                </section>
+                <InspectorSection title="Sampel data mentah (bronze)">
+                  <div className="space-y-2">
+                    {sampel.map((s) => (
+                      <details
+                        key={s.id}
+                        className="rounded-lg border border-border bg-card p-3 text-xs"
+                      >
+                        <summary className="cursor-pointer break-words">
+                          {s.kunci}, {formatAngka(s.ukuran)} karakter,{" "}
+                          {formatRelatif(s.diambilPada)}
+                        </summary>
+                        <pre className="mt-2 max-h-48 overflow-auto text-[11px] break-all whitespace-pre-wrap text-muted-foreground">
+                          {s.cuplikan}
+                        </pre>
+                      </details>
+                    ))}
+                  </div>
+                </InspectorSection>
               )}
-            </div>
+            </SheetBody>
+
+            {bolehKelola && (
+              <SheetFooter className="flex-col sm:flex-col sm:flex-nowrap">
+                <SpringButton
+                  variant="primary"
+                  onClick={() => jalankan.mutate(info.id)}
+                  disabled={
+                    !info.bisaDijalankan ||
+                    info.status === "DIJEDA" ||
+                    berjalan ||
+                    jalankan.isPending
+                  }
+                  className="w-full"
+                >
+                  {berjalan || jalankan.isPending ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Play />
+                  )}
+                  Jalankan sekarang
+                </SpringButton>
+                {!info.bisaDijalankan && (
+                  <p className="text-xs text-muted-foreground">
+                    Sumber ini belum memiliki konektor ingestion.
+                  </p>
+                )}
+                {info.status === "DIJEDA" && (
+                  <p className="text-xs text-muted-foreground">
+                    Sumber dijeda; lanjutkan lebih dulu.
+                  </p>
+                )}
+              </SheetFooter>
+            )}
           </>
         )}
       </SheetContent>

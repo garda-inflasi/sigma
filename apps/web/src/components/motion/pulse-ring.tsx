@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { pulseRing } from "@/lib/motion/presets";
 import { cn } from "@/lib/utils";
@@ -27,17 +27,16 @@ interface PulseRingProps {
 
 /** Cincin denyut bertingkat untuk sinyal EWS. Diam saat reduced-motion. */
 export function PulseRing({ tone = "kritis", rings = 2, active = true, className, children }: PulseRingProps) {
-  const reduce = useReducedMotion();
   return (
     <span className={cn("relative inline-grid place-items-center", className)}>
-      {active && !reduce &&
+      {active &&
         Array.from({ length: rings }).map((_, i) => {
           const p = pulseRing(i * 0.65);
           return (
             <motion.span
               key={i}
               aria-hidden
-              className={cn("absolute inset-0 rounded-full", ringColor[tone])}
+              className={cn("absolute inset-0 rounded-full motion-reduce:hidden", ringColor[tone])}
               initial={p.initial}
               animate={p.animate}
               transition={p.transition}

@@ -2,11 +2,13 @@
 
 import { Mail } from "lucide-react";
 import { useState } from "react";
-import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
+import { FormDialog, idGalatField } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -14,7 +16,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -68,11 +69,7 @@ function FormUndang({
   const butuhKabupaten = peranButuhKabupaten(form.peran as Role);
 
   return (
-    <FormBff
-      onKirim={kiriman.kirimDari(() => form)}
-      sibuk={sibuk}
-      className="contents"
-    >
+    <FormDialog onKirim={kiriman.kirimDari(() => form)} sibuk={sibuk}>
       <DialogHeader>
         <DialogTitle>Undang pengguna</DialogTitle>
         <DialogDescription>
@@ -81,9 +78,8 @@ function FormUndang({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-4 py-2">
-        <div className="grid gap-2">
-          <Label htmlFor="und-nama">Nama lengkap</Label>
+      <DialogBody>
+        <FormField id="und-nama" label="Nama lengkap" galat={g.nama}>
           <Input
             id="und-nama"
             autoComplete="off"
@@ -91,10 +87,8 @@ function FormUndang({
             onChange={(e) => setForm({ ...form, nama: e.target.value })}
             {...atributGalat("nama")}
           />
-          <PesanField field="und-nama" pesan={g.nama} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="und-email">Email</Label>
+        </FormField>
+        <FormField id="und-email" label="Email" galat={g.email}>
           <Input
             id="und-email"
             type="email"
@@ -103,10 +97,8 @@ function FormUndang({
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             {...atributGalat("email")}
           />
-          <PesanField field="und-email" pesan={g.email} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="und-peran">Peran</Label>
+        </FormField>
+        <FormField id="und-peran" label="Peran">
           <Select
             value={form.peran}
             onValueChange={(v) =>
@@ -125,9 +117,8 @@ function FormUndang({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="und-lembaga">Lembaga</Label>
+        </FormField>
+        <FormField id="und-lembaga" label="Lembaga" galat={g.lembaga}>
           <Input
             id="und-lembaga"
             autoComplete="off"
@@ -135,11 +126,14 @@ function FormUndang({
             onChange={(e) => setForm({ ...form, lembaga: e.target.value })}
             {...atributGalat("lembaga")}
           />
-          <PesanField field="und-lembaga" pesan={g.lembaga} />
-        </div>
+        </FormField>
         {butuhKabupaten && (
-          <div className="grid gap-2">
-            <Label htmlFor="und-kabupaten">Kabupaten/kota (opsional)</Label>
+          <FormField
+            id="und-kabupaten"
+            label="Kabupaten/kota"
+            opsional
+            bantuan="Cakupan data peran ini dibatasi pada kabupaten/kota yang dipilih."
+          >
             <Select
               value={form.kabupaten}
               onValueChange={(v) => setForm({ ...form, kabupaten: v })}
@@ -156,51 +150,43 @@ function FormUndang({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              Cakupan data peran ini dibatasi pada kabupaten/kota yang dipilih.
-            </p>
-          </div>
+          </FormField>
         )}
-        {kiriman.galat && (
-          <p role="alert" className="text-sm text-destructive">
-            {kiriman.galat.pesan}
-          </p>
-        )}
-      </div>
+        <FormAlert>{kiriman.galat?.pesan}</FormAlert>
+      </DialogBody>
 
-      <DialogFooter className="sm:items-center sm:justify-between">
-        {onBuatSementara ? (
-          <Button
-            variant="link"
-            size="sm"
-            className="px-0 text-xs text-muted-foreground"
-            onClick={onBuatSementara}
-            disabled={sibuk}
-          >
-            Email tidak bisa dipakai? Buat dengan kata sandi sementara
-          </Button>
-        ) : (
-          <span />
-        )}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={sibuk}
-          >
-            Batal
-          </Button>
-          <SpringButton
-            type="submit"
-            variant="primary"
-            size="md"
-            disabled={sibuk}
-          >
-            <Mail /> {sibuk ? "Mengirim…" : "Kirim undangan"}
-          </SpringButton>
-        </div>
+      <DialogFooter
+        bantuan={
+          onBuatSementara ? (
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto min-h-6 max-w-full justify-start px-0 py-0.5 text-left text-xs font-normal whitespace-normal text-muted-foreground hover:text-foreground"
+              onClick={onBuatSementara}
+              disabled={sibuk}
+            >
+              Email tidak bisa dipakai? Buat dengan kata sandi sementara
+            </Button>
+          ) : undefined
+        }
+      >
+        <Button
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={sibuk}
+        >
+          Batal
+        </Button>
+        <SpringButton
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={sibuk}
+        >
+          <Mail /> {sibuk ? "Mengirim…" : "Kirim undangan"}
+        </SpringButton>
       </DialogFooter>
-    </FormBff>
+    </FormDialog>
   );
 }
 

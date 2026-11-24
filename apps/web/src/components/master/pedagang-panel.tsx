@@ -5,7 +5,7 @@ import { Download, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { api } from "@/lib/api/endpoints";
@@ -70,17 +70,23 @@ export function PedagangPanel() {
         accessorKey: "nama",
         header: "Nama",
         enableSorting: false,
-        cell: ({ getValue }) =>
-          getValue<string | null>() ?? (
+        cell: ({ getValue }) => {
+          const nama = getValue<string | null>();
+          return nama == null ? (
             <span className="text-muted-foreground">Tanpa nama</span>
-          ),
+          ) : (
+            <SelTeks>{nama}</SelTeks>
+          );
+        },
       },
       {
         accessorKey: "pasarNama",
         header: "Pasar",
         enableSorting: false,
         cell: ({ getValue }) => (
-          <span className="text-muted-foreground">{getValue<string>()}</span>
+          <SelTeks className="text-muted-foreground">
+            {getValue<string>()}
+          </SelTeks>
         ),
       },
       {
@@ -131,6 +137,7 @@ export function PedagangPanel() {
 
   return (
     <DataTable
+      isiPenuh
       data={data?.rows}
       isLoading={isLoading}
       columns={kolom}
@@ -140,18 +147,7 @@ export function PedagangPanel() {
       searchPlaceholder="Cari pedagang"
       server={tabel(data?.total ?? 0, isPlaceholderData)}
       toolbar={
-        <SpringButton
-          variant="soft"
-          size="md"
-          onClick={() => void eksporSemua()}
-          disabled={mengekspor}
-        >
-          {mengekspor ? <Loader2 className="animate-spin" /> : <Download />}{" "}
-          Ekspor semua hasil
-        </SpringButton>
-      }
-      filterBar={
-        <div className="flex flex-wrap gap-2">
+        <>
           <FilterSelect
             label="Pasar"
             value={state.filter.pasar}
@@ -171,7 +167,16 @@ export function PedagangPanel() {
               label: s.label,
             }))}
           />
-        </div>
+          <SpringButton
+            variant="soft"
+            size="md"
+            onClick={() => void eksporSemua()}
+            disabled={mengekspor}
+          >
+            {mengekspor ? <Loader2 className="animate-spin" /> : <Download />}{" "}
+            Ekspor semua hasil
+          </SpringButton>
+        </>
       }
     />
   );

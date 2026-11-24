@@ -22,10 +22,13 @@ import {
   BulkActionBar,
   type BulkAction,
 } from "@/components/data-table/bulk-action-bar";
+import { SelTeks } from "@/components/data-table/data-table";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { TableSkeleton } from "@/components/garda/shimmer";
 import { SpringButton } from "@/components/garda/spring-button";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -62,6 +65,9 @@ const KOLOM: { key: ColdStorageSort; label: string; kanan?: boolean }[] = [
   { key: "pemilik", label: "Pemilik" },
 ];
 
+/** Pemilik tampil di baris kedua sel fasilitas; urutannya lewat kontrol "Urutkan". */
+const KOLOM_TABEL = KOLOM.filter((k) => k.key !== "pemilik");
+
 /** Angka dan tanggal lebih berguna bila klik pertama menampilkan nilai terbesar/terbaru. */
 export const URUTAN_AWAL_MENURUN: Record<ColdStorageSort, boolean> = {
   sisa_masa_simpan: false,
@@ -77,7 +83,9 @@ const jumlahVolume = (rows: StokColdStorage[]) =>
   rows.reduce((a, r) => a + r.volumeTon, 0);
 
 /** Sel tabel dengan tinggi baris tetap; baris tabel tidak boleh membungkus agar tetap rapat. */
-const SEL = "h-14 border-b border-border/50 px-3 align-middle";
+const SEL = "h-11 border-b border-border px-3 align-middle text-[13px]";
+const KEPALA =
+  "sticky top-0 z-10 h-9 border-b border-border bg-secondary text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase";
 
 interface Props {
   view: ColdStorageView | undefined;
@@ -309,9 +317,9 @@ export function StockTable({
     <>
       {/* Wadah container query; sengaja terpisah dari panel kaca dan BulkActionBar: keduanya
           (backdrop-filter / containment) menjadi containing block bagi elemen `fixed`. */}
-      <div className="@container">
+      <div className="@container lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <div
-          className="glass relative overflow-hidden rounded-xl"
+          className="glass relative overflow-hidden rounded-lg lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
           aria-busy={sibuk}
         >
           {/* Penanda muat ulang (pindah halaman, urutan, atau filter) */}
@@ -331,24 +339,24 @@ export function StockTable({
           </AnimatePresence>
 
           {/* Toolbar: pencarian + filter fasilitas */}
-          <div className="flex flex-col gap-3 border-b border-border/70 p-4 @2xl:flex-row @2xl:items-center">
-            <label className="relative flex-1 @2xl:max-w-sm">
+          <div className="flex shrink-0 flex-col gap-2.5 border-b border-border p-3 @2xl:flex-row @2xl:items-center">
+            <label className="relative min-w-0 flex-1 @2xl:max-w-sm">
               <span className="sr-only">Cari komoditas atau pemilik</span>
               <Search
-                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute top-1/2 left-2.5 z-[1] size-4 -translate-y-1/2 text-muted-foreground"
                 aria-hidden
               />
-              <input
+              <Input
                 type="search"
                 value={search}
                 onChange={(e) => onSearch(e.target.value)}
                 maxLength={100}
                 placeholder="Cari komoditas atau pemilik"
-                className="h-10 w-full rounded-md border border-input bg-white/70 pr-3 pl-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:shadow-glow-data dark:bg-white/5"
+                className="pr-3 pl-8 md:text-[13px]"
               />
             </label>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 @2xl:ml-auto @2xl:justify-end">
               <Select
                 value={params.fasilitasId ?? SEMUA}
                 onValueChange={(v: string) =>
@@ -357,11 +365,11 @@ export function StockTable({
               >
                 <SelectTrigger
                   aria-label="Filter fasilitas"
-                  className="h-10 min-w-36 rounded-md bg-white/70 dark:bg-white/5"
+                  className="w-full @md:w-44 text-[13px] md:text-[13px]"
                 >
                   <SelectValue placeholder="Fasilitas" />
                 </SelectTrigger>
-                <SelectContent className="rounded-xl">
+                <SelectContent>
                   <SelectItem value={SEMUA}>Fasilitas: semua</SelectItem>
                   {(view?.fasilitas ?? [])
                     .filter((f) => f.status !== "RENCANA")
@@ -374,18 +382,18 @@ export function StockTable({
               </Select>
 
               {/* Tanpa header yang dapat diklik (tampilan daftar), urutan dipilih lewat kontrol ini */}
-              <div className="flex items-center gap-1 @4xl:hidden">
+              <div className="flex w-full items-center gap-1 @md:w-auto">
                 <Select
                   value={params.sort ?? "sisa_masa_simpan"}
                   onValueChange={(v: string) => urutkan(v as ColdStorageSort)}
                 >
                   <SelectTrigger
                     aria-label="Urutkan menurut"
-                    className="h-10 min-w-36 rounded-md bg-white/70 dark:bg-white/5"
+                    className="min-w-0 flex-1 text-[13px] @md:w-56 @md:flex-none md:text-[13px]"
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl">
+                  <SelectContent>
                     {KOLOM.map((k) => (
                       <SelectItem key={k.key} value={k.key}>
                         Urutkan: {k.label.toLowerCase()}
@@ -393,30 +401,36 @@ export function StockTable({
                     ))}
                   </SelectContent>
                 </Select>
-                <button type="button"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0 text-muted-foreground"
                   onClick={() => onParams({ desc: !params.desc })}
                   aria-label={
                     params.desc
                       ? "Urutan menurun, ubah ke menaik"
                       : "Urutan menaik, ubah ke menurun"
                   }
-                  className="grid size-10 place-items-center rounded-md border border-input bg-white/70 text-muted-foreground hover:text-foreground dark:bg-white/5"
                 >
                   {params.desc ? (
                     <ArrowDown className="size-4" />
                   ) : (
                     <ArrowUp className="size-4" />
                   )}
-                </button>
+                </Button>
               </div>
 
               {adaFilter && (
-                <button type="button"
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 text-[13px]"
                   onClick={onResetFilters}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
                 >
                   <RotateCcw className="size-3.5" /> Hapus filter
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -429,7 +443,7 @@ export function StockTable({
                 initial="hidden"
                 animate="show"
                 exit="exit"
-                className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-border/70 bg-data-50/70 px-4 py-2 text-sm text-data-800 dark:bg-data-500/10 dark:text-data-200"
+                className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-border bg-data-50 px-4 py-2 text-[13px] text-data-800 dark:bg-data-500/10 dark:text-data-200"
               >
                 {semuaHasil ? (
                   <span>
@@ -479,7 +493,7 @@ export function StockTable({
           {error && view && (
             <div
               role="alert"
-              className="flex flex-wrap items-center justify-center gap-x-3 border-b border-border/70 bg-defisit-soft/60 px-4 py-2 text-sm text-defisit-ink dark:bg-defisit/10 dark:text-rose-300"
+              className="flex shrink-0 flex-wrap items-center justify-center gap-x-3 border-b border-border bg-defisit-soft px-4 py-2 text-[13px] text-defisit-ink dark:bg-defisit/10 dark:text-rose-300"
             >
               <span>
                 Gagal memperbarui data; menampilkan data terakhir.{" "}
@@ -499,9 +513,9 @@ export function StockTable({
           ) : error && !view ? (
             <div
               role="alert"
-              className="grid place-items-center gap-2 px-6 py-16 text-center"
+              className="grid place-items-center gap-2 px-6 py-16 text-center lg:flex-1 lg:content-center"
             >
-              <span className="grid size-12 place-items-center rounded-xl bg-defisit-soft text-defisit-ink dark:bg-defisit/15">
+              <span className="grid size-12 place-items-center rounded-lg bg-defisit-soft text-defisit-ink dark:bg-defisit/15">
                 <AlertTriangle className="size-5" />
               </span>
               <p className="font-display font-semibold">
@@ -515,8 +529,8 @@ export function StockTable({
               </SpringButton>
             </div>
           ) : rows.length === 0 ? (
-            <div className="grid place-items-center gap-2 px-6 py-16 text-center">
-              <span className="grid size-12 place-items-center rounded-xl bg-mist-100 text-muted-foreground dark:bg-white/5">
+            <div className="grid place-items-center gap-2 px-6 py-16 text-center lg:flex-1 lg:content-center">
+              <span className="grid size-12 place-items-center rounded-lg bg-secondary text-muted-foreground">
                 <Inbox className="size-5" />
               </span>
               <p className="font-display font-semibold">
@@ -538,25 +552,25 @@ export function StockTable({
           ) : (
             <div
               className={cn(
-                "transition-opacity duration-200",
+                "transition-opacity duration-200 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col",
                 sibuk && "opacity-60",
               )}
             >
               {/* Panel ≥ 56rem: tabel */}
-              <div className="scrollbar-thin hidden overflow-x-auto @4xl:block">
-                <table className="w-full min-w-[880px] border-separate border-spacing-0 text-sm">
+              <div className="scrollbar-thin hidden overflow-x-auto @4xl:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                <table className="w-full min-w-[880px] border-separate border-spacing-0 text-[13px]">
                   <caption className="sr-only">
                     Stok tersimpan di cold storage
                   </caption>
-                  <thead className="bg-white/50 dark:bg-white/[0.02]">
+                  <thead>
                     <tr>
                       <th
                         scope="col"
-                        className="h-11 w-11 border-b border-border/70 pl-5 text-left"
+                        className={cn(KEPALA, "w-11 pl-4 text-left")}
                       >
                         {pilihSemuaHalaman}
                       </th>
-                      {KOLOM.map((k) => {
+                      {KOLOM_TABEL.map((k) => {
                         const aktif = params.sort === k.key;
                         return (
                           <th
@@ -570,14 +584,15 @@ export function StockTable({
                                 : "none"
                             }
                             className={cn(
-                              "h-11 border-b border-border/70 px-3 text-xs font-medium whitespace-nowrap text-muted-foreground",
+                              KEPALA,
+                              "px-3",
                               k.kanan ? "pr-8 text-right" : "text-left",
                             )}
                           >
                             <button type="button"
                               onClick={() => urutkan(k.key)}
                               className={cn(
-                                "inline-flex items-center gap-1 hover:text-foreground",
+                                "inline-flex items-center gap-1 tracking-wide uppercase hover:text-foreground",
                                 aktif && "text-foreground",
                               )}
                             >
@@ -610,11 +625,11 @@ export function StockTable({
                           className={cn(
                             "transition-colors",
                             dipilih
-                              ? "bg-data-50/80 dark:bg-data-500/10"
-                              : "hover:bg-white/60 dark:hover:bg-white/[0.03]",
+                              ? "bg-data-50 dark:bg-data-500/10"
+                              : "hover:bg-secondary/60",
                           )}
                         >
-                          <td className={cn(SEL, "relative w-11 pl-5")}>
+                          <td className={cn(SEL, "relative w-11 pl-4")}>
                             <UrgencyStripe
                               urgensi={urgensiLot(r.sisaShelfLifeHari)}
                             />
@@ -632,18 +647,23 @@ export function StockTable({
                               />
                             </span>
                           </td>
-                          <td className={cn(SEL, "whitespace-nowrap")}>
-                            <span className="flex items-center gap-2 font-medium">
+                          <td className={SEL}>
+                            <span className="flex min-w-0 items-center gap-2 font-medium">
                               <KomoditasIcon
                                 kode={r.komoditasKode}
                                 ikon={r.ikon}
-                                className="text-muted-foreground"
+                                className="shrink-0 text-muted-foreground"
                               />
-                              {r.komoditasNama}
+                              <SelTeks>{r.komoditasNama}</SelTeks>
                             </span>
                           </td>
-                          <td className={cn(SEL, "whitespace-nowrap")}>
-                            {r.fasilitasNama}
+                          <td className={SEL}>
+                            <SelTeks className="max-w-[13rem]">
+                              {r.fasilitasNama}
+                            </SelTeks>
+                            <SelTeks className="max-w-[13rem] text-xs text-muted-foreground">
+                              {r.pemilik}
+                            </SelTeks>
                           </td>
                           <td
                             className={cn(
@@ -653,7 +673,7 @@ export function StockTable({
                           >
                             {formatAngka(r.volumeTon, 1)} ton
                           </td>
-                          <td className={cn(SEL, "whitespace-nowrap")}>
+                          <td className={cn(SEL, "num whitespace-nowrap")}>
                             {formatTanggal(r.masuk)}
                           </td>
                           <td className={SEL}>
@@ -665,33 +685,25 @@ export function StockTable({
                               ambang={ambang}
                             />
                           </td>
-                          <td
-                            className={cn(
-                              SEL,
-                              "whitespace-nowrap text-muted-foreground",
-                            )}
-                          >
-                            {r.pemilik}
-                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
-                  <tfoot>
-                    <tr className="bg-mist-50/80 dark:bg-white/[0.03]">
+                  <tfoot className="sticky bottom-0 z-10">
+                    <tr className="bg-secondary">
                       <th
                         scope="row"
                         colSpan={3}
-                        className="px-5 py-3 text-left text-sm font-medium"
+                        className="px-4 py-2.5 text-left text-[13px] font-medium"
                       >
                         Total volume ditampilkan
                       </th>
-                      <td className="num px-3 py-3 pr-8 text-right font-semibold whitespace-nowrap">
+                      <td className="num px-3 py-2.5 pr-8 text-right font-semibold whitespace-nowrap">
                         {formatAngka(volumeHalaman, 1)} ton
                       </td>
                       <td
-                        colSpan={4}
-                        className="px-3 py-3 text-xs text-muted-foreground"
+                        colSpan={3}
+                        className="px-3 py-2.5 text-xs text-muted-foreground"
                       >
                         dari{" "}
                         <span className="num text-foreground">
@@ -709,22 +721,22 @@ export function StockTable({
               </div>
 
               {/* Panel < 56rem: daftar kartu (dua kolom dari 42rem) */}
-              <div className="@4xl:hidden">
-                <label className="flex items-center gap-3 border-b border-border/50 bg-white/50 px-4 py-2 dark:bg-white/[0.02]">
+              <div className="flex flex-col @4xl:hidden lg:min-h-0 lg:flex-1">
+                <label className="flex shrink-0 items-center gap-3 border-b border-border bg-secondary px-4 py-2">
                   {pilihSemuaHalaman}
                   <span className="text-xs text-muted-foreground">
                     Pilih semua di halaman ini
                   </span>
                 </label>
-                <ul className="grid @2xl:grid-cols-2">
+                <ul className="scrollbar-thin grid grid-cols-1 content-start @2xl:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                   {rows.map((r, i) => {
                     const dipilih = Boolean(selected[r.id]);
                     return (
                       <li
                         key={r.id}
                         className={cn(
-                          "relative flex gap-3 border-b border-border/50 py-3.5 pr-4 pl-4 @2xl:even:border-l",
-                          dipilih && "bg-data-50/80 dark:bg-data-500/10",
+                          "relative flex gap-3 border-b border-border py-3.5 pr-4 pl-4 @2xl:even:border-l",
+                          dipilih && "bg-data-50 dark:bg-data-500/10",
                         )}
                       >
                         <UrgencyStripe
@@ -754,7 +766,10 @@ export function StockTable({
                             </p>
                             <ShelfLifeBadge hari={r.sisaShelfLifeHari} />
                           </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
+                          <p
+                            title={r.fasilitasNama}
+                            className="mt-0.5 truncate text-xs text-muted-foreground"
+                          >
                             {r.fasilitasNama}
                           </p>
                           <div className="mt-2.5 flex items-center justify-between gap-3">
@@ -767,14 +782,18 @@ export function StockTable({
                             />
                           </div>
                           <p className="mt-1.5 text-xs text-muted-foreground">
-                            Masuk {formatTanggal(r.masuk)} · {r.pemilik}
+                            Masuk{" "}
+                            <span className="num">
+                              {formatTanggal(r.masuk)}
+                            </span>{" "}
+                            · {r.pemilik}
                           </p>
                         </div>
                       </li>
                     );
                   })}
                 </ul>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 bg-mist-50/80 px-4 py-3 text-sm dark:bg-white/[0.03]">
+                <div className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-3 bg-secondary px-4 py-2.5 text-[13px]">
                   <span className="font-medium">Total volume ditampilkan</span>
                   <span className="num font-semibold">
                     {formatAngka(volumeHalaman, 1)} ton
@@ -797,7 +816,7 @@ export function StockTable({
 
           {/* Footer: posisi halaman + paginasi */}
           {view && total > 0 && halaman && (
-            <div className="flex flex-col items-center justify-between gap-3 border-t border-border/70 px-5 py-3 text-sm text-muted-foreground @xl:flex-row">
+            <div className="flex shrink-0 flex-col items-center justify-between gap-2.5 border-t border-border px-4 py-2 text-[13px] text-muted-foreground @xl:flex-row">
               <span className="text-center @xl:text-left">
                 Menampilkan{" "}
                 <span className="num text-foreground">
@@ -810,7 +829,7 @@ export function StockTable({
                 </span>{" "}
                 lot
                 {selectedRows.length > 0 && (
-                  <span className="ml-2 rounded-full bg-data-50 px-2 py-0.5 text-xs text-data-700 dark:bg-data-500/15 dark:text-data-300">
+                  <span className="ml-2 rounded-md bg-data-50 px-2 py-0.5 text-xs text-data-700 dark:bg-data-500/15 dark:text-data-300">
                     <span className="num">
                       {selectedRows.length.toLocaleString("id-ID")}
                     </span>{" "}
@@ -824,8 +843,9 @@ export function StockTable({
                   onValueChange={(v: string) => onParams({ limit: Number(v) })}
                 >
                   <SelectTrigger
+                    size="sm"
                     aria-label="Jumlah baris per halaman"
-                    className="h-8 w-[136px] rounded-md"
+                    className="w-[140px] rounded-md text-[13px] md:text-[13px]"
                   >
                     <SelectValue />
                   </SelectTrigger>

@@ -129,6 +129,7 @@ test("navigasi: menu akun memuat nama, peran, lembaga, lalu empat tautan profil 
     "Ganti Kata Sandi",
     "Verifikasi 2 Langkah",
     "Perangkat & Sesi Aktif",
+    "Beralih / Impersonate Role",
     /^Mode (gelap|terang)$/,
     "Keluar",
   ]);
@@ -303,7 +304,12 @@ test("navigasi: di layar ponsel kelima tab dapat dijangkau dengan target sentuh 
   // sasaran dibawa ke tengah layar dan diberi satu bingkai untuk berhenti sebelum diklik.
   const sasaran = tabProfil(page, LABEL_TAB.sesi);
   await sasaran.scrollIntoViewIfNeeded();
-  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  await page.evaluate(
+    () =>
+      new Promise<void>((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r())),
+      ),
+  );
   // Diulang bila klik pertama jatuh sebelum hidrasi React selesai (terjadi pada `next dev`, tidak pada build produksi).
   await expect(async () => {
     await sasaran.click();
@@ -460,7 +466,9 @@ test("Edit Profil: ubah nama dan telepon → toast, menu akun berubah tanpa masu
       expect(sebelum).toContain(namaAwal);
       expect(sesudah).toContain(namaBaru);
       expect(sesudah).toContain(teleponTersamar);
-      expect(sesudah, "nomor utuh tidak boleh masuk audit").not.toContain(teleponE164);
+      expect(sesudah, "nomor utuh tidak boleh masuk audit").not.toContain(
+        teleponE164,
+      );
     } finally {
       await admin.dispose();
     }

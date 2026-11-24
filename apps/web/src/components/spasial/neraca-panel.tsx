@@ -2,7 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import { PanelTitle } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
 import {
@@ -64,12 +64,14 @@ export function NeracaPanel({
         accessorKey: "wilayah",
         header: "Wilayah",
         cell: ({ getValue }) => (
-          <span className="whitespace-nowrap font-medium">
-            {getValue<string>()}
-          </span>
+          <SelTeks className="font-medium">{getValue<string>()}</SelTeks>
         ),
       },
-      { accessorKey: "komoditas", header: "Komoditas" },
+      {
+        accessorKey: "komoditas",
+        header: "Komoditas",
+        cell: ({ getValue }) => <SelTeks>{getValue<string>()}</SelTeks>,
+      },
       {
         accessorKey: "surplusDefisitTon",
         header: "Surplus/defisit",
@@ -110,7 +112,9 @@ export function NeracaPanel({
               Data demo
             </StatusBadge>
           ) : (
-            <span className="text-xs text-muted-foreground">{n.sumber}</span>
+            <SelTeks className="text-xs text-muted-foreground">
+              {n.sumber}
+            </SelTeks>
           ),
       },
     ],
@@ -155,11 +159,11 @@ export function NeracaPanel({
               "Belum ada data neraca pasokan untuk komoditas ini pada periode terbaru.",
           }}
           toolbar={
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:w-auto">
               <Select value={komoditas} onValueChange={setKomoditas}>
                 <SelectTrigger
                   aria-label="Komoditas neraca"
-                  className="h-10 w-52"
+                  className="w-full sm:w-52 text-[13px] md:text-[13px]"
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -173,7 +177,10 @@ export function NeracaPanel({
                 </SelectContent>
               </Select>
               {data && data.length > 0 && (
-                <p className="text-xs text-muted-foreground" aria-live="polite">
+                <p
+                  className="min-w-0 text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
                   <span className="num font-semibold text-surplus-ink dark:text-blue-300">
                     Surplus {formatAngka(ringkas.surplusTon, 1)} ton
                   </span>{" "}

@@ -17,11 +17,32 @@ setup/env: ## Salin template env ke .env (root) & apps/web/.env.local
 	@test -f apps/web/.env.local || cp apps/web/env.local.example apps/web/.env.local
 	@echo "✓ apps/web/.env.local siap — dipakai frontend Next.js (make dev/web)"
 
-dev/api: ## Run Go API in development mode
-	cd apps/api && go run ./cmd/api
+dev/api: ## Run Go API in development mode (auto +1 port if busy)
+	@port=$$(echo "$${APP_ADDR:-:8080}" | sed 's/.*://'); \
+	[ -z "$$port" ] && port=8080; \
+	while lsof -nP -iTCP:$$port -sTCP:LISTEN >/dev/null 2>&1; do \
+		echo "Port $$port sedang dipakai, mencoba $$((port+1))..."; \
+		port=$$((port+1)); \
+	done; \
+	root_dir="$$(pwd)"; \
+	echo "$$port" > "$$root_dir/.dev-api-port"; \
+	trap 'rm -f "'"$$root_dir"'/.dev-api-port"' EXIT INT TERM; \
+	echo "✓ Go API berjalan di http://localhost:$$port"; \
+	cd apps/api && APP_ADDR=":$$port" APP_ALLOWED_ORIGINS="http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost,https://localhost" go run ./cmd/api
 
-dev/web: ## Run Next.js in development mode
-	cd apps/web && pnpm dev
+dev/web: ## Run Next.js in development mode (auto +1 port & link ke dev/api)
+	@api_port=8080; \
+	if [ -f .dev-api-port ]; then \
+		cand=$$(tr -d '[:space:]' < .dev-api-port); \
+		[ -n "$$cand" ] && api_port=$$cand; \
+	fi; \
+	wport=3000; \
+	while lsof -nP -iTCP:$$wport -sTCP:LISTEN >/dev/null 2>&1; do \
+		echo "Port $$wport sedang dipakai, mencoba $$((wport+1))..."; \
+		wport=$$((wport+1)); \
+	done; \
+	echo "✓ Next.js Web berjalan di http://localhost:$$wport (API → http://localhost:$$api_port/v1)"; \
+	cd apps/web && PORT=$$wport GO_API_BASE_URL="http://localhost:$$api_port/v1" NEXT_PUBLIC_APP_URL="http://localhost:$$wport" APP_ALLOWED_ORIGINS="http://localhost:$$wport,http://localhost:3000" NEXT_PUBLIC_API_BASE_URL=/api exec pnpm exec next dev --webpack --port $$wport
 
 build/api: ## Build Go API binary
 	cd apps/api && go build -o bin/api ./cmd/api
@@ -227,13 +248,13 @@ clean: ## Clean build artifacts
 # Semua target memakai scripts/deploy/*.sh. Lihat docs/DEPLOYMENT.md.
 
 deploy: ## Full/selective deploy: sync → build di VM → hapus source → up (ARGS=--only=web dsb)
-	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL -u NEXT_PUBLIC_MAPBOX_TOKEN bash scripts/deploy/deploy.sh $(ARGS)
+	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL bash scripts/deploy/deploy.sh $(ARGS)
 
 deploy/sync: ## Sync source & compose sementara ke VM (.build-src)
 	@bash scripts/deploy/sync-source.sh $(ARGS)
 
 deploy/build: ## Build image lokal (ARGS=--only=api,web,caddy --no-cache)
-	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL -u NEXT_PUBLIC_MAPBOX_TOKEN bash scripts/deploy/build-local.sh $(ARGS)
+	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL bash scripts/deploy/build-local.sh $(ARGS)
 
 deploy/save: ## Save image ke dist/garda-images-<sha>.tar.gz
 	@bash scripts/deploy/save-images.sh $(ARGS)

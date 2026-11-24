@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Clock, Snowflake } from "lucide-react";
 import { PanelTitle } from "@/components/garda/page-header";
+import { EmptyState } from "@/components/garda/empty-state";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
@@ -21,7 +22,7 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
   const utilisasiTinggi = (r?.utilisasiPct ?? 0) >= 90;
 
   return (
-    <section className={cn("glass flex h-full flex-col rounded-xl p-5 sm:p-6", className)}>
+    <section className={cn("glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0", className)}>
       <PanelTitle
         title="Stok cold storage"
         description={
@@ -31,7 +32,7 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
         }
       />
 
-      <div className="mt-4 flex-1">
+      <div className="scrollbar-thin mt-3 flex-1 lg:min-h-0 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-44 w-full" />
         ) : !data || !r ? (
@@ -41,8 +42,8 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
             onCoba={() => void refetch()}
           />
         ) : (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-border/60 bg-white/50 p-3 dark:bg-white/5">
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border bg-card p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 font-medium text-muted-foreground">
                   <Snowflake className="size-3.5 text-data-600" />
@@ -64,7 +65,7 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-border/60 bg-white/40 p-3 dark:bg-white/5">
+              <div className="rounded-lg border border-border bg-card p-3">
                 <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                   <Clock className="size-3.5 text-waspada-ink" />
                   Kedaluwarsa ≤ {data.ambangKedaluwarsaHari} hari
@@ -73,7 +74,7 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
                   {formatAngka(r.mendekatiKedaluwarsaTon, 1)} ton
                 </p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-white/40 p-3 dark:bg-white/5">
+              <div className="rounded-lg border border-border bg-card p-3">
                 <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
                   <AlertTriangle className="size-3.5 text-defisit-ink" />
                   Risiko food loss tinggi
@@ -85,9 +86,10 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
             </div>
 
             {data.komoditas.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada stok cold storage berlaku pada cakupan ini.
-              </p>
+              <EmptyState
+                title="Belum ada stok cold storage berlaku pada cakupan ini."
+                className="py-6"
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -100,17 +102,17 @@ export function OpsStockCard({ className }: { className?: string } = {}) {
                   </thead>
                   <tbody>
                     {data.komoditas.slice(0, 5).map((k) => (
-                      <tr key={k.komoditasKode} className="border-t border-border/50">
+                      <tr key={k.komoditasKode} className="border-t border-border">
                         <td className="py-2 pr-2">
                           <p className="font-medium">{k.komoditasNama}</p>
                           <p className="text-xs text-muted-foreground">
                             {formatAngka(k.jumlahLot)} lot · {formatAngka(k.jumlahFasilitas)} fasilitas
                           </p>
                         </td>
-                        <td className="num py-2 text-right font-medium">
+                        <td className="num py-2 pl-2 text-right font-medium whitespace-nowrap">
                           {formatAngka(k.totalTon, 1)} ton
                         </td>
-                        <td className="py-2 text-right">
+                        <td className="py-2 pl-2 text-right whitespace-nowrap">
                           {k.risikoTinggiTon > 0 ? (
                             <StatusBadge tone="defisit" dot={false}>
                               Risiko {formatAngka(k.risikoTinggiTon, 1)} t

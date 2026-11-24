@@ -39,17 +39,17 @@ export class WidgetErrorBoundary extends Component<Props, State> {
       return (
         <div
           className={cn(
-            "glass flex min-h-[220px] flex-col items-center justify-center rounded-xl p-6 text-center",
+            "glass flex min-h-[220px] flex-col items-center justify-center rounded-lg p-6 text-center",
             this.props.className
           )}
         >
-          <div className="grid size-10 place-items-center rounded-full bg-defisit/10 text-defisit">
-            <AlertTriangle className="size-5" />
+          <div className="grid size-10 place-items-center rounded-lg bg-defisit-soft text-defisit-ink dark:bg-defisit/15 dark:text-rose-300">
+            <AlertTriangle className="size-5" strokeWidth={1.75} aria-hidden />
           </div>
-          <h4 className="mt-3 text-sm font-semibold text-foreground">
+          <h4 className="mt-3 text-sm font-medium text-foreground">
             {this.props.fallbackTitle ?? "Gagal memuat bagian ini"}
           </h4>
-          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+          <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
             {this.state.error?.message ?? "Terjadi kendala saat memuat data tampilan."}
           </p>
           <SpringButton

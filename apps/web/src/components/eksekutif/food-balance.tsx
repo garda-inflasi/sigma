@@ -17,12 +17,13 @@ export function FoodBalance({ data, sumber }: { data: NonNullable<RingkasanEksek
     .sort((a, b) => b.rasio - a.rasio);
 
   return (
-    <section className="glass h-full rounded-xl p-5 sm:p-6">
+    <section className="glass flex flex-col rounded-lg p-3.5 lg:h-full lg:min-h-0">
       <PanelTitle title="Neraca pangan" description={`Produksi terhadap kebutuhan bulanan provinsi, ${sumber === "DEMO" ? "data demo" : sumber}`} />
-      <div className="mt-2 flex justify-between px-[140px] text-[11px] text-muted-foreground max-sm:px-[112px]">
-        <span>Defisit</span><span>Surplus</span>
+      <div className="mt-2 grid shrink-0 grid-cols-[128px_1fr_92px] gap-3 pr-1 text-[11px] text-muted-foreground max-sm:grid-cols-[100px_1fr_80px]">
+        <span aria-hidden />
+        <span className="flex justify-between"><span>Defisit</span><span>Surplus</span></span>
       </div>
-      <ul className="mt-2 space-y-2.5">
+      <ul className="scrollbar-thin mt-2 flex flex-col gap-2 pr-1 lg:min-h-0 lg:flex-1 lg:justify-around lg:overflow-y-auto">
         {rows.map((r, i) => {
           const surplus = r.rasio >= 0;
           const w = (Math.min(Math.abs(r.rasio), BATAS) / BATAS) * 50;
@@ -32,7 +33,7 @@ export function FoodBalance({ data, sumber }: { data: NonNullable<RingkasanEksek
                 <KomoditasIcon kode={r.komoditasKode} className="shrink-0 text-muted-foreground" />
                 <span className="truncate">{r.nama}</span>
               </span>
-              <div className="relative h-6 rounded-lg bg-mist-100/70 dark:bg-white/5">
+              <div className="relative h-6 rounded-lg bg-secondary">
                 <div className="absolute inset-y-0 left-1/2 w-px bg-navy-900/15 dark:bg-white/20" />
                 <motion.div
                   className={cn("absolute inset-y-1 rounded-md", surplus ? "left-1/2 bg-gradient-to-r from-surplus/70 to-surplus" : "right-1/2 bg-gradient-to-l from-defisit/70 to-defisit")}
@@ -50,7 +51,7 @@ export function FoodBalance({ data, sumber }: { data: NonNullable<RingkasanEksek
           );
         })}
       </ul>
-      <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-3 shrink-0 text-xs leading-relaxed text-muted-foreground">
         {rows.length > 0 && rows[rows.length - 1].selisih < 0
           ? `Defisit terbesar: ${rows[rows.length - 1].nama.toLowerCase()} (${formatAngka(Math.abs(rows[rows.length - 1].selisih))} ton/bulan). Arahkan ke kanban siklus tekanan bila pasokan tertunda.`
           : "Tidak ada komoditas yang defisit pada periode ini."}

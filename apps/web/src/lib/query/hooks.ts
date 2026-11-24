@@ -315,10 +315,11 @@ export function useAksiKartu() {
  * pindah halaman/urutan/filter agar tabel tidak berkedip; kartu fasilitas
  * ikut disegarkan tiap menit untuk telemetri suhu.
  */
-export const useColdStorage = (params: ColdStorageParams) =>
+export const useColdStorage = (params: ColdStorageParams, enabled = true) =>
   useQuery({
     queryKey: qk.coldStorage.list(params),
     queryFn: () => api.coldStorage.list(params),
+    enabled,
     placeholderData: keepPreviousData,
     // Berhenti memuat ulang otomatis setelah galat (mis. sesi berakhir) agar tidak
     // menembak BFF tiap menit; dilanjutkan begitu "Coba lagi" atau perubahan kriteria berhasil.

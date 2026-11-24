@@ -32,11 +32,11 @@ export function FilterSelect({
     >
       <SelectTrigger
         aria-label={label}
-        className="h-10 min-w-48 rounded-md bg-white/70 dark:bg-white/5"
+        className="w-full sm:w-48 text-[13px] md:text-[13px]"
       >
         <SelectValue placeholder={label} />
       </SelectTrigger>
-      <SelectContent className="rounded-xl">
+      <SelectContent>
         <SelectItem value={SEMUA}>{label}: semua</SelectItem>
         {options.map((o) => (
           <SelectItem key={o.value} value={o.value}>

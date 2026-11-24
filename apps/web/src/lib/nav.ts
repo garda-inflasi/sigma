@@ -75,6 +75,8 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
         label: "Master data",
         icon: Database,
         perm: "master.lihat",
+        // Lencana = usulan menunggu; antrean dibuka lewat tab "Antrean perubahan" di halaman Master data.
+        badge: "master",
         keywords: [
           "komoditas",
           "wilayah",
@@ -82,15 +84,9 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
           "kecamatan",
           "satuan",
           "pedagang",
+          "antrean",
+          "usulan",
         ],
-      },
-      {
-        href: "/master/perubahan",
-        label: "Antrean perubahan master",
-        icon: GitPullRequest,
-        perm: "master.lihat",
-        badge: "master",
-        keywords: ["usulan", "persetujuan", "setujui", "tolak", "versi"],
       },
     ],
   },
@@ -169,7 +165,14 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
         label: "Impersonasi",
         icon: UserCog,
         perm: "impersonasi.kelola",
-        keywords: ["alih peran", "alih akun", "beralih", "superadmin", "uji peran", "kebijakan"],
+        keywords: [
+          "alih peran",
+          "alih akun",
+          "beralih",
+          "superadmin",
+          "uji peran",
+          "kebijakan",
+        ],
       },
       {
         href: "/audit",
@@ -202,6 +205,17 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
 
 export const NAV_FLAT = NAV.flatMap((g) => g.items);
 
+/** Halaman di dalam satu item sidebar yang tetap bisa dicari lewat palet perintah (⌘K). */
+export const NAV_PINTASAN: NavItem[] = [
+  {
+    href: "/master/perubahan",
+    label: "Antrean perubahan",
+    icon: GitPullRequest,
+    perm: "master.lihat",
+    keywords: ["master", "usulan", "persetujuan", "setujui", "tolak", "versi"],
+  },
+];
+
 /** Halaman konsol yang tidak punya item sidebar (dibuka dari menu akun) tetapi tetap perlu judul di topbar. */
 const HALAMAN_TANPA_NAV: readonly { href: string; label: string }[] = [
   { href: "/profil", label: "Profil saya" },
@@ -209,10 +223,15 @@ const HALAMAN_TANPA_NAV: readonly { href: string; label: string }[] = [
 
 const JUDUL_BAWAAN = "Garda Inflasi";
 
+const pintasanUntuk = (pathname: string) =>
+  NAV_PINTASAN.find(
+    (h) => pathname === h.href || pathname.startsWith(`${h.href}/`),
+  );
+
 /**
  * Entri nav aktif untuk satu path. Kecocokan persis (path sama atau anak dari href) didahulukan; baru bila tidak
- * ada, dipakai kecocokan tingkat grup (dua segmen pertama), mis. `/master/pasar` menyalakan "Master data" yang
- * href-nya `/master/komoditas`. Tanpa urutan ini `/master/perubahan` ikut menyalakan "Master data".
+ * ada, dipakai kecocokan tingkat grup (dua segmen pertama), mis. `/master/pasar` dan `/master/perubahan` menyalakan
+ * "Master data" yang href-nya `/master/komoditas`.
  */
 export function activeNav(pathname: string, items = NAV_FLAT) {
   const terpanjang = (a: NavItem, b: NavItem) => b.href.length - a.href.length;
@@ -229,6 +248,8 @@ export function activeNav(pathname: string, items = NAV_FLAT) {
 
 /** Judul topbar untuk satu path: item nav aktif, lalu halaman tanpa item sidebar (mis. /profil), lalu nama aplikasi. */
 export function judulHalaman(pathname: string, items = NAV_FLAT): string {
+  const pintasan = pintasanUntuk(pathname);
+  if (pintasan) return pintasan.label;
   const nav = activeNav(pathname, items);
   if (nav) return nav.label;
   const lain = HALAMAN_TANPA_NAV.find(
@@ -242,10 +263,15 @@ export function judulHalaman(pathname: string, items = NAV_FLAT): string {
  * (profil, akses ditolak) hanya punya satu remah. Tidak pernah kosong.
  */
 export function remahRoti(pathname: string, items = NAV): string[] {
-  const aktif = activeNav(pathname, items.flatMap((g) => g.items));
+  const aktif = activeNav(
+    pathname,
+    items.flatMap((g) => g.items),
+  );
   if (aktif) {
     const grup = items.find((g) => g.items.includes(aktif))?.grup;
-    return grup ? [grup, aktif.label] : [aktif.label];
+    const dasar = grup ? [grup, aktif.label] : [aktif.label];
+    const pintasan = pintasanUntuk(pathname);
+    return pintasan ? [...dasar, pintasan.label] : dasar;
   }
   return [judulHalaman(pathname)];
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FormAlert } from "@/components/form/form-field";
 import {
   bagianPesan,
   masihMenunggu,
@@ -56,8 +57,8 @@ export function KotakGalatAuth({
 }) {
   const { teks, sisa } = bagianPesan(galat, sekarang);
   return (
-    <div role="alert" className="space-y-1 text-sm">
-      <p className="font-medium text-destructive">
+    <FormAlert className="space-y-1">
+      <p className="font-medium">
         {teks}
         {sisa && (
           <>
@@ -67,6 +68,6 @@ export function KotakGalatAuth({
         )}
       </p>
       {children}
-    </div>
+    </FormAlert>
   );
 }

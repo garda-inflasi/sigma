@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -21,7 +22,7 @@ const HASIL = [
 /** Filter terpasang dari panel detail (objek atau permintaan tertentu), bisa dilepas. */
 function Terpasang({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <span className="inline-flex h-10 items-center gap-1.5 rounded-md bg-secondary px-3 text-sm">
+    <span className="inline-flex h-9 max-w-full items-center gap-1.5 rounded-md bg-secondary px-3 text-[13px]">
       <span className="num max-w-56 truncate">{label}</span>
       <button
         type="button"
@@ -49,95 +50,98 @@ export function AuditFilterBar({
 
   return (
     <div
-      className="glass flex flex-wrap items-end gap-3 rounded-xl p-3"
+      className="flex flex-wrap items-center gap-2"
       role="search"
       aria-label="Filter audit"
     >
-      <label className="space-y-1 text-xs text-muted-foreground">
-        Cari
+      <label className="w-full min-w-0 sm:w-44">
+        <span className="sr-only">Cari</span>
         <Input
           type="search"
           value={filter.q ?? ""}
           onChange={(e) => set({ q: e.target.value })}
-          placeholder="Aksi, objek, aktor, ID permintaan"
-          className="h-10 w-60"
+          placeholder="Aksi, objek, atau ID"
+          className="md:text-[13px]"
         />
       </label>
 
-      <label className="space-y-1 text-xs text-muted-foreground">
-        Aktor
+      <label className="w-full min-w-0 sm:w-32">
+        <span className="sr-only">Aktor</span>
         <Input
           value={filter.aktor ?? ""}
           onChange={(e) => set({ aktor: e.target.value })}
-          placeholder="Nama, email, atau ID"
-          className="h-10 w-52"
+          placeholder="Aktor"
+          title="Nama, email, atau ID aktor"
+          className="md:text-[13px]"
         />
       </label>
 
-      <div className="space-y-1 text-xs text-muted-foreground">
-        Aksi
-        <Select
-          value={filter.aksi ?? SEMUA}
-          onValueChange={(v: string) =>
-            set({ aksi: v === SEMUA ? undefined : v })
-          }
+      <Select
+        value={filter.aksi ?? SEMUA}
+        onValueChange={(v: string) =>
+          set({ aksi: v === SEMUA ? undefined : v })
+        }
+      >
+        <SelectTrigger
+          aria-label="Aksi"
+          className="w-[calc(50%-0.25rem)] text-[13px] sm:w-36 md:text-[13px]"
         >
-          <SelectTrigger className="h-10 min-w-48 rounded-md bg-white/70 dark:bg-white/5">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="rounded-xl">
-            <SelectItem value={SEMUA}>Semua aksi</SelectItem>
-            {AUDIT_AKSI.map((a) => (
-              <SelectItem key={a} value={a}>
-                {a}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={SEMUA}>Semua aksi</SelectItem>
+          {AUDIT_AKSI.map((a) => (
+            <SelectItem key={a} value={a}>
+              {a}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <div className="space-y-1 text-xs text-muted-foreground">
-        Hasil
-        <Select
-          value={filter.hasil ?? SEMUA}
-          onValueChange={(v: string) =>
-            set({
-              hasil: v === SEMUA ? undefined : (v as AuditFilter["hasil"]),
-            })
-          }
+      <Select
+        value={filter.hasil ?? SEMUA}
+        onValueChange={(v: string) =>
+          set({
+            hasil: v === SEMUA ? undefined : (v as AuditFilter["hasil"]),
+          })
+        }
+      >
+        <SelectTrigger
+          aria-label="Hasil"
+          className="w-[calc(50%-0.25rem)] text-[13px] sm:w-32 md:text-[13px]"
         >
-          <SelectTrigger className="h-10 min-w-36 rounded-md bg-white/70 dark:bg-white/5">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="rounded-xl">
-            <SelectItem value={SEMUA}>Semua hasil</SelectItem>
-            {HASIL.map((h) => (
-              <SelectItem key={h.value} value={h.value}>
-                {h.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={SEMUA}>Semua hasil</SelectItem>
+          {HASIL.map((h) => (
+            <SelectItem key={h.value} value={h.value}>
+              {h.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <label className="space-y-1 text-xs text-muted-foreground">
-        Dari tanggal
+      <label className="flex w-[calc(50%-0.25rem)] min-w-0 flex-col gap-0.5 text-xs text-muted-foreground sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
+        <span className="sr-only">Dari tanggal</span>
+        <span aria-hidden>Dari</span>
         <Input
           type="date"
           value={filter.dari ?? ""}
           max={filter.sampai || undefined}
           onChange={(e) => set({ dari: e.target.value || undefined })}
-          className="h-10"
+          className="w-full min-w-0 text-foreground sm:w-[8.25rem] md:text-[13px] dark:scheme-dark"
         />
       </label>
-      <label className="space-y-1 text-xs text-muted-foreground">
-        Sampai tanggal
+      <label className="flex w-[calc(50%-0.25rem)] min-w-0 flex-col gap-0.5 text-xs text-muted-foreground sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
+        <span className="sr-only">Sampai tanggal</span>
+        <span aria-hidden>Sampai</span>
         <Input
           type="date"
           value={filter.sampai ?? ""}
           min={filter.dari || undefined}
           onChange={(e) => set({ sampai: e.target.value || undefined })}
-          className="h-10"
+          className="w-full min-w-0 text-foreground sm:w-[8.25rem] md:text-[13px] dark:scheme-dark"
         />
       </label>
 
@@ -161,13 +165,15 @@ export function AuditFilterBar({
       )}
 
       {aktif && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
+          className="h-9 text-[13px]"
           onClick={() => onChange({})}
-          className="inline-flex h-10 items-center gap-1.5 rounded-md px-3 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           <X className="size-4" /> Reset
-        </button>
+        </Button>
       )}
     </div>
   );

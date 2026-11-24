@@ -364,7 +364,7 @@ test.describe("prediksi dan KPI", () => {
 
     test("/eksekutif: panel XAI menawarkan Unduh CSV", async ({ page }) => {
       await masukSebagai(page, "strategisFmipa");
-      await buka(page, "/eksekutif");
+      await buka(page, "/eksekutif?tab=proyeksi");
       const unduh = page.getByRole("button", {
         name: "Unduh CSV",
         exact: true,

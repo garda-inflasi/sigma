@@ -1,12 +1,25 @@
 "use client";
 
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { EmptyState } from "@/components/garda/empty-state";
+import {
+  InspectorRingkasan,
+  InspectorSection,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
+import { PanelGalat } from "@/components/garda/panel-galat";
+import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -23,6 +36,12 @@ const HASIL_TONE = {
   BERHASIL: "normal",
   GAGAL: "defisit",
   DITOLAK: "defisit",
+} as const;
+
+const HASIL_LABEL = {
+  BERHASIL: "Berhasil",
+  GAGAL: "Gagal",
+  DITOLAK: "Ditolak",
 } as const;
 
 const JENIS_LABEL: Record<AuditPerubahan["jenis"], string> = {
@@ -44,34 +63,86 @@ export function AuditDetailSheet({
   onClose: () => void;
   onFilter: (patch: AuditFilter) => void;
 }) {
-  const { data, isLoading, isError } = useAuditDetail(id);
+  const { data, isLoading, isError, error } = useAuditDetail(id);
 
   return (
     <Sheet open={!!id} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="glass-strong w-full gap-0 overflow-y-auto sm:max-w-xl">
+      <SheetContent className="sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Detail catatan audit</SheetTitle>
           <SheetDescription>
             Catatan bersifat tetap: tidak dapat diubah atau dihapus.
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-5 px-4 pb-6 text-sm">
+        <SheetBody>
           {isLoading && (
-            <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+            <div
+              role="status"
+              aria-label="Memuat catatan"
+              className="space-y-3 px-5 py-4"
+            >
+              <Shimmer className="h-4 w-1/3" />
+              <Shimmer className="h-24 w-full" />
+              <Shimmer className="h-32 w-full" />
+            </div>
           )}
           {isError && (
-            <p role="alert" className="text-destructive">
-              Catatan tidak dapat dimuat.
-            </p>
+            <div className="px-5 py-4">
+              <PanelGalat judul="Catatan tidak dapat dimuat." error={error} />
+            </div>
           )}
-          {data && <Isi detail={data} onFilter={onFilter} onClose={onClose} />}
-        </div>
+          {data && (
+            <>
+              <InspectorRingkasan
+                status={
+                  <StatusBadge tone={HASIL_TONE[data.hasil]}>
+                    {HASIL_LABEL[data.hasil]}
+                  </StatusBadge>
+                }
+                nilai={<span className="break-all">{data.aksi}</span>}
+                keterangan={
+                  <>
+                    {data.aktor} ·{" "}
+                    <span className="num">
+                      {formatTanggal(data.waktu, "d MMM yyyy HH.mm.ss")}
+                    </span>
+                  </>
+                }
+              />
+              <Isi detail={data} />
+            </>
+          )}
+        </SheetBody>
+        {data && (
+          <AksiDetail detail={data} onFilter={onFilter} onClose={onClose} />
+        )}
       </SheetContent>
     </Sheet>
   );
 }
 
-function Isi({
+/** `InspectorSection` yang tetap menjadi region bernama; garis pemisah ada di pembungkus. */
+function Seksi({
+  label,
+  title,
+  children,
+}: {
+  label: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      aria-label={label}
+      className="border-t border-border first:border-t-0"
+    >
+      <InspectorSection title={title}>{children}</InspectorSection>
+    </section>
+  );
+}
+
+/** Tindakan lanjutan dari satu catatan: menyaring daftar atau membuka halaman objeknya. */
+function AksiDetail({
   detail: d,
   onFilter,
   onClose,
@@ -85,104 +156,113 @@ function Isi({
     onFilter(patch);
     onClose();
   };
+  return (
+    <SheetFooter>
+      {d.correlationId && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => saring({ correlation_id: d.correlationId })}
+        >
+          Semua catatan dari permintaan ini
+        </Button>
+      )}
+      {tautan && (
+        <Button asChild variant="outline" size="sm">
+          <Link href={tautan}>
+            Buka halaman terkait <ExternalLink className="size-3" />
+          </Link>
+        </Button>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => saring({ entitas_id: d.entitasId })}
+      >
+        Jejak objek ini
+      </Button>
+    </SheetFooter>
+  );
+}
 
+function Isi({ detail: d }: { detail: AuditDetail }) {
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="num rounded-md bg-mist-100 px-1.5 py-0.5 text-xs dark:bg-white/5">
-          {d.aksi}
-        </span>
-        <StatusBadge tone={HASIL_TONE[d.hasil]}>{d.hasil}</StatusBadge>
-        <span className="num text-xs text-muted-foreground">
-          {formatTanggal(d.waktu, "d MMM yyyy HH.mm.ss")}
-        </span>
-      </div>
-
-      <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2">
-        <Baris label="Aktor">
-          {d.aktor}
-          {d.peran && (
-            <span className="text-muted-foreground"> · {d.peran}</span>
-          )}
-          {d.email && (
-            <span className="block text-xs text-muted-foreground">
-              {d.email}
-            </span>
-          )}
-        </Baris>
-        <Baris label="Objek">
-          <span className="num">
-            {d.entitas} {d.entitasId}
-          </span>
-          <span className="mt-1 flex flex-wrap gap-3 text-xs">
-            <button
-              type="button"
-              className="text-primary hover:underline"
-              onClick={() => saring({ entitas_id: d.entitasId })}
-            >
-              Jejak objek ini
-            </button>
-            {tautan && (
-              <Link
-                href={tautan}
-                className="inline-flex items-center gap-1 text-primary hover:underline"
-              >
-                Buka halaman terkait <ExternalLink className="size-3" />
-              </Link>
+      <InspectorSection title="Rincian" className="border-t-0">
+        <MetaGrid>
+          <MetaItem label="Aktor">
+            {d.aktor}
+            {d.peran && (
+              <span className="font-normal text-muted-foreground">
+                {" "}
+                · {d.peran}
+              </span>
             )}
-          </span>
-        </Baris>
-        <Baris label="IP">
-          <span className="num">{d.ip || "-"}</span>
-        </Baris>
-        {d.userAgent && (
-          <Baris label="Perangkat">
-            <span className="break-all text-xs">{d.userAgent}</span>
-          </Baris>
-        )}
-        {d.correlationId && (
-          <Baris label="Permintaan">
-            <span className="num break-all text-xs">{d.correlationId}</span>
-            <button
-              type="button"
-              className="mt-1 block text-xs text-primary hover:underline"
-              onClick={() => saring({ correlation_id: d.correlationId })}
-            >
-              Semua catatan dari permintaan ini
-            </button>
-          </Baris>
-        )}
-      </dl>
+            {d.email && (
+              <span className="block text-xs font-normal text-muted-foreground">
+                {d.email}
+              </span>
+            )}
+          </MetaItem>
+          <MetaItem label="IP">
+            <span className="num">{d.ip || "-"}</span>
+          </MetaItem>
+          <MetaItem label="Objek" wide>
+            <span className="num">
+              {d.entitas} {d.entitasId}
+            </span>
+          </MetaItem>
+          {d.userAgent && (
+            <MetaItem label="Perangkat" wide>
+              <span className="text-xs font-normal break-all">
+                {d.userAgent}
+              </span>
+            </MetaItem>
+          )}
+          {d.correlationId && (
+            <MetaItem label="Permintaan" wide>
+              <span className="num text-xs font-normal break-all">
+                {d.correlationId}
+              </span>
+            </MetaItem>
+          )}
+        </MetaGrid>
+      </InspectorSection>
 
-      <section aria-label="Perubahan" className="space-y-2">
-        <h3 className="font-medium">Perubahan sebelum → sesudah</h3>
+      <Seksi label="Perubahan" title="Perubahan sebelum → sesudah">
         {d.perubahan.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Aksi ini tidak mencatat keadaan sebelum/sesudah.
-          </p>
+          <EmptyState
+            title="Aksi ini tidak mencatat keadaan sebelum/sesudah."
+            className="py-6"
+          />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-secondary/60 text-muted-foreground">
+            <table className="w-full text-left text-[13px]">
+              <thead className="bg-secondary text-[11px] tracking-wide text-muted-foreground uppercase">
                 <tr>
-                  <th className="px-2 py-1.5 font-medium">Bidang</th>
-                  <th className="px-2 py-1.5 font-medium">Sebelum</th>
-                  <th className="px-2 py-1.5 font-medium">Sesudah</th>
+                  <th className="h-9 px-3 font-medium">Bidang</th>
+                  <th className="h-9 px-3 font-medium">Sebelum</th>
+                  <th className="h-9 px-3 font-medium">Sesudah</th>
                 </tr>
               </thead>
               <tbody>
                 {d.perubahan.map((p) => (
-                  <tr key={p.path} className="border-t border-border align-top">
-                    <td className="px-2 py-1.5">
+                  <tr
+                    key={p.path}
+                    className="border-t border-border align-top hover:bg-secondary/60"
+                  >
+                    <td className="px-3 py-2">
                       <span className="num">{p.path}</span>
-                      <span className="block text-[10px] text-muted-foreground">
+                      <span className="block text-[11px] text-muted-foreground">
                         {JENIS_LABEL[p.jenis]}
                       </span>
                     </td>
-                    <td className="num break-all px-2 py-1.5 text-rose-700 dark:text-rose-300">
+                    <td className="num px-3 py-2 [overflow-wrap:anywhere] text-defisit-ink dark:text-rose-300">
                       {formatNilaiAudit(p.sebelum) || "-"}
                     </td>
-                    <td className="num break-all px-2 py-1.5 text-emerald-700 dark:text-emerald-300">
+                    <td className="num px-3 py-2 [overflow-wrap:anywhere] text-normal-ink dark:text-emerald-300">
                       {formatNilaiAudit(p.sesudah) || "-"}
                     </td>
                   </tr>
@@ -191,31 +271,15 @@ function Isi({
             </table>
           </div>
         )}
-      </section>
+      </Seksi>
 
       {d.metadata && Object.keys(d.metadata).length > 0 && (
-        <section aria-label="Metadata" className="space-y-2">
-          <h3 className="font-medium">Metadata</h3>
-          <pre className="num overflow-x-auto rounded-lg bg-secondary/60 p-2 text-xs">
+        <Seksi label="Metadata" title="Metadata">
+          <pre className="num overflow-x-auto rounded-lg bg-secondary p-3 text-xs">
             {JSON.stringify(d.metadata, null, 2)}
           </pre>
-        </section>
+        </Seksi>
       )}
-    </>
-  );
-}
-
-function Baris({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd>{children}</dd>
     </>
   );
 }

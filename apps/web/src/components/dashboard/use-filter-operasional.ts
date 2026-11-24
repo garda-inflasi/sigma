@@ -13,7 +13,10 @@ import {
 const MAKS_RENTANG_HARI = 90;
 
 /** Memeriksa apakah pasangan tanggal dari..sampai valid (dari <= sampai dan rentang <= 90 hari). */
-export function validasiRentangTanggal(dari?: string, sampai?: string): string | null {
+export function validasiRentangTanggal(
+  dari?: string,
+  sampai?: string,
+): string | null {
   if (!dari && !sampai) return null;
   if (dari && sampai) {
     const tDari = Date.parse(dari);
@@ -77,20 +80,35 @@ export function useFilterOperasional() {
     [mentah.kabupatenKode, mentah.komoditasKode],
   );
 
+  // Mengubah filter tidak boleh memindahkan pengguna dari tab yang sedang dibuka.
+  const tab = searchParams?.get("tab");
+  const keUrl = useCallback(
+    (f?: FilterOperasional) => {
+      const q = new URLSearchParams(toFilterQuery(f));
+      if (tab) q.set("tab", tab);
+      const s = q.toString();
+      return s ? `/operasional?${s}` : "/operasional";
+    },
+    [tab],
+  );
+
   const setFilter = useCallback(
     (patch: Partial<FilterOperasional>) => {
       const merged = bersihkanFilter({ ...mentah, ...patch });
-      router.replace(`/operasional${toFilterQuery(merged)}`, { scroll: false });
+      router.replace(keUrl(merged), { scroll: false });
     },
-    [mentah, router],
+    [mentah, router, keUrl],
   );
 
   const resetFilter = useCallback(() => {
-    router.replace("/operasional", { scroll: false });
-  }, [router]);
+    router.replace(keUrl(), { scroll: false });
+  }, [router, keUrl]);
 
   const adaFilter = Boolean(
-    mentah.kabupatenKode || mentah.komoditasKode || mentah.dari || mentah.sampai,
+    mentah.kabupatenKode ||
+    mentah.komoditasKode ||
+    mentah.dari ||
+    mentah.sampai,
   );
 
   return {

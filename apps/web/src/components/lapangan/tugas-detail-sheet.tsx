@@ -1,13 +1,23 @@
 "use client";
 
 import { CheckCircle2, Circle, MapPin, Play } from "lucide-react";
+import {
+  InspectorRingkasan,
+  InspectorSection,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
+import { PanelGalat } from "@/components/garda/panel-galat";
+import { Shimmer } from "@/components/garda/shimmer";
 import { SpringLink } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -40,126 +50,175 @@ export function TugasDetailSheet({
   daftar: TugasLapangan | undefined;
   onClose: () => void;
 }) {
-  const { data: detail, isLoading, isError } = useTugasDetail(id);
+  const { data: detail, isLoading, isError, error } = useTugasDetail(id);
   const t = detail ?? daftar;
   const rincian: RincianKomoditasTugas[] | undefined = detail?.rincian;
+  const terisi = t ? Math.min(t.terisi, t.target) : 0;
+  const sisa = t ? t.target - terisi : 0;
 
   return (
     <Sheet open={!!id} onOpenChange={(o: boolean) => !o && onClose()}>
-      <SheetContent
-        side="bottom"
-        className="glass-strong mx-auto max-h-[85dvh] max-w-md overflow-y-auto rounded-t-2xl border-0"
-      >
+      <SheetContent side="bottom" className="mx-auto max-w-md pb-safe">
         <SheetHeader>
           <SheetTitle>{t?.judul ?? "Detail tugas"}</SheetTitle>
           <SheetDescription className="flex items-center gap-1">
-            <MapPin className="size-3.5" />
-            {t
-              ? `${t.pasarNama}, harga ${t.tipe === "KONSUMEN" ? "konsumen" : "produsen"}`
-              : (id ?? "")}
+            {t ? (
+              <>
+                <MapPin className="size-3.5 shrink-0" aria-hidden />
+                {t.pasarNama}
+              </>
+            ) : (
+              "Rincian tugas survei"
+            )}
           </SheetDescription>
         </SheetHeader>
-        {t && (
-          <div className="space-y-5 px-4 pb-6">
-            <div className="flex items-center justify-between gap-3">
-              <StatusBadge tone={STATUS[t.status].tone}>
-                {STATUS[t.status].label}
-              </StatusBadge>
-              <p
-                className={cn(
-                  "text-right text-xs",
-                  t.status === "TERLAMBAT"
-                    ? "text-defisit-ink"
-                    : "text-muted-foreground",
+        {t ? (
+          <>
+            <SheetBody>
+              <InspectorRingkasan
+                status={
+                  <StatusBadge tone={STATUS[t.status].tone}>
+                    {STATUS[t.status].label}
+                  </StatusBadge>
+                }
+                nilai={`${terisi}/${t.target} komoditas`}
+                keterangan={
+                  <span className="block space-y-1.5">
+                    <span
+                      role="progressbar"
+                      aria-label="Progres tugas"
+                      aria-valuemin={0}
+                      aria-valuemax={t.target}
+                      aria-valuenow={terisi}
+                      className="block h-1.5 overflow-hidden rounded-full bg-secondary"
+                    >
+                      <span
+                        className={cn(
+                          "block h-full rounded-full",
+                          t.status === "SELESAI"
+                            ? "bg-normal"
+                            : t.status === "TERLAMBAT"
+                              ? "bg-defisit"
+                              : "bg-data-500",
+                        )}
+                        style={{
+                          width: `${Math.min(100, (t.terisi / t.target) * 100)}%`,
+                        }}
+                      />
+                    </span>
+                    <span className="block">
+                      {sisa > 0
+                        ? `${sisa} komoditas belum dicatat.`
+                        : "Semua komoditas sudah dicatat."}
+                    </span>
+                  </span>
+                }
+              />
+
+              <InspectorSection title="Rincian">
+                <MetaGrid>
+                  <MetaItem label="Tenggat">
+                    <span
+                      className={cn(
+                        "num",
+                        t.status === "TERLAMBAT" &&
+                          "text-defisit-ink dark:text-rose-300",
+                      )}
+                    >
+                      {formatTanggal(t.tenggat, "d MMM yyyy HH.mm")}
+                    </span>
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {formatRelatif(t.tenggat)}
+                    </span>
+                  </MetaItem>
+                  <MetaItem label="Jenis harga">
+                    {t.tipe === "KONSUMEN" ? "Konsumen" : "Produsen"}
+                  </MetaItem>
+                </MetaGrid>
+              </InspectorSection>
+
+              <InspectorSection title="Komoditas">
+                {isLoading && !rincian && (
+                  <div role="status" aria-label="Memuat rincian">
+                    <Shimmer className="h-3 w-32" />
+                  </div>
                 )}
-              >
-                Tenggat {formatTanggal(t.tenggat, "d MMM yyyy HH.mm")} (
-                {formatRelatif(t.tenggat)})
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Progres</span>
-                <span className="num font-medium">
-                  {Math.min(t.terisi, t.target)}/{t.target} komoditas
-                </span>
-              </div>
-              <div
-                role="progressbar"
-                aria-label="Progres tugas"
-                aria-valuemin={0}
-                aria-valuemax={t.target}
-                aria-valuenow={Math.min(t.terisi, t.target)}
-                className="h-1.5 overflow-hidden rounded-full bg-mist-200 dark:bg-white/10"
-              >
-                <div
-                  className={cn(
-                    "h-full rounded-full",
-                    t.status === "SELESAI"
-                      ? "bg-normal"
-                      : t.status === "TERLAMBAT"
-                        ? "bg-defisit"
-                        : "bg-data-500",
-                  )}
-                  style={{
-                    width: `${Math.min(100, (t.terisi / t.target) * 100)}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <section className="space-y-2">
-              <h3 className="text-sm font-medium">Komoditas</h3>
-              {isLoading && !rincian && (
-                <p className="text-sm text-muted-foreground">Memuat rincian…</p>
-              )}
-              {isError && !rincian && (
-                <p className="text-xs text-muted-foreground">
-                  Rincian terbaru tidak dapat dimuat (mungkin sedang offline);
-                  menampilkan daftar komoditas saja.
-                </p>
-              )}
-              <ul aria-label="Komoditas tugas" className="space-y-1.5">
-                {(
-                  rincian ??
-                  t.komoditas.map((kode) => ({
-                    kode,
-                    nama: komoditasByKode[kode]?.nama ?? kode,
-                    terisi: undefined,
-                  }))
-                ).map((r) => (
-                  <li
-                    key={r.kode}
-                    className="flex items-center gap-3 rounded-xl bg-white/50 p-3 text-sm dark:bg-white/5"
-                  >
-                    <KomoditasIcon
-                      kode={r.kode}
-                      className="size-4 text-muted-foreground"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{r.nama}</span>
-                    {r.terisi === undefined ? null : r.terisi ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-normal-ink">
-                        <CheckCircle2 className="size-4" aria-hidden />
-                        Sudah diisi
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Circle className="size-4" aria-hidden />
-                        Belum diisi
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
+                {isError && !rincian && (
+                  <p className="text-xs text-muted-foreground">
+                    Rincian terbaru belum bisa dimuat, mungkin karena offline.
+                    Daftar komoditas tetap bisa dipakai.
+                  </p>
+                )}
+                <ul aria-label="Komoditas tugas" className="space-y-1.5">
+                  {[
+                    ...(rincian ??
+                      t.komoditas.map((kode) => ({
+                        kode,
+                        nama: komoditasByKode[kode]?.nama ?? kode,
+                        terisi: undefined,
+                      }))),
+                  ]
+                    .sort((a, b) => Number(!!a.terisi) - Number(!!b.terisi))
+                    .map((r) => (
+                      <li
+                        key={r.kode}
+                        className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 text-[13px]"
+                      >
+                        <KomoditasIcon
+                          kode={r.kode}
+                          className="size-4 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {r.nama}
+                        </span>
+                        {r.terisi === undefined ? null : r.terisi ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-normal-ink dark:text-emerald-300">
+                            <CheckCircle2 className="size-4" aria-hidden />
+                            Sudah diisi
+                          </span>
+                        ) : (
+                          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                            <Circle className="size-4" aria-hidden />
+                            Belum diisi
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                </ul>
+              </InspectorSection>
+            </SheetBody>
 
             {t.status !== "SELESAI" && (
-              <SpringLink href={hrefIsiTugas(t)} className="w-full">
-                <Play /> Mulai isi
-              </SpringLink>
+              <SheetFooter>
+                <SpringLink
+                  href={hrefIsiTugas(t)}
+                  size="xl"
+                  className="w-full"
+                >
+                  <Play /> Mulai isi
+                </SpringLink>
+              </SheetFooter>
             )}
-          </div>
+          </>
+        ) : (
+          <SheetBody>
+            {isLoading && (
+              <div
+                role="status"
+                aria-label="Memuat detail"
+                className="space-y-3 px-5 py-4"
+              >
+                <Shimmer className="h-5 w-1/3" />
+                <Shimmer className="h-16 w-full" />
+                <Shimmer className="h-16 w-full" />
+              </div>
+            )}
+            {isError && (
+              <div className="px-5 py-4">
+                <PanelGalat judul="Detail tugas gagal dimuat" error={error} />
+              </div>
+            )}
+          </SheetBody>
         )}
       </SheetContent>
     </Sheet>

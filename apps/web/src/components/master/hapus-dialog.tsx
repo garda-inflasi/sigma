@@ -5,6 +5,7 @@ import { useState } from "react";
 import { SpringButton } from "@/components/garda/spring-button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -76,24 +77,28 @@ export function HapusDialog({
             Hapus {label} {kode}?
           </DialogTitle>
           <DialogDescription>
-            {nama} dihapus permanen dan tercatat di audit trail. Data yang sudah
-            dipakai harga atau tugas lapangan tidak dapat dihapus; untuk itu
-            pilih {saran}.
+            {nama} hilang dari daftar master dan tidak dapat dikembalikan.
+            Tindakan ini tercatat di audit trail. Bila sudah dipakai harga atau
+            tugas lapangan, penghapusan ditolak; pilih {saran}.
           </DialogDescription>
         </DialogHeader>
         {galat && (
-          <div
-            role="alert"
-            className="flex gap-2 rounded-xl bg-waspada-soft/80 p-3 text-sm text-waspada-ink dark:bg-waspada/15 dark:text-amber-300"
-          >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <div className="space-y-1">
-              <p>{galat.pesan}</p>
-              {galat.kode === KODE_MASTER_DIRUJUK && (
-                <p className="text-xs">Hapus tidak mungkin; gunakan {saran}.</p>
-              )}
+          <DialogBody>
+            <div
+              role="alert"
+              className="flex gap-2 rounded-lg border border-waspada/30 bg-waspada-soft p-3 text-[13px] text-waspada-ink dark:bg-waspada/15 dark:text-amber-300"
+            >
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <div className="min-w-0 space-y-1 break-words">
+                <p>{galat.pesan}</p>
+                {galat.kode === KODE_MASTER_DIRUJUK && (
+                  <p className="text-xs">
+                    Hapus tidak mungkin; gunakan {saran}.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          </DialogBody>
         )}
         <DialogFooter>
           <SpringButton

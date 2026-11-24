@@ -20,7 +20,7 @@ import {
 } from "./fixtures";
 
 const UUID_SUMBER_PIHPS = "40745615-f152-32aa-b1e3-f54add179514"; // SRC-BI
-const UUID_SUMBER_BPS = "e1f49004-97cf-3b83-9c13-15c6eb3112d6";   // SRC-BPS
+const UUID_SUMBER_BPS = "e1f49004-97cf-3b83-9c13-15c6eb3112d6"; // SRC-BPS
 
 const unikPath =
   (path: string) => (r: { url(): string; request(): { method(): string } }) =>
@@ -48,7 +48,9 @@ test.describe("halaman sumber data & pipeline", () => {
     page,
   }) => {
     await masukSebagai(page, "manajerData");
-    const respPipeline = page.waitForResponse(unikPath("/v1/sumber-data/pipeline"));
+    const respPipeline = page.waitForResponse(
+      unikPath("/v1/sumber-data/pipeline"),
+    );
     const respKatalog = page.waitForResponse(unikPath("/v1/sumber-data"));
 
     await buka(page, "/sumber-data");
@@ -58,7 +60,19 @@ test.describe("halaman sumber data & pipeline", () => {
     expect((await respKatalog).status()).toBe(200);
 
     // Header & kartu utama
-    await expect(page.getByRole("heading", { name: "Sumber data & API" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sumber data & API" }),
+    ).toBeVisible();
+
+    // Baris tabel katalog (tab bawaan)
+    await expect(
+      page.getByRole("row", { name: /PIHPS Nasional/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("row", { name: /BPS WebAPI/ })).toBeVisible();
+
+    // Pipeline dan mutu data pindah ke tab sendiri.
+    await page.getByRole("tab", { name: /Pipeline & mutu/ }).click();
+    await expect(page).toHaveURL(/tab=pipeline/);
     await expect(page.getByText("Pipeline data")).toBeVisible();
     await expect(page.getByText("Bronze")).toBeVisible();
     await expect(page.getByText("Silver")).toBeVisible();
@@ -69,13 +83,11 @@ test.describe("halaman sumber data & pipeline", () => {
     await expect(page.getByText("Akurasi")).toBeVisible();
     await expect(page.getByText("Ketepatan waktu")).toBeVisible();
     await expect(page.getByText("Konsistensi")).toBeVisible();
-
-    // Baris tabel katalog
-    await expect(page.getByRole("row", { name: /PIHPS Nasional/ })).toBeVisible();
-    await expect(page.getByRole("row", { name: /BPS WebAPI/ })).toBeVisible();
   });
 
-  test("pencarian menyaring sumber data secara interaktif", async ({ page }) => {
+  test("pencarian menyaring sumber data secara interaktif", async ({
+    page,
+  }) => {
     await masukSebagai(page, "manajerData");
     await buka(page, "/sumber-data");
     await tungguTenang(page);
@@ -83,11 +95,17 @@ test.describe("halaman sumber data & pipeline", () => {
     const inputCari = page.getByPlaceholder("Cari sumber atau penyedia");
     await inputCari.fill("BMKG");
 
-    await expect(page.getByRole("row", { name: /BMKG — prakiraan/ })).toBeVisible();
-    await expect(page.getByRole("row", { name: /PIHPS Nasional/ })).toHaveCount(0);
+    await expect(
+      page.getByRole("row", { name: /BMKG — prakiraan/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("row", { name: /PIHPS Nasional/ })).toHaveCount(
+      0,
+    );
 
     await inputCari.clear();
-    await expect(page.getByRole("row", { name: /PIHPS Nasional/ })).toBeVisible();
+    await expect(
+      page.getByRole("row", { name: /PIHPS Nasional/ }),
+    ).toBeVisible();
   });
 
   test("detail sheet memuat informasi sumber, riwayat eksekusi, dan sampel bronze", async ({
@@ -97,9 +115,15 @@ test.describe("halaman sumber data & pipeline", () => {
     await buka(page, "/sumber-data");
     await tungguTenang(page);
 
-    const respDetail = page.waitForResponse(unikPath(`/v1/sumber-data/${UUID_SUMBER_PIHPS}`));
-    const respEksekusi = page.waitForResponse(unikPath(`/v1/sumber-data/${UUID_SUMBER_PIHPS}/eksekusi`));
-    const respSampel = page.waitForResponse(unikPath(`/v1/sumber-data/${UUID_SUMBER_PIHPS}/sampel`));
+    const respDetail = page.waitForResponse(
+      unikPath(`/v1/sumber-data/${UUID_SUMBER_PIHPS}`),
+    );
+    const respEksekusi = page.waitForResponse(
+      unikPath(`/v1/sumber-data/${UUID_SUMBER_PIHPS}/eksekusi`),
+    );
+    const respSampel = page.waitForResponse(
+      unikPath(`/v1/sumber-data/${UUID_SUMBER_PIHPS}/sampel`),
+    );
 
     await page.getByRole("row", { name: /PIHPS Nasional/ }).click();
 
@@ -108,11 +132,15 @@ test.describe("halaman sumber data & pipeline", () => {
     expect((await respSampel).status()).toBe(200);
 
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("heading", { name: /PIHPS Nasional/ })).toBeVisible();
+    await expect(
+      dialog.getByRole("heading", { name: /PIHPS Nasional/ }),
+    ).toBeVisible();
     await expect(dialog.getByText("Informasi sumber")).toBeVisible();
     await expect(dialog.getByText("SRC-BI", { exact: true })).toBeVisible();
     await expect(dialog.getByText("Jadwal cron (WIB)")).toBeVisible();
-    await expect(dialog.getByText("https://www.bi.go.id/hargapangan", { exact: true })).toBeVisible();
+    await expect(
+      dialog.getByText("https://www.bi.go.id/hargapangan", { exact: true }),
+    ).toBeVisible();
     await expect(dialog.getByText("Riwayat eksekusi")).toBeVisible();
     await expect(dialog.getByText("Sampel data mentah (bronze)")).toBeVisible();
   });
@@ -126,13 +154,17 @@ test.describe("halaman sumber data & pipeline", () => {
 
     await page.getByRole("row", { name: /PIHPS Nasional/ }).click();
     const dialog = page.getByRole("dialog");
-    const tombolJalankan = dialog.getByRole("button", { name: "Jalankan sekarang" });
+    const tombolJalankan = dialog.getByRole("button", {
+      name: "Jalankan sekarang",
+    });
     await expect(tombolJalankan).toBeVisible();
 
     const respJalankan = page.waitForResponse(
       (r) =>
         r.request().method() === "POST" &&
-        new URL(r.url()).pathname.endsWith(`/v1/sumber-data/${UUID_SUMBER_PIHPS}/jalankan`),
+        new URL(r.url()).pathname.endsWith(
+          `/v1/sumber-data/${UUID_SUMBER_PIHPS}/jalankan`,
+        ),
     );
 
     await tombolJalankan.click();
@@ -140,7 +172,9 @@ test.describe("halaman sumber data & pipeline", () => {
     expect([200, 202]).toContain(res.status());
 
     // Notifikasi toast muncul
-    await expect(page.getByText(/Ingestion dimulai|berhasil dijalankan/i)).toBeVisible();
+    await expect(
+      page.getByText(/Ingestion dimulai|berhasil dijalankan/i),
+    ).toBeVisible();
   });
 
   test("peran read-only (strategisFmipa) tidak memiliki tombol jalankan sekarang", async ({
@@ -153,6 +187,8 @@ test.describe("halaman sumber data & pipeline", () => {
     await page.getByRole("row", { name: /PIHPS Nasional/ }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("Informasi sumber")).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Jalankan sekarang" })).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Jalankan sekarang" }),
+    ).toHaveCount(0);
   });
 });

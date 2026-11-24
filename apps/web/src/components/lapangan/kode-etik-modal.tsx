@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -95,26 +96,27 @@ export function KodeEtikModal({ userId, online, onDisetujui }: KodeEtikModalProp
 
   return (
     <Dialog open={buka} onOpenChange={(open) => { if (!open && !mengirim) setBuka(false); }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <ShieldCheck className="size-5 text-data-600" />
-            <span>{kodeEtik?.judul ?? "Kode Etik Pencacah Lapangan"}</span>
+            <ShieldCheck className="size-5 shrink-0 text-data-600" />
+            <span className="min-w-0">{kodeEtik?.judul ?? "Kode Etik Pencacah Lapangan"}</span>
           </DialogTitle>
           <DialogDescription>
             Versi {kodeEtik?.versi ?? "v1.0"} · Wajib disetujui sebelum melakukan pencacahan harga pangan.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-60 overflow-y-auto rounded-lg border border-border bg-muted/40 p-3 text-xs leading-relaxed whitespace-pre-line text-foreground">
+        {/* Hanya teks kode etik yang digulir: kotak persetujuan dan tombol selalu terlihat. */}
+        <DialogBody className="mx-0 my-0 rounded-lg border border-border bg-secondary p-3 text-xs leading-relaxed break-words whitespace-pre-line text-foreground sm:mx-0 sm:p-3">
           {kodeEtik?.isi}
-        </div>
+        </DialogBody>
 
-        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border/70 bg-background/60 p-3 text-xs">
+        <label className="flex shrink-0 cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-background p-3 text-xs">
           <Checkbox
             checked={centang}
             onCheckedChange={(v: boolean | "indeterminate") => setCentang(v === true)}
-            className="mt-0.5 rounded-md"
+            className="mt-0.5"
           />
           <span>
             Saya telah membaca, memahami, dan bersedia mematuhi seluruh butir kode etik pencacahan harga pangan di atas.

@@ -175,7 +175,6 @@ main() {
     "--next-public-api-base=${NEXT_PUBLIC_API_BASE_URL:-/api}"
     "--next-public-app-url=${NEXT_PUBLIC_APP_URL:-https://${PUBLIC_HOST}}"
   )
-  [[ -n "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]] && remote_args+=("--next-public-mapbox-token=${NEXT_PUBLIC_MAPBOX_TOKEN}")
   [[ -n "$ONLY_SERVICES" ]] && remote_args+=("--only=${ONLY_SERVICES}")
   [[ "$NO_CACHE" -eq 1 ]] && remote_args+=("--no-cache")
   [[ "$SKIP_BUILD" -eq 1 ]] && remote_args+=("--skip-build")

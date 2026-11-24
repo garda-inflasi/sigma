@@ -24,7 +24,12 @@ const ProfileMenu = dynamic(() => import("./profile-menu"), { ssr: false });
 
 const NAV = [
   { href: "/lapangan/input", label: "Input harga", icon: PenLine },
-  { href: "/lapangan/riwayat", label: "Riwayat", icon: History, badge: "pending" as const },
+  {
+    href: "/lapangan/riwayat",
+    label: "Riwayat",
+    icon: History,
+    badge: "pending" as const,
+  },
   { href: "/lapangan/tugas", label: "Tugas", icon: ClipboardList },
 ];
 
@@ -60,7 +65,9 @@ export function FieldShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+      navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .catch(() => {});
     }
   }, []);
 
@@ -70,18 +77,22 @@ export function FieldShell({ children }: { children: ReactNode }) {
     <div className="mx-auto flex min-h-dvh max-w-md flex-col">
       <header className="sticky top-0 z-30 px-4 pt-[max(env(safe-area-inset-top),0.75rem)]">
         <div className="glass flex h-14 items-center gap-3 rounded-xl px-3">
-          <BrandMark className="size-8 shrink-0" />
+          <BrandMark className="size-8 shrink-0 max-sm:mr-auto" />
           <div className="min-w-0 flex-1 leading-tight max-sm:hidden">
-            <p className="truncate text-sm font-semibold">Halo, {user.nama.split(" ")[0]}</p>
+            <p className="truncate text-sm font-semibold">
+              Halo, {user.nama.split(" ")[0]}
+            </p>
             <p className="truncate text-xs text-muted-foreground">
-              {user.kabupatenKode ? namaWilayah(user.kabupatenKode) : "Seluruh Aceh"}
+              {user.kabupatenKode
+                ? namaWilayah(user.kabupatenKode)
+                : "Seluruh Aceh"}
             </p>
           </div>
           <OfflineIndicator />
           {can(user, "dashboard.operasional") && (
             <Link
               href="/operasional"
-              className="grid size-9 place-items-center rounded-xl hover:bg-secondary"
+              className="grid size-10 shrink-0 place-items-center rounded-md hover:bg-secondary"
               aria-label="Buka konsol"
             >
               <LayoutDashboard className="size-4" />
@@ -91,7 +102,10 @@ export function FieldShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <OfflineBanner />
-      <main id="konten" className="flex-1 px-4 pt-4 pb-44">
+      <main
+        id="konten"
+        className="min-w-0 flex-1 px-4 pt-4 pb-[calc(11rem+env(safe-area-inset-bottom))]"
+      >
         {children}
       </main>
 

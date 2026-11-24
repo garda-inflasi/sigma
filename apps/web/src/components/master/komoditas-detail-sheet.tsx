@@ -1,13 +1,21 @@
 "use client";
 
-import { FilePen, Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { FilePen, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import {
+  InspectorRingkasan,
+  InspectorSection,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -17,7 +25,7 @@ import { useCan } from "@/lib/auth/session-context";
 import type { MasterKomoditasRow } from "@/lib/data/types";
 import { formatAngka, formatRupiah } from "@/lib/format";
 import { useKomoditasDetail } from "@/lib/query/hooks";
-import { CatatanSheet, DlBaris } from "./detail-baris";
+import { CatatanSheet, MemuatSheet, SeksiBernama } from "./detail-baris";
 import { HapusDialog } from "./hapus-dialog";
 import { RiwayatVersiList } from "./riwayat-versi";
 import { STATUS_KOMODITAS } from "./status";
@@ -37,22 +45,26 @@ export function KomoditasDetailSheet({
   onUbah: (k: MasterKomoditasRow) => void;
 }) {
   const { data, isLoading, error } = useKomoditasDetail(kode);
+  const galat = error ? (
+    <div className="px-5 py-4">
+      <CatatanSheet galat>{pesanGalatMaster(error)}</CatatanSheet>
+    </div>
+  ) : null;
   return (
     <Sheet open={!!kode} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="glass-strong w-full gap-0 overflow-y-auto border-0 sm:max-w-lg">
+      <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{data?.komoditas.nama ?? "Detail komoditas"}</SheetTitle>
           <SheetDescription>{kode}</SheetDescription>
         </SheetHeader>
-        <div className="space-y-5 px-4 pb-6 text-sm">
-          {isLoading && (
-            <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
-          )}
-          {error && (
-            <CatatanSheet galat>{pesanGalatMaster(error)}</CatatanSheet>
-          )}
-          {data && <Isi detail={data} onUbah={onUbah} onClose={onClose} />}
-        </div>
+        {data ? (
+          <Isi detail={data} galat={galat} onUbah={onUbah} onClose={onClose} />
+        ) : (
+          <SheetBody>
+            {isLoading && <MemuatSheet />}
+            {galat}
+          </SheetBody>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -60,10 +72,13 @@ export function KomoditasDetailSheet({
 
 function Isi({
   detail,
+  galat,
   onUbah,
   onClose,
 }: {
   detail: KomoditasDetail;
+  /** Galat muat ulang: data lama tetap tampil di bawahnya. */
+  galat: ReactNode;
   onUbah: (k: MasterKomoditasRow) => void;
   onClose: () => void;
 }) {
@@ -74,30 +89,74 @@ function Isi({
   const status = STATUS_KOMODITAS[k.status];
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-        <span className="num text-xs text-muted-foreground">
-          Versi {k.versi}
-        </span>
-      </div>
+      <SheetBody>
+        {galat}
+        <InspectorRingkasan
+          className="border-b-0"
+          status={<StatusBadge tone={status.tone}>{status.label}</StatusBadge>}
+          nilai={
+            <>
+              {formatRupiah(k.hargaAcuan)}
+              <span className="text-sm font-normal text-muted-foreground">
+                /{k.satuan}
+              </span>
+            </>
+          }
+          keterangan={
+            menunggu
+              ? `Harga acuan · versi ${k.versi}. Ada usulan menunggu keputusan.`
+              : `Harga acuan · versi ${k.versi}`
+          }
+        />
+        <InspectorSection title="Rincian">
+          <MetaGrid>
+            <MetaItem label="Kode">
+              <span className="num">{k.kode}</span>
+            </MetaItem>
+            <MetaItem label="Kategori">{k.kategori}</MetaItem>
+            <MetaItem label="Satuan">{k.satuan}</MetaItem>
+            <MetaItem label="Harga acuan">
+              <span className="num">{formatRupiah(k.hargaAcuan)}</span>
+            </MetaItem>
+            <MetaItem label="Umur simpan">
+              <span className="num">{formatAngka(k.shelfLifeHari)} hari</span>
+            </MetaItem>
+            <MetaItem label="Komoditas pilot">
+              {k.pilot ? "Ya" : "Tidak"}
+            </MetaItem>
+          </MetaGrid>
+          {bisaAjukan && k.status === "DIARSIPKAN" && (
+            <CatatanSheet>
+              Komoditas yang diarsipkan tidak dapat diubah.
+            </CatatanSheet>
+          )}
+        </InspectorSection>
 
-      <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2">
-        <DlBaris label="Kode">
-          <span className="num">{k.kode}</span>
-        </DlBaris>
-        <DlBaris label="Kategori">{k.kategori}</DlBaris>
-        <DlBaris label="Satuan">{k.satuan}</DlBaris>
-        <DlBaris label="Harga acuan">
-          <span className="num">{formatRupiah(k.hargaAcuan)}</span>
-        </DlBaris>
-        <DlBaris label="Umur simpan">
-          <span className="num">{formatAngka(k.shelfLifeHari)} hari</span>
-        </DlBaris>
-        <DlBaris label="Komoditas pilot">{k.pilot ? "Ya" : "Tidak"}</DlBaris>
-      </dl>
+        {menunggu && (
+          <SeksiBernama
+            label="Usulan menunggu"
+            title="Usulan menunggu keputusan"
+          >
+            <UsulanKartu usulan={menunggu} />
+          </SeksiBernama>
+        )}
+
+        <SeksiBernama label="Riwayat versi" title="Riwayat versi">
+          <RiwayatVersiList riwayat={riwayat} />
+        </SeksiBernama>
+      </SheetBody>
 
       {(bisaAjukan || bisaHapus) && (
-        <div className="flex flex-wrap gap-2">
+        <SheetFooter>
+          {bisaHapus && (
+            <SpringButton
+              variant="outline"
+              size="sm"
+              onClick={() => setHapus(true)}
+            >
+              <Trash2 /> Hapus
+            </SpringButton>
+          )}
           {bisaAjukan && (
             <SpringButton
               variant="primary"
@@ -108,34 +167,8 @@ function Isi({
               <FilePen /> Ajukan perubahan
             </SpringButton>
           )}
-          {bisaHapus && (
-            <SpringButton
-              variant="outline"
-              size="sm"
-              onClick={() => setHapus(true)}
-            >
-              <Trash2 /> Hapus
-            </SpringButton>
-          )}
-        </div>
+        </SheetFooter>
       )}
-      {bisaAjukan && k.status === "DIARSIPKAN" && (
-        <CatatanSheet>
-          Komoditas yang diarsipkan tidak dapat diubah.
-        </CatatanSheet>
-      )}
-
-      {menunggu && (
-        <section className="space-y-2" aria-label="Usulan menunggu">
-          <h3 className="font-medium">Usulan menunggu keputusan</h3>
-          <UsulanKartu usulan={menunggu} />
-        </section>
-      )}
-
-      <section className="space-y-2" aria-label="Riwayat versi">
-        <h3 className="font-medium">Riwayat versi</h3>
-        <RiwayatVersiList riwayat={riwayat} />
-      </section>
 
       <HapusDialog
         entitas="komoditas"

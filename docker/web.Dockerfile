@@ -31,10 +31,8 @@ COPY apps/web/ ./apps/web/
 # into the client bundle and the app silently falls back to mock mode.
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_APP_URL
-ARG NEXT_PUBLIC_MAPBOX_TOKEN
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN
 
 # Pasang dependensi dari store hasil `pnpm fetch` (tanpa jaringan)
 RUN --mount=type=cache,id=garda-pnpm-store,target=/pnpm/store pnpm install --offline --frozen-lockfile

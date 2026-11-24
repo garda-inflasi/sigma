@@ -22,7 +22,8 @@ const kartu = (label: string) => screen.getByText(label).closest("a")!;
 const angka = (label: string) =>
   kartu(label).querySelector("[aria-label]")?.getAttribute("aria-label");
 /** Baris perubahan di bawah angka: panah, selisih, dan keterangan. */
-const perubahan = (label: string) => kartu(label).querySelector("p.text-xs")!;
+const perubahan = (label: string) =>
+  kartu(label).querySelector("[data-perubahan]")!;
 
 describe("KpiGrid dengan respons nyata", () => {
   it("provinsi: empat kartu, angka, perubahan, dan tautan dari server; satuan 'poin' tidak ganda", async () => {

@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { PanelTitle } from "@/components/garda/page-header";
+import { PanelPas } from "@/components/garda/halaman-pas";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { kelasKontrol } from "@/components/ui/kontrol";
 import type { KanalNotifikasi, PreferensiNotifikasi } from "@/lib/api/ews";
 import { severityMeta, type Severity } from "@/lib/design/tokens";
 import { useCan } from "@/lib/auth/session-context";
@@ -13,6 +14,7 @@ import {
   useSimpanPreferensi,
 } from "@/lib/query/hooks";
 import { aktifkanPush, nonaktifkanPush, pushDidukung } from "@/lib/push";
+import { cn } from "@/lib/utils";
 
 const KANAL_LABEL: Record<KanalNotifikasi, string> = {
   EMAIL: "Email",
@@ -76,19 +78,23 @@ export function NotifikasiPreferensi() {
   }
 
   return (
-    <section className="glass rounded-xl p-5 sm:p-6">
-      <PanelTitle
-        title="Notifikasi saya"
-        description="Kanal dan tingkat minimum alert yang dikirimkan kepada Anda. Dashboard selalu menampilkan semua alert."
-      />
-      <div className="mt-4 space-y-3">
+    <PanelPas
+      judul="Notifikasi saya"
+      deskripsi="Kanal dan tingkat minimum"
+      className="lg:flex-1"
+    >
+      <div className="space-y-3">
+        <p className="text-xs leading-snug text-muted-foreground">
+          Hanya mengatur alert yang dikirim kepada Anda. Halaman ini tetap
+          menampilkan semuanya.
+        </p>
         {isLoading && (
           <p className="text-xs text-muted-foreground">Memuat preferensi…</p>
         )}
         {data?.preferensi.map((p) => (
           <div key={p.kanal} className="space-y-1.5">
-            <div className="flex items-center justify-between gap-3">
-              <label className="flex items-center gap-2 text-sm">
+            <div className="grid gap-1.5">
+              <label className="flex min-w-0 items-center gap-2 text-sm">
                 <Checkbox
                   checked={p.aktif}
                   disabled={simpan.isPending}
@@ -106,7 +112,10 @@ export function NotifikasiPreferensi() {
                 onChange={(e) =>
                   ubah(p.kanal, { severityMin: e.target.value as Severity })
                 }
-                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
+                className={cn(
+                  kelasKontrol,
+                  "h-9 w-full px-2.5 text-base md:text-[13px] dark:bg-card dark:scheme-dark",
+                )}
               >
                 {TINGKAT.map((s) => (
                   <option key={s} value={s}>
@@ -134,6 +143,6 @@ export function NotifikasiPreferensi() {
           </div>
         ))}
       </div>
-    </section>
+    </PanelPas>
   );
 }

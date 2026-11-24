@@ -106,7 +106,7 @@ export function Topbar() {
   const meta = siklus ? siklusMeta[siklus.siklus] : null;
 
   return (
-    <header className="sticky top-[var(--bar-atas,0px)] z-20 border-b border-border bg-background/90 backdrop-blur-sm">
+    <header className="sticky top-[var(--bar-atas,0px)] z-20 border-b border-sidebar-border bg-sidebar tipe-chrome">
       <div className="flex h-14 items-center gap-3 px-3 sm:px-5">
         <button
           type="button"
@@ -117,18 +117,35 @@ export function Topbar() {
           <Menu className="size-5" strokeWidth={1.75} />
         </button>
         <div className="min-w-0 flex-1">
-          <nav aria-label="Remah roti" className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          <nav
+            aria-label="Remah roti"
+            className="flex min-w-0 items-center gap-1.5 text-[13px]"
+          >
             {remah.map((r, i) => {
               const terakhir = i === remah.length - 1;
               return (
-                <span key={`${r}-${i}`} className="flex min-w-0 items-center gap-1.5">
-                  {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-navy-300" strokeWidth={1.75} aria-hidden />}
+                <span
+                  key={`${r}-${i}`}
+                  className="flex min-w-0 items-center gap-1.5"
+                >
+                  {i > 0 && (
+                    <ChevronRight
+                      className="size-3.5 shrink-0 text-navy-300"
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                  )}
                   {terakhir ? (
-                    <p aria-current="page" className="truncate font-medium text-foreground">
+                    <p
+                      aria-current="page"
+                      className="truncate font-medium text-foreground"
+                    >
                       {r}
                     </p>
                   ) : (
-                    <span className="hidden truncate text-muted-foreground sm:inline">{r}</span>
+                    <span className="hidden truncate text-muted-foreground sm:inline">
+                      {r}
+                    </span>
                   )}
                 </span>
               );
@@ -142,7 +159,9 @@ export function Topbar() {
           className="hidden h-8 w-64 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-[13px] whitespace-nowrap text-muted-foreground shadow-ambient-xs transition-colors hover:bg-secondary md:flex"
         >
           <Search className="size-4" strokeWidth={1.75} />
-          <span className="flex-1 truncate text-left">Cari atau jalankan perintah</span>
+          <span className="flex-1 truncate text-left">
+            Cari atau jalankan perintah
+          </span>
           <Kbd>⌘K</Kbd>
         </button>
 
@@ -222,7 +241,10 @@ export function Topbar() {
           >
             {inisialNama(user.nama)}
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 rounded-lg p-1.5">
+          <DropdownMenuContent
+            align="end"
+            className="tipe-chrome w-64 rounded-lg p-1.5"
+          >
             <DropdownMenuLabel>
               <p className="font-medium">{user.nama}</p>
               <p className="text-xs font-normal text-muted-foreground">
@@ -282,11 +304,10 @@ export function Topbar() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="left"
-          className="flex w-[280px] flex-col gap-0 bg-sidebar p-0"
+          className="tipe-chrome flex w-[280px] flex-col gap-0 bg-sidebar p-0"
         >
-          <SheetTitle className="flex h-14 items-center gap-2.5 px-4 text-[13px] font-semibold">
-            <BrandMark />{" "}
-            <span>Garda Inflasi</span>
+          <SheetTitle className="tipe-chrome flex h-14 items-center gap-2.5 px-4 text-[13px] font-semibold">
+            <BrandMark /> <span>Garda Inflasi</span>
           </SheetTitle>
           <NavList
             layoutId="mobile-nav-active"

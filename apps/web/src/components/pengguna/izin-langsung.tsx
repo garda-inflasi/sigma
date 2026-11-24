@@ -3,18 +3,19 @@
 import { Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { z } from "zod";
-import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
+import { FormBff, idGalatField } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Button } from "@/components/ui/button";
 import {
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,7 @@ export function PilihBagianPengguna({
     <Segmented
       layoutId="pengguna-dialog-bagian"
       size="sm"
+      className="shrink-0 self-start"
       value={nilai}
       onChange={onUbah}
       options={[
@@ -112,25 +114,25 @@ function DaftarIzinLangsung({
   const cabut = useCabutIzin(userId);
   if (langsung.length === 0) {
     return (
-      <p className="rounded-xl bg-mist-100/70 p-3 text-sm text-muted-foreground dark:bg-white/5">
+      <p className="rounded-lg bg-secondary p-3 text-sm text-muted-foreground">
         Belum ada izin langsung untuk pengguna ini.
       </p>
     );
   }
   return (
-    <ul aria-label="Izin langsung" className="grid gap-2">
+    <ul aria-label="Izin langsung" className="grid grid-cols-1 gap-2">
       {langsung.map((g) => (
         <li
           key={g.izin}
           data-izin={g.izin}
-          className="grid gap-1.5 rounded-xl border border-border/60 p-3 text-sm"
+          className="grid min-w-0 gap-1.5 rounded-lg border border-border p-3 text-sm"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="num font-medium">{g.izin}</p>
-              <p className="text-xs text-muted-foreground">{g.deskripsi}</p>
+              <p className="num font-medium break-all">{g.izin}</p>
+              <p className="text-xs break-words text-muted-foreground">{g.deskripsi}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <StatusBadge tone="data" dot={false}>
                 Langsung
               </StatusBadge>
@@ -150,18 +152,18 @@ function DaftarIzinLangsung({
           </div>
           <dl className="grid gap-0.5 text-xs">
             <div className="flex gap-2">
-              <dt className="text-muted-foreground">Masa berlaku</dt>
-              <dd>
+              <dt className="shrink-0 text-muted-foreground">Masa berlaku</dt>
+              <dd className="min-w-0">
                 <Berlaku g={g} />
               </dd>
             </div>
             <div className="flex gap-2">
-              <dt className="text-muted-foreground">Alasan</dt>
+              <dt className="shrink-0 text-muted-foreground">Alasan</dt>
               <dd className="min-w-0 break-words">{g.alasan}</dd>
             </div>
             <div className="flex gap-2">
-              <dt className="text-muted-foreground">Diberikan</dt>
-              <dd>
+              <dt className="shrink-0 text-muted-foreground">Diberikan</dt>
+              <dd className="min-w-0 break-words">
                 {g.diberikanOleh ? `oleh ${g.diberikanOleh}, ` : ""}
                 {formatRelatif(g.diberikanPada)} (
                 {formatTanggal(g.diberikanPada, "d MMM yyyy HH:mm")})
@@ -214,12 +216,11 @@ function FormBeriIzin({
     <FormBff
       onKirim={kiriman.kirimDari(() => isian)}
       sibuk={kiriman.pending}
-      className="grid gap-3 rounded-xl bg-mist-100/70 p-3 dark:bg-white/5"
+      className="flex min-w-0 flex-col gap-3 rounded-lg bg-secondary p-3"
       aria-label="Beri izin langsung"
     >
       <p className="text-sm font-medium">Beri izin langsung</p>
-      <div className="grid gap-2">
-        <Label htmlFor="il-izin">Izin</Label>
+      <FormField id="il-izin" label="Izin" galat={g.izin}>
         <Select
           value={isian.izin}
           onValueChange={(v) => setIsian({ ...isian, izin: v })}
@@ -242,10 +243,14 @@ function FormBeriIzin({
             ))}
           </SelectContent>
         </Select>
-        <PesanField field="il-izin" pesan={g.izin} />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="il-berlaku">Berlaku sampai (opsional)</Label>
+      </FormField>
+      <FormField
+        id="il-berlaku"
+        label="Berlaku sampai"
+        opsional
+        bantuan="Kosongkan untuk izin tanpa batas waktu. Izin berhenti berlaku di akhir hari yang dipilih."
+        galat={g.berlaku}
+      >
         <Input
           id="il-berlaku"
           type="date"
@@ -254,14 +259,8 @@ function FormBeriIzin({
           onChange={(e) => setIsian({ ...isian, berlaku: e.target.value })}
           {...atribut("berlaku")}
         />
-        <p className="text-xs text-muted-foreground">
-          Kosongkan untuk izin tanpa batas waktu. Izin berhenti berlaku di akhir
-          hari yang dipilih.
-        </p>
-        <PesanField field="il-berlaku" pesan={g.berlaku} />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="il-alasan">Alasan</Label>
+      </FormField>
+      <FormField id="il-alasan" label="Alasan" galat={g.alasan}>
         <Textarea
           id="il-alasan"
           rows={2}
@@ -271,13 +270,8 @@ function FormBeriIzin({
           placeholder="Mengapa pengguna ini perlu izin tambahan?"
           {...atribut("alasan")}
         />
-        <PesanField field="il-alasan" pesan={g.alasan} />
-      </div>
-      {kiriman.galat && (
-        <p role="alert" className="text-sm text-destructive">
-          {kiriman.galat.pesan}
-        </p>
-      )}
+      </FormField>
+      <FormAlert>{kiriman.galat?.pesan}</FormAlert>
       <div className="flex justify-end">
         <SpringButton
           type="submit"
@@ -320,38 +314,46 @@ export function IzinLangsungPanel({
         </DialogDescription>
       </DialogHeader>
 
-      {izin.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          Izin pengguna gagal dimuat. Tutup lalu buka lagi dialog ini.
-        </p>
-      ) : !izin.data || !matriks.data ? (
-        <div className="glass h-48 animate-pulse rounded-xl" aria-busy="true" />
-      ) : (
-        <div className="grid max-h-[60vh] gap-4 overflow-y-auto py-2 pr-1">
-          <DaftarIzinLangsung userId={user.id} langsung={izin.data.langsung} />
-          <details className="rounded-xl border border-border/60 p-3 text-sm">
-            <summary className="cursor-pointer font-medium">
-              Izin dari peran ({izin.data.izinPeran.length})
-            </summary>
-            <ul
-              aria-label="Izin dari peran"
-              className="mt-2 flex flex-wrap gap-1.5"
-            >
-              {izin.data.izinPeran.map((p) => (
-                <li key={p}>
-                  <span className="num inline-flex h-6 items-center rounded-full bg-mist-100 px-2.5 text-xs dark:bg-white/10">
-                    {p}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Sumber: peran pengguna. Ubah lewat tab "Matriks akses".
-            </p>
-          </details>
-          <FormBeriIzin userId={user.id} tersedia={tersedia} />
-        </div>
-      )}
+      <DialogBody>
+        {izin.isError ? (
+          <FormAlert>
+            Izin pengguna gagal dimuat. Tutup lalu buka lagi dialog ini.
+          </FormAlert>
+        ) : !izin.data || !matriks.data ? (
+          <div
+            className="h-48 shrink-0 animate-pulse rounded-lg bg-secondary"
+            aria-busy="true"
+          />
+        ) : (
+          <>
+            <DaftarIzinLangsung
+              userId={user.id}
+              langsung={izin.data.langsung}
+            />
+            <details className="min-w-0 rounded-lg border border-border p-3 text-sm">
+              <summary className="cursor-pointer font-medium">
+                Izin dari peran ({izin.data.izinPeran.length})
+              </summary>
+              <ul
+                aria-label="Izin dari peran"
+                className="mt-2 flex flex-wrap gap-1.5"
+              >
+                {izin.data.izinPeran.map((p) => (
+                  <li key={p} className="max-w-full">
+                    <span className="num inline-flex min-h-6 max-w-full items-center rounded-md bg-secondary px-2 text-xs break-all">
+                      {p}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Sumber: peran pengguna. Ubah lewat tab "Matriks akses".
+              </p>
+            </details>
+            <FormBeriIzin userId={user.id} tersedia={tersedia} />
+          </>
+        )}
+      </DialogBody>
 
       <DialogFooter>
         <Button variant="outline" onClick={onTutup}>

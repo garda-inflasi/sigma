@@ -1,13 +1,23 @@
 "use client";
 
-import { FilePen, Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { FilePen, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { EmptyState } from "@/components/garda/empty-state";
+import {
+  InspectorRingkasan,
+  InspectorSection,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
+import { Shimmer } from "@/components/garda/shimmer";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -21,7 +31,12 @@ import {
   usePedagangHalaman,
   usePerubahanHalaman,
 } from "@/lib/query/hooks";
-import { CatatanSheet, DlBaris } from "./detail-baris";
+import {
+  CatatanSheet,
+  MemuatSheet,
+  SeksiBernama,
+  formatKoordinat,
+} from "./detail-baris";
 import { HapusDialog } from "./hapus-dialog";
 import { STATUS_PASAR } from "./status";
 import { UsulanKartu } from "./usulan-kartu";
@@ -40,22 +55,26 @@ export function PasarDetailSheet({
   onUbah: (p: MasterPasarRow) => void;
 }) {
   const { data, isLoading, error } = usePasarDetail(kode);
+  const galat = error ? (
+    <div className="px-5 py-4">
+      <CatatanSheet galat>{pesanGalatMaster(error)}</CatatanSheet>
+    </div>
+  ) : null;
   return (
     <Sheet open={!!kode} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="glass-strong w-full gap-0 overflow-y-auto border-0 sm:max-w-lg">
+      <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{data?.pasar.nama ?? "Detail pasar"}</SheetTitle>
-          <SheetDescription>{kode}</SheetDescription>
+          <SheetDescription>{data?.pasar.kode ?? kode}</SheetDescription>
         </SheetHeader>
-        <div className="space-y-5 px-4 pb-6 text-sm">
-          {isLoading && (
-            <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
-          )}
-          {error && (
-            <CatatanSheet galat>{pesanGalatMaster(error)}</CatatanSheet>
-          )}
-          {data && <Isi detail={data} onUbah={onUbah} onClose={onClose} />}
-        </div>
+        {data ? (
+          <Isi detail={data} galat={galat} onUbah={onUbah} onClose={onClose} />
+        ) : (
+          <SheetBody>
+            {isLoading && <MemuatSheet />}
+            {galat}
+          </SheetBody>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -63,10 +82,13 @@ export function PasarDetailSheet({
 
 function Isi({
   detail,
+  galat,
   onUbah,
   onClose,
 }: {
   detail: PasarDetail;
+  /** Galat muat ulang: data lama tetap tampil di bawahnya. */
+  galat: ReactNode;
   onUbah: (p: MasterPasarRow) => void;
   onClose: () => void;
 }) {
@@ -88,48 +110,113 @@ function Isi({
   const status = STATUS_PASAR[p.aktif ? "AKTIF" : "NONAKTIF"];
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-        <span className="num text-xs text-muted-foreground">
-          Versi {p.versi}
-        </span>
-      </div>
+      <SheetBody>
+        {galat}
+        <InspectorRingkasan
+          className="border-b-0"
+          status={<StatusBadge tone={status.tone}>{status.label}</StatusBadge>}
+          nilai={`${formatAngka(jumlahPedagang)} pedagang`}
+          keterangan={
+            menunggu
+              ? `${p.kabupaten} · versi ${p.versi}. Ada usulan menunggu keputusan.`
+              : `${p.kabupaten} · versi ${p.versi}`
+          }
+        />
+        <InspectorSection title="Rincian">
+          <MetaGrid>
+            <MetaItem label="Kode">
+              <span className="num">{kode}</span>
+            </MetaItem>
+            <MetaItem label="Kabupaten/kota">{p.kabupaten}</MetaItem>
+            <MetaItem label="Kecamatan">
+              {p.kecamatanNama ?? (
+                <span className="font-normal text-muted-foreground">
+                  Belum diisi
+                </span>
+              )}
+              {p.kecamatanKode && (
+                <span className="num ml-1 text-xs font-normal text-muted-foreground">
+                  ({p.kecamatanKode})
+                </span>
+              )}
+            </MetaItem>
+            <MetaItem label="Koordinat">
+              <span className="num">{formatKoordinat(p.lat, p.lng)}</span>
+            </MetaItem>
+            <MetaItem label="Geofence">
+              <span className="num">{formatAngka(p.radiusMeter)} m</span>
+            </MetaItem>
+            <MetaItem label="Pedagang">
+              <span className="num">{formatAngka(jumlahPedagang)}</span>
+            </MetaItem>
+          </MetaGrid>
+        </InspectorSection>
 
-      <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2">
-        <DlBaris label="Kode">
-          <span className="num">{kode}</span>
-        </DlBaris>
-        <DlBaris label="Kabupaten/kota">{p.kabupaten}</DlBaris>
-        <DlBaris label="Kecamatan">
-          {p.kecamatanNama ?? (
-            <span className="text-muted-foreground">Belum diisi</span>
+        {menunggu && (
+          <SeksiBernama
+            label="Usulan menunggu"
+            title="Usulan menunggu keputusan"
+          >
+            <UsulanKartu usulan={menunggu} />
+          </SeksiBernama>
+        )}
+
+        <SeksiBernama label="Pedagang" title="Pedagang di pasar ini">
+          {pedagang.isLoading ? (
+            <div
+              role="status"
+              aria-label="Memuat pedagang"
+              className="space-y-2"
+            >
+              <Shimmer className="h-8 w-full" />
+              <Shimmer className="h-8 w-full" />
+              <Shimmer className="h-8 w-full" />
+            </div>
+          ) : pedagang.isError ? (
+            <CatatanSheet galat>
+              {pesanGalatMaster(pedagang.error)}
+            </CatatanSheet>
+          ) : (pedagang.data?.rows.length ?? 0) === 0 ? (
+            <EmptyState
+              title="Belum ada pedagang tercatat di pasar ini."
+              className="py-6"
+            />
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border text-xs">
+              {pedagang.data!.rows.map((x) => (
+                <li
+                  key={x.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2"
+                >
+                  <span className="min-w-0 break-words">
+                    <span className="num">{x.kode}</span>
+                    <span className="ml-2">
+                      {x.nama ?? (
+                        <span className="text-muted-foreground">
+                          tanpa nama
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                    <span className="num">
+                      {formatAngka(x.jumlahEntri)} entri
+                    </span>
+                    {!x.aktif && (
+                      <span className="rounded-md bg-secondary px-1.5 py-0.5">
+                        nonaktif
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
-          {p.kecamatanKode && (
-            <span className="num ml-1 text-xs text-muted-foreground">
-              ({p.kecamatanKode})
-            </span>
-          )}
-        </DlBaris>
-        <DlBaris label="Koordinat">
-          <span className="num">
-            {p.lat}, {p.lng}
-          </span>
-        </DlBaris>
-        <DlBaris label="Geofence">
-          <span className="num">{formatAngka(p.radiusMeter)} m</span>
-        </DlBaris>
-        <DlBaris label="Pedagang">
-          <span className="num">{formatAngka(jumlahPedagang)}</span>
-        </DlBaris>
-      </dl>
+        </SeksiBernama>
+      </SheetBody>
 
       {(bisaAjukan || bisaHapus) && (
-        <div className="flex flex-wrap gap-2">
-          {bisaAjukan && (
-            <SpringButton variant="primary" size="sm" onClick={() => onUbah(p)}>
-              <FilePen /> Ajukan perubahan
-            </SpringButton>
-          )}
+        <SheetFooter>
           {bisaHapus && (
             <SpringButton
               variant="outline"
@@ -139,54 +226,13 @@ function Isi({
               <Trash2 /> Hapus
             </SpringButton>
           )}
-        </div>
+          {bisaAjukan && (
+            <SpringButton variant="primary" size="sm" onClick={() => onUbah(p)}>
+              <FilePen /> Ajukan perubahan
+            </SpringButton>
+          )}
+        </SheetFooter>
       )}
-
-      {menunggu && (
-        <section className="space-y-2" aria-label="Usulan menunggu">
-          <h3 className="font-medium">Usulan menunggu keputusan</h3>
-          <UsulanKartu usulan={menunggu} />
-        </section>
-      )}
-
-      <section className="space-y-2" aria-label="Pedagang">
-        <h3 className="font-medium">Pedagang di pasar ini</h3>
-        {pedagang.isLoading ? (
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
-        ) : pedagang.isError ? (
-          <CatatanSheet galat>{pesanGalatMaster(pedagang.error)}</CatatanSheet>
-        ) : (pedagang.data?.rows.length ?? 0) === 0 ? (
-          <CatatanSheet>Belum ada pedagang tercatat di pasar ini.</CatatanSheet>
-        ) : (
-          <ul className="divide-y divide-border rounded-lg border border-border text-xs">
-            {pedagang.data!.rows.map((x) => (
-              <li
-                key={x.id}
-                className="flex items-center justify-between gap-3 px-2 py-1.5"
-              >
-                <span>
-                  <span className="num">{x.kode}</span>
-                  <span className="ml-2">
-                    {x.nama ?? (
-                      <span className="text-muted-foreground">tanpa nama</span>
-                    )}
-                  </span>
-                </span>
-                <span className="flex items-center gap-2 text-muted-foreground">
-                  <span className="num">
-                    {formatAngka(x.jumlahEntri)} entri
-                  </span>
-                  {!x.aktif && (
-                    <span className="rounded-full bg-mist-100 px-1.5 py-0.5 dark:bg-white/10">
-                      nonaktif
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
 
       <HapusDialog
         entitas="pasar"

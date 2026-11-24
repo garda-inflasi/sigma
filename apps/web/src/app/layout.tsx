@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import {
+  IBM_Plex_Sans,
+  Inter,
+  JetBrains_Mono,
+  Plus_Jakarta_Sans,
+} from "next/font/google";
 import { getSession } from "@/lib/auth/session";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -13,6 +18,12 @@ const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-jakarta",
   weight: ["500", "600", "700", "800"],
+  display: "swap",
+});
+const plex = IBM_Plex_Sans({
+  subsets: ["latin"],
+  variable: "--font-plex",
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 const mono = JetBrains_Mono({
@@ -65,7 +76,7 @@ export default async function RootLayout({
       lang="id"
       data-siklus="normal"
       suppressHydrationWarning
-      className={`${inter.variable} ${jakarta.variable} ${mono.variable}`}
+      className={`${inter.variable} ${jakarta.variable} ${plex.variable} ${mono.variable}`}
     >
       <body>
         <a

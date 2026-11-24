@@ -1,12 +1,12 @@
 "use client";
 
 import { ArrowRight, Check, CheckCircle2, Circle, Loader2 } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { KolomSandi } from "@/components/auth/kolom-sandi";
 import { KotakGalatAuth, useTungguGalat } from "@/components/auth/galat-auth";
 import { FormBff } from "@/components/form/form-bff";
+import { SpringButton, SpringLink } from "@/components/garda/spring-button";
 import { bffFetch } from "@/lib/api/client";
 import { galatAktivasi, skemaAktivasi } from "@/lib/auth/aktivasi";
 import { evaluatePassword } from "@/lib/auth/password-policy";
@@ -17,9 +17,6 @@ import {
 } from "@/lib/auth/pesan-login";
 import { useFormBff } from "@/lib/form/use-form-bff";
 import { cn } from "@/lib/utils";
-
-const TOMBOL =
-  "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-70";
 
 /**
  * Form kata sandi pertama dari tautan undangan: aturan kebijakan langsung, lalu arahkan ke halaman masuk.
@@ -67,9 +64,14 @@ export function AktivasiForm({ token }: { token: string }) {
           Akun Anda sudah aktif. Masuk dengan email undangan dan kata sandi yang
           baru Anda tetapkan.
         </p>
-        <Link href="/masuk" className={TOMBOL}>
-          Masuk <ArrowRight className="size-4" />
-        </Link>
+        <SpringLink
+          href="/masuk"
+          variant="primary"
+          size="lg"
+          className="flex h-11 w-full text-[15px]"
+        >
+          Masuk <ArrowRight />
+        </SpringLink>
       </div>
     );
   }
@@ -78,7 +80,7 @@ export function AktivasiForm({ token }: { token: string }) {
     <FormBff
       onKirim={form.kirimDari(() => ({ baru, konfirmasi }))}
       sibuk={loading}
-      className="mt-6 space-y-3.5"
+      className="mt-6 flex flex-col gap-4"
     >
       <KolomSandi
         id="baru"
@@ -90,12 +92,15 @@ export function AktivasiForm({ token }: { token: string }) {
         autoComplete="new-password"
       />
 
-      <ul className="space-y-1 text-xs" aria-label="Aturan kata sandi">
+      <ul
+        className="grid gap-x-3 gap-y-1 text-xs sm:grid-cols-2"
+        aria-label="Aturan kata sandi"
+      >
         {aturan.map((r) => (
           <li
             key={r.id}
             className={cn(
-              "flex items-center gap-2",
+              "flex items-center gap-2 sm:last:col-span-2",
               r.terpenuhi
                 ? "text-normal-ink dark:text-normal-soft"
                 : "text-muted-foreground",
@@ -132,7 +137,13 @@ export function AktivasiForm({ token }: { token: string }) {
         </KotakGalatAuth>
       )}
 
-      <button type="submit" disabled={loading || tertahan} className={TOMBOL}>
+      <SpringButton
+        type="submit"
+        variant="primary"
+        size="lg"
+        className="h-11 w-full text-[15px]"
+        disabled={loading || tertahan}
+      >
         {loading ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
@@ -140,7 +151,7 @@ export function AktivasiForm({ token }: { token: string }) {
             Aktifkan akun <ArrowRight className="size-4" />
           </>
         )}
-      </button>
+      </SpringButton>
     </FormBff>
   );
 }

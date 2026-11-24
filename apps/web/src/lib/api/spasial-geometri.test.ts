@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { MarkerWilayah } from "@/components/map/marker-pin";
+import type { MarkerWilayah } from "@/lib/peta/aceh";
 import {
   geometriKeFeatureCollection,
   toGeometri,
@@ -80,14 +80,6 @@ describe("toGeometri", () => {
     assert.equal(bandaAceh.nama, "Kota Banda Aceh");
     assert.equal(bandaAceh.perkiraan, true);
     assert.equal(sabang.perkiraan, false);
-  });
-
-  it("cincin luar: lubang diabaikan, MultiPolygon menghasilkan satu cincin per poligon", () => {
-    const [bandaAceh, sabang] = toGeometri(respons);
-
-    assert.equal(bandaAceh.cincinLuar.length, 1);
-    assert.equal(bandaAceh.cincinLuar[0].length, 4);
-    assert.equal(sabang.cincinLuar.length, 2);
   });
 });
 

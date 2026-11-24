@@ -35,15 +35,15 @@ export function PanelGalat({
     <div
       role="alert"
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-xl bg-defisit/5 px-4 py-8 text-center",
+        "flex flex-col items-center justify-center gap-2 rounded-lg bg-defisit/5 px-6 py-8 text-center",
         className,
       )}
     >
-      <span className="grid size-9 place-items-center rounded-full bg-defisit/10 text-defisit">
-        <AlertTriangle className="size-4" aria-hidden />
+      <span className="grid size-10 place-items-center rounded-lg bg-defisit-soft text-defisit-ink dark:bg-defisit/15 dark:text-rose-300">
+        <AlertTriangle className="size-5" strokeWidth={1.75} aria-hidden />
       </span>
       <p className="text-sm font-medium text-foreground">{judul}</p>
-      <p className="max-w-xs text-xs text-muted-foreground">
+      <p className="max-w-sm text-[13px] text-muted-foreground">
         {pesanGalatMuat(error)}
       </p>
       {onCoba && (

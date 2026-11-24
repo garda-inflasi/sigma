@@ -36,7 +36,7 @@ export function ViewTabs<T extends string>({
     <div
       role="tablist"
       aria-label={label}
-      className={cn("no-scrollbar -mb-px flex gap-1 overflow-x-auto border-b border-border", className)}
+      className={cn("no-scrollbar -mb-px flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--border)]", className)}
       onKeyDown={(e) => {
         if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
         const i = tabs.findIndex((t) => t.value === value);
@@ -72,7 +72,7 @@ export function ViewTabs<T extends string>({
               <motion.span
                 layoutId={layoutId}
                 transition={spring.layout}
-                className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-navy-800 dark:bg-white"
+                className="absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-navy-800 dark:bg-white"
               />
             )}
           </button>

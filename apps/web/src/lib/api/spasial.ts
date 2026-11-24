@@ -3,7 +3,7 @@
  * Endpoint: GET /v1/spasial/{wilayah,rute,kandidat-cold-storage}.
  */
 
-import type { MarkerWilayah } from "@/components/map/marker-pin";
+import type { MarkerWilayah } from "@/lib/peta/aceh";
 import { formatWilayah } from "./cold-storage";
 
 export interface MarkerResponse {
@@ -85,8 +85,6 @@ export interface GeometriWilayah {
   /** Poligon perkiraan, bukan batas administratif resmi. */
   perkiraan: boolean;
   geometry: GeometriGeoJSON;
-  /** Cincin luar tiap poligon sebagai [bujur, lintang]; lubang diabaikan (dipakai peta skema SVG). */
-  cincinLuar: [number, number][][];
 }
 
 export function toGeometri(r: GeometriResponse): GeometriWilayah[] {
@@ -95,20 +93,14 @@ export function toGeometri(r: GeometriResponse): GeometriWilayah[] {
     nama: formatWilayah(f.properties.nama),
     perkiraan: f.properties.perkiraan,
     geometry: f.geometry,
-    cincinLuar: (f.geometry.type === "Polygon"
-      ? [f.geometry.coordinates]
-      : f.geometry.coordinates
-    ).map((poligon) =>
-      poligon[0].map(([lng, lat]) => [lng, lat] as [number, number]),
-    ),
   }));
 }
 
 /** Tingkat zoom bawaan untuk geometri peta (cukup rinci untuk satu provinsi). */
-export const ZOOM_GEOMETRI = 8;
+export const ZOOM_GEOMETRI = 11;
 
 /**
- * FeatureCollection untuk lapisan Mapbox: tiap wilayah membawa `status` marker-nya
+ * FeatureCollection untuk lapisan peta: tiap wilayah membawa `status` marker-nya
  * supaya warna isian ditentukan data, bukan kode komponen.
  */
 export function geometriKeFeatureCollection(
@@ -368,7 +360,7 @@ export interface LokasiResponse {
 export interface LokasiWilayah {
   kode: string;
   nama: string;
-  /** Titik berada di dalam poligon wilayah (poligon demo adalah perkiraan). */
+  /** Titik berada di dalam poligon wilayah (poligon terdaftar). */
   diDalam: boolean;
   jarakPusatKm: number;
 }
@@ -393,7 +385,7 @@ export function keteranganLokasi(l: LokasiWilayah): string {
     minimumFractionDigits: 1,
   });
   return l.diDalam
-    ? `di dalam batas (perkiraan), ${km} km dari pusat`
+    ? `di dalam batas wilayah, ${km} km dari pusat`
     : `terdekat, ${km} km dari pusat`;
 }
 
@@ -409,26 +401,6 @@ export function pesanGalatGeolokasi(code: number): string {
     default:
       return "Gagal menentukan lokasi Anda.";
   }
-}
-
-/** Skema peta Aceh tanpa token Mapbox: proyeksi linear bujur/lintang ke persen kotak. */
-export const BATAS_SKEMA = {
-  minLng: 94.9,
-  maxLng: 98.5,
-  minLat: 1.9,
-  maxLat: 6.1,
-};
-
-/** Kebalikan proyeksi skema: pecahan (0-1) posisi klik di kotak peta menjadi lintang/bujur. */
-export function titikDariSkema(
-  xPecahan: number,
-  yPecahan: number,
-): { lat: number; lng: number } {
-  const b = BATAS_SKEMA;
-  return {
-    lng: b.minLng + xPecahan * (b.maxLng - b.minLng),
-    lat: b.maxLat - yPecahan * (b.maxLat - b.minLat),
-  };
 }
 
 /** `GET /v1/spasial/optimasi-rute`: ringkasan satu rencana optimasi yang tersimpan. */

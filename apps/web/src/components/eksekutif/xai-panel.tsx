@@ -39,7 +39,7 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
   const hariIni = data.seri.find((s) => s.proyeksi !== undefined && s.aktual !== undefined)?.tanggal;
 
   return (
-    <section className={cn("glass rounded-xl p-5 sm:p-6", className)}>
+    <section className={cn("glass flex min-w-0 flex-col rounded-lg p-3.5 lg:min-h-0", className)}>
       <PanelTitle
         title="Proyeksi harga & penjelasan model"
         description="Mengapa model memperkirakan pergerakan ini"
@@ -54,8 +54,8 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
         }
       />
 
-      <div className={cn("mt-5 grid gap-6 transition-opacity lg:grid-cols-[1.25fr_1fr]", isFetching && "opacity-70")}>
-        <div>
+      <div className={cn("mt-3 grid grid-cols-1 gap-3 transition-opacity lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto]", isFetching && "opacity-70")}>
+        <div className="flex min-w-0 flex-col lg:min-h-0">
           <p className="font-display text-display-sm leading-snug font-semibold text-navy-900 dark:text-white">
             {data.nama} diproyeksi {naik ? "naik" : "turun"}{" "}
             <span className={cn("num", naik ? "text-defisit-ink dark:text-rose-300" : "text-surplus-ink dark:text-blue-300")}>{formatPersen(Math.abs(data.perubahanPct))}</span> dalam {data.horizonHari} hari
@@ -63,7 +63,7 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
           <p className="mt-1 text-sm text-muted-foreground">
             Rentang keyakinan 80%: <span className="num">{formatPersen(data.interval[0], { signed: true })}</span> hingga <span className="num">{formatPersen(data.interval[1], { signed: true })}</span>, dari harga kini <span className="num">{formatRupiah(data.hargaKini)}</span>/kg
           </p>
-          <div className="mt-4 h-[230px]">
+          <div className="mt-2 h-56 lg:h-auto lg:min-h-0 lg:flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={data.seri} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                 <defs>
@@ -85,9 +85,9 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
           </div>
         </div>
 
-        <div className="flex flex-col">
-          <p className="text-sm font-medium">Kontribusi faktor (poin persen)</p>
-          <ul className="mt-3 space-y-3">
+        <div className="flex min-w-0 flex-col lg:min-h-0">
+          <p className="shrink-0 text-sm font-medium">Kontribusi faktor (poin persen)</p>
+          <ul className="scrollbar-thin mt-2 space-y-2.5 pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {data.faktor.map((f, i) => {
               const pos = f.kontribusi >= 0;
               return (
@@ -112,18 +112,16 @@ export function XaiPanel({ kode, onKodeChange, className }: { kode: string; onKo
             })}
           </ul>
         </div>
-      </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_1fr]">
-        <div className="rounded-xl bg-data-50/70 p-4 dark:bg-data-500/10">
+        <div className="scrollbar-thin min-w-0 rounded-lg bg-data-50/70 p-3 lg:max-h-56 lg:overflow-y-auto dark:bg-data-500/10">
           <p className="flex items-center gap-2 text-sm font-medium text-data-800 dark:text-data-200"><BrainCircuit className="size-4" /> Ringkasan model{data.demo && <StatusBadge tone="waspada" className="ml-1">Data demo</StatusBadge>}</p>
-          <p className="mt-1.5 text-sm leading-relaxed text-data-900/80 dark:text-data-100/80">{data.narasi}</p>
-          <ul className="mt-3 space-y-1 text-sm">
+          <p className="mt-1 text-[13px] leading-snug text-data-900/80 dark:text-data-100/80">{data.narasi}</p>
+          <ul className="mt-2 space-y-0.5 text-[13px]">
             {data.rekomendasi.map((r) => <li key={r} className="flex gap-2"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-data-600" /> {r}</li>)}
           </ul>
         </div>
-        <div className="flex flex-col justify-between gap-4 rounded-xl border border-border/70 p-4">
-          <dl className="grid grid-cols-2 gap-3 text-sm">
+        <div className="flex min-w-0 flex-col justify-between gap-3 rounded-lg border border-border p-3">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
             <div><dt className="text-xs text-muted-foreground">Model</dt><dd className="mt-0.5 font-medium">{data.model.nama}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Versi</dt><dd className="num mt-0.5">{data.model.versi}</dd></div>
             <div><dt className="text-xs text-muted-foreground">MAPE 30 hari</dt><dd className="num mt-0.5">{formatPersen(data.model.mape)}</dd></div>

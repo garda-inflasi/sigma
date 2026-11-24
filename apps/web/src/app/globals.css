@@ -1,7 +1,7 @@
 /* ════════════════════════════════════════════════════════════════════
    AI GARDA INFLASI — DESIGN TOKENS v2 "Clean Clinical" (Tailwind CSS v4, CSS-first)
    Di Tailwind v4 "tailwind.config" hidup di sini lewat @theme.
-   Cermin nilai untuk JS (Recharts, Mapbox) ada di lib/design/tokens.ts.
+   Cermin nilai untuk JS (Recharts, Leaflet) ada di lib/design/tokens.ts.
    ════════════════════════════════════════════════════════════════════ */
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -10,10 +10,12 @@
 
 /* ── 1. Token dasar (static: selalu di-emit agar bisa dibaca var() dari JS) ── */
 @theme static {
-  /* Tipografi: Inter (UI), Plus Jakarta Sans (heading), JetBrains Mono (angka) */
+  /* Tipografi: Inter (UI), Plus Jakarta Sans (heading), IBM Plex Sans (sidebar & header), JetBrains Mono (angka) */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display:
     var(--font-jakarta), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-chrome:
+    var(--font-plex), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
 
   /* Skala tipe v2 — padat dan tenang. Judul halaman 20px, header seksi 14px; angka besar hanya untuk KPI/hero. */
@@ -91,10 +93,14 @@
 
   /* Bayangan v2: nyaris tak terlihat; hanya elemen melayang (popover, drawer, bulk bar) yang terangkat */
   --shadow-ambient-xs: 0 1px 2px rgb(16 24 40 / 0.04);
-  --shadow-ambient-sm: 0 1px 3px rgb(16 24 40 / 0.06), 0 1px 2px rgb(16 24 40 / 0.04);
-  --shadow-ambient: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 12px -4px rgb(16 24 40 / 0.06);
-  --shadow-ambient-lg: 0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px -2px rgb(16 24 40 / 0.06);
-  --shadow-lift: 0 8px 24px -8px rgb(16 24 40 / 0.14), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-ambient-sm:
+    0 1px 3px rgb(16 24 40 / 0.06), 0 1px 2px rgb(16 24 40 / 0.04);
+  --shadow-ambient:
+    0 1px 2px rgb(16 24 40 / 0.04), 0 4px 12px -4px rgb(16 24 40 / 0.06);
+  --shadow-ambient-lg:
+    0 12px 32px -8px rgb(16 24 40 / 0.16), 0 2px 6px -2px rgb(16 24 40 / 0.06);
+  --shadow-lift:
+    0 8px 24px -8px rgb(16 24 40 / 0.14), 0 1px 3px rgb(16 24 40 / 0.06);
   --shadow-glow-data: 0 0 0 3px rgb(13 148 136 / 0.16);
   --shadow-glow-defisit: 0 0 0 3px rgb(220 38 38 / 0.14);
   --shadow-glow-waspada: 0 0 0 3px rgb(217 119 6 / 0.16);
@@ -163,17 +169,19 @@
   --destructive: #dc2626;
   --border: #eaecef;
   --input: #e2e5e9;
+  /* Tepi kontrol form (input, select, textarea, checkbox): kontras ≥ 3:1 terhadap --card (WCAG 1.4.11). */
+  --control-border: #8b919c;
   --ring: #0d9488;
   --chart-1: #18181b;
   --chart-2: #0d9488;
   --chart-3: #f59e0b;
   --chart-4: #ef4444;
   --chart-5: #3b82f6;
-  --sidebar: #fafafb;
+  --sidebar: #ffffff;
   --sidebar-foreground: #111827;
   --sidebar-primary: #18181b;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ffffff;
+  --sidebar-accent: #f3f4f6;
   --sidebar-accent-foreground: #111827;
   --sidebar-border: #eaecef;
   --sidebar-ring: #0d9488;
@@ -197,11 +205,22 @@
   --destructive: #f87171;
   --border: #24262d;
   --input: #2c2f37;
+  --control-border: #62666f;
   --ring: #2dd4bf;
   --sidebar: #101115;
   --sidebar-foreground: #ecedef;
   --sidebar-accent: #1b1c22;
   --sidebar-border: #24262d;
+
+  /* Pil status: latar transparan dan tinta terang agar terbaca di permukaan gelap. */
+  --color-normal-soft: rgb(16 185 129 / 0.14);
+  --color-normal-ink: #34d399;
+  --color-waspada-soft: rgb(245 158 11 / 0.14);
+  --color-waspada-ink: #fbbf24;
+  --color-defisit-soft: rgb(239 68 68 / 0.14);
+  --color-defisit-ink: #f87171;
+  --color-surplus-soft: rgb(59 130 246 / 0.14);
+  --color-surplus-ink: #60a5fa;
 }
 
 /* ── 3. Siklus ambient: seluruh UI mengikuti kondisi ekonomi wilayah ── */
@@ -224,6 +243,21 @@
   --siklus-ink: #2563eb;
   --siklus-glow: rgb(59 130 246 / 0.16);
 }
+.dark[data-siklus="normal"],
+.dark [data-siklus="normal"] {
+  --siklus-soft: rgb(16 185 129 / 0.14);
+  --siklus-ink: #34d399;
+}
+.dark[data-siklus="tekanan"],
+.dark [data-siklus="tekanan"] {
+  --siklus-soft: rgb(239 68 68 / 0.14);
+  --siklus-ink: #f87171;
+}
+.dark[data-siklus="surplus"],
+.dark [data-siklus="surplus"] {
+  --siklus-soft: rgb(59 130 246 / 0.14);
+  --siklus-ink: #60a5fa;
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -243,6 +277,7 @@
   --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-control-border: var(--control-border);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -264,6 +299,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: var(--radius);
+  /* Modal, dialog, dan drawer: 12px. `rounded-xl` di sini bernilai 8px (kartu). */
+  --radius-modal: 0.75rem;
 }
 
 /* ── 4. Utilitas Garda ── */
@@ -284,6 +321,11 @@
 @utility glass-subtle {
   background-color: var(--secondary);
   border: 1px solid var(--border);
+}
+/* Tipografi sidebar & header. Fitur OpenType direset karena cv11/ss03 di body khusus Inter dan mengubah glyph Plex. */
+@utility tipe-chrome {
+  font-family: var(--font-chrome);
+  font-feature-settings: normal;
 }
 /* Gulir tanpa bilah gulir yang terlihat (pil tab mobile); tetap bisa digulir dengan sentuhan dan keyboard */
 @utility no-scrollbar {
@@ -366,6 +408,261 @@
   ::selection {
     background: rgb(13 148 136 / 0.2);
   }
+}
+
+/* ── 6. Peta Leaflet: kontrol, kartu, dan pin mengikuti token (terang dan gelap) ── */
+.garda-peta.leaflet-container {
+  background: var(--secondary);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+.garda-peta .leaflet-tile-pane {
+  filter: grayscale(0.8) brightness(1.04) contrast(0.92);
+}
+.dark .garda-peta .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) grayscale(0.75) brightness(0.82) contrast(0.92);
+}
+.garda-peta .leaflet-control-container .leaflet-top.leaflet-right {
+  top: 2px;
+  right: 2px;
+}
+.garda-peta .leaflet-bar {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-ambient-sm);
+}
+.garda-peta .leaflet-bar a,
+.garda-peta .garda-kontrol-fit button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  font: 500 16px/1 var(--font-sans);
+  cursor: pointer;
+}
+.garda-peta .leaflet-bar a:last-child,
+.garda-peta .garda-kontrol-fit button {
+  border-bottom: 0;
+}
+.garda-peta .leaflet-bar a:hover,
+.garda-peta .garda-kontrol-fit button:hover {
+  background: var(--secondary);
+}
+.garda-peta .leaflet-bar a.leaflet-disabled {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.garda-peta .garda-kontrol-fit button:focus-visible,
+.garda-peta .leaflet-bar a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.garda-peta .leaflet-control-attribution {
+  max-width: 100%;
+  padding: 1px 5px;
+  border-top-left-radius: 4px;
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  color: var(--muted-foreground);
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: normal;
+}
+.garda-peta .leaflet-control-attribution a {
+  color: inherit;
+}
+.garda-peta-tooltip.leaflet-tooltip {
+  width: max-content;
+  max-width: 220px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  box-shadow: var(--shadow-ambient-lg);
+  color: var(--popover-foreground);
+  white-space: normal;
+}
+.garda-peta-tooltip.leaflet-tooltip-top::before {
+  border-top-color: var(--popover);
+}
+.garda-peta-tooltip.leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--popover);
+}
+.garda-peta-tooltip.leaflet-tooltip-left::before {
+  border-left-color: var(--popover);
+}
+.garda-peta-tooltip.leaflet-tooltip-right::before {
+  border-right-color: var(--popover);
+}
+.garda-peta-popup .leaflet-popup-content-wrapper {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--popover);
+  box-shadow: var(--shadow-ambient-lg);
+  color: var(--popover-foreground);
+}
+.garda-peta-popup .leaflet-popup-tip {
+  background: var(--popover);
+}
+.garda-peta-popup .leaflet-popup-content {
+  margin: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.garda-peta-popup .leaflet-popup-content p {
+  margin: 0;
+}
+.garda-peta-popup a.leaflet-popup-close-button {
+  color: var(--muted-foreground);
+}
+.garda-peta-kartu {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.garda-peta-judul {
+  margin: 0;
+  padding-right: 12px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.garda-peta-baris {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.garda-peta-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.garda-peta-titik {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+}
+.garda-peta-angka {
+  font-size: 13px;
+  font-weight: 600;
+}
+.garda-peta-teks {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.garda-peta-aksi-baris {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.garda-peta-aksi {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.garda-peta-aksi:hover {
+  background: var(--secondary);
+}
+.garda-peta-aksi-utama {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.garda-peta-aksi-utama:hover {
+  background: color-mix(in srgb, var(--primary) 88%, transparent);
+}
+.garda-pin-wadah {
+  background: transparent;
+  border: 0;
+}
+.garda-pin {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  border: 2px solid #ffffff;
+  border-radius: 9999px;
+  background: var(--pin);
+  box-shadow: 0 1px 3px rgb(16 24 40 / 0.45);
+}
+.dark .garda-pin {
+  border-color: #16171c;
+}
+.garda-pin-kecil {
+  width: 10px;
+  height: 10px;
+  margin: 4px;
+}
+.garda-pin-terpilih {
+  outline: 2px solid var(--foreground);
+  outline-offset: 1px;
+}
+.garda-pin-denyut::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  animation: var(--animate-live);
+}
+.garda-pin-pasar,
+.garda-pin-cold {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 1px;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.45);
+}
+.garda-pin-pasar {
+  border-radius: 2px;
+  background: var(--color-data-600);
+}
+.garda-pin-cold {
+  background: #7c3aed;
+  transform: rotate(45deg);
+}
+.dark .garda-pin-pasar,
+.dark .garda-pin-cold {
+  border-color: #16171c;
+}
+.garda-pin-cari {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--ring);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ring) 18%, transparent);
+}
+.garda-pin-cari::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--ring);
+  transform: translate(-50%, -50%);
 }
 
 @media (prefers-reduced-motion: reduce) {

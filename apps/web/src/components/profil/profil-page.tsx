@@ -11,9 +11,11 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useRef, type KeyboardEvent } from "react";
+import { HalamanPas } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
 import { MODE_MOCK } from "@/lib/api/client";
-import { fadeIn, spring } from "@/lib/motion/presets";
+import { useProfil } from "@/lib/query/profil-hooks";
+import { ease, spring } from "@/lib/motion/presets";
 import {
   LABEL_TAB_PROFIL,
   TAB_BAWAAN,
@@ -45,6 +47,20 @@ const TAB_TERSEDIA: readonly TabProfil[] = MODE_MOCK
 const idTab = (tab: TabProfil) => `tab-profil-${tab}`;
 const ID_PANEL = "panel-profil";
 
+const TRANSISI_PANEL = {
+  hidden: { opacity: 0, y: 6 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.22, ease: ease.garda },
+  },
+  exit: {
+    opacity: 0,
+    y: -4,
+    transition: { duration: 0.14, ease: ease.inOut },
+  },
+};
+
 function IsiTab({ tab }: { tab: TabProfil }) {
   switch (tab) {
     case "ganti-password":
@@ -61,8 +77,8 @@ function IsiTab({ tab }: { tab: TabProfil }) {
 }
 
 /**
- * Kerangka /profil: navigasi tab (vertikal di desktop, pil bergulir di mobile) dan panel isi. Tab aktif
- * selalu diturunkan dari `?tab=`, jadi tautan menu akun di topbar dan tombol kembali peramban ikut
+ * Kerangka /profil: tab sebaris dengan judul (bergulir mendatar di mobile) dan panel isi yang mengikuti ruang.
+ * Tab aktif selalu diturunkan dari `?tab=`, jadi tautan menu akun di topbar dan tombol kembali peramban ikut
  * menggantinya; klik tab memakai replaceState agar riwayat tidak menumpuk.
  */
 export function ProfilPage() {
@@ -72,6 +88,8 @@ export function ProfilPage() {
   const tombol = useRef<Partial<Record<TabProfil, HTMLButtonElement | null>>>(
     {},
   );
+  const profilQuery = useProfil();
+  const mfaAktif = profilQuery.data?.mfa_aktif;
 
   const pilih = (tab: TabProfil) => {
     if (tab !== aktif)
@@ -98,84 +116,95 @@ export function ProfilPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <HalamanPas>
       <PageHeader
         title="Profil saya"
-        description="Kelola data diri, kata sandi, verifikasi dua langkah, perangkat yang sedang masuk, dan riwayat aktivitas akun Anda."
+        description="Kelola data pribadi, kata sandi, verifikasi dua langkah, perangkat, dan jejak aktivitas akun."
+        tabs={
+          <nav aria-label="Menu profil" className="min-w-0">
+            <div
+              role="tablist"
+              aria-label="Bagian profil"
+              onKeyDown={onKeyDown}
+              className="no-scrollbar flex gap-1 overflow-x-auto border-b border-border pb-px"
+            >
+              {TAB_TERSEDIA.map((tab) => {
+                const Ikon = IKON_TAB[tab];
+                const dipilih = tab === aktif;
+                const titikMfa =
+                  tab === "mfa" && mfaAktif !== undefined ? mfaAktif : null;
+                return (
+                  <button
+                    key={tab}
+                    ref={(el) => {
+                      tombol.current[tab] = el;
+                    }}
+                    type="button"
+                    role="tab"
+                    id={idTab(tab)}
+                    aria-selected={dipilih}
+                    aria-controls={ID_PANEL}
+                    tabIndex={dipilih ? 0 : -1}
+                    onClick={() => pilih(tab)}
+                    className={cn(
+                      "relative flex min-h-11 shrink-0 items-center gap-2 rounded-t-lg px-3.5 text-[13px] font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none lg:min-h-9.5",
+                      dipilih
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                    )}
+                  >
+                    <Ikon
+                      className={cn(
+                        "size-3.5 shrink-0 transition-colors",
+                        dipilih ? "text-data-600 dark:text-data-400" : "",
+                      )}
+                      aria-hidden
+                    />
+                    {LABEL_TAB_PROFIL[tab]}
+                    {titikMfa !== null && (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          titikMfa ? "bg-normal" : "bg-waspada",
+                        )}
+                      />
+                    )}
+                    {dipilih && (
+                      <motion.span
+                        layoutId="profil-tab-aktif"
+                        transition={spring.layout}
+                        className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-navy-800 dark:bg-data-400"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        }
       />
 
-      <div className="grid gap-5 lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start">
-        {/* min-w-0: item grid tidak boleh melebar mengikuti pil tab, supaya pil bergulir di dalam nav (mobile). */}
-        <nav aria-label="Menu profil" className="min-w-0 lg:sticky lg:top-24">
-          <div
-            role="tablist"
-            aria-label="Bagian profil"
-            onKeyDown={onKeyDown}
-            className="glass no-scrollbar -mx-1 flex gap-1 overflow-x-auto rounded-xl p-1.5 lg:mx-0 lg:flex-col lg:overflow-visible"
+      <div
+        role="tabpanel"
+        id={ID_PANEL}
+        aria-labelledby={idTab(aktif)}
+        tabIndex={0}
+        className="flex min-w-0 flex-col focus-visible:outline-none lg:min-h-0 lg:flex-1"
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={aktif}
+            variants={TRANSISI_PANEL}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+            className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1"
           >
-            {TAB_TERSEDIA.map((tab) => {
-              const Ikon = IKON_TAB[tab];
-              const dipilih = tab === aktif;
-              return (
-                <button
-                  key={tab}
-                  ref={(el) => {
-                    tombol.current[tab] = el;
-                  }}
-                  type="button"
-                  role="tab"
-                  id={idTab(tab)}
-                  aria-selected={dipilih}
-                  aria-controls={ID_PANEL}
-                  tabIndex={dipilih ? 0 : -1}
-                  onClick={() => pilih(tab)}
-                  className={cn(
-                    "relative flex min-h-11 shrink-0 items-center gap-2.5 rounded-lg px-3.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-                    dipilih
-                      ? "text-navy-900 dark:text-white"
-                      : "text-muted-foreground hover:bg-secondary/70 hover:text-navy-800 dark:hover:text-white",
-                  )}
-                >
-                  {dipilih && (
-                    <motion.span
-                      layoutId="profil-tab-aktif"
-                      transition={spring.layout}
-                      className="absolute inset-0 rounded-lg bg-white shadow-ambient-sm dark:bg-white/10"
-                    />
-                  )}
-                  <Ikon
-                    className={cn(
-                      "relative size-4 shrink-0",
-                      dipilih && "text-data-600 dark:text-data-400",
-                    )}
-                  />
-                  <span className="relative">{LABEL_TAB_PROFIL[tab]}</span>
-                </button>
-              );
-            })}
-          </div>
-        </nav>
-
-        <div
-          role="tabpanel"
-          id={ID_PANEL}
-          aria-labelledby={idTab(aktif)}
-          tabIndex={0}
-          className="min-h-[420px] min-w-0 focus-visible:outline-none"
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={aktif}
-              variants={fadeIn}
-              initial="hidden"
-              animate="show"
-              exit="exit"
-            >
-              <IsiTab tab={aktif} />
-            </motion.div>
-          </AnimatePresence>
-        </div>
+            <IsiTab tab={aktif} />
+          </motion.div>
+        </AnimatePresence>
       </div>
-    </div>
+    </HalamanPas>
   );
 }

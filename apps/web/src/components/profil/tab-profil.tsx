@@ -24,7 +24,7 @@ type ProfilTampil = Pick<
   | "status"
   | "telepon"
 > &
-  Partial<Pick<MeUserResponse, "dibuat_pada">>;
+  Partial<Pick<MeUserResponse, "dibuat_pada" | "mfa_aktif">>;
 
 function IsiDataDiri({
   profil,
@@ -39,26 +39,31 @@ function IsiDataDiri({
   const izin = sesi.permissions ?? ROLE_PERMISSIONS[sesi.role];
 
   return (
-    <div className="space-y-5">
+    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
       <RingkasanAkun
         nama={profil.nama}
+        email={profil.email}
+        lembaga={profil.lembaga}
         peran={profil.peran}
         status={profil.status}
         dibuatPada={profil.dibuat_pada}
+        mfaAktif={profil.mfa_aktif}
       />
-      <FormDataPribadi
-        tersimpan={profil}
-        email={profil.email}
-        bacaSaja={bacaSaja}
-      />
-      <PenugasanWilayah
-        lembaga={profil.lembaga}
-        peran={profil.peran}
-        lapis={profil.lapis}
-        kabupatenKode={profil.kabupaten_kode}
-        namaKabupaten={namaKabupaten}
-        izin={izin}
-      />
+      <div className="grid min-w-0 items-start gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <FormDataPribadi
+          tersimpan={profil}
+          email={profil.email}
+          bacaSaja={bacaSaja}
+        />
+        <PenugasanWilayah
+          lembaga={profil.lembaga}
+          peran={profil.peran}
+          lapis={profil.lapis}
+          kabupatenKode={profil.kabupaten_kode}
+          namaKabupaten={namaKabupaten}
+          izin={izin}
+        />
+      </div>
     </div>
   );
 }

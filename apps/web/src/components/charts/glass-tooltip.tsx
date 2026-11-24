@@ -21,7 +21,7 @@ export function GlassTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="glass-strong min-w-44 rounded-xl px-3 py-2.5 text-xs">
+    <div className="glass-strong min-w-44 rounded-lg px-3 py-2.5 text-xs">
       {label !== undefined && <p className="mb-1.5 font-medium text-foreground">{labelFormat(label)}</p>}
       <ul className="space-y-1">
         {payload.filter((p) => typeof p.value === "number").map((p) => (

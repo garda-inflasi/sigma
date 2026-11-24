@@ -3,7 +3,9 @@
 import { ArrowRight, Loader2, Save } from "lucide-react";
 import { useState } from "react";
 import { PanelTitle } from "@/components/garda/page-header";
-import type { MarkerWilayah } from "@/components/map/marker-pin";
+import { SpringButton } from "@/components/garda/spring-button";
+import type { MarkerWilayah } from "@/lib/peta/aceh";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -20,6 +22,7 @@ import { useOptimasiRute, useRiwayatOptimasi } from "@/lib/query/hooks";
 import { FormBff } from "@/components/form/form-bff";
 import { skemaDariValidasi } from "@/lib/form/skema";
 import { useFormBff } from "@/lib/form/use-form-bff";
+import { cn } from "@/lib/utils";
 
 const TANPA = "__tanpa";
 
@@ -76,11 +79,14 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
       <FormBff
         onKirim={kiriman.kirimDari(() => params(false))}
         sibuk={kiriman.pending}
-        className="flex flex-wrap items-end gap-3"
+        className="flex flex-wrap items-end gap-2"
       >
-        <Medan label="Komoditas">
+        <Medan label="Komoditas" className="w-full sm:w-52">
           <Select value={komoditas} onValueChange={setKomoditas}>
-            <SelectTrigger aria-label="Komoditas optimasi" className="h-10 w-52">
+            <SelectTrigger
+              aria-label="Komoditas optimasi"
+              className="text-foreground md:text-[13px]"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -92,19 +98,19 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
             </SelectContent>
           </Select>
         </Medan>
-        <Medan label="Batas waktu tempuh (jam)">
+        <Medan label="Batas waktu tempuh (jam)" className="w-full sm:w-44">
           <Input
             inputMode="decimal"
             value={maksJam}
             onChange={(e) => setMaksJam(e.target.value)}
             placeholder="tanpa batas"
-            className="h-10 w-40"
+            className="text-foreground md:text-[13px]"
             aria-invalid={!jamValid}
           />
         </Medan>
-        <Medan label="Skenario: wilayah">
+        <Medan label="Skenario: wilayah" className="w-full sm:w-48">
           <Select value={wilayah} onValueChange={setWilayah}>
-            <SelectTrigger className="h-10 w-48">
+            <SelectTrigger className="text-foreground text-[13px] md:text-[13px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -117,27 +123,30 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
             </SelectContent>
           </Select>
         </Medan>
-        <Medan label="Skenario: ubah surplus (ton)">
+        <Medan label="Skenario: ubah surplus (ton)" className="w-full sm:w-48">
           <Input
             inputMode="decimal"
             value={ton}
             onChange={(e) => setTon(e.target.value)}
             placeholder="mis. -50 (panen gagal)"
             disabled={wilayah === TANPA}
-            className="h-10 w-48"
+            className="text-foreground md:text-[13px]"
           />
         </Medan>
-        <button
+        <SpringButton
           type="submit"
+          variant="primary"
+          className="w-full sm:w-auto"
           disabled={!jamValid || kiriman.pending}
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-navy-900 px-4 text-sm font-medium text-white disabled:opacity-50"
         >
           {kiriman.pending && <Loader2 className="size-4 animate-spin" />}{" "}
           Hitung rute optimal
-        </button>
+        </SpringButton>
         {bisaSimpan && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => void kiriman.kirimNilai(params(true))}
             disabled={!jamValid || skenario || kiriman.pending}
             title={
@@ -145,10 +154,9 @@ export function OptimasiPanel({ markers }: { markers: MarkerWilayah[] }) {
                 ? "Skenario hanya simulasi dan tidak dapat disimpan"
                 : undefined
             }
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-4 text-sm font-medium hover:bg-white disabled:opacity-50 dark:bg-white/[0.06]"
           >
             <Save className="size-4" /> Simpan sebagai usulan
-          </button>
+          </Button>
         )}
       </FormBff>
       {kiriman.galat && (
@@ -281,13 +289,20 @@ function Sisa({
 
 function Medan({
   label,
+  className,
   children,
 }: {
   label: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="space-y-1 text-xs text-muted-foreground">
+    <label
+      className={cn(
+        "flex min-w-0 flex-col gap-1 text-xs text-muted-foreground",
+        className,
+      )}
+    >
       {label}
       {children}
     </label>

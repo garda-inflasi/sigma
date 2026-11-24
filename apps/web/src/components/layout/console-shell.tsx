@@ -5,7 +5,10 @@ import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { PageEnter } from "@/components/garda/page-enter";
 import { CommandPalette } from "@/components/command/command-palette";
 import { EwsStreamMount } from "@/components/ews/use-ews-stream";
-import { BannerImpersonasi, TINGGI_BANNER } from "@/components/impersonasi/banner-impersonasi";
+import {
+  BannerImpersonasi,
+  TINGGI_BANNER,
+} from "@/components/impersonasi/banner-impersonasi";
 import { useSession } from "@/lib/auth/session-context";
 import { useSiklusAktif } from "@/lib/query/hooks";
 import { can } from "@/lib/rbac/permissions";
@@ -31,16 +34,29 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
 
   return (
     <div
-      style={impersonasi ? ({ "--bar-atas": TINGGI_BANNER } as CSSProperties) : undefined}
+      style={
+        impersonasi
+          ? ({ "--bar-atas": TINGGI_BANNER } as CSSProperties)
+          : undefined
+      }
     >
       <BannerImpersonasi />
-      <div className="flex min-h-[calc(100dvh-var(--bar-atas,0px))]">
+      {/* Desktop: cangkang setinggi viewport, halaman mengisi <main> dan panelnya menggulir sendiri. Mobile: gulir dokumen. */}
+      <div className="flex min-h-[calc(100dvh-var(--bar-atas,0px))] lg:h-[calc(100dvh-var(--bar-atas,0px))] lg:overflow-hidden">
         <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col lg:min-h-0">
           <Topbar />
-          <main id="konten" className="mx-auto w-full max-w-[1600px] flex-1 px-3 pt-5 pb-28 sm:px-5 lg:px-6">
+          <main
+            id="konten"
+            className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-3 pt-4 pb-28 sm:px-5 lg:min-h-0 lg:overflow-y-auto lg:px-4 lg:py-3"
+          >
             {/* key = rute: setiap halaman masuk dengan fade + geser naik lembut. */}
-            <PageEnter key={pathname}>{children}</PageEnter>
+            <PageEnter
+              key={pathname}
+              className="flex min-w-0 flex-1 flex-col lg:min-h-0 [&>*]:w-full [&>*]:min-w-0"
+            >
+              {children}
+            </PageEnter>
           </main>
         </div>
       </div>

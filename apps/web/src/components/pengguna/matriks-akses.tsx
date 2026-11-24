@@ -103,9 +103,9 @@ export function MatriksAksesEditor() {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
+    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <p className="min-w-0 flex-1 basis-64 text-xs text-muted-foreground">
           Klik sel untuk mengubah izin sebuah peran, lalu simpan per peran.
           Perubahan berlaku pada request berikutnya dan tercatat di audit trail.
           Titik kuning menandai izin yang berbeda dari matriks bawaan.
@@ -129,14 +129,14 @@ export function MatriksAksesEditor() {
         )}
       </div>
 
-      <div className="glass scrollbar-thin overflow-x-auto rounded-xl">
+      <div className="scrollbar-thin max-h-[75dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0 lg:flex-1">
         <table
           aria-label="Matriks akses peran dan izin"
-          className="w-full min-w-[1500px] border-separate border-spacing-0 text-xs"
+          className="w-full min-w-[1500px] border-separate border-spacing-0 text-[13px]"
         >
           <thead className="sticky top-0 z-10">
             <tr>
-              <th className="sticky left-0 z-20 min-w-56 bg-white/95 p-3 text-left font-medium text-muted-foreground backdrop-blur dark:bg-navy-950/95">
+              <th className="sticky left-0 z-20 h-9 min-w-56 border-r border-b border-border bg-secondary px-3 text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                 Izin
               </th>
               {matriks.peran.map((p) => (
@@ -160,19 +160,17 @@ export function MatriksAksesEditor() {
                 <tr>
                   <td
                     colSpan={matriks.peran.length + 1}
-                    className="sticky left-0 bg-mist-100/80 px-3 py-1.5 font-semibold dark:bg-white/5"
+                    className="h-9 border-b border-border bg-secondary px-3 text-xs font-semibold"
                   >
-                    {g.nama}
+                    {/* Sel selebar tabel tidak bisa menempel; labelnya yang menempel saat digulir mendatar. */}
+                    <span className="sticky left-3 inline-block">{g.nama}</span>
                   </td>
                 </tr>
                 {g.izin.map((izin) => (
-                  <tr
-                    key={izin.id}
-                    className="hover:bg-white/50 dark:hover:bg-white/[0.03]"
-                  >
-                    <td className="sticky left-0 border-b border-border/50 bg-white/90 px-3 py-2 backdrop-blur dark:bg-navy-950/90">
-                      <span className="num block">{izin.id}</span>
-                      <span className="block text-[10px] text-muted-foreground">
+                  <tr key={izin.id} className="group hover:bg-secondary/60">
+                    <td className="sticky left-0 z-[1] border-r border-b border-border bg-card px-3 py-2 group-hover:bg-[color-mix(in_srgb,var(--secondary)_60%,var(--card))]">
+                      <span className="num block text-xs">{izin.id}</span>
+                      <span className="block text-[11px] text-muted-foreground">
                         {izin.deskripsi}
                       </span>
                     </td>
@@ -222,8 +220,9 @@ function KepalaPeran({
     <th
       scope="col"
       className={cn(
-        "min-w-28 bg-white/90 p-2 align-top font-medium backdrop-blur dark:bg-navy-950/90",
-        punyaDraf && "bg-waspada-soft/70 dark:bg-waspada/10",
+        "min-w-28 border-b border-border bg-secondary p-2 align-top font-medium",
+        punyaDraf &&
+          "bg-waspada-soft dark:bg-[color-mix(in_srgb,var(--color-waspada)_10%,var(--card))]",
       )}
     >
       <span className="block text-[11px] leading-tight">{peran.label}</span>
@@ -293,7 +292,7 @@ function SelIzin({
   const berubah = aktif !== peran.izin.has(izin);
   const bedaBawaan = aktif !== peran.bawaan.has(izin);
   return (
-    <td className="border-b border-border/50 p-0 text-center">
+    <td className="h-11 border-b border-border p-0 text-center">
       <button
         type="button"
         aria-pressed={aktif}
@@ -301,7 +300,7 @@ function SelIzin({
         data-berubah={berubah || undefined}
         disabled={terkunci}
         onClick={onKlik}
-        className="relative inline-grid size-9 place-items-center rounded-md outline-none transition-colors hover:bg-mist-100 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:hover:bg-white/10"
+        className="relative inline-grid size-9 place-items-center rounded-md outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         {aktif ? (
           <span

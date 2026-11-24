@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
+import {
+  FormDialog,
+  PesanField,
+  idGalatField,
+} from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   BATAS,
@@ -80,35 +85,31 @@ function IsiAlasan({
     petaGalat: (err) => ({ pesan: pesanGalatMaster(err) }),
   });
   return (
-    <FormBff
+    <FormDialog
       onKirim={form.kirimDari(() => ({ alasan }))}
       sibuk={form.pending}
-      className="space-y-4"
     >
       <DialogHeader>
         <DialogTitle>{judul}</DialogTitle>
         <DialogDescription>{deskripsi}</DialogDescription>
       </DialogHeader>
-      <div className="space-y-1.5">
-        <Label htmlFor="alasan-keputusan">{label}</Label>
-        <Textarea
-          id="alasan-keputusan"
-          value={alasan}
-          rows={4}
-          maxLength={BATAS.alasan.max}
-          onChange={(e) => setAlasan(e.target.value)}
-          aria-invalid={!!form.galatField.alasan}
-          aria-describedby={
-            form.galatField.alasan ? idGalatField("alasan") : undefined
-          }
-        />
-        <PesanField field="alasan" pesan={form.galatField.alasan} />
-      </div>
-      {form.galat && (
-        <p role="alert" className="text-sm text-defisit-ink dark:text-rose-300">
-          {form.galat.pesan}
-        </p>
-      )}
+      <DialogBody>
+        <FormField id="alasan-keputusan" label={label}>
+          <Textarea
+            id="alasan-keputusan"
+            value={alasan}
+            rows={4}
+            maxLength={BATAS.alasan.max}
+            onChange={(e) => setAlasan(e.target.value)}
+            aria-invalid={!!form.galatField.alasan}
+            aria-describedby={
+              form.galatField.alasan ? idGalatField("alasan") : undefined
+            }
+          />
+          <PesanField field="alasan" pesan={form.galatField.alasan} />
+        </FormField>
+        <FormAlert>{form.galat?.pesan}</FormAlert>
+      </DialogBody>
       <DialogFooter>
         <SpringButton
           variant="soft"
@@ -125,6 +126,6 @@ function IsiAlasan({
           {form.pending ? "Menyimpan…" : tombol}
         </SpringButton>
       </DialogFooter>
-    </FormBff>
+    </FormDialog>
   );
 }

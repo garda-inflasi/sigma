@@ -15,16 +15,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FormBff } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { Shimmer } from "@/components/garda/shimmer";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { bffFetch } from "@/lib/api/client";
 import { rapikanKode, teksKodeCadangan, validasiKode } from "@/lib/auth/mfa";
 import { safeInternalPath } from "@/lib/auth/safe-path";
@@ -32,7 +32,7 @@ import type { MfaSetupResponse, UserResponse } from "@/lib/bff/api-client";
 import { toneClass, type Tone } from "@/lib/design/tokens";
 import { galatFormBawaan } from "@/lib/form/kiriman";
 import { useFormBff } from "@/lib/form/use-form-bff";
-import { fadeIn } from "@/lib/motion/presets";
+import { ease } from "@/lib/motion/presets";
 import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { DialogSandi } from "./dialog-sandi";
@@ -44,6 +44,12 @@ type Tahap = "memuat" | "awal" | "kode" | "cadangan" | "aktif";
 type DialogAksi = "kode-baru" | "nonaktifkan";
 
 const NAMA_BERKAS_KODE = "kode-cadangan-garda-inflasi.txt";
+
+const TRANSISI_TAHAP = {
+  hidden: { opacity: 0, y: 6 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: ease.garda } },
+  exit: { opacity: 0, y: -4, transition: { duration: 0.14, ease: ease.inOut } },
+};
 
 const sandiWajib = z.string().min(1, "Kata sandi wajib diisi.");
 
@@ -127,11 +133,70 @@ function Imbauan({
   const t = toneClass[nada];
   return (
     <div
-      className={cn("flex gap-2.5 rounded-xl p-3.5 text-sm", t.soft, t.text)}
+      className={cn(
+        "flex gap-3 rounded-xl border p-3.5 text-sm",
+        t.soft,
+        t.text,
+        nada === "normal"
+          ? "border-normal/25"
+          : nada === "waspada"
+            ? "border-waspada/25"
+            : "border-border",
+      )}
     >
-      <Ikon className="mt-px size-4 shrink-0" aria-hidden />
+      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-card/80 shadow-ambient-xs dark:bg-black/20">
+        <Ikon className="size-4" aria-hidden />
+      </span>
       <div className="min-w-0 space-y-0.5">{children}</div>
     </div>
+  );
+}
+
+/** Penanda langkah setup MFA (1. Pindai & verifikasi -> 2. Kode cadangan). */
+function IndikatorLangkah({ aktif }: { aktif: 1 | 2 }) {
+  const langkah = [
+    { nomor: 1, label: "Pindai & verifikasi" },
+    { nomor: 2, label: "Simpan kode cadangan" },
+  ] as const;
+  return (
+    <ol
+      aria-label="Langkah aktivasi"
+      className="flex items-center gap-2 rounded-lg border border-border/80 bg-secondary/45 px-3 py-2 text-xs dark:bg-white/[0.03]"
+    >
+      {langkah.map((l, idx) => {
+        const selesai = aktif > l.nomor;
+        const sedang = aktif === l.nomor;
+        return (
+          <li key={l.nomor} className="flex min-w-0 items-center gap-2">
+            {idx > 0 && (
+              <span aria-hidden className="h-px w-4 shrink-0 bg-border" />
+            )}
+            <span
+              className={cn(
+                "num grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
+                selesai
+                  ? "bg-normal text-white"
+                  : sedang
+                    ? "bg-navy-800 text-white dark:bg-data-600"
+                    : "bg-muted text-muted-foreground",
+              )}
+            >
+              {selesai ? <Check className="size-3" aria-hidden /> : l.nomor}
+            </span>
+            <span
+              className={cn(
+                "truncate",
+                sedang || selesai
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              {l.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -161,6 +226,13 @@ export function PanelMfa({
   const [tersimpan, setTersimpan] = useState(false);
   const [sandi, setSandi] = useState("");
   const [dialog, setDialog] = useState<DialogAksi | null>(null);
+  const [disalin, setDisalin] = useState<"secret" | "cadangan" | null>(null);
+
+  useEffect(() => {
+    if (!disalin) return;
+    const t = setTimeout(() => setDisalin(null), 1800);
+    return () => clearTimeout(t);
+  }, [disalin]);
 
   const tahap: Tahap =
     alur ?? (isPending ? "memuat" : akun?.mfa_aktif ? "aktif" : "awal");
@@ -260,9 +332,14 @@ export function PanelMfa({
     setAlur(null);
   };
 
-  async function salin(teks: string, pesan: string) {
+  async function salin(
+    teks: string,
+    pesan: string,
+    jenis?: "secret" | "cadangan",
+  ) {
     try {
       await navigator.clipboard.writeText(teks);
+      if (jenis) setDisalin(jenis);
       toast.success(pesan);
     } catch {
       toast.error("Gagal menyalin", {
@@ -284,11 +361,7 @@ export function PanelMfa({
     URL.revokeObjectURL(url);
   }
 
-  const galatTampil = !dialog && galat && (
-    <p role="alert" className="text-sm font-medium text-destructive">
-      {galat}
-    </p>
-  );
+  const galatTampil = !dialog && <FormAlert>{galat}</FormAlert>;
 
   function isiTahap(): ReactNode {
     switch (tahap) {
@@ -327,11 +400,8 @@ export function PanelMfa({
               Authy, atau 1Password) di ponsel.
             </p>
             {galatMuat && (
-              <div
-                role="alert"
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
-              >
-                <p className="font-medium text-destructive">{galatMuat}</p>
+              <FormAlert className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <p className="min-w-0 font-medium">{galatMuat}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -339,7 +409,7 @@ export function PanelMfa({
                 >
                   Coba lagi
                 </Button>
-              </div>
+              </FormAlert>
             )}
             {galatTampil}
             <SpringButton
@@ -367,36 +437,41 @@ export function PanelMfa({
             sibuk={sibuk}
             className="space-y-4"
           >
+            <IndikatorLangkah aktif={1} />
             <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
               <li>Pindai kode QR dengan aplikasi autentikator.</li>
               <li>Masukkan kode 6 digit yang tampil di aplikasi.</li>
             </ol>
-            {/* SVG dari server dirender sebagai gambar (tajam di semua ukuran layar); bukan HTML mentah. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qr_svg)}`}
-              alt="Kode QR untuk aplikasi autentikator"
-              className="mx-auto size-48 rounded-xl border border-border bg-white p-2"
-            />
-            <details className="text-xs text-muted-foreground">
+            <div className="flex justify-center rounded-xl border border-border bg-secondary/35 p-4 dark:bg-white/[0.03]">
+              {/* SVG dari server dirender sebagai gambar (tajam di semua ukuran layar); bukan HTML mentah. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`data:image/svg+xml;utf8,${encodeURIComponent(setup.qr_svg)}`}
+                alt="Kode QR untuk aplikasi autentikator"
+                className="size-44 rounded-xl border border-border bg-white p-2 shadow-ambient-xs"
+              />
+            </div>
+            <details className="rounded-lg border border-border/80 bg-secondary/35 px-3 py-2 text-xs text-muted-foreground dark:bg-white/[0.02]">
               <summary className="cursor-pointer font-medium text-foreground">
                 Tidak bisa memindai? Masukkan kunci manual
               </summary>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="num min-w-0 flex-1 rounded-lg bg-muted/50 p-2 text-sm break-all text-foreground select-all">
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <p className="num min-w-0 flex-1 rounded-md border border-border bg-card p-2 font-mono text-xs break-all text-foreground select-all">
                   {setup.secret}
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => void salin(setup.secret, "Kunci disalin")}
+                  onClick={() =>
+                    void salin(setup.secret, "Kunci disalin", "secret")
+                  }
                 >
-                  <Copy /> Salin kunci manual
+                  {disalin === "secret" ? <Check /> : <Copy />}
+                  Salin kunci manual
                 </Button>
               </div>
             </details>
-            <div className="space-y-2">
-              <Label htmlFor="kode">Kode 6 digit</Label>
+            <FormField id="kode" label="Kode 6 digit">
               <Input
                 id="kode"
                 inputMode="numeric"
@@ -406,10 +481,10 @@ export function PanelMfa({
                 value={kode}
                 onChange={(e) => setKode(e.target.value)}
                 disabled={sibuk}
-                className="num h-11 text-lg tracking-widest"
+                className="num h-11 text-center font-mono text-lg tracking-[0.25em]"
                 required
               />
-            </div>
+            </FormField>
             {galatTampil}
             <SpringButton
               type="submit"
@@ -431,6 +506,7 @@ export function PanelMfa({
       case "cadangan":
         return (
           <>
+            <IndikatorLangkah aktif={2} />
             <p className="text-sm leading-relaxed text-muted-foreground">
               Simpan kode cadangan ini. Masing-masing hanya berlaku sekali dan{" "}
               <strong className="text-foreground">
@@ -440,10 +516,15 @@ export function PanelMfa({
             </p>
             <ul
               aria-label="Kode cadangan"
-              className="num grid grid-cols-2 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm font-medium select-all"
+              className="num grid grid-cols-2 gap-2 rounded-xl border border-border bg-secondary/45 p-3 text-center font-mono text-sm font-medium select-all dark:bg-white/[0.03]"
             >
               {cadangan.map((k) => (
-                <li key={k}>{k}</li>
+                <li
+                  key={k}
+                  className="rounded-md border border-border/70 bg-card px-2 py-1.5"
+                >
+                  {k}
+                </li>
               ))}
             </ul>
             <div className="flex gap-2">
@@ -452,10 +533,19 @@ export function PanelMfa({
                 className="flex-1"
                 title="Salin semua kode cadangan"
                 onClick={() =>
-                  void salin(cadangan.join("\n"), "Kode cadangan disalin")
+                  void salin(
+                    cadangan.join("\n"),
+                    "Kode cadangan disalin",
+                    "cadangan",
+                  )
                 }
               >
-                <Copy aria-hidden /> Salin
+                {disalin === "cadangan" ? (
+                  <Check aria-hidden />
+                ) : (
+                  <Copy aria-hidden />
+                )}{" "}
+                Salin
               </SpringButton>
               <SpringButton
                 variant="outline"
@@ -466,13 +556,13 @@ export function PanelMfa({
                 <Download aria-hidden /> Unduh
               </SpringButton>
             </div>
-            <label className="flex items-start gap-2 text-sm">
+            <label className="flex items-start gap-2.5 rounded-lg border border-border/80 bg-secondary/35 p-3 text-sm dark:bg-white/[0.02]">
               <Checkbox
                 checked={tersimpan}
                 onCheckedChange={(v) => setTersimpan(v === true)}
                 className="mt-0.5"
               />
-              Saya sudah menyimpan kode cadangan di tempat aman.
+              <span>Saya sudah menyimpan kode cadangan di tempat aman.</span>
             </label>
             <SpringButton
               variant="primary"
@@ -506,7 +596,7 @@ export function PanelMfa({
                 </p>
               )}
             </Imbauan>
-            <section className="space-y-2">
+            <section className="space-y-2 rounded-xl border border-border/80 bg-secondary/35 p-4 dark:bg-white/[0.02]">
               <p className="text-sm font-semibold">Kode cadangan</p>
               <p className="text-xs text-muted-foreground">
                 Kode cadangan lama langsung tidak berlaku.
@@ -519,7 +609,7 @@ export function PanelMfa({
                 <KeyRound aria-hidden /> Buat kode cadangan baru
               </SpringButton>
             </section>
-            <section className="space-y-2">
+            <section className="space-y-2 rounded-xl border border-border/80 bg-secondary/35 p-4 dark:bg-white/[0.02]">
               <p className="text-sm font-semibold">Nonaktifkan</p>
               {akun?.mfa_wajib ? (
                 <p className="text-xs text-muted-foreground">
@@ -535,7 +625,7 @@ export function PanelMfa({
                   <SpringButton
                     variant="outline"
                     onClick={() => bukaDialog("nonaktifkan")}
-                    className="w-full text-defisit-ink sm:w-auto dark:text-rose-300"
+                    className="w-full border-defisit/30 text-defisit-ink hover:bg-defisit-soft sm:w-auto dark:text-rose-300 dark:hover:bg-defisit/15"
                   >
                     Nonaktifkan MFA
                   </SpringButton>
@@ -560,7 +650,7 @@ export function PanelMfa({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={tahap}
-          variants={fadeIn}
+          variants={TRANSISI_TAHAP}
           initial="hidden"
           animate="show"
           exit="exit"

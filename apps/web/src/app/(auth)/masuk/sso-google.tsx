@@ -1,5 +1,4 @@
 import { hrefMasukGoogle } from "@/lib/auth/sso";
-import { cn } from "@/lib/utils";
 
 /** Logo "G" Google (warna resmi), inline agar tidak memuat aset eksternal. */
 function LogoGoogle({ className }: { className?: string }) {
@@ -45,11 +44,7 @@ export function SsoGoogle({ lanjut }: { lanjut: string }) {
       </div>
       <a
         href={hrefMasukGoogle(lanjut)}
-        className={cn(
-          "mt-5 flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-border bg-white text-[15px] font-medium text-navy-900 shadow-ambient transition-all",
-          "hover:bg-muted/60 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-          "dark:bg-white/5 dark:text-white dark:hover:bg-white/10",
-        )}
+        className="mt-5 flex h-11 w-full items-center justify-center gap-2.5 rounded-md border border-border bg-card text-[15px] font-medium text-foreground shadow-ambient-xs transition-colors outline-none hover:bg-secondary focus-visible:ring-[3px] focus-visible:ring-ring/30"
       >
         <LogoGoogle className="size-[18px]" />
         Masuk dengan Google

@@ -1,10 +1,13 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FormBff } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
+import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -13,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SheetFooter } from "@/components/ui/sheet";
 import {
   angkaIsian,
   dariDatetimeLocal,
@@ -45,38 +49,23 @@ const SUMBER_LABEL: Record<string, string> = {
   DEMO: "Demo",
 };
 
-const TOMBOL_UTAMA =
-  "inline-flex h-9 items-center gap-2 rounded-lg bg-navy-900 px-4 text-sm font-medium text-white disabled:opacity-50";
-const TOMBOL_SEKUNDER =
-  "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium hover:bg-secondary aria-pressed:bg-secondary";
-
-function Medan({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="space-y-1 text-xs text-muted-foreground">
-      {label}
-      {children}
-    </label>
-  );
-}
-
 /** Lima pembacaan terbaru beserta sumbernya, termasuk yang dicatat manual. */
 export function PembacaanTerbaru({ telemetri }: { telemetri: TitikSuhu[] }) {
   const terbaru = telemetri.slice(-5).reverse();
   if (terbaru.length === 0) return null;
   return (
-    <section aria-label="Pembacaan terbaru" className="space-y-2">
-      <h3 className="font-medium">Pembacaan terbaru</h3>
+    <section
+      aria-label="Pembacaan terbaru"
+      className="space-y-3 border-t border-border px-5 py-4"
+    >
+      <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        Pembacaan terbaru
+      </h3>
       <ul className="divide-y divide-border rounded-lg border border-border text-xs">
         {terbaru.map((t) => (
           <li
             key={t.waktu}
-            className="flex items-center justify-between gap-3 px-3 py-2"
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2"
           >
             <span className="num">
               {formatAngka(t.suhuC, 1)}°C
@@ -87,7 +76,7 @@ export function PembacaanTerbaru({ telemetri }: { telemetri: TitikSuhu[] }) {
                 </span>
               )}
             </span>
-            <span className="flex items-center gap-2">
+            <span className="flex flex-wrap items-center gap-2">
               {t.diLuarRentang && (
                 <StatusBadge tone="defisit">Di luar batas</StatusBadge>
               )}
@@ -107,54 +96,82 @@ export function PembacaanTerbaru({ telemetri }: { telemetri: TitikSuhu[] }) {
   );
 }
 
-/**
- * Pengelolaan fasilitas (izin `coldstorage.kelola`): ubah kapasitas/batas suhu/status dan catat
- * suhu manual. Tidak dirender sama sekali bagi peran tanpa izin; Go tetap yang berwenang.
- */
-export function PengelolaanFasilitas({ detail }: { detail: DetailFasilitas }) {
-  const bisaKelola = useCan("coldstorage.kelola");
-  const [mode, setMode] = useState<"ubah" | "catat" | null>(null);
-  if (!bisaKelola) return null;
+export type ModeKelola = "ubah" | "catat" | null;
 
-  const { fasilitas: f } = detail;
+/**
+ * Tombol pengelolaan fasilitas (izin `coldstorage.kelola`) untuk footer panel detail. Tidak dirender sama sekali
+ * bagi peran tanpa izin; Go tetap yang berwenang.
+ */
+export function AksiKelolaFasilitas({
+  fasilitas: f,
+  mode,
+  onMode,
+}: {
+  fasilitas: FasilitasColdStorage;
+  mode: ModeKelola;
+  onMode: (m: ModeKelola) => void;
+}) {
+  const bisaKelola = useCan("coldstorage.kelola");
+  if (!bisaKelola) return null;
   // Fasilitas rencana belum menerima telemetri (ditolak backend).
   const bisaCatat = f.status !== "RENCANA";
-  const alih = (m: "ubah" | "catat") =>
-    setMode((now) => (now === m ? null : m));
+  const alih = (m: "ubah" | "catat") => onMode(mode === m ? null : m);
 
   return (
-    <section aria-label="Pengelolaan fasilitas" className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={TOMBOL_SEKUNDER}
-          aria-pressed={mode === "ubah"}
-          onClick={() => alih("ubah")}
+    <SheetFooter role="group" aria-label="Pengelolaan fasilitas">
+      {bisaCatat && (
+        <Button
+          variant="outline"
+          className="aria-pressed:bg-secondary"
+          aria-pressed={mode === "catat"}
+          onClick={() => alih("catat")}
         >
-          Ubah fasilitas
-        </button>
-        {bisaCatat && (
-          <button
-            type="button"
-            className={TOMBOL_SEKUNDER}
-            aria-pressed={mode === "catat"}
-            onClick={() => alih("catat")}
-          >
-            Catat suhu manual
-          </button>
-        )}
-      </div>
+          Catat suhu manual
+        </Button>
+      )}
+      <Button
+        variant="outline"
+        className="aria-pressed:bg-secondary"
+        aria-pressed={mode === "ubah"}
+        onClick={() => alih("ubah")}
+      >
+        Ubah fasilitas
+      </Button>
+    </SheetFooter>
+  );
+}
+
+/** Formulir yang dibuka tombol di footer; tampil di dalam isi panel agar footer tetap ringkas. */
+export function FormKelolaFasilitas({
+  fasilitas: f,
+  mode,
+  onTutup,
+}: {
+  fasilitas: FasilitasColdStorage;
+  mode: ModeKelola;
+  onTutup: () => void;
+}) {
+  const bisaKelola = useCan("coldstorage.kelola");
+  const wadah = useRef<HTMLDivElement>(null);
+  // Tombol ada di footer, sedangkan isi panel bisa sudah tergulir jauh dari formulir.
+  useEffect(() => {
+    if (mode) wadah.current?.scrollIntoView({ block: "nearest" });
+  }, [mode]);
+  if (!bisaKelola || !mode) return null;
+
+  return (
+    <div ref={wadah} className="border-t border-border px-5 py-4">
       {mode === "ubah" && (
         <FormUbahFasilitas
           key={`${f.id}-${f.kapasitasTon}-${f.batasMinC}-${f.batasMaksC}-${f.status}`}
           fasilitas={f}
-          onSelesai={() => setMode(null)}
+          onSelesai={onTutup}
         />
       )}
-      {mode === "catat" && bisaCatat && (
-        <FormCatatSuhu fasilitas={f} onTutup={() => setMode(null)} />
+      {mode === "catat" && f.status !== "RENCANA" && (
+        <FormCatatSuhu fasilitas={f} onTutup={onTutup} />
       )}
-    </section>
+    </div>
   );
 }
 
@@ -164,7 +181,9 @@ interface MasukanUbah {
   nilai: { kapasitasTon: number; suhuMinC: number; suhuMaksC: number };
 }
 const skemaUbah = skemaDariValidasi<MasukanUbah>((m) =>
-  Object.keys(m.payload).length === 0 ? "Belum ada perubahan." : galatUbahFasilitas(m.nilai),
+  Object.keys(m.payload).length === 0
+    ? "Belum ada perubahan."
+    : galatUbahFasilitas(m.nilai),
 );
 
 interface MasukanCatat {
@@ -173,7 +192,8 @@ interface MasukanCatat {
   kelembapanPct?: number;
   waktu: Date | null;
 }
-const galatCatat = (m: MasukanCatat) => (m.suhuKosong ? "Suhu wajib diisi." : galatPembacaan(m));
+const galatCatat = (m: MasukanCatat) =>
+  m.suhuKosong ? "Suhu wajib diisi." : galatPembacaan(m);
 const skemaCatat = skemaDariValidasi<MasukanCatat>(galatCatat);
 
 function FormUbahFasilitas({
@@ -232,39 +252,39 @@ function FormUbahFasilitas({
       className="space-y-3 rounded-lg border border-border p-3"
     >
       <h3 className="font-medium">Ubah fasilitas</h3>
-      <div className="flex flex-wrap gap-3">
-        <Medan label="Kapasitas (ton)">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormField id="fasilitas-kapasitas" label="Kapasitas (ton)">
           <Input
+            id="fasilitas-kapasitas"
             inputMode="numeric"
             value={kapasitas}
             onChange={(e) => setKapasitas(e.target.value)}
-            className="h-9 w-32"
           />
-        </Medan>
-        <Medan label="Suhu minimum (°C)">
+        </FormField>
+        <FormField id="fasilitas-suhu-min" label="Suhu minimum (°C)">
           <Input
+            id="fasilitas-suhu-min"
             inputMode="decimal"
             value={suhuMin}
             onChange={(e) => setSuhuMin(e.target.value)}
-            className="h-9 w-32"
           />
-        </Medan>
-        <Medan label="Suhu maksimum (°C)">
+        </FormField>
+        <FormField id="fasilitas-suhu-maks" label="Suhu maksimum (°C)">
           <Input
+            id="fasilitas-suhu-maks"
             inputMode="decimal"
             value={suhuMaks}
             onChange={(e) => setSuhuMaks(e.target.value)}
-            className="h-9 w-32"
           />
-        </Medan>
-        <Medan label="Status">
+        </FormField>
+        <FormField id="fasilitas-status" label="Status">
           <Select
             value={status}
             onValueChange={(v: string) =>
               setStatus(v as FasilitasColdStorage["status"])
             }
           >
-            <SelectTrigger className="h-9 w-40" aria-label="Status">
+            <SelectTrigger id="fasilitas-status" aria-label="Status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -275,29 +295,25 @@ function FormUbahFasilitas({
               ))}
             </SelectContent>
           </Select>
-        </Medan>
+        </FormField>
       </div>
       <p className="text-xs text-muted-foreground">
         Batas suhu menentukan kapan pembacaan ditandai di luar rentang.
         Kapasitas tidak boleh lebih kecil dari stok yang tersimpan.
       </p>
-      {galat && (
-        <p role="alert" className="text-xs text-destructive">
-          {galat}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button
+      <FormAlert>{galat}</FormAlert>
+      <div className="flex flex-wrap gap-2">
+        <SpringButton
           type="submit"
+          variant="primary"
           disabled={!berubah || !!galatIsian || kiriman.pending}
-          className={TOMBOL_UTAMA}
         >
-          {kiriman.pending && <Loader2 className="size-4 animate-spin" />} Simpan
-          perubahan
-        </button>
-        <button type="button" onClick={onSelesai} className={TOMBOL_SEKUNDER}>
+          {kiriman.pending && <Loader2 className="animate-spin" />}
+          Simpan perubahan
+        </SpringButton>
+        <Button variant="outline" onClick={onSelesai}>
           Batal
-        </button>
+        </Button>
       </div>
     </FormBff>
   );
@@ -320,7 +336,12 @@ function FormCatatSuhu({
   const suhuNum = angkaIsian(suhu);
   const lembapNum = lembap.trim() === "" ? undefined : angkaIsian(lembap);
   const waktuDate = dariDatetimeLocal(waktu);
-  const galatIsian = galatCatat({ suhuKosong: suhu.trim() === "", suhuC: suhuNum, kelembapanPct: lembapNum, waktu: waktuDate });
+  const galatIsian = galatCatat({
+    suhuKosong: suhu.trim() === "",
+    suhuC: suhuNum,
+    kelembapanPct: lembapNum,
+    waktu: waktuDate,
+  });
 
   const kiriman = useFormBff<MasukanCatat, HasilTelemetri>({
     skema: skemaCatat,
@@ -336,9 +357,13 @@ function FormCatatSuhu({
       setSuhu("");
       if (res.duplikat > 0)
         toast.warning("Pembacaan sudah pernah dicatat", {
-          description: "Sudah ada pembacaan pada waktu yang sama; tidak disimpan ulang.",
+          description:
+            "Sudah ada pembacaan pada waktu yang sama; tidak disimpan ulang.",
         });
-      else toast.success("Pembacaan suhu tercatat", { description: "Tercatat di audit trail." });
+      else
+        toast.success("Pembacaan suhu tercatat", {
+          description: "Tercatat di audit trail.",
+        });
       if (res.diLuarRentang.length > 0)
         toast.error("Suhu di luar batas alarm", {
           description: `${res.diLuarRentang.length} pembacaan melewati batas fasilitas.`,
@@ -361,52 +386,53 @@ function FormCatatSuhu({
       className="space-y-3 rounded-lg border border-border p-3"
     >
       <h3 className="font-medium">Catat suhu manual</h3>
-      <div className="flex flex-wrap gap-3">
-        <Medan label="Suhu (°C)">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormField id="catat-suhu" label="Suhu (°C)">
           <Input
+            id="catat-suhu"
             inputMode="decimal"
             value={suhu}
             onChange={(e) => setSuhu(e.target.value)}
-            className="h-9 w-32"
             aria-invalid={suhu.trim() !== "" && !!galatIsian}
           />
-        </Medan>
-        <Medan label="Kelembapan (%), opsional">
+        </FormField>
+        <FormField id="catat-kelembapan" label="Kelembapan (%), opsional">
           <Input
+            id="catat-kelembapan"
             inputMode="decimal"
             value={lembap}
             onChange={(e) => setLembap(e.target.value)}
-            className="h-9 w-40"
           />
-        </Medan>
-        <Medan label="Waktu pembacaan">
+        </FormField>
+        <FormField
+          id="catat-waktu"
+          label="Waktu pembacaan"
+          className="sm:col-span-2"
+        >
           <Input
+            id="catat-waktu"
             type="datetime-local"
             step={1}
             value={waktu}
             onChange={(e) => setWaktu(e.target.value)}
-            className="h-9 w-56"
+            className="dark:scheme-dark"
           />
-        </Medan>
+        </FormField>
       </div>
-      {suhu.trim() !== "" && galat && (
-        <p role="alert" className="text-xs text-destructive">
-          {galat}
-        </p>
-      )}
+      {suhu.trim() !== "" && <FormAlert>{galat}</FormAlert>}
       {hasil && <RingkasanHasil hasil={hasil} />}
-      <div className="flex gap-2">
-        <button
+      <div className="flex flex-wrap gap-2">
+        <SpringButton
           type="submit"
+          variant="primary"
           disabled={!!galatIsian || kiriman.pending}
-          className={TOMBOL_UTAMA}
         >
-          {kiriman.pending && <Loader2 className="size-4 animate-spin" />}{" "}
+          {kiriman.pending && <Loader2 className="animate-spin" />}
           Simpan pembacaan
-        </button>
-        <button type="button" onClick={onTutup} className={TOMBOL_SEKUNDER}>
+        </SpringButton>
+        <Button variant="outline" onClick={onTutup}>
           Tutup
-        </button>
+        </Button>
       </div>
     </FormBff>
   );

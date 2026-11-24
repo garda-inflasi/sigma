@@ -15,14 +15,15 @@ export function FiscalSpace({ data }: { data: NonNullable<RingkasanEksekutif["fi
   const sisa = data.pagu - data.realisasi;
   const tone = data.status === "MEMADAI" ? "normal" : data.status === "TERBATAS" ? "waspada" : "defisit";
   return (
-    <section className="glass h-full rounded-xl p-5 sm:p-6">
+    <section className="glass flex flex-col rounded-lg p-3.5 lg:h-full lg:min-h-0">
       <PanelTitle
         title="Ruang fiskal"
         description={`${data.sumber === "DEMO" ? "Data demo" : "Kanwil DJPb"}, per ${formatTanggal(data.perTanggal)}`}
         actions={<StatusBadge tone={tone}>{data.status === "MEMADAI" ? "Memadai" : data.status === "TERBATAS" ? "Terbatas" : "Kritis"}</StatusBadge>}
       />
-      <div className="mt-4 grid items-center gap-5 sm:grid-cols-[180px_1fr]">
-        <div className="relative mx-auto size-[180px]">
+      <div className="scrollbar-thin mt-3 flex flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+      <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[150px_1fr]">
+        <div className="relative mx-auto size-[150px]">
           <ResponsiveContainer width="100%" height="100%">
             <RadialBarChart innerRadius="74%" outerRadius="100%" data={[{ v: pct }]} startAngle={90} endAngle={-270}>
               <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
@@ -37,15 +38,15 @@ export function FiscalSpace({ data }: { data: NonNullable<RingkasanEksekutif["fi
           </div>
         </div>
         <dl className="grid grid-cols-2 gap-3 text-sm">
-          <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5"><dt className="text-xs text-muted-foreground">Pagu</dt><dd className="num mt-1 font-semibold">{formatRupiah(data.pagu, { compact: true })}</dd></div>
-          <div className="rounded-xl bg-white/50 p-3 dark:bg-white/5"><dt className="text-xs text-muted-foreground">Sisa ruang</dt><dd className="num mt-1 font-semibold text-data-700 dark:text-data-300">{formatRupiah(sisa, { compact: true })}</dd></div>
-          <div className="col-span-2 rounded-xl bg-white/50 p-3 dark:bg-white/5">
+          <div className="rounded-lg bg-secondary p-3"><dt className="text-xs text-muted-foreground">Pagu</dt><dd className="num mt-1 font-semibold">{formatRupiah(data.pagu, { compact: true })}</dd></div>
+          <div className="rounded-lg bg-secondary p-3"><dt className="text-xs text-muted-foreground">Sisa ruang</dt><dd className="num mt-1 font-semibold text-data-700 dark:text-data-300">{formatRupiah(sisa, { compact: true })}</dd></div>
+          <div className="col-span-2 rounded-lg bg-secondary p-3">
             <dt className="text-xs text-muted-foreground">Skor kelayakan intervensi fiskal</dt>
             <dd className="mt-1 flex items-baseline gap-1"><span className="num text-xl font-semibold">{data.skor}</span><span className="text-xs text-muted-foreground">/100</span></dd>
           </div>
         </dl>
       </div>
-      <ul className="mt-5 space-y-3">
+      <ul className="mt-4 flex flex-col gap-3 pr-1 lg:flex-1 lg:justify-around">
         {data.instrumen.map((ins, i) => {
           const p = (ins.realisasi / ins.pagu) * 100;
           return (
@@ -61,6 +62,7 @@ export function FiscalSpace({ data }: { data: NonNullable<RingkasanEksekutif["fi
           );
         })}
       </ul>
+      </div>
     </section>
   );
 }

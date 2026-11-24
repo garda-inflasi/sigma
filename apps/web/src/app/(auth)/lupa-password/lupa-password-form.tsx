@@ -11,9 +11,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
+import { FormBff, idGalatField } from "@/components/form/form-bff";
+import { FormField } from "@/components/form/form-field";
+import { SpringButton, SpringLink } from "@/components/garda/spring-button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { KotakGalatAuth, useTungguGalat } from "@/components/auth/galat-auth";
 import { bffFetch, MODE_MOCK } from "@/lib/api/client";
 import {
@@ -23,9 +24,10 @@ import {
   type GalatAuth,
 } from "@/lib/auth/pesan-login";
 import { useFormBff } from "@/lib/form/use-form-bff";
-import { cn } from "@/lib/utils";
 
-const skemaLupa = z.object({ email: z.string().trim().min(1, "Email wajib diisi.") });
+const skemaLupa = z.object({
+  email: z.string().trim().min(1, "Email wajib diisi."),
+});
 
 /** Form permintaan tautan atur ulang kata sandi (JSON ke BFF, tanpa reload). */
 export function LupaPasswordForm() {
@@ -36,11 +38,16 @@ export function LupaPasswordForm() {
     kirim: (n) =>
       MODE_MOCK
         ? new Promise((r) => setTimeout(r, 650))
-        : bffFetch("/api/auth/forgot-password", { method: "POST", body: JSON.stringify(n) }),
+        : bffFetch("/api/auth/forgot-password", {
+            method: "POST",
+            body: JSON.stringify(n),
+          }),
     sukses: () => {
       // Selalu tampilkan keadaan sukses (tanpa membocorkan keberadaan akun).
       setTerkirim(true);
-      toast.success("Tautan dikirim", { description: "Periksa kotak masuk email institusi Anda." });
+      toast.success("Tautan dikirim", {
+        description: "Periksa kotak masuk email institusi Anda.",
+      });
     },
     // 429 dari BFF membawa sisa waktu; selebihnya pesan jaringan umum (tidak membocorkan keberadaan akun).
     petaGalat: (err) => galatAuth(masukanDariError(err), "lupa"),
@@ -62,20 +69,29 @@ export function LupaPasswordForm() {
             spam.
           </p>
         </div>
-        <Link
+        <SpringLink
           href="/masuk"
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-input bg-white/80 text-[15px] font-medium text-navy-800 shadow-ambient-sm transition-all hover:bg-white hover:shadow-ambient dark:bg-white/[0.06] dark:text-white dark:hover:bg-white/[0.1]"
+          variant="outline"
+          size="lg"
+          className="flex h-11 w-full text-[15px]"
         >
-          <ArrowLeft className="size-4" /> Kembali ke halaman masuk
-        </Link>
+          <ArrowLeft /> Kembali ke halaman masuk
+        </SpringLink>
       </div>
     );
   }
 
   return (
-    <FormBff onKirim={form.kirimDari(() => ({ email }))} sibuk={loading} className="mt-6 space-y-3.5">
-      <div className="space-y-2">
-        <Label htmlFor="email">Email institusi</Label>
+    <FormBff
+      onKirim={form.kirimDari(() => ({ email }))}
+      sibuk={loading}
+      className="mt-6 flex flex-col gap-4"
+    >
+      <FormField
+        id="email"
+        label="Email institusi"
+        galat={form.galatField.email}
+      >
         <div className="relative">
           <Mail className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -89,24 +105,23 @@ export function LupaPasswordForm() {
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
             aria-invalid={!!(galat || form.galatField.email)}
-            aria-describedby={form.galatField.email ? idGalatField("email") : undefined}
+            aria-describedby={
+              form.galatField.email ? idGalatField("email") : undefined
+            }
             className="h-11 px-10"
             required
           />
         </div>
-        <PesanField field="email" pesan={form.galatField.email} />
-      </div>
+      </FormField>
 
       {galat && <KotakGalatAuth galat={galat} sekarang={sekarang} />}
 
-      <button
+      <SpringButton
         type="submit"
+        variant="primary"
+        size="lg"
+        className="h-11 w-full text-[15px]"
         disabled={loading || tertahan}
-        className={cn(
-          "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
-          "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-          "disabled:cursor-not-allowed disabled:opacity-70",
-        )}
       >
         {loading ? (
           <>
@@ -117,11 +132,11 @@ export function LupaPasswordForm() {
             Kirim tautan atur ulang <ArrowRight className="size-4" />
           </>
         )}
-      </button>
+      </SpringButton>
 
       <Link
         href="/masuk"
-        className="flex items-center justify-center gap-1.5 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+        className="flex min-h-11 items-center justify-center gap-1.5 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
       >
         <ArrowLeft className="size-4" /> Kembali ke halaman masuk
       </Link>

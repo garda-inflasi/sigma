@@ -17,7 +17,7 @@ npm run dev               # http://localhost:3000 — mode mock aktif bila NEXT_
 > `apps/web/.env.local` — salin `apps/web/env.local.example` atau jalankan `make setup/env`
 > dari root untuk mengisi keduanya (root `.env` + `apps/web/.env.local`) sekaligus.
 
-Di mode pengembangan, gunakan **"Lihat sebagai"** di topbar untuk berpindah antar 14 peran dan meninjau RBAC di setiap halaman. Tekan **⌘K / Ctrl+K** untuk palet perintah; pilih *Simulasikan alert EWS kritis* untuk melihat toast berdenyut.
+Di mode pengembangan, gunakan **"Lihat sebagai"** di topbar untuk berpindah antar 14 peran dan meninjau RBAC di setiap halaman. Tekan **⌘K / Ctrl+K** untuk palet perintah; pilih _Simulasikan alert EWS kritis_ untuk melihat toast berdenyut.
 
 ### Database & seeder
 
@@ -31,20 +31,20 @@ Seeder (`prisma/seed.ts`) memakai generator deterministik yang sama dengan mode 
 
 ## Peta deliverable
 
-| # | Deliverable | Berkas |
-|---|---|---|
-| 1 | Token Tailwind (warna garda, tipe, bayangan, radius) | `app/globals.css` (@theme v4), `lib/design/tokens.ts` |
-| 2 | Preset motion | `lib/motion/presets.ts`, `components/motion/*` |
-| 3 | PWA lapangan (input, riwayat, tugas, indikator offline) | `app/lapangan/*`, `components/lapangan/*`, `lib/offline/*`, `public/sw.js`, `app/manifest.ts` |
-| 4 | Dashboard operasional | `app/(console)/operasional`, `components/dashboard/*`, `components/ews/ews-live-feed.tsx`, `components/map/*` |
-| 5 | Dashboard eksekutif | `app/(console)/eksekutif`, `components/eksekutif/*` |
-| 6 | Kanban intervensi 3 siklus | `app/(console)/intervensi`, `components/intervensi/*`, `lib/data/siklus.ts` |
-| 7 | Command palette ⌘K | `components/command/command-palette.tsx` |
-| 8 | Toast EWS + pulse ring | `components/ews/ews-toast.tsx`, `components/ews/use-ews-stream.ts` |
-| 9 | Prisma schema & seeder | `prisma/schema.prisma`, `prisma/seed.ts`, `lib/data/reference.ts`, `lib/data/generators.ts` |
-| 10 | Arsitektur halaman & alur | `docs/ARCHITECTURE.md`, `docs/FLOW.md`, `/alur-sistem` |
-| — | Tabel massal di semua daftar | `components/data-table/*` |
-| — | RBAC tanpa TPID/Pemda | `lib/rbac/*`, `proxy.ts`, `docs/ARCHITECTURE.md` |
+| #   | Deliverable                                             | Berkas                                                                                                        |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | Token Tailwind (warna garda, tipe, bayangan, radius)    | `app/globals.css` (@theme v4), `lib/design/tokens.ts`                                                         |
+| 2   | Preset motion                                           | `lib/motion/presets.ts`, `components/motion/*`                                                                |
+| 3   | PWA lapangan (input, riwayat, tugas, indikator offline) | `app/lapangan/*`, `components/lapangan/*`, `lib/offline/*`, `public/sw.js`, `app/manifest.ts`                 |
+| 4   | Dashboard operasional                                   | `app/(console)/operasional`, `components/dashboard/*`, `components/ews/ews-live-feed.tsx`, `components/map/*` |
+| 5   | Dashboard eksekutif                                     | `app/(console)/eksekutif`, `components/eksekutif/*`                                                           |
+| 6   | Kanban intervensi 3 siklus                              | `app/(console)/intervensi`, `components/intervensi/*`, `lib/data/siklus.ts`                                   |
+| 7   | Command palette ⌘K                                      | `components/command/command-palette.tsx`                                                                      |
+| 8   | Toast EWS + pulse ring                                  | `components/ews/ews-toast.tsx`, `components/ews/use-ews-stream.ts`                                            |
+| 9   | Prisma schema & seeder                                  | `prisma/schema.prisma`, `prisma/seed.ts`, `lib/data/reference.ts`, `lib/data/generators.ts`                   |
+| 10  | Arsitektur halaman & alur                               | `docs/ARCHITECTURE.md`, `docs/FLOW.md`, `/alur-sistem`                                                        |
+| —   | Tabel massal di semua daftar                            | `components/data-table/*`                                                                                     |
+| —   | RBAC tanpa TPID/Pemda                                   | `lib/rbac/*`, `proxy.ts`, `docs/ARCHITECTURE.md`                                                              |
 
 Panduan visual & penulisan: `docs/DESIGN-SYSTEM.md`.
 
@@ -57,6 +57,6 @@ Set `NEXT_PUBLIC_API_BASE_URL` ke layanan Go. Kontrak endpoint ada di `docs/ARCH
 - **Tailwind v4**: konfigurasi berada di CSS (`@theme`). Tidak ada `tailwind.config.ts`.
 - **Prisma dipin ke 6.19** (API `prisma-client-js` klasik). Untuk Prisma 7+: pindahkan konfigurasi ke `prisma.config.ts` dan gunakan driver adapter `@prisma/adapter-pg`.
 - **TanStack Table dipin ke v8** (API yang dipakai shadcn data-table).
-- **Mapbox** opsional: tanpa `NEXT_PUBLIC_MAPBOX_TOKEN`, peta memakai skema SVG Aceh (tidak berskala).
+- **Peta** memakai Leaflet dengan tile OpenStreetMap dan batas BPS 2020, tanpa token. Sumber data ada di `public/geojson/SUMBER.md`.
 - Service worker hanya didaftarkan di build produksi (`npm run build && npm start`).
 - Koordinat pasar & data harga bersifat sintetis untuk desain/demo; ganti dengan data resmi sebelum operasional.

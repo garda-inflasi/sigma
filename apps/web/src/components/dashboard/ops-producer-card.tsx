@@ -1,10 +1,16 @@
 "use client";
 
 import { PanelTitle } from "@/components/garda/page-header";
+import { EmptyState } from "@/components/garda/empty-state";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
-import { formatAngka, formatPersen, formatRupiah, formatTanggal } from "@/lib/format";
+import {
+  formatAngka,
+  formatPersen,
+  formatRupiah,
+  formatTanggal,
+} from "@/lib/format";
 import { useProdusenOperasional } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 import { useFilterOperasional } from "./use-filter-operasional";
@@ -17,7 +23,12 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
   const { data, isLoading, error, refetch } = useProdusenOperasional(saringan);
 
   return (
-    <section className={cn("glass flex h-full flex-col rounded-xl p-5 sm:p-6", className)}>
+    <section
+      className={cn(
+        "glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0",
+        className,
+      )}
+    >
       <PanelTitle
         title="Harga produsen & margin"
         description={
@@ -27,7 +38,7 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
         }
       />
 
-      <div className="mt-4 flex-1 overflow-x-auto">
+      <div className="scrollbar-thin mt-3 flex-1 overflow-x-auto lg:min-h-0 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-44 w-full" />
         ) : !data ? (
@@ -37,9 +48,10 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
             onCoba={() => void refetch()}
           />
         ) : data.komoditas.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Belum ada data harga produsen atau produksi pada cakupan ini.
-          </p>
+          <EmptyState
+            title="Belum ada data harga produsen atau produksi pada cakupan ini."
+            className="py-6"
+          />
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -55,7 +67,7 @@ export function OpsProducerCard({ className }: { className?: string } = {}) {
                 const marginPct = k.margin?.persenKonsumen;
                 const marginTinggi = marginPct !== undefined && marginPct > 30;
                 return (
-                  <tr key={k.komoditasKode} className="border-t border-border/50">
+                  <tr key={k.komoditasKode} className="border-t border-border">
                     <td className="py-2 pr-2">
                       <p className="font-medium">{k.komoditasNama}</p>
                       <p className="text-xs text-muted-foreground">

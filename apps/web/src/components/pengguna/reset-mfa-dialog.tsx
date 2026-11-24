@@ -1,11 +1,13 @@
 "use client";
 
 import { z } from "zod";
-import { FormBff } from "@/components/form/form-bff";
+import { FormDialog } from "@/components/form/form-bff";
+import { FormAlert } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -43,10 +45,9 @@ export function ResetMfaDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <FormBff
+        <FormDialog
           onKirim={kiriman.kirimDari(() => ({}))}
           sibuk={kiriman.pending}
-          className="contents"
         >
           <DialogHeader>
             <DialogTitle>Reset MFA</DialogTitle>
@@ -55,27 +56,25 @@ export function ResetMfaDialog({
               tidak bisa dipakai lagi.
             </DialogDescription>
           </DialogHeader>
-          <ul className="grid list-disc gap-1.5 py-2 pl-5 text-sm text-muted-foreground">
-            <li>
-              MFA dinonaktifkan; aplikasi autentikator yang terdaftar dan semua
-              kode cadangan dihapus.
-            </li>
-            <li>
-              Seluruh sesi aktif {user?.nama} diakhiri seketika di semua
-              perangkat.
-            </li>
-            <li>
-              {wajib
-                ? "Peran ini wajib MFA: pada masuk berikutnya pengguna harus mendaftarkan autentikator baru sebelum bisa memakai aplikasi."
-                : "Pengguna masuk dengan kata sandi saja sampai ia mendaftarkan autentikator baru."}
-            </li>
-            <li>Tindakan ini tercatat di audit trail.</li>
-          </ul>
-          {kiriman.galat && (
-            <p role="alert" className="text-sm text-destructive">
-              {kiriman.galat.pesan}
-            </p>
-          )}
+          <DialogBody>
+            <ul className="grid list-disc gap-1.5 pl-5 text-[13px] text-muted-foreground">
+              <li>
+                MFA dinonaktifkan; aplikasi autentikator yang terdaftar dan
+                semua kode cadangan dihapus.
+              </li>
+              <li>
+                Seluruh sesi aktif {user?.nama} diakhiri seketika di semua
+                perangkat.
+              </li>
+              <li>
+                {wajib
+                  ? "Peran ini wajib MFA: pada masuk berikutnya pengguna harus mendaftarkan autentikator baru sebelum bisa memakai aplikasi."
+                  : "Pengguna masuk dengan kata sandi saja sampai ia mendaftarkan autentikator baru."}
+              </li>
+              <li>Tindakan ini tercatat di audit trail.</li>
+            </ul>
+            <FormAlert>{kiriman.galat?.pesan}</FormAlert>
+          </DialogBody>
           <DialogFooter>
             <Button
               variant="outline"
@@ -93,7 +92,7 @@ export function ResetMfaDialog({
               {kiriman.pending ? "Mereset…" : "Reset MFA"}
             </SpringButton>
           </DialogFooter>
-        </FormBff>
+        </FormDialog>
       </DialogContent>
     </Dialog>
   );

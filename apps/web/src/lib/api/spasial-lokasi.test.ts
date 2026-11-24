@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  BATAS_SKEMA,
   keteranganLokasi,
   pesanGalatGeolokasi,
   ringkasNeraca,
   statusNeraca,
-  titikDariSkema,
   toLokasi,
   toLokasiQuery,
   toNeraca,
@@ -127,7 +125,7 @@ describe("lokasi", () => {
       diDalam: true,
       jarakPusatKm: 1.24,
     });
-    assert.match(dalam, /^di dalam batas \(perkiraan\)/);
+    assert.match(dalam, /^di dalam batas wilayah/);
     const luar = keteranganLokasi({
       kode: "1171",
       nama: "Kota Banda Aceh",
@@ -142,30 +140,6 @@ describe("lokasi", () => {
     assert.match(pesanGalatGeolokasi(2), /tidak dapat ditentukan/);
     assert.match(pesanGalatGeolokasi(3), /batas waktu/);
     assert.match(pesanGalatGeolokasi(99), /Gagal menentukan lokasi/);
-  });
-});
-
-describe("titikDariSkema", () => {
-  it("sudut kotak menjadi batas skema", () => {
-    assert.deepEqual(titikDariSkema(0, 0), {
-      lat: BATAS_SKEMA.maxLat,
-      lng: BATAS_SKEMA.minLng,
-    });
-    const sudut = titikDariSkema(1, 1);
-    assert.ok(Math.abs(sudut.lat - BATAS_SKEMA.minLat) < 1e-9);
-    assert.ok(Math.abs(sudut.lng - BATAS_SKEMA.maxLng) < 1e-9);
-  });
-
-  it("kebalikan dari proyeksi persen yang dipakai peta", () => {
-    const lat = 5.5483;
-    const lng = 95.3238;
-    const x =
-      (lng - BATAS_SKEMA.minLng) / (BATAS_SKEMA.maxLng - BATAS_SKEMA.minLng);
-    const y =
-      (BATAS_SKEMA.maxLat - lat) / (BATAS_SKEMA.maxLat - BATAS_SKEMA.minLat);
-    const t = titikDariSkema(x, y);
-    assert.ok(Math.abs(t.lat - lat) < 1e-9);
-    assert.ok(Math.abs(t.lng - lng) < 1e-9);
   });
 });
 

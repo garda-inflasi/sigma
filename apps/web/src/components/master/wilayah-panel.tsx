@@ -1,12 +1,19 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Download, Loader2 } from "lucide-react";
+import { Download } from "lucide-react";
 import { useState } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable } from "@/components/data-table/data-table";
 import {
+  InspectorRingkasan,
+  InspectorSection,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
+import {
   Sheet,
+  SheetBody,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -17,7 +24,7 @@ import { exportCsv } from "@/lib/csv";
 import type { MasterWilayahRow } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { useMasterWilayah, useWilayahDetail } from "@/lib/query/hooks";
-import { CatatanSheet, DlBaris } from "./detail-baris";
+import { CatatanSheet, MemuatSheet, formatKoordinat } from "./detail-baris";
 
 const kolom: ColumnDef<MasterWilayahRow>[] = [
   {
@@ -37,7 +44,7 @@ const kolom: ColumnDef<MasterWilayahRow>[] = [
   {
     id: "ibukota",
     header: "Ibu kota",
-    accessorFn: (w) => `Ibu kota ${w.ibukota}`,
+    accessorFn: (w) => w.ibukota,
     cell: ({ getValue }) => (
       <span className="text-muted-foreground">{getValue<string>()}</span>
     ),
@@ -45,7 +52,7 @@ const kolom: ColumnDef<MasterWilayahRow>[] = [
   {
     id: "koordinat",
     header: "Koordinat",
-    accessorFn: (w) => `${w.lat.toFixed(2)}, ${w.lng.toFixed(2)}`,
+    accessorFn: (w) => formatKoordinat(w.lat, w.lng),
     cell: ({ getValue }) => (
       <span className="num text-xs">{getValue<string>()}</span>
     ),
@@ -79,13 +86,14 @@ export function WilayahPanel() {
   return (
     <>
       <DataTable
+        isiPenuh
         data={data}
         isLoading={isLoading}
         columns={kolom}
         getRowId={(r) => r.id}
-        entityLabel="data"
+        entityLabel="wilayah"
         bulkActions={actions}
-        searchPlaceholder="Cari wilayah (kode bps)"
+        searchPlaceholder="Cari nama atau kode BPS"
         onRowClick={(r) => setKode(r.kode)}
       />
       <WilayahSheet kode={kode} onClose={() => setKode(null)} />
@@ -103,39 +111,50 @@ function WilayahSheet({
   const { data, isLoading, error } = useWilayahDetail(kode);
   return (
     <Sheet open={!!kode} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="glass-strong w-full gap-0 overflow-y-auto border-0 sm:max-w-md">
+      <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{data?.wilayah.nama ?? "Detail wilayah"}</SheetTitle>
           <SheetDescription>{kode}</SheetDescription>
         </SheetHeader>
-        <div className="space-y-5 px-4 pb-6 text-sm">
-          {isLoading && (
-            <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
-          )}
+        <SheetBody>
+          {isLoading && <MemuatSheet />}
           {error && (
-            <CatatanSheet galat>{pesanGalatMaster(error)}</CatatanSheet>
+            <div className="px-5 py-4">
+              <CatatanSheet galat>{pesanGalatMaster(error)}</CatatanSheet>
+            </div>
           )}
           {data && (
-            <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2">
-              <DlBaris label="Kode">
-                <span className="num">{data.wilayah.kode}</span>
-              </DlBaris>
-              <DlBaris label="Jenis">{data.jenis}</DlBaris>
-              <DlBaris label="Ibu kota">{data.wilayah.ibukota}</DlBaris>
-              <DlBaris label="Koordinat">
-                <span className="num">
-                  {data.wilayah.lat}, {data.wilayah.lng}
-                </span>
-              </DlBaris>
-              <DlBaris label="Kecamatan">
-                <span className="num">{formatAngka(data.jumlahKecamatan)}</span>
-              </DlBaris>
-              <DlBaris label="Pasar">
-                <span className="num">{formatAngka(data.jumlahPasar)}</span>
-              </DlBaris>
-            </dl>
+            <>
+              <InspectorRingkasan
+                className="border-b-0"
+                nilai={`${formatAngka(data.jumlahPasar)} pasar`}
+                keterangan={`${formatAngka(data.jumlahKecamatan)} kecamatan · ${data.jenis}`}
+              />
+              <InspectorSection title="Rincian">
+                <MetaGrid>
+                  <MetaItem label="Kode">
+                    <span className="num">{data.wilayah.kode}</span>
+                  </MetaItem>
+                  <MetaItem label="Jenis">{data.jenis}</MetaItem>
+                  <MetaItem label="Ibu kota">{data.wilayah.ibukota}</MetaItem>
+                  <MetaItem label="Koordinat">
+                    <span className="num">
+                      {formatKoordinat(data.wilayah.lat, data.wilayah.lng)}
+                    </span>
+                  </MetaItem>
+                  <MetaItem label="Kecamatan">
+                    <span className="num">
+                      {formatAngka(data.jumlahKecamatan)}
+                    </span>
+                  </MetaItem>
+                  <MetaItem label="Pasar">
+                    <span className="num">{formatAngka(data.jumlahPasar)}</span>
+                  </MetaItem>
+                </MetaGrid>
+              </InspectorSection>
+            </>
           )}
-        </div>
+        </SheetBody>
       </SheetContent>
     </Sheet>
   );

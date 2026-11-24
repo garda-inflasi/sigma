@@ -8,11 +8,13 @@ import {
   Upload,
 } from "lucide-react";
 import { useState, type ChangeEvent } from "react";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -20,7 +22,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   KOLOM_IMPOR,
   LABEL_STATUS_BARIS,
@@ -58,34 +59,38 @@ function unduhTemplate() {
   URL.revokeObjectURL(url);
 }
 
+const KELAS_TH =
+  "h-9 bg-secondary px-3 text-left text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase";
+const KELAS_TD = "border-t border-border px-3 py-2";
+
 function TabelBaris({ baris, label }: { baris: BarisImpor[]; label: string }) {
   return (
-    <div className="scrollbar-thin max-h-72 overflow-auto rounded-xl border border-border/60">
+    <div className="scrollbar-thin max-h-72 min-w-0 overflow-auto rounded-lg border border-border">
       <table
         aria-label={label}
         className="w-full min-w-[720px] border-separate border-spacing-0 text-xs"
       >
-        <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur dark:bg-navy-950/95">
-          <tr className="text-left text-muted-foreground">
-            <th scope="col" className="p-2 font-medium">
+        <thead className="sticky top-0 z-10">
+          <tr>
+            <th scope="col" className={KELAS_TH}>
               Baris
             </th>
-            <th scope="col" className="p-2 font-medium">
+            <th scope="col" className={KELAS_TH}>
               Nama
             </th>
-            <th scope="col" className="p-2 font-medium">
+            <th scope="col" className={KELAS_TH}>
               Email
             </th>
-            <th scope="col" className="p-2 font-medium">
+            <th scope="col" className={KELAS_TH}>
               Peran
             </th>
-            <th scope="col" className="p-2 font-medium">
+            <th scope="col" className={KELAS_TH}>
               Lembaga
             </th>
-            <th scope="col" className="p-2 font-medium">
+            <th scope="col" className={KELAS_TH}>
               Kab.
             </th>
-            <th scope="col" className="p-2 font-medium">
+            <th scope="col" className={KELAS_TH}>
               Status
             </th>
           </tr>
@@ -100,28 +105,26 @@ function TabelBaris({ baris, label }: { baris: BarisImpor[]; label: string }) {
                 b.status === "galat" && "bg-defisit/5",
               )}
             >
-              <td className="num border-t border-border/50 p-2">{b.baris}</td>
-              <td className="border-t border-border/50 p-2">
+              <td className={cn(KELAS_TD, "num")}>{b.baris}</td>
+              <td className={cn(KELAS_TD, "max-w-40 break-words")}>
                 {b.nama || <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="border-t border-border/50 p-2 break-all">
+              <td className={cn(KELAS_TD, "max-w-48 break-all")}>
                 {b.email || <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="num border-t border-border/50 p-2">
+              <td className={cn(KELAS_TD, "num whitespace-nowrap")}>
                 {b.peran || <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="border-t border-border/50 p-2">
+              <td className={cn(KELAS_TD, "max-w-40 break-words")}>
                 {b.lembaga || <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="num border-t border-border/50 p-2">
-                {b.kabupatenKode || "—"}
-              </td>
-              <td className="border-t border-border/50 p-2">
+              <td className={cn(KELAS_TD, "num")}>{b.kabupatenKode || "—"}</td>
+              <td className={cn(KELAS_TD, "min-w-44")}>
                 <StatusBadge tone={TONE_STATUS[b.status]}>
                   {LABEL_STATUS_BARIS[b.status]}
                 </StatusBadge>
                 {b.galat.length > 0 && (
-                  <ul className="mt-1 list-disc space-y-0.5 pl-4 text-defisit-ink dark:text-defisit-soft">
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4 break-words text-defisit-ink dark:text-defisit-soft">
                     {b.galat.map((g) => (
                       <li key={g}>{g}</li>
                     ))}
@@ -198,10 +201,9 @@ function IsiImpor({ onOpenChange }: { onOpenChange: (v: boolean) => void }) {
         </DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-4 py-2">
+      <DialogBody>
         {!tahapHasil && (
-          <div className="grid gap-2">
-            <Label htmlFor="impor-berkas">Berkas CSV</Label>
+          <FormField id="impor-berkas" label="Berkas CSV">
             <Input
               id="impor-berkas"
               type="file"
@@ -209,7 +211,7 @@ function IsiImpor({ onOpenChange }: { onOpenChange: (v: boolean) => void }) {
               disabled={sibuk}
               onChange={pilihBerkas}
             />
-            <p className="text-xs leading-relaxed text-muted-foreground">
+            <p className="text-xs leading-relaxed break-words text-muted-foreground">
               Kolom: <span className="num">{KOLOM_IMPOR.join(", ")}</span>{" "}
               (kabupaten_kode boleh dikosongkan). UTF-8, pemisah koma atau titik
               koma, maksimal {MAKS_BARIS_IMPOR} baris dan{" "}
@@ -221,7 +223,7 @@ function IsiImpor({ onOpenChange }: { onOpenChange: (v: boolean) => void }) {
                 <Download /> Unduh templat CSV
               </Button>
             </div>
-          </div>
+          </FormField>
         )}
 
         {sibuk && (
@@ -234,19 +236,16 @@ function IsiImpor({ onOpenChange }: { onOpenChange: (v: boolean) => void }) {
           </p>
         )}
         {galat && (
-          <p
-            role="alert"
-            className="flex items-start gap-2 text-sm text-destructive"
-          >
+          <FormAlert className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            {galat}
-          </p>
+            <span className="min-w-0">{galat}</span>
+          </FormAlert>
         )}
 
         {pratinjau && !tahapHasil && (
-          <div className="grid gap-3">
-            <p role="status" className="text-sm">
-              <span className="font-medium">{namaBerkas}</span>:{" "}
+          <div className="flex min-w-0 flex-col gap-3">
+            <p role="status" className="text-sm break-words">
+              <span className="font-medium break-all">{namaBerkas}</span>:{" "}
               {ringkasPratinjau(pratinjau)}
             </p>
             <TabelBaris baris={pratinjau.baris} label="Pratinjau impor" />
@@ -254,15 +253,15 @@ function IsiImpor({ onOpenChange }: { onOpenChange: (v: boolean) => void }) {
         )}
 
         {hasil && (
-          <div className="grid gap-3">
+          <div className="flex min-w-0 flex-col gap-3">
             <p role="status" className="flex items-start gap-2 text-sm">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-normal" />
-              <span>{ringkasHasil(hasil)}</span>
+              <span className="min-w-0">{ringkasHasil(hasil)}</span>
             </p>
             <TabelBaris baris={hasil.baris} label="Hasil impor" />
           </div>
         )}
-      </div>
+      </DialogBody>
 
       <DialogFooter>
         {tahapHasil ? (

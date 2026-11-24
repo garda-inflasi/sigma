@@ -49,7 +49,7 @@ import type { Tahap } from "@/lib/data/siklus";
 import type { Siklus } from "@/lib/design/tokens";
 import { toGeometri, toKandidat, toLokasi, toLokasiQuery, toMarker, toNeraca, toNeracaQuery, toOptimasiBody, toRencanaOptimasi, toRiwayatOptimasi, toRute, type GeometriResponse, type GeometriWilayah, type KandidatColdStorage, type KandidatResponse, type LokasiResponse, type LokasiWilayah, type MarkerResponse, type NeracaResponse, type NeracaWilayah, type OptimasiParams, type OptimasiResponse, type RencanaOptimasi, type RiwayatOptimasi, type RiwayatOptimasiResponse, type Rute, type RuteResponse } from "./spasial";
 import { mockLokasi, mockNeraca, mockRiwayatOptimasi } from "./spasial-mock";
-import type { MarkerWilayah } from "@/components/map/marker-pin";
+import type { MarkerWilayah } from "@/lib/peta/aceh";
 import { toPolicyBrief, toPolicyBriefDetail, type PolicyBriefDetail, type PolicyBriefDetailResponse, type PolicyBriefResponse } from "./brief";
 import { mockBriefDetail } from "./brief-mock";
 import {

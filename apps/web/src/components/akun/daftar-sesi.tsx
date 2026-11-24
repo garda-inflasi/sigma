@@ -3,6 +3,7 @@
 import { Laptop, Loader2, LogOut, Smartphone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { FormAlert } from "@/components/form/form-field";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import {
@@ -67,35 +68,40 @@ function KartuSesi({
   return (
     <li
       className={cn(
-        "flex flex-col gap-3 rounded-xl border p-3.5 sm:flex-row sm:items-start",
+        "flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors",
         sesi.saatIni
-          ? "border-data-300 bg-data-50/60 dark:border-data-500/40 dark:bg-data-500/10"
-          : "border-border bg-white/60 dark:bg-white/[0.04]",
+          ? "border-data-300 bg-data-50/70 dark:border-data-500/40 dark:bg-data-500/10"
+          : "border-border bg-card hover:border-navy-300/80 dark:hover:border-white/15",
       )}
       onKeyDown={(e) => {
         if (e.key === "Escape" && konfirmasi && !mencabut) onBatal();
       }}
     >
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">
-          <Ikon className="size-5" aria-hidden />
+      <div className="flex min-w-0 flex-1 basis-52 items-center gap-3">
+        <span
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-lg",
+            sesi.saatIni
+              ? "bg-data-100 text-data-700 dark:bg-data-500/20 dark:text-data-300"
+              : "bg-secondary text-muted-foreground",
+          )}
+        >
+          <Ikon className="size-4" aria-hidden />
         </span>
         <div className="min-w-0 flex-1 space-y-0.5">
-          <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-navy-900 dark:text-white">
             <span title={sesi.userAgent || undefined}>{sesi.perangkat}</span>
             {sesi.saatIni && <StatusBadge tone="normal">Sesi Ini</StatusBadge>}
-          </p>
-          <p className="num text-xs text-muted-foreground">
-            {rincianSesi(sesi)}
+            <span className="num text-xs font-normal text-muted-foreground">
+              {rincianSesi(sesi)}
+            </span>
           </p>
           <p className="text-xs text-muted-foreground">
             Masuk{" "}
             <time dateTime={sesi.dibuatPada}>
               {formatTanggal(sesi.dibuatPada, "d MMM yyyy, HH:mm")}
             </time>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Aktif terakhir{" "}
+            {" · "}Aktif terakhir{" "}
             <time dateTime={sesi.terakhirDipakai}>
               {formatRelatif(sesi.terakhirDipakai)}
             </time>
@@ -108,7 +114,7 @@ function KartuSesi({
           <div
             role="group"
             aria-label={`Konfirmasi pencabutan sesi ${sesi.perangkat}`}
-            className="flex gap-2 sm:shrink-0"
+            className="flex gap-2 max-sm:w-full sm:shrink-0"
           >
             <Button
               variant="destructive"
@@ -138,7 +144,7 @@ function KartuSesi({
             size="sm"
             onClick={onMinta}
             aria-label={`Cabut sesi ${sesi.perangkat}${sesi.ip ? `, IP ${sesi.ip}` : ""}`}
-            className="max-sm:h-11 sm:shrink-0"
+            className="shrink-0 max-sm:h-11"
           >
             Cabut
           </Button>
@@ -180,7 +186,7 @@ export function DaftarSesi() {
 
   if (MODE_MOCK) {
     return (
-      <p className="rounded-xl bg-muted/50 p-3.5 text-sm text-muted-foreground">
+      <p className="m-4 rounded-lg border border-border bg-secondary/50 p-3.5 text-sm text-muted-foreground">
         Sesi aktif tersedia setelah backend aktif (mode demo tidak memiliki sesi
         server).
       </p>
@@ -190,8 +196,8 @@ export function DaftarSesi() {
   const lain = sesi ? jumlahSesiLain(sesi) : 0;
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-3">
+    <div className="flex min-w-0 flex-col lg:min-h-0 lg:flex-1">
+      <div className="scrollbar-thin max-h-[60dvh] space-y-3 overflow-y-auto p-4 lg:max-h-none lg:min-h-0 lg:flex-1">
         {isLoading && (
           <div
             role="status"
@@ -199,14 +205,14 @@ export function DaftarSesi() {
             aria-label="Memuat sesi aktif"
             className="space-y-2.5"
           >
-            <Shimmer className="h-[104px] w-full rounded-xl" />
-            <Shimmer className="h-[104px] w-full rounded-xl" />
+            <Shimmer className="h-16 w-full rounded-xl" />
+            <Shimmer className="h-16 w-full rounded-xl" />
           </div>
         )}
 
         {isError && (
-          <div role="alert" className="space-y-2 text-sm">
-            <p className="font-medium text-destructive">
+          <FormAlert className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <p className="min-w-0 font-medium">
               {error instanceof Error
                 ? error.message
                 : "Gagal memuat sesi aktif."}
@@ -214,11 +220,11 @@ export function DaftarSesi() {
             <Button variant="outline" size="sm" onClick={() => void refetch()}>
               Coba lagi
             </Button>
-          </div>
+          </FormAlert>
         )}
 
         {sesi && (
-          <ul aria-label="Sesi aktif" className="space-y-2.5">
+          <ul aria-label="Sesi aktif" className="space-y-2">
             {sesi.map((s) => (
               <KartuSesi
                 key={s.id}
@@ -238,7 +244,7 @@ export function DaftarSesi() {
         )}
 
         {sesi?.length === 0 && (
-          <p className="text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             Tidak ada sesi aktif yang tercatat.
           </p>
         )}
@@ -250,10 +256,18 @@ export function DaftarSesi() {
         )}
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border bg-secondary/25 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center dark:bg-white/[0.02]">
+        {sesi && sesi.length > 0 && (
+          <p className="text-xs text-muted-foreground sm:mr-auto">
+            <span className="num font-semibold text-foreground">
+              {sesi.length.toLocaleString("id-ID")}
+            </span>{" "}
+            sesi aktif, termasuk perangkat ini
+          </p>
+        )}
         <Button
           variant="outline"
-          className="flex-1 max-sm:h-11"
+          className="max-sm:h-11"
           disabled={lain === 0 || cabutLain.isPending}
           onClick={() => setDialogLain(true)}
         >
@@ -266,7 +280,7 @@ export function DaftarSesi() {
         </Button>
         <Button
           variant="destructive"
-          className="flex-1 max-sm:h-11"
+          className="max-sm:h-11"
           disabled={keluarSibuk}
           onClick={() => setKonfirmasiSemua(true)}
         >

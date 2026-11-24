@@ -69,6 +69,7 @@ build/
 
 # === Turbo ===
 .turbo/
+.dev-api-port
 
 # === Playwright (apps/web) ===
 apps/web/test-results/

@@ -5,9 +5,15 @@ import { Download, Flag, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
+import {
+  HalamanPas,
+  RingkasanKeputusan,
+  type ItemRingkas,
+} from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
 import { StatusBadge } from "@/components/garda/status-badge";
+import { Button } from "@/components/ui/button";
 import { filterAuditDariQuery, type AuditFilter } from "@/lib/api/audit";
 import { exportCsv } from "@/lib/csv";
 import type { AuditRow } from "@/lib/data/types";
@@ -26,7 +32,9 @@ const HASIL_BADGE = {
 export function AuditPage() {
   // Tautan dari halaman lain (mis. riwayat peran pengguna) membuka audit yang sudah disaring lewat kueri URL.
   const params = useSearchParams();
-  const [filter, setFilter] = useState<AuditFilter>(() => filterAuditDariQuery(params));
+  const [filter, setFilter] = useState<AuditFilter>(() =>
+    filterAuditDariQuery(params),
+  );
   const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useAudit(filter);
   const rows = useMemo(() => data?.pages.flatMap((p) => p.rows), [data]);
@@ -48,9 +56,11 @@ export function AuditPage() {
         accessorKey: "aktor",
         header: "Aktor",
         cell: ({ row: { original: a } }) => (
-          <div>
-            <p className="font-medium">{a.aktor}</p>
-            <p className="text-xs text-muted-foreground">{a.peran}</p>
+          <div className="min-w-0">
+            <SelTeks className="font-medium">{a.aktor}</SelTeks>
+            <SelTeks className="text-xs text-muted-foreground">
+              {a.peran}
+            </SelTeks>
           </div>
         ),
       },
@@ -58,7 +68,7 @@ export function AuditPage() {
         accessorKey: "aksi",
         header: "Aksi",
         cell: ({ getValue }) => (
-          <span className="num rounded-md bg-mist-100 px-1.5 py-0.5 text-[11px] dark:bg-white/5">
+          <span className="num rounded-md bg-secondary px-1.5 py-0.5 text-[11px]">
             {getValue<string>()}
           </span>
         ),
@@ -68,7 +78,10 @@ export function AuditPage() {
         accessorFn: (a) => `${a.entitas} ${a.entitasId}`,
         header: "Entitas",
         cell: ({ row: { original: a } }) => (
-          <span className="whitespace-nowrap">
+          <span
+            title={`${a.entitas} ${a.entitasId}`}
+            className="block max-w-[16rem] truncate"
+          >
             {a.entitas}{" "}
             <span className="num text-xs text-muted-foreground">
               {a.entitasId}
@@ -94,17 +107,58 @@ export function AuditPage() {
     [],
   );
 
+  // Audit memakai paginasi cursor: angka hanya mencakup catatan yang sudah dimuat, dan itu disebut di tiap sel.
+  const dimuat = rows ?? [];
+  const cakupan = hasNextPage ? "yang dimuat" : "semua hasil";
+  const selHasil = (
+    label: string,
+    hasil: "GAGAL" | "DITOLAK",
+    arti: string,
+  ): ItemRingkas => {
+    const jumlah = dimuat.filter((a) => a.hasil === hasil).length;
+    const aktif = filter.hasil === hasil;
+    return {
+      label,
+      nilai: isLoading ? "–" : jumlah.toLocaleString("id-ID"),
+      keterangan: aktif ? "Filter aktif" : cakupan,
+      tone: jumlah > 0 ? "defisit" : "netral",
+      arti,
+      aktif,
+      onClick: () =>
+        setFilter((f) => ({ ...f, hasil: aktif ? undefined : hasil })),
+    };
+  };
+  const ringkasan: ItemRingkas[] = [
+    {
+      label: "Dimuat",
+      nilai: isLoading
+        ? "–"
+        : `${dimuat.length.toLocaleString("id-ID")}${hasNextPage ? "+" : ""}`,
+      keterangan: hasNextPage ? "Masih ada lagi" : "Semua catatan",
+    },
+    selHasil(
+      "Gagal",
+      "GAGAL",
+      "Aksi yang gagal dijalankan. Klik untuk menyaring.",
+    ),
+    selHasil(
+      "Ditolak",
+      "DITOLAK",
+      "Aksi yang ditolak karena izin atau aturan. Klik untuk menyaring.",
+    ),
+  ];
+
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <HalamanPas>
       <PageHeader
         title="Audit trail"
-        description="Jejak tak terhapus atas setiap aksi: validasi, publikasi, persetujuan, perubahan ambang, dan akses. Mendukung kepatuhan UU PDP dan SPBE."
+        description="Jejak tetap atas setiap aksi: validasi, publikasi, persetujuan, perubahan ambang, dan akses."
         actions={
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => ekspor.mutate(filter)}
             disabled={ekspor.isPending}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-4 text-sm font-medium shadow-ambient-sm hover:bg-white disabled:opacity-60 dark:bg-white/[0.06]"
           >
             {ekspor.isPending ? (
               <Loader2 className="size-4 animate-spin" />
@@ -112,17 +166,45 @@ export function AuditPage() {
               <Download className="size-4" />
             )}
             Ekspor CSV sesuai filter
-          </button>
+          </Button>
         }
       />
-      <AuditIntegritasCard onLihatBaris={setDetailId} />
-      <AuditFilterBar filter={filter} onChange={setFilter} />
+      <div className="grid shrink-0 gap-2 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        <AuditIntegritasCard onLihatBaris={setDetailId} />
+        <RingkasanKeputusan
+          items={ringkasan}
+          label="Ringkasan catatan audit"
+          className="grid-cols-3"
+        />
+      </div>
       <AuditDetailSheet
         id={detailId}
         onClose={() => setDetailId(undefined)}
         onFilter={(patch) => setFilter((f) => ({ ...f, ...patch }))}
       />
       <DataTable
+        isiPenuh
+        filterBar={<AuditFilterBar filter={filter} onChange={setFilter} />}
+        toolbar={
+          hasNextPage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+            >
+              {isFetchingNextPage && (
+                <Loader2 className="size-4 animate-spin" />
+              )}{" "}
+              Muat catatan lebih lama
+            </Button>
+          ) : undefined
+        }
+        empty={{
+          title: "Tidak ada catatan yang cocok",
+          description: "Longgarkan filter atau perluas rentang tanggal.",
+        }}
         onRowClick={(r) => setDetailId(r.id)}
         data={rows}
         isLoading={isLoading}
@@ -170,19 +252,6 @@ export function AuditPage() {
           },
         ]}
       />
-      {hasNextPage && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-5 text-sm font-medium shadow-ambient-sm hover:bg-white disabled:opacity-60 dark:bg-white/[0.06]"
-          >
-            {isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}{" "}
-            Muat catatan lebih lama
-          </button>
-        </div>
-      )}
-    </div>
+    </HalamanPas>
   );
 }

@@ -7,13 +7,18 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { KotakGalatAuth, useSekarang } from "@/components/auth/galat-auth";
 import { FormBff, PesanField, idGalatField } from "@/components/form/form-bff";
+import { FormField } from "@/components/form/form-field";
+import { SpringButton } from "@/components/garda/spring-button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { bffFetch } from "@/lib/api/client";
 import { galatLangkahOtp, rapikanKode, validasiKode } from "@/lib/auth/mfa";
-import { masihMenunggu, masukanDariError, pesanTampil, type GalatAuth } from "@/lib/auth/pesan-login";
+import {
+  masihMenunggu,
+  masukanDariError,
+  pesanTampil,
+  type GalatAuth,
+} from "@/lib/auth/pesan-login";
 import { useFormBff } from "@/lib/form/use-form-bff";
-import { cn } from "@/lib/utils";
 
 const skemaOtp = z.object({
   code: z
@@ -31,7 +36,12 @@ const skemaOtp = z.object({
  */
 export function MfaOtpForm({ redirect }: { redirect: string }) {
   const [kode, setKode] = useState("");
-  const form = useFormBff<z.output<typeof skemaOtp>, { tujuan: string }, GalatAuth, z.input<typeof skemaOtp>>({
+  const form = useFormBff<
+    z.output<typeof skemaOtp>,
+    { tujuan: string },
+    GalatAuth,
+    z.input<typeof skemaOtp>
+  >({
     skema: skemaOtp,
     kirim: (n) =>
       bffFetch<{ tujuan: string }>("/api/auth/mfa/validate", {
@@ -39,12 +49,17 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
         body: JSON.stringify({ code: n.code, redirect }),
       }),
     sukses: (hasil) => {
-      toast.success("Berhasil masuk", { description: "Mengalihkan ke ruang kerja Anda…" });
+      toast.success("Berhasil masuk", {
+        description: "Mengalihkan ke ruang kerja Anda…",
+      });
       return { ke: hasil.tujuan, segarkan: true };
     },
     petaGalat: (err) => {
       const m = masukanDariError(err);
-      return galatLangkahOtp(m.status, m.pesan, { kode: m.kode, detik: m.detik });
+      return galatLangkahOtp(m.status, m.pesan, {
+        kode: m.kode,
+        detik: m.detik,
+      });
     },
     judulToastGagal: "Verifikasi gagal",
     pesanToast: (g) => pesanTampil(g),
@@ -55,9 +70,12 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
   const loading = form.pending;
 
   return (
-    <FormBff onKirim={form.kirimDari(() => ({ code: kode }))} sibuk={loading} className="mt-6 space-y-3.5">
-      <div className="space-y-2">
-        <Label htmlFor="kode">Kode verifikasi</Label>
+    <FormBff
+      onKirim={form.kirimDari(() => ({ code: kode }))}
+      sibuk={loading}
+      className="mt-6 flex flex-col gap-4"
+    >
+      <FormField id="kode" label="Kode verifikasi">
         <div className="relative">
           <KeyRound className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -71,20 +89,22 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
             onChange={(e) => setKode(e.target.value)}
             disabled={loading}
             aria-invalid={!!(galat || form.galatField.code)}
-            aria-describedby={form.galatField.code ? idGalatField("code") : undefined}
+            aria-describedby={
+              form.galatField.code ? idGalatField("code") : undefined
+            }
             className="num h-11 px-10 text-lg tracking-widest"
             required
           />
         </div>
         <PesanField field="code" pesan={form.galatField.code} />
-      </div>
+      </FormField>
 
       {galat && (
         <KotakGalatAuth galat={galat} sekarang={sekarang}>
           {galat.ulangMasuk && (
             <Link
               href="/masuk"
-              className="text-data-700 underline-offset-4 hover:underline"
+              className="text-data-700 underline-offset-4 hover:underline dark:text-data-300"
             >
               Kembali ke halaman masuk
             </Link>
@@ -92,13 +112,12 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
         </KotakGalatAuth>
       )}
 
-      <button
+      <SpringButton
         type="submit"
+        variant="primary"
+        size="lg"
+        className="h-11 w-full text-[15px]"
         disabled={loading || tertahan}
-        className={cn(
-          "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all",
-          "hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-70",
-        )}
       >
         {loading ? (
           <Loader2 className="size-4 animate-spin" />
@@ -107,13 +126,13 @@ export function MfaOtpForm({ redirect }: { redirect: string }) {
             Verifikasi <ArrowRight className="size-4" />
           </>
         )}
-      </button>
+      </SpringButton>
 
       <Link
         href="/masuk"
-        className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        className="flex min-h-11 items-center justify-center gap-1.5 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
       >
-        <ArrowLeft className="size-3.5" /> Gunakan akun lain
+        <ArrowLeft className="size-4" /> Gunakan akun lain
       </Link>
     </FormBff>
   );

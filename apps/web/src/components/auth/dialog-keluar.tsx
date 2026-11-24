@@ -69,7 +69,7 @@ export function DialogKeluar() {
 
   return (
     <AlertDialog open={terbuka} onOpenChange={(o: boolean) => !o && tutup()}>
-      <AlertDialogContent className="rounded-xl">
+      <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Ada entri yang belum terkirim</AlertDialogTitle>
           <AlertDialogDescription>
@@ -92,12 +92,11 @@ export function DialogKeluar() {
           </p>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel className="rounded-xl" disabled={sibuk}>
+          <AlertDialogCancel disabled={sibuk}>
             Batal
           </AlertDialogCancel>
           <Button
             variant="outline"
-            className="rounded-xl"
             disabled={sibuk || !online}
             onClick={() => void kirimDulu()}
           >
@@ -108,7 +107,6 @@ export function DialogKeluar() {
           </Button>
           <AlertDialogAction
             variant="destructive"
-            className="rounded-xl"
             disabled={sibuk}
             onClick={(e: React.MouseEvent) => {
               e.preventDefault();

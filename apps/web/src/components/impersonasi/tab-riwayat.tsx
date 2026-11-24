@@ -44,23 +44,40 @@ export function TabRiwayat() {
   const [status, setStatus] = useState<"semua" | "aktif">("semua");
   const q = useRiwayatImpersonasi(status);
   const akhiri = useAkhiriImpersonasi();
-  const [konfirmasi, setKonfirmasi] = useState<RiwayatImpersonasiWire | null>(null);
+  const [konfirmasi, setKonfirmasi] = useState<RiwayatImpersonasiWire | null>(
+    null,
+  );
 
   const baris = q.data?.pages.flatMap((h) => h.items) ?? [];
 
   return (
-    <div className="grid gap-3">
-      <Segmented
-        layoutId="seg-riwayat-impersonasi"
-        size="sm"
-        value={status}
-        onChange={setStatus}
-        options={[...OPSI_STATUS]}
-        className="w-fit"
-      />
+    <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <Segmented
+          layoutId="seg-riwayat-impersonasi"
+          size="sm"
+          value={status}
+          onChange={setStatus}
+          options={[...OPSI_STATUS]}
+          className="w-fit"
+        />
+        {q.hasNextPage && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={q.isFetchingNextPage}
+            onClick={() => void q.fetchNextPage()}
+          >
+            {q.isFetchingNextPage ? "Memuat…" : "Muat lebih banyak"}
+          </Button>
+        )}
+      </div>
 
       {q.isLoading ? (
-        <div className="glass h-48 animate-pulse rounded-xl" aria-busy="true" />
+        <div
+          className="h-48 animate-pulse rounded-lg bg-secondary"
+          aria-busy="true"
+        />
       ) : q.error ? (
         <PanelGalat
           judul="Riwayat impersonasi gagal dimuat"
@@ -70,39 +87,66 @@ export function TabRiwayat() {
       ) : baris.length === 0 ? (
         <EmptyState
           icon={History}
-          title={status === "aktif" ? "Tidak ada sesi impersonasi yang aktif" : "Belum ada riwayat impersonasi"}
+          title={
+            status === "aktif"
+              ? "Tidak ada sesi impersonasi yang aktif"
+              : "Belum ada riwayat impersonasi"
+          }
           description="Setiap sesi impersonasi yang dimulai akan tercatat di sini dan di audit trail."
         />
       ) : (
-        <div className="glass scrollbar-thin overflow-x-auto rounded-xl">
+        <div className="scrollbar-thin relative max-h-[70dvh] overflow-auto rounded-lg border border-border bg-card lg:max-h-none lg:min-h-0 lg:flex-1">
           <table className="w-full min-w-[820px] text-sm">
-            <thead className="text-left text-xs text-muted-foreground">
+            <thead className="sticky top-0 z-10 text-left">
               <tr>
-                <th className="px-3 py-2 font-medium">Pelaku</th>
-                <th className="px-3 py-2 font-medium">Sasaran</th>
-                <th className="px-3 py-2 font-medium">Alasan</th>
-                <th className="px-3 py-2 font-medium">Mulai</th>
-                <th className="px-3 py-2 font-medium">Berakhir</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+                  Pelaku
+                </th>
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+                  Sasaran
+                </th>
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+                  Alasan
+                </th>
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+                  Mulai
+                </th>
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+                  Berakhir
+                </th>
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
+                  Status
+                </th>
+                <th className="h-9 bg-secondary px-3 text-[11px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase text-right">
                   <span className="sr-only">Aksi</span>
                 </th>
               </tr>
             </thead>
             <tbody>
               {baris.map((r) => (
-                <tr key={r.id} className="border-t border-border/60 align-top">
+                <tr
+                  key={r.id}
+                  className="border-t border-border align-top text-[13px] hover:bg-secondary/60"
+                >
                   <td className="px-3 py-2">
                     <span className="block font-medium">{r.pelaku.nama}</span>
-                    <span className="block text-xs text-muted-foreground">{labelPeran(r.pelaku.peran)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {labelPeran(r.pelaku.peran)}
+                    </span>
                   </td>
                   <td className="px-3 py-2">
                     <span className="block font-medium">{r.sasaran.nama}</span>
-                    <span className="block text-xs text-muted-foreground">{labelPeran(r.sasaran.peran)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {labelPeran(r.sasaran.peran)}
+                    </span>
                   </td>
-                  <td className="max-w-56 px-3 py-2 text-[13px] text-muted-foreground">{r.alasan || "—"}</td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">{waktu(r.mulai_pada)}</td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  <td className="max-w-56 px-3 py-2 text-[13px] break-words text-muted-foreground">
+                    {r.alasan || "—"}
+                  </td>
+                  <td className="num px-3 py-2 text-xs whitespace-nowrap">
+                    {waktu(r.mulai_pada)}
+                  </td>
+                  <td className="num px-3 py-2 text-xs whitespace-nowrap">
                     {r.berakhir_pada
                       ? waktu(r.berakhir_pada)
                       : r.kedaluwarsa_pada
@@ -137,17 +181,6 @@ export function TabRiwayat() {
         </div>
       )}
 
-      {q.hasNextPage && (
-        <Button
-          variant="outline"
-          className="w-fit"
-          disabled={q.isFetchingNextPage}
-          onClick={() => void q.fetchNextPage()}
-        >
-          {q.isFetchingNextPage ? "Memuat…" : "Muat lebih banyak"}
-        </Button>
-      )}
-
       <AlertDialog
         open={konfirmasi !== null}
         onOpenChange={(v) => {
@@ -158,8 +191,9 @@ export function TabRiwayat() {
           <AlertDialogHeader>
             <AlertDialogTitle>Akhiri sesi impersonasi?</AlertDialogTitle>
             <AlertDialogDescription>
-              {konfirmasi?.pelaku.nama} akan keluar dari sesi sebagai {konfirmasi?.sasaran.nama} pada request
-              berikutnya dan harus masuk kembali. Tindakan ini tercatat di audit trail.
+              {konfirmasi?.pelaku.nama} akan keluar dari sesi sebagai{" "}
+              {konfirmasi?.sasaran.nama} pada request berikutnya dan harus masuk
+              kembali. Tindakan ini tercatat di audit trail.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

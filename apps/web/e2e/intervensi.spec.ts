@@ -230,10 +230,20 @@ test.describe("kanban intervensi", () => {
       tahap.map((t) => t.label),
     );
 
+    // Antrean dan alur persetujuan berada di tab tersendiri agar papan mengisi layar.
+    await page
+      .getByRole("tablist", { name: "Tampilan intervensi" })
+      .getByRole("tab", { name: /Persetujuan/ })
+      .click();
+    await expect(page).toHaveURL(/tab=persetujuan/);
     const alur = page.getByRole("region", { name: "Alur persetujuan" });
     await expect(alur).toBeVisible();
-    await expect(alur.getByText("Dukungan instrumen belanja", { exact: true })).toBeVisible();
-    await expect(alur.getByText("Persetujuan Kanwil DJPb", { exact: true }).first()).toBeVisible();
+    await expect(
+      alur.getByText("Dukungan instrumen belanja", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      alur.getByText("Persetujuan Kanwil DJPb", { exact: true }).first(),
+    ).toBeVisible();
   });
 
   test("tambah intervensi: kartu muncul di tahap pertama dan riwayat mencatat pembuatannya", async ({

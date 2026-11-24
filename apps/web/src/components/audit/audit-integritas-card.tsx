@@ -38,7 +38,7 @@ function RingkasanPartisi({ data }: { data: AuditIntegritas }) {
   const arsipTerbaru = data.arsip[0];
   if (jumlah === 0 && !arsipTerbaru) return null;
   return (
-    <p className="text-xs text-muted-foreground">
+    <p className="min-w-0 truncate">
       {jumlah > 0 && terlama && terbaru && (
         <>
           {jumlah} partisi bulanan aktif (
@@ -77,11 +77,11 @@ export function AuditIntegritasCard({
   if (isLoading) {
     return (
       <div
-        className="glass space-y-3 rounded-xl p-4"
+        className="glass flex h-full min-h-[4.5rem] flex-col justify-center gap-1.5 rounded-lg px-3 py-2"
         role="status"
         aria-label="Memuat status integritas"
       >
-        <Shimmer className="h-5 w-44" />
+        <Shimmer className="h-3.5 w-44" />
         <Shimmer className="h-4 w-80 max-w-full" />
         <Shimmer className="h-3 w-56 max-w-full" />
       </div>
@@ -90,7 +90,7 @@ export function AuditIntegritasCard({
 
   if (isError || !data) {
     return (
-      <div className="glass flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-muted-foreground">
+      <div className="glass flex h-full min-h-[4.5rem] items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-muted-foreground">
         <ShieldQuestionMark className="size-4 shrink-0" aria-hidden />
         Status integritas tidak tersedia
       </div>
@@ -104,64 +104,64 @@ export function AuditIntegritasCard({
   const waktu = v ? (v.selesai ?? v.mulai) : undefined;
   const barisBermasalah = v?.status === "RUSAK" ? v.masalahPertama : undefined;
 
+  const penjelasan = penjelasanIntegritas(v);
+
   return (
     <section
       aria-labelledby="audit-integritas-judul"
       className={cn(
-        "glass space-y-2 rounded-xl p-4",
+        "glass flex h-full min-w-0 flex-col justify-center gap-0.5 rounded-lg px-3 py-2",
         v && v.status !== "VALID" && cn("ring-1", toneClass[tone].ring),
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Ikon
-              className={cn("size-4 shrink-0", toneClass[tone].text)}
-              aria-hidden
-            />
-            <h2
-              id="audit-integritas-judul"
-              className="text-sm font-semibold text-navy-900 dark:text-white"
-            >
-              Integritas rantai hash
-            </h2>
-            <StatusBadge tone={tone}>
-              {meta?.label ?? "Belum diverifikasi"}
-            </StatusBadge>
-          </div>
-          <p className="text-sm">{penjelasanIntegritas(v)}</p>
-        </div>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Ikon
+          className={cn("size-3.5 shrink-0", toneClass[tone].text)}
+          aria-hidden
+        />
+        <h2
+          id="audit-integritas-judul"
+          className="truncate text-xs font-normal text-muted-foreground"
+        >
+          Integritas rantai hash
+        </h2>
+        <StatusBadge tone={tone} className="h-5 shrink-0 text-[10px]">
+          {meta?.label ?? "Belum diverifikasi"}
+        </StatusBadge>
         {barisBermasalah && (
           <button
             type="button"
             onClick={() => onLihatBaris(barisBermasalah.id)}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-defisit/30 bg-white/80 px-3 text-sm font-medium text-defisit-ink shadow-ambient-sm hover:bg-white dark:bg-white/[0.06] dark:text-rose-300"
+            className="ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-defisit/30 bg-card px-2 text-xs font-medium text-defisit-ink transition-colors hover:bg-defisit-soft"
           >
-            <Search className="size-4" aria-hidden />
+            <Search className="size-3" aria-hidden />
             Lihat baris #{barisBermasalah.id}
           </button>
         )}
       </div>
-
-      {v && waktu && (
-        <p className="text-xs text-muted-foreground">
-          Diverifikasi{" "}
-          <time dateTime={waktu}>
-            {formatTanggal(waktu, "d MMM yyyy HH.mm")}
-          </time>{" "}
-          ({v.pemicu === "MANUAL" ? "manual" : "terjadwal"})
-          {v.hashAkhir && (
-            <>
-              {" · "}Hash akhir{" "}
-              <span className="num" title={v.hashAkhir}>
-                {v.hashAkhir.slice(0, 12)}…
-              </span>
-            </>
-          )}
-        </p>
-      )}
-
-      <RingkasanPartisi data={data} />
+      <p title={penjelasan} className="truncate text-[13px] font-medium">
+        {penjelasan}
+      </p>
+      <div className="flex min-w-0 flex-col text-[11px] leading-4 text-muted-foreground xl:flex-row xl:gap-2">
+        {v && waktu && (
+          <p className="min-w-0 truncate xl:shrink-0">
+            Diverifikasi{" "}
+            <time dateTime={waktu}>
+              {formatTanggal(waktu, "d MMM yyyy HH.mm")}
+            </time>{" "}
+            ({v.pemicu === "MANUAL" ? "manual" : "terjadwal"})
+            {v.hashAkhir && (
+              <>
+                {" · "}Hash{" "}
+                <span className="num" title={v.hashAkhir}>
+                  {v.hashAkhir.slice(0, 12)}…
+                </span>
+              </>
+            )}
+          </p>
+        )}
+        <RingkasanPartisi data={data} />
+      </div>
     </section>
   );
 }

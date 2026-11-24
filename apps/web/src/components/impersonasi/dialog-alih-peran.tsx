@@ -2,11 +2,13 @@
 
 import { Search, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -14,7 +16,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   KODE_IMPERSONASI_DIBATASI,
@@ -36,6 +37,7 @@ import {
 import { LAPIS_META, ROLES, type Lapis } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
+import { DampakImpersonasi } from "./dampak-impersonasi";
 import { useKembaliPeranAsal } from "./tombol-kembali";
 
 /** Daftar akun lebih dari ini diberi kolom cari. */
@@ -96,6 +98,7 @@ export function DialogAlihPeran({
   // ambigu bila ada akun baru pada peran itu di sela-sela).
   const akunEfektif =
     penggunaId ?? (terpilih?.akun.length === 1 ? terpilih.akun[0].id : null);
+  const namaSasaran = terpilih?.akun.find((a) => a.id === akunEfektif)?.nama;
   const wajibAlasan = data?.wajib_alasan ?? true;
   const alasanKosong = alasan.trim() === "";
   const bolehMulai =
@@ -135,7 +138,7 @@ export function DialogAlihPeran({
       open={open}
       onOpenChange={(v) => (sibuk ? undefined : onOpenChange(v))}
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Beralih / Impersonate Role</DialogTitle>
           <DialogDescription>
@@ -144,157 +147,162 @@ export function DialogAlihPeran({
             audit trail.
           </DialogDescription>
         </DialogHeader>
-
-        {imp?.active && (
-          <div className="flex items-start gap-2 rounded-lg border border-waspada/50 bg-waspada-soft p-3 text-[13px] text-navy-900 dark:bg-waspada/15 dark:text-amber-100">
-            <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <p>
-                Anda sedang impersonate <b>{imp.targetUser.name}</b> (
-                {labelPeran(imp.targetUser.role)}). Memilih sasaran baru akan{" "}
-                <b>mengganti</b> sesi ini dan tetap mengacu pada akun asli{" "}
-                <b>{imp.originalUser.name}</b>.
-              </p>
-              <button
-                type="button"
-                onClick={kembali}
-                disabled={sibukKembali}
-                className="mt-1.5 text-xs font-medium underline underline-offset-2 disabled:opacity-60"
-              >
-                Kembali ke Peran Asal
-              </button>
+        <DialogBody>
+          {imp?.active && (
+            <div className="flex items-start gap-2 rounded-lg border border-waspada/50 bg-waspada-soft p-3 text-[13px] text-navy-900 dark:bg-waspada/15 dark:text-amber-100">
+              <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <div className="min-w-0 flex-1 break-words">
+                <p>
+                  Anda sedang impersonate <b>{imp.targetUser.name}</b> (
+                  {labelPeran(imp.targetUser.role)}). Memilih sasaran baru akan{" "}
+                  <b>mengganti</b> sesi ini dan tetap mengacu pada akun asli{" "}
+                  <b>{imp.originalUser.name}</b>.
+                </p>
+                <button
+                  type="button"
+                  onClick={kembali}
+                  disabled={sibukKembali}
+                  className="mt-1.5 text-xs font-medium underline underline-offset-2 disabled:opacity-60"
+                >
+                  Kembali ke Peran Asal
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {isLoading ? (
-          <div
-            className="h-48 animate-pulse rounded-lg bg-secondary"
-            aria-busy="true"
-          />
-        ) : error || !data ? (
-          <PanelGalat
-            judul="Daftar sasaran gagal dimuat"
-            error={error}
-            onCoba={() => void refetch()}
-          />
-        ) : !data.boleh ? (
-          <p
-            role="status"
-            className="rounded-lg bg-secondary p-4 text-sm text-muted-foreground"
-          >
-            Akun Anda tidak diizinkan memakai impersonasi. Minta superadmin
-            menambahkan Anda pada kebijakan impersonasi bila dibutuhkan.
-          </p>
-        ) : !data.aktif ? (
-          <p
-            role="status"
-            className="rounded-lg bg-secondary p-4 text-sm text-muted-foreground"
-          >
-            Impersonasi sedang dinonaktifkan oleh superadmin.
-          </p>
-        ) : data.peran.length === 0 ? (
-          <p
-            role="status"
-            className="rounded-lg bg-secondary p-4 text-sm text-muted-foreground"
-          >
-            Belum ada akun aktif yang boleh Anda impersonate.
-          </p>
-        ) : (
-          <div className="grid gap-4">
-            <fieldset className="grid gap-3">
-              <legend className="mb-1 text-[13px] font-medium">
-                Peran sasaran
-              </legend>
-              {kelompok.map((g) => (
-                <div key={g.lapis} className="grid gap-1.5">
-                  <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                    {LAPIS_META[g.lapis as Lapis]?.label ?? g.lapis}
-                  </p>
-                  <div
-                    role="radiogroup"
-                    aria-label={`Peran ${g.lapis}`}
-                    className="grid gap-1.5 sm:grid-cols-2"
-                  >
-                    {g.peran.map((p) => {
-                      const aktif = p.peran === peran;
-                      return (
-                        <button
-                          key={p.peran}
-                          type="button"
-                          role="radio"
-                          aria-checked={aktif}
-                          onClick={() => {
-                            setPeran(p.peran);
-                            setPenggunaId(null);
-                            setCari("");
-                            setGalat(null);
-                          }}
-                          className={cn(
-                            "flex flex-col rounded-lg border bg-card px-3 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                            aktif
-                              ? "border-navy-800 shadow-ambient-sm dark:border-white"
-                              : "border-border hover:border-navy-300",
-                          )}
-                        >
-                          <span className="text-[13px] font-medium">
-                            {ROLES[p.peran as keyof typeof ROLES]?.label ??
-                              p.label}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {p.akun.length === 1
-                              ? p.akun[0].nama
-                              : `${p.akun.length} akun aktif`}
-                          </span>
-                        </button>
-                      );
-                    })}
+          {isLoading ? (
+            <div
+              className="h-48 shrink-0 animate-pulse rounded-lg bg-secondary"
+              aria-busy="true"
+            />
+          ) : error || !data ? (
+            <PanelGalat
+              judul="Daftar sasaran gagal dimuat"
+              error={error}
+              onCoba={() => void refetch()}
+            />
+          ) : !data.boleh ? (
+            <p
+              role="status"
+              className="rounded-lg bg-secondary p-4 text-sm text-muted-foreground"
+            >
+              Akun Anda tidak diizinkan memakai impersonasi. Minta superadmin
+              menambahkan Anda pada kebijakan impersonasi bila dibutuhkan.
+            </p>
+          ) : !data.aktif ? (
+            <p
+              role="status"
+              className="rounded-lg bg-secondary p-4 text-sm text-muted-foreground"
+            >
+              Impersonasi sedang dinonaktifkan oleh superadmin.
+            </p>
+          ) : data.peran.length === 0 ? (
+            <p
+              role="status"
+              className="rounded-lg bg-secondary p-4 text-sm text-muted-foreground"
+            >
+              Belum ada akun aktif yang boleh Anda impersonate.
+            </p>
+          ) : (
+            <>
+              <DampakImpersonasi sasaran={namaSasaran} />
+
+              <fieldset className="grid min-w-0 gap-3">
+                <legend className="mb-1 text-[13px] font-medium">
+                  Peran sasaran
+                </legend>
+                {kelompok.map((g) => (
+                  <div key={g.lapis} className="grid min-w-0 gap-1.5">
+                    <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                      {LAPIS_META[g.lapis as Lapis]?.label ?? g.lapis}
+                    </p>
+                    <div
+                      role="radiogroup"
+                      aria-label={`Peran ${g.lapis}`}
+                      className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+                    >
+                      {g.peran.map((p) => {
+                        const aktif = p.peran === peran;
+                        return (
+                          <button
+                            key={p.peran}
+                            type="button"
+                            role="radio"
+                            aria-checked={aktif}
+                            onClick={() => {
+                              setPeran(p.peran);
+                              setPenggunaId(null);
+                              setCari("");
+                              setGalat(null);
+                            }}
+                            className={cn(
+                              "flex min-w-0 flex-col rounded-lg border bg-card px-3 py-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                              aktif
+                                ? "border-navy-800 shadow-ambient-sm dark:border-white"
+                                : "border-border hover:border-navy-300",
+                            )}
+                          >
+                            <span className="text-[13px] font-medium break-words">
+                              {ROLES[p.peran as keyof typeof ROLES]?.label ??
+                                p.label}
+                            </span>
+                            <span className="text-xs break-words text-muted-foreground">
+                              {p.akun.length === 1
+                                ? p.akun[0].nama
+                                : `${p.akun.length} akun aktif`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </fieldset>
+                ))}
+              </fieldset>
 
-            {terpilih && terpilih.akun.length > 1 && (
-              <AkunPicker
-                peran={terpilih}
-                cari={cari}
-                onCari={setCari}
-                value={penggunaId}
-                onChange={setPenggunaId}
-              />
-            )}
+              {terpilih && terpilih.akun.length > 1 && (
+                <AkunPicker
+                  peran={terpilih}
+                  cari={cari}
+                  onCari={setCari}
+                  value={penggunaId}
+                  onChange={setPenggunaId}
+                />
+              )}
 
-            <div className="grid gap-1.5">
-              <Label htmlFor="alasan-impersonasi">
-                Alasan{" "}
-                <span className="font-normal text-muted-foreground">
-                  {wajibAlasan ? "(wajib)" : "(opsional)"}
-                </span>
-              </Label>
-              <Textarea
+              <FormField
                 id="alasan-impersonasi"
-                value={alasan}
-                maxLength={MAKS_ALASAN}
-                rows={2}
-                onChange={(e) => setAlasan(e.target.value)}
-                placeholder="Mis. memeriksa tampilan dasbor Koordinator Lapangan untuk laporan bug #123"
-                aria-required={wajibAlasan}
-              />
-              <p className="text-xs text-muted-foreground">
-                Dicatat di audit trail.{" "}
-                {data.durasi_maks_menit
-                  ? `Sesi impersonasi berakhir otomatis setelah ${data.durasi_maks_menit} menit.`
-                  : "Tidak ada batas durasi; kembali secara manual bila selesai."}
-              </p>
-            </div>
+                label={
+                  <>
+                    Alasan{" "}
+                    <span className="font-normal text-muted-foreground">
+                      {wajibAlasan ? "(wajib)" : "(opsional)"}
+                    </span>
+                  </>
+                }
+                bantuan={
+                  <>
+                    Dicatat di audit trail.{" "}
+                    {data.durasi_maks_menit
+                      ? `Sesi impersonasi berakhir otomatis setelah ${data.durasi_maks_menit} menit.`
+                      : "Tidak ada batas durasi; kembali secara manual bila selesai."}
+                  </>
+                }
+              >
+                <Textarea
+                  id="alasan-impersonasi"
+                  value={alasan}
+                  maxLength={MAKS_ALASAN}
+                  rows={2}
+                  onChange={(e) => setAlasan(e.target.value)}
+                  placeholder="Mis. memeriksa tampilan dasbor Koordinator Lapangan untuk laporan bug #123"
+                  aria-required={wajibAlasan}
+                />
+              </FormField>
 
-            {galat && (
-              <p role="alert" className="text-sm text-destructive">
-                {galat}
-              </p>
-            )}
-          </div>
-        )}
+              <FormAlert>{galat}</FormAlert>
+            </>
+          )}
+        </DialogBody>
 
         <DialogFooter>
           <Button
@@ -336,7 +344,7 @@ function AkunPicker({
 }) {
   const akun = saringAkun(peran.akun, cari);
   return (
-    <fieldset className="grid gap-2">
+    <fieldset className="grid min-w-0 gap-2">
       <legend className="mb-1 text-[13px] font-medium">
         Akun {ROLES[peran.peran as keyof typeof ROLES]?.label ?? peran.label}
       </legend>
@@ -358,7 +366,7 @@ function AkunPicker({
       <div
         role="radiogroup"
         aria-label="Akun sasaran"
-        className="scrollbar-thin grid max-h-48 gap-1 overflow-y-auto"
+        className="scrollbar-thin grid max-h-48 grid-cols-1 gap-1 overflow-y-auto p-0.5"
       >
         {akun.length === 0 ? (
           <p className="px-1 py-2 text-sm text-muted-foreground">
@@ -373,14 +381,16 @@ function AkunPicker({
               aria-checked={a.id === value}
               onClick={() => onChange(a.id)}
               className={cn(
-                "flex flex-col rounded-md border px-3 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                "flex min-w-0 flex-col rounded-md border px-3 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                 a.id === value
                   ? "border-navy-800 bg-card dark:border-white"
                   : "border-transparent hover:bg-secondary",
               )}
             >
-              <span className="text-[13px] font-medium">{a.nama}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-[13px] font-medium break-words">
+                {a.nama}
+              </span>
+              <span className="text-xs break-words text-muted-foreground">
                 {a.email} · {a.lembaga}
               </span>
             </button>

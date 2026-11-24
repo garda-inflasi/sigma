@@ -56,7 +56,7 @@ function BarCapaian({
 
 function DaftarMemuat() {
   return (
-    <ul className="mt-5 space-y-3.5" aria-busy="true">
+    <ul className="mt-3 space-y-3" aria-busy="true">
       {Array.from({ length: 6 }).map((_, i) => (
         <li key={i}>
           <Shimmer className="h-9 w-full" />
@@ -94,7 +94,7 @@ function PerWilayah() {
     return <p className="mt-5 text-sm text-muted-foreground">{KOSONG}</p>;
 
   return (
-    <ul className="mt-5 space-y-3.5">
+    <ul className="scrollbar-thin mt-3 grid content-start gap-3 pr-1 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:gap-x-8 lg:overflow-y-auto">
       {perKab.map((k, i) => (
         <li key={k.kode}>
           <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -262,9 +262,9 @@ function PerPetugas() {
         role="region"
         aria-label="Daftar petugas lapangan"
         tabIndex={0}
-        className="scrollbar-thin mt-5 max-h-[26rem] overflow-y-auto pr-1"
+        className="scrollbar-thin mt-3 max-h-[26rem] overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1"
       >
-        <ul className="space-y-3.5">
+        <ul className="grid content-start gap-3.5 lg:grid-cols-2 lg:gap-x-8">
           {tampil.map(({ p, pct }, i) => (
             <BarisPetugas
               key={p.id}
@@ -280,7 +280,7 @@ function PerPetugas() {
         <button
           type="button"
           onClick={() => setSemua((v) => !v)}
-          className="mt-3 text-xs font-medium text-data-700 hover:underline dark:text-data-300"
+          className="mt-2 shrink-0 self-start text-xs font-medium text-data-700 hover:underline dark:text-data-300"
         >
           {semua
             ? "Ringkas daftar"
@@ -305,7 +305,7 @@ export function FieldActivity() {
   const [tampilan, setTampilan] = useState<Tampilan>("wilayah");
 
   return (
-    <section className="glass h-full rounded-xl p-5 sm:p-6">
+    <section className="glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0">
       <PanelTitle
         title="Aktivitas tim lapangan"
         description={DESKRIPSI[tampilan]}
@@ -313,7 +313,7 @@ export function FieldActivity() {
       <Segmented
         layoutId="field-activity-tampilan"
         size="sm"
-        className="mt-3"
+        className="mt-2 shrink-0 self-start"
         value={tampilan}
         onChange={setTampilan}
         options={[

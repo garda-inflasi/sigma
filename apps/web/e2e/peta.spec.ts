@@ -45,7 +45,7 @@ test.describe("neraca pasokan", () => {
     page,
   }) => {
     await masukSebagai(page, "manajerData");
-    await buka(page, "/peta");
+    await buka(page, "/peta?tab=neraca");
     const panel = page.getByRole("region", { name: "Neraca pasokan" });
     await expect(panel).toBeVisible();
 
@@ -88,7 +88,7 @@ test.describe("lokasi saya", () => {
       .filter({ hasText: "Kota Banda Aceh" });
     await expect(hasil).toBeVisible();
     await expect(hasil).toContainText(
-      /di dalam batas \(perkiraan\)|terdekat, .* km dari pusat/,
+      /di dalam batas wilayah|terdekat, .* km dari pusat/,
     );
     await expect(hasil).toContainText("5.5483, 95.3238");
   });
@@ -112,14 +112,12 @@ test.describe("lokasi saya", () => {
     await masukSebagai(page, "manajerData");
     await buka(page, "/peta");
     await tungguTenang(page);
-    // Peta skema SVG (tanpa token Mapbox) atau kanvas Mapbox; keduanya meneruskan klik sebagai koordinat.
-    const skema = page.getByLabel("Peta skema Aceh");
-    const peta = (await skema.count()) > 0 ? skema : page.locator("canvas.mapboxgl-canvas");
+    const peta = page.getByTestId("peta-leaflet");
     await expect(peta).toBeVisible();
 
-    // Pojok barat laut (laut) agar tidak mengenai marker; wilayah terdekat tetap dikembalikan.
+    // Samudra Hindia di barat daya: tidak mengenai marker, legenda, atau atribusi; wilayah terdekat tetap dikembalikan.
     const box = (await peta.boundingBox())!;
-    await peta.click({ position: { x: box.width * 0.08, y: box.height * 0.12 } });
+    await peta.click({ position: { x: box.width * 0.1, y: box.height * 0.75 } });
 
     const koordinat = /\((-?\d+\.\d{4}), (-?\d+\.\d{4})\)/;
     const status = page.getByRole("status").filter({ hasText: koordinat });
@@ -141,7 +139,7 @@ test.describe("riwayat optimasi", () => {
     page,
   }) => {
     await masukSebagai(page, "manajerData");
-    await buka(page, "/peta");
+    await buka(page, "/peta?tab=optimasi");
     const riwayat = page.getByLabel("Riwayat optimasi");
     await expect(riwayat).toBeVisible();
     await expect(
@@ -171,7 +169,7 @@ test.describe("riwayat optimasi", () => {
 
     try {
       await masukSebagai(page, "manajerProgram");
-      await buka(page, "/peta");
+      await buka(page, "/peta?tab=optimasi");
       const panel = page.getByRole("region", { name: "Optimasi rute" });
       await panel.getByRole("combobox", { name: "Komoditas optimasi" }).click();
       await page.getByRole("option", { name: "Tomat", exact: true }).click();

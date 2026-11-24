@@ -7,28 +7,40 @@ import { toast } from "sonner";
 import { KolomSandi } from "@/components/auth/kolom-sandi";
 import { KotakGalatAuth, useTungguGalat } from "@/components/auth/galat-auth";
 import { FormBff } from "@/components/form/form-bff";
+import { SpringButton, SpringLink } from "@/components/garda/spring-button";
 import { bffFetch } from "@/lib/api/client";
 import { evaluatePassword } from "@/lib/auth/password-policy";
-import { masukanDariError, pesanTampil, type GalatAuth } from "@/lib/auth/pesan-login";
+import {
+  masukanDariError,
+  pesanTampil,
+  type GalatAuth,
+} from "@/lib/auth/pesan-login";
 import { galatReset } from "@/lib/auth/reset-password";
 import { skemaSandiBaru } from "@/lib/auth/skema-sandi";
 import { useFormBff } from "@/lib/form/use-form-bff";
 import { cn } from "@/lib/utils";
-
-const TOMBOL =
-  "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-navy-700 to-navy-800 text-[15px] font-medium text-white shadow-ambient transition-all hover:from-navy-600 hover:to-navy-700 hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-70";
 
 /** Form kata sandi baru dari tautan email: aturan kebijakan langsung, lalu arahkan ke halaman masuk. */
 export function ResetPasswordForm({ token }: { token: string }) {
   const [baru, setBaru] = useState("");
   const [konfirmasi, setKonfirmasi] = useState("");
   const [selesai, setSelesai] = useState(false);
-  const form = useFormBff<{ baru: string; konfirmasi: string }, unknown, GalatAuth>({
+  const form = useFormBff<
+    { baru: string; konfirmasi: string },
+    unknown,
+    GalatAuth
+  >({
     skema: skemaSandiBaru,
-    kirim: (n) => bffFetch("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password: n.baru }) }),
+    kirim: (n) =>
+      bffFetch("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, password: n.baru }),
+      }),
     sukses: () => {
       setSelesai(true);
-      toast.success("Kata sandi diatur ulang", { description: "Silakan masuk dengan kata sandi baru." });
+      toast.success("Kata sandi diatur ulang", {
+        description: "Silakan masuk dengan kata sandi baru.",
+      });
     },
     petaGalat: (err) => {
       const m = masukanDariError(err);
@@ -50,15 +62,24 @@ export function ResetPasswordForm({ token }: { token: string }) {
         <p className="text-sm leading-relaxed text-muted-foreground">
           Kata sandi berhasil diatur ulang. Semua sesi lama telah diakhiri.
         </p>
-        <Link href="/masuk" className={TOMBOL}>
-          Masuk <ArrowRight className="size-4" />
-        </Link>
+        <SpringLink
+          href="/masuk"
+          variant="primary"
+          size="lg"
+          className="flex h-11 w-full text-[15px]"
+        >
+          Masuk <ArrowRight />
+        </SpringLink>
       </div>
     );
   }
 
   return (
-    <FormBff onKirim={form.kirimDari(() => ({ baru, konfirmasi }))} sibuk={loading} className="mt-6 space-y-3.5">
+    <FormBff
+      onKirim={form.kirimDari(() => ({ baru, konfirmasi }))}
+      sibuk={loading}
+      className="mt-6 flex flex-col gap-4"
+    >
       <KolomSandi
         id="baru"
         label="Kata sandi baru"
@@ -69,12 +90,15 @@ export function ResetPasswordForm({ token }: { token: string }) {
         autoComplete="new-password"
       />
 
-      <ul className="space-y-1 text-xs" aria-label="Aturan kata sandi">
+      <ul
+        className="grid gap-x-3 gap-y-1 text-xs sm:grid-cols-2"
+        aria-label="Aturan kata sandi"
+      >
         {aturan.map((r) => (
           <li
             key={r.id}
             className={cn(
-              "flex items-center gap-2",
+              "flex items-center gap-2 sm:last:col-span-2",
               r.terpenuhi
                 ? "text-normal-ink dark:text-normal-soft"
                 : "text-muted-foreground",
@@ -105,7 +129,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           {galat.tautanBaru && (
             <Link
               href="/lupa-password"
-              className="text-data-700 underline-offset-4 hover:underline"
+              className="text-data-700 underline-offset-4 hover:underline dark:text-data-300"
             >
               Minta tautan baru
             </Link>
@@ -113,7 +137,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
         </KotakGalatAuth>
       )}
 
-      <button type="submit" disabled={loading || tertahan} className={TOMBOL}>
+      <SpringButton
+        type="submit"
+        variant="primary"
+        size="lg"
+        className="h-11 w-full text-[15px]"
+        disabled={loading || tertahan}
+      >
         {loading ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
@@ -121,7 +151,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
             Atur ulang kata sandi <ArrowRight className="size-4" />
           </>
         )}
-      </button>
+      </SpringButton>
     </FormBff>
   );
 }

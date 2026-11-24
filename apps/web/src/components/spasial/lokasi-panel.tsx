@@ -2,6 +2,7 @@
 
 import { Crosshair, Loader2, MapPin } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   keteranganLokasi,
   pesanGalatGeolokasi,
@@ -61,14 +62,15 @@ export function LokasiPanel({
 
   return (
     <div
-      className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5"
       aria-label="Lokasi saya"
     >
-      <button
+      <Button
         type="button"
+        variant="outline"
+        className="shrink-0"
         onClick={cariPosisiSaya}
         disabled={sibuk}
-        className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-4 text-sm font-medium hover:bg-white disabled:opacity-50 dark:bg-white/[0.06]"
       >
         {sibuk ? (
           <Loader2 className="size-4 animate-spin" />
@@ -76,7 +78,7 @@ export function LokasiPanel({
           <Crosshair className="size-4" />
         )}{" "}
         Lokasi saya
-      </button>
+      </Button>
       <div className="min-w-0 flex-1 text-sm" role="status" aria-live="polite">
         {pesanGalat ? (
           <p className="text-defisit-ink dark:text-rose-300">{pesanGalat}</p>

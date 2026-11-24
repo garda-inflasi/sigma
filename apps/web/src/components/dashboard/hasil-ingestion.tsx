@@ -2,6 +2,7 @@
 
 import { CloudRain } from "lucide-react";
 import { PanelTitle } from "@/components/garda/page-header";
+import { EmptyState } from "@/components/garda/empty-state";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
@@ -20,7 +21,7 @@ export function PembandingHargaCard() {
   const demo = data?.items.some((i) => i.demo) ?? false;
 
   return (
-    <section className="glass h-full rounded-xl p-5 sm:p-6">
+    <section className="glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0">
       <PanelTitle
         title="Validasi silang harga"
         description={
@@ -29,31 +30,36 @@ export function PembandingHargaCard() {
             : "Harga lapangan tervalidasi vs harga eksternal, 7 hari terakhir"
         }
       />
-      <div className="mt-4 overflow-x-auto">
+      <div className="scrollbar-thin mt-2 overflow-x-auto lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {isLoading ? (
           <Shimmer className="h-40 w-full" />
         ) : !data ? (
-          <PanelGalat judul="Validasi silang gagal dimuat" error={error} onCoba={() => void refetch()} />
+          <PanelGalat
+            judul="Validasi silang gagal dimuat"
+            error={error}
+            onCoba={() => void refetch()}
+          />
         ) : data.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Belum ada pasangan harga lapangan dan eksternal pada hari yang sama.
-            Jalankan ingestion PIHPS di halaman Sumber data.
-          </p>
+          <EmptyState
+            title="Belum ada pasangan harga lapangan dan eksternal pada hari yang sama."
+            description="Jalankan ingestion PIHPS di halaman Sumber data."
+            className="py-6"
+          />
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-[13px]">
             <thead>
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="pb-2 font-medium">Komoditas, wilayah</th>
-                <th className="pb-2 text-right font-medium">Lapangan</th>
-                <th className="pb-2 text-right font-medium">Eksternal</th>
-                <th className="pb-2 text-right font-medium">Selisih</th>
+                <th className="pb-2 pl-2 text-right font-medium">Lapangan</th>
+                <th className="pb-2 pl-2 text-right font-medium">Eksternal</th>
+                <th className="pb-2 pl-2 text-right font-medium">Selisih</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map((i) => (
                 <tr
                   key={`${i.komoditasNama}:${i.kabupatenNama}`}
-                  className="border-t border-border/50"
+                  className="border-t border-border"
                 >
                   <td className="py-2 pr-2">
                     <p className="font-medium">{i.komoditasNama}</p>
@@ -61,13 +67,13 @@ export function PembandingHargaCard() {
                       {i.kabupatenNama}, {formatTanggal(i.tanggal, "d MMM")}
                     </p>
                   </td>
-                  <td className="num py-2 text-right">
+                  <td className="num py-2 pl-2 text-right text-xs whitespace-nowrap">
                     {formatRupiah(i.hargaLapangan)}
                   </td>
-                  <td className="num py-2 text-right">
+                  <td className="num py-2 pl-2 text-right text-xs whitespace-nowrap">
                     {formatRupiah(i.hargaEksternal)}
                   </td>
-                  <td className="py-2 text-right">
+                  <td className="py-2 pl-2 text-right whitespace-nowrap">
                     <StatusBadge
                       tone={i.sepakat ? "normal" : "waspada"}
                       dot={false}
@@ -92,7 +98,7 @@ export function CuacaWilayahCard() {
   const demo = data?.some((c) => c.demo) ?? false;
 
   return (
-    <section className="glass h-full rounded-xl p-5 sm:p-6">
+    <section className="glass flex h-full flex-col rounded-lg p-3.5 lg:min-h-0">
       <PanelTitle
         title="Cuaca wilayah"
         description={
@@ -101,19 +107,26 @@ export function CuacaWilayahCard() {
             : "Prakiraan harian BMKG per kabupaten/kota"
         }
       />
-      <ul className="scrollbar-thin mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
+      <ul className="scrollbar-thin mt-2 max-h-80 space-y-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <Shimmer key={i} className="h-9 w-full" />
           ))
         ) : !data ? (
           <li>
-            <PanelGalat judul="Cuaca wilayah gagal dimuat" error={error} onCoba={() => void refetch()} />
+            <PanelGalat
+              judul="Cuaca wilayah gagal dimuat"
+              error={error}
+              onCoba={() => void refetch()}
+            />
           </li>
         ) : data.length === 0 ? (
-          <li className="text-sm text-muted-foreground">
-            Belum ada data cuaca. Jalankan ingestion BMKG di halaman Sumber
-            data.
+          <li>
+            <EmptyState
+              title="Belum ada data cuaca."
+              description="Jalankan ingestion BMKG di halaman Sumber data."
+              className="py-6"
+            />
           </li>
         ) : (
           data.map((c) => (
@@ -125,7 +138,7 @@ export function CuacaWilayahCard() {
                 <CloudRain
                   className={cn(
                     "size-4 shrink-0",
-                    c.anomali ? "text-defisit-ink" : "text-muted-foreground",
+                    c.anomali ? "text-defisit-ink dark:text-rose-300" : "text-muted-foreground",
                   )}
                 />
                 <span className="truncate">{c.nama}</span>
@@ -134,7 +147,7 @@ export function CuacaWilayahCard() {
                 <span
                   className={cn(
                     "font-semibold",
-                    c.anomali ? "text-defisit-ink" : "text-foreground",
+                    c.anomali ? "text-defisit-ink dark:text-rose-300" : "text-foreground",
                   )}
                 >
                   {formatAngka(c.curahHujanMm, 1)} mm

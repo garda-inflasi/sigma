@@ -4,7 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Archive, CheckCircle2, Download, FilePen, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { StatusBadge } from "@/components/garda/status-badge";
 import type { MasterBulkAksi } from "@/lib/api/master";
@@ -38,9 +38,12 @@ export function KomoditasPanel() {
         accessorKey: "nama",
         header: "Nama",
         cell: ({ row: { original: r } }) => (
-          <span className="flex items-center gap-2 font-medium">
-            <KomoditasIcon kode={r.kode} className="text-muted-foreground" />
-            {r.nama}
+          <span className="flex min-w-0 items-center gap-2 font-medium">
+            <KomoditasIcon
+              kode={r.kode}
+              className="shrink-0 text-muted-foreground"
+            />
+            <SelTeks>{r.nama}</SelTeks>
           </span>
         ),
       },
@@ -50,7 +53,9 @@ export function KomoditasPanel() {
         accessorFn: (k) =>
           `${k.kategori}, per ${k.satuan}${k.pilot ? ", pilot" : ""}`,
         cell: ({ getValue }) => (
-          <span className="text-muted-foreground">{getValue<string>()}</span>
+          <SelTeks className="text-muted-foreground">
+            {getValue<string>()}
+          </SelTeks>
         ),
       },
       {
@@ -81,6 +86,7 @@ export function KomoditasPanel() {
         ? [
             {
               id: "aksi",
+              meta: { sematKanan: true },
               header: () => <span className="sr-only">Aksi</span>,
               cell: ({ row: { original: r } }) => (
                 <button
@@ -138,9 +144,9 @@ export function KomoditasPanel() {
       tone: "danger",
       enabled: (r) => r.every((x) => x.status !== "DIARSIPKAN"),
       confirm: {
-        title: "Arsipkan data terpilih?",
+        title: "Arsipkan komoditas terpilih?",
         description: (n) =>
-          `${n} data tidak lagi muncul di form lapangan dan tidak dapat dipulihkan dari layar ini. Riwayat entri lama tetap tersimpan.`,
+          `${n} komoditas tidak lagi muncul di form lapangan dan tidak dapat dipulihkan dari layar ini. Riwayat entri lama tetap tersimpan.`,
         actionLabel: "Arsipkan",
       },
       run: kirim("arsipkan"),
@@ -171,11 +177,12 @@ export function KomoditasPanel() {
   return (
     <>
       <DataTable
+        isiPenuh
         data={data}
         isLoading={isLoading}
         columns={kolom}
         getRowId={(r) => r.id}
-        entityLabel="data"
+        entityLabel="komoditas"
         bulkActions={actions}
         searchPlaceholder="Cari komoditas"
         onRowClick={(r) => setDetail(r.kode)}

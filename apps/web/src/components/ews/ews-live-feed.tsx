@@ -8,7 +8,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { BulkActionBar, type BulkAction } from "@/components/data-table/bulk-action-bar";
 import { PulseRing } from "@/components/motion/pulse-ring";
 import { PanelTitle } from "@/components/garda/page-header";
+import { EmptyState } from "@/components/garda/empty-state";
 import { Shimmer } from "@/components/garda/shimmer";
+import { StatusBadge } from "@/components/garda/status-badge";
 import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta, toneClass } from "@/lib/design/tokens";
 import { formatRelatif } from "@/lib/format";
@@ -52,11 +54,11 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
         actions={
           <div className="flex items-center gap-2">
             {items.length > 0 && (
-              <span className="inline-flex items-center rounded-full bg-defisit/15 px-2.5 py-0.5 text-xs font-semibold text-defisit">
+              <StatusBadge tone="defisit" dot={false} className="num">
                 {items.length} alert
-              </span>
+              </StatusBadge>
             )}
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-2.5 py-1 text-xs text-muted-foreground shadow-xs dark:bg-white/5">
+            <span className="inline-flex h-[22px] items-center gap-1.5 rounded-md bg-secondary px-2 text-xs font-medium whitespace-nowrap text-muted-foreground">
               <span className={cn("size-2 rounded-full", status === "terputus" ? "bg-mist-400" : "animate-live bg-normal")} />
               {status === "simulasi" ? "Simulasi" : status === "terhubung" ? "Langsung" : status === "terputus" ? "Terputus" : "Menghubungkan"}
             </span>
@@ -72,17 +74,12 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="grid h-full min-h-[220px] place-items-center rounded-xl border border-dashed border-border/70 p-8 text-center bg-white/30 dark:bg-white/5">
-            <div>
-              <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-normal/10 text-normal">
-                <BellRing className="size-6" />
-              </div>
-              <p className="mt-3 font-display font-semibold text-foreground">Semua alert sudah ditangani</p>
-              <p className="mt-1 text-xs text-muted-foreground max-w-xs">
-                Tidak ada peringatan dini yang memerlukan tindakan saat ini. Peringatan baru akan otomatis masuk secara live.
-              </p>
-            </div>
-          </div>
+          <EmptyState
+            icon={BellRing}
+            title="Semua alert sudah ditangani"
+            description="Tidak ada peringatan dini yang memerlukan tindakan saat ini. Peringatan baru akan otomatis masuk secara live."
+            className="h-full min-h-[220px] rounded-lg border border-dashed border-border"
+          />
         ) : (
           <AnimatePresence initial={false}>
               {items.map((a) => {
@@ -105,7 +102,7 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
                         "group relative flex flex-col gap-2.5 rounded-xl border p-3.5 transition-all shadow-xs",
                         checked
                           ? "border-data-300 bg-data-50/90 dark:border-data-500/40 dark:bg-data-500/15 ring-1 ring-data-400/40"
-                          : "border-border/60 bg-white/60 hover:bg-white/90 hover:border-border hover:shadow-ambient dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10",
+                          : "border-border bg-card hover:bg-secondary/60",
                       )}
                     >
                       {isNew && (
@@ -145,21 +142,12 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                              <span
-                                className={cn(
-                                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                                  t.soft,
-                                  t.text,
-                                )}
-                              >
-                                <span className={cn("size-1.5 rounded-full", t.bg)} />
-                                {meta.label}
-                              </span>
+                              <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
 
                               {a.status === "DIESKALASI" && (
-                                <span className="rounded-md bg-waspada-soft/80 px-1.5 py-0.5 text-[10px] font-semibold text-waspada-ink">
+                                <StatusBadge tone="waspada" dot={false}>
                                   Dieskalasi
-                                </span>
+                                </StatusBadge>
                               )}
                             </div>
 
@@ -188,7 +176,7 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
                       )}
 
                       {/* Baris Bawah: Wilayah, Komoditas, Waktu, & Aksi Cepat */}
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40 pl-9 text-[11px] text-muted-foreground">
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border pl-9 text-[11px] text-muted-foreground">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                           <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
                             <MapPin className="size-3 text-muted-foreground shrink-0" />
@@ -221,7 +209,7 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
 
       <BulkActionBar rows={selectedRows} actions={actions} entityLabel="alert" onClear={() => setSel([])} placement="inline" />
 
-      <div className="mt-3 pt-3 border-t border-border/50 text-center shrink-0">
+      <div className="mt-3 pt-3 border-t border-border text-center shrink-0">
         <Link
           href="/ews"
           className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-data-700 hover:text-data-800 hover:underline dark:text-data-300 dark:hover:text-data-200"

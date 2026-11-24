@@ -83,7 +83,7 @@ export function FormGantiSandi({ mode }: { mode: ModeAkun }) {
     <FormBff
       onKirim={form.kirimDari(() => ({ lama, baru, konfirmasi }))}
       sibuk={loading}
-      className="space-y-3.5"
+      className="flex flex-col gap-4"
     >
       <KolomSandi
         id="lama"
@@ -109,26 +109,32 @@ export function FormGantiSandi({ mode }: { mode: ModeAkun }) {
         <MeterKekuatanSandi sandi={baru} className="w-full" />
       </div>
 
-      <ul className="space-y-1 text-xs" aria-label="Aturan kata sandi">
+      <ul
+        className="grid grid-cols-1 gap-1.5 rounded-lg border border-border/80 bg-secondary/40 p-3 text-xs sm:grid-cols-2 dark:bg-white/[0.03]"
+        aria-label="Aturan kata sandi"
+      >
         {aturan.map((r) => (
           <li
             key={r.id}
             className={cn(
               "flex items-center gap-2 transition-colors",
               r.terpenuhi
-                ? "text-normal-ink dark:text-normal-soft"
+                ? "font-medium text-normal-ink dark:text-emerald-300"
                 : "text-muted-foreground",
             )}
           >
             {r.terpenuhi ? (
-              <Check className="size-3.5" aria-hidden />
+              <Check
+                className="size-3.5 shrink-0 text-normal-ink dark:text-emerald-300"
+                aria-hidden
+              />
             ) : (
-              <Circle className="size-3.5" aria-hidden />
+              <Circle className="size-3.5 shrink-0 opacity-60" aria-hidden />
             )}
             <span className="sr-only">
               {r.terpenuhi ? "Terpenuhi: " : "Belum terpenuhi: "}
             </span>
-            {r.label}
+            <span>{r.label}</span>
           </li>
         ))}
       </ul>
@@ -145,9 +151,9 @@ export function FormGantiSandi({ mode }: { mode: ModeAkun }) {
 
       {galat && <KotakGalatAuth galat={galat} sekarang={sekarang} />}
 
-      <p className="flex gap-2.5 rounded-xl bg-data-50/70 p-3 text-xs leading-relaxed text-data-800 dark:bg-data-500/10 dark:text-data-200">
-        <MonitorSmartphone className="mt-px size-4 shrink-0" aria-hidden />
-        Perangkat lain akan dikeluarkan setelah kata sandi diganti.
+      <p className="flex items-start gap-2.5 rounded-lg border border-data-200/70 bg-data-50/70 p-3 text-xs leading-relaxed text-data-800 dark:border-data-500/30 dark:bg-data-500/10 dark:text-data-200">
+        <MonitorSmartphone className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>Perangkat lain akan dikeluarkan setelah kata sandi diganti.</span>
       </p>
 
       <SpringButton

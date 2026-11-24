@@ -1,10 +1,19 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { Camera, CheckCheck, Download, MapPinOff, RotateCcw, Send, XCircle } from "lucide-react";
+import {
+  Camera,
+  CheckCheck,
+  Download,
+  MapPinOff,
+  RotateCcw,
+  Send,
+  XCircle,
+} from "lucide-react";
 import type { QueryKey } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
+import { SelTeks } from "@/components/data-table/data-table";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { STATUS_ENTRI, StatusBadge } from "@/components/garda/status-badge";
 import { useSession } from "@/lib/auth/session-context";
@@ -23,11 +32,16 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
         accessorKey: "komoditasNama",
         header: "Komoditas",
         cell: ({ row: { original: r } }) => (
-          <div className="flex items-center gap-2.5">
-            <span className="grid size-8 place-items-center rounded-xl bg-navy-50 text-navy-700 dark:bg-white/10 dark:text-navy-200"><KomoditasIcon kode={r.komoditasKode} /></span>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-navy-50 text-navy-700 dark:bg-white/10 dark:text-navy-200">
+              <KomoditasIcon kode={r.komoditasKode} />
+            </span>
             <div className="min-w-0">
-              <p className="truncate font-medium">{r.komoditasNama}</p>
-              <p className="text-xs text-muted-foreground">{r.tipe === "PRODUSEN" ? "Harga produsen" : "Harga konsumen"}, {r.kualitas.toLowerCase()}</p>
+              <SelTeks className="font-medium">{r.komoditasNama}</SelTeks>
+              <p className="text-xs text-muted-foreground">
+                {r.tipe === "PRODUSEN" ? "Harga produsen" : "Harga konsumen"},{" "}
+                {r.kualitas.toLowerCase()}
+              </p>
             </div>
           </div>
         ),
@@ -38,8 +52,10 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
         header: "Pasar",
         cell: ({ row: { original: r } }) => (
           <div className="min-w-0">
-            <p className="truncate">{r.pasarNama}</p>
-            <p className="truncate text-xs text-muted-foreground">{r.wilayah}</p>
+            <SelTeks>{r.pasarNama}</SelTeks>
+            <SelTeks className="text-xs text-muted-foreground">
+              {r.wilayah}
+            </SelTeks>
           </div>
         ),
       },
@@ -47,7 +63,12 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
         accessorKey: "harga",
         header: "Harga",
         cell: ({ row: { original: r } }) => (
-          <span className="num font-semibold whitespace-nowrap">{formatRupiah(r.harga)}<span className="font-normal text-muted-foreground">/{r.satuan}</span></span>
+          <span className="num font-semibold whitespace-nowrap">
+            {formatRupiah(r.harga)}
+            <span className="font-normal text-muted-foreground">
+              /{r.satuan}
+            </span>
+          </span>
         ),
       },
       {
@@ -56,7 +77,17 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
         cell: ({ row: { original: r } }) => {
           const a = Math.abs(r.deviasiPct);
           return (
-            <span className={cn("num inline-flex h-6 items-center rounded-full px-2 text-xs font-medium", a > 25 ? "bg-defisit-soft text-defisit-ink" : a > 10 ? "bg-waspada-soft text-waspada-ink" : "text-muted-foreground")} title="Terhadap median 7 hari pasar yang sama">
+            <span
+              className={cn(
+                "num inline-flex h-6 items-center rounded-full px-2 text-xs font-medium",
+                a > 25
+                  ? "bg-defisit-soft text-defisit-ink"
+                  : a > 10
+                    ? "bg-waspada-soft text-waspada-ink"
+                    : "text-muted-foreground",
+              )}
+              title="Terhadap median 7 hari pasar yang sama"
+            >
               {formatPersen(r.deviasiPct, { signed: true })}
             </span>
           );
@@ -68,13 +99,45 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
         enableSorting: false,
         cell: ({ row: { original: r } }) => (
           <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <Camera className={cn("size-4", r.adaFoto ? "text-data-600" : "opacity-25")} aria-label={r.adaFoto ? "Ada foto" : "Tanpa foto"} />
-            {!r.dalamGeofence && <MapPinOff className="size-4 text-waspada" aria-label="Di luar geofence" />}
+            <Camera
+              className={cn(
+                "size-4",
+                r.adaFoto ? "text-data-600" : "opacity-25",
+              )}
+              aria-label={r.adaFoto ? "Ada foto" : "Tanpa foto"}
+            />
+            {!r.dalamGeofence && (
+              <MapPinOff
+                className="size-4 text-waspada"
+                aria-label="Di luar geofence"
+              />
+            )}
           </span>
         ),
       },
-      { accessorKey: "petugasNama", header: "Petugas", cell: ({ getValue }) => <span className="whitespace-nowrap">{getValue<string>()}</span> },
-      { accessorKey: "dicatatPada", header: "Dicatat", cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{formatRelatif(getValue<string>())}</span> },
+      {
+        accessorKey: "petugasNama",
+        header: "Petugas",
+        cell: ({ getValue }) => (
+          <SelTeks className="max-w-[12rem]">{getValue<string>()}</SelTeks>
+        ),
+      },
+      {
+        accessorKey: "dicatatPada",
+        header: "Dicatat",
+        cell: ({ row: { original: r } }) => (
+          <div className="min-w-0">
+            <span className="num block whitespace-nowrap">
+              {formatRelatif(r.dicatatPada)}
+            </span>
+            {!opts.ringkas && (
+              <SelTeks className="max-w-[10rem] text-xs text-muted-foreground">
+                {r.petugasNama}
+              </SelTeks>
+            )}
+          </div>
+        ),
+      },
       {
         accessorKey: "status",
         header: "Status",
@@ -85,50 +148,130 @@ export function useHargaColumns(opts: { ringkas?: boolean } = {}) {
         },
       },
     ];
-    return opts.ringkas ? cols.filter((c) => !["bukti", "petugasNama"].includes((c.id ?? (c as { accessorKey?: string }).accessorKey) as string)) : cols;
+    return opts.ringkas
+      ? cols.filter(
+          (c) =>
+            !["bukti", "petugasNama"].includes(
+              (c.id ?? (c as { accessorKey?: string }).accessorKey) as string,
+            ),
+        )
+      : cols;
   }, [opts.ringkas]);
 }
 
 /** Aksi massal entri harga — mengikuti pemisahan tugas (SoD). */
-export function useHargaBulkActions(listKey: QueryKey): BulkAction<EntriHarga>[] {
+export function useHargaBulkActions(
+  listKey: QueryKey,
+): BulkAction<EntriHarga>[] {
   const user = useSession();
   const mut = useBulkAction<EntriHarga>({
     sumber: "harga",
     queryKey: listKey,
     invalidate: qk.harga.all(),
-    patch: (r, aksi) => ({ ...r, status: ({ validasi: "DIVALIDASI", tolak: "DITOLAK", publikasi: "DIPUBLIKASI", kembalikan: "DRAF" } as Record<string, StatusEntri>)[aksi] ?? r.status }),
+    patch: (r, aksi) => ({
+      ...r,
+      status:
+        (
+          {
+            validasi: "DIVALIDASI",
+            tolak: "DITOLAK",
+            publikasi: "DIPUBLIKASI",
+            kembalikan: "DRAF",
+          } as Record<string, StatusEntri>
+        )[aksi] ?? r.status,
+    }),
   });
   const ids = (rows: EntriHarga[]) => rows.map((r) => r.id);
   return [
     {
-      id: "validasi", label: "Validasi", icon: CheckCheck, perm: "harga.validasi", tone: "data",
-      enabled: (rows) => rows.every((r) => r.status === "DIAJUKAN" && r.petugasId !== user.id),
-      run: (rows) => mut.mutateAsync({ aksi: "validasi", ids: ids(rows), label: "Entri divalidasi" }),
-    },
-    {
-      id: "publikasi", label: "Publikasikan", icon: Send, perm: "harga.publikasi",
-      enabled: (rows) => rows.every((r) => r.status === "DIVALIDASI"),
-      run: (rows) => mut.mutateAsync({ aksi: "publikasi", ids: ids(rows), label: "Entri dipublikasikan" }),
-    },
-    {
-      id: "tolak", label: "Tolak", icon: XCircle, perm: "harga.validasi", tone: "danger",
-      enabled: (rows) => rows.every((r) => r.status === "DIAJUKAN"),
-      confirm: { title: "Tolak entri terpilih?", description: (n) => `${n} entri akan dikembalikan ke petugas dengan status ditolak untuk survei ulang.`, actionLabel: "Tolak entri", alasan: { label: "Alasan penolakan (terlihat oleh petugas, minimal 3 karakter)", min: 3 } },
-      run: (rows, alasan) => mut.mutateAsync({ aksi: "tolak", ids: ids(rows), label: "Entri ditolak", alasan }),
-    },
-    {
-      id: "kembalikan", label: "Minta survei ulang", icon: RotateCcw, perm: "harga.validasi",
-      run: (rows) => mut.mutateAsync({ aksi: "kembalikan", ids: ids(rows), label: "Survei ulang diminta" }),
-    },
-    {
-      id: "ekspor", label: "Ekspor CSV", icon: Download, perm: "harga.ekspor",
+      id: "validasi",
+      label: "Validasi",
+      icon: CheckCheck,
+      perm: "harga.validasi",
+      tone: "data",
+      enabled: (rows) =>
+        rows.every((r) => r.status === "DIAJUKAN" && r.petugasId !== user.id),
       run: (rows) =>
-        exportCsv(rows, [
-          { header: "ID", value: (r) => r.kode ?? r.id }, { header: "Komoditas", value: (r) => r.komoditasNama }, { header: "Tipe", value: (r) => r.tipe },
-          { header: "Pasar", value: (r) => r.pasarNama }, { header: "Wilayah", value: (r) => r.wilayah }, { header: "Harga", value: (r) => r.harga },
-          { header: "Satuan", value: (r) => r.satuan }, { header: "Deviasi (%)", value: (r) => r.deviasiPct }, { header: "Skor anomali", value: (r) => r.skorAnomali }, { header: "Petugas", value: (r) => r.petugasNama },
-          { header: "Dicatat", value: (r) => r.dicatatPada }, { header: "Status", value: (r) => r.status },
-        ], "entri-harga"),
+        mut.mutateAsync({
+          aksi: "validasi",
+          ids: ids(rows),
+          label: "Entri divalidasi",
+        }),
+    },
+    {
+      id: "publikasi",
+      label: "Publikasikan",
+      icon: Send,
+      perm: "harga.publikasi",
+      enabled: (rows) => rows.every((r) => r.status === "DIVALIDASI"),
+      run: (rows) =>
+        mut.mutateAsync({
+          aksi: "publikasi",
+          ids: ids(rows),
+          label: "Entri dipublikasikan",
+        }),
+    },
+    {
+      id: "tolak",
+      label: "Tolak",
+      icon: XCircle,
+      perm: "harga.validasi",
+      tone: "danger",
+      enabled: (rows) => rows.every((r) => r.status === "DIAJUKAN"),
+      confirm: {
+        title: "Tolak entri terpilih?",
+        description: (n) =>
+          `${n} entri harga dikembalikan ke petugas dengan status ditolak untuk survei ulang dan tidak ikut dipublikasikan.`,
+        actionLabel: "Tolak entri",
+        alasan: {
+          label: "Alasan penolakan (terlihat oleh petugas, minimal 3 karakter)",
+          min: 3,
+        },
+      },
+      run: (rows, alasan) =>
+        mut.mutateAsync({
+          aksi: "tolak",
+          ids: ids(rows),
+          label: "Entri ditolak",
+          alasan,
+        }),
+    },
+    {
+      id: "kembalikan",
+      label: "Minta survei ulang",
+      icon: RotateCcw,
+      perm: "harga.validasi",
+      run: (rows) =>
+        mut.mutateAsync({
+          aksi: "kembalikan",
+          ids: ids(rows),
+          label: "Survei ulang diminta",
+        }),
+    },
+    {
+      id: "ekspor",
+      label: "Ekspor CSV",
+      icon: Download,
+      perm: "harga.ekspor",
+      run: (rows) =>
+        exportCsv(
+          rows,
+          [
+            { header: "ID", value: (r) => r.kode ?? r.id },
+            { header: "Komoditas", value: (r) => r.komoditasNama },
+            { header: "Tipe", value: (r) => r.tipe },
+            { header: "Pasar", value: (r) => r.pasarNama },
+            { header: "Wilayah", value: (r) => r.wilayah },
+            { header: "Harga", value: (r) => r.harga },
+            { header: "Satuan", value: (r) => r.satuan },
+            { header: "Deviasi (%)", value: (r) => r.deviasiPct },
+            { header: "Skor anomali", value: (r) => r.skorAnomali },
+            { header: "Petugas", value: (r) => r.petugasNama },
+            { header: "Dicatat", value: (r) => r.dicatatPada },
+            { header: "Status", value: (r) => r.status },
+          ],
+          "entri-harga",
+        ),
     },
   ];
 }
@@ -136,5 +279,8 @@ export function useHargaBulkActions(listKey: QueryKey): BulkAction<EntriHarga>[]
 export const FACET_STATUS_ENTRI = {
   columnId: "status",
   label: "Status",
-  options: Object.entries(STATUS_ENTRI).map(([value, v]) => ({ value, label: v.label })),
+  options: Object.entries(STATUS_ENTRI).map(([value, v]) => ({
+    value,
+    label: v.label,
+  })),
 };

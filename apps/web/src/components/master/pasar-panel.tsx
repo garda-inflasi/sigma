@@ -4,11 +4,12 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Download, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import type { MasterPasarRow } from "@/lib/data/types";
+import { formatAngka } from "@/lib/format";
 import { useMasterPasar } from "@/lib/query/hooks";
 import { PasarDetailSheet } from "./pasar-detail-sheet";
 import { STATUS_PASAR } from "./status";
@@ -28,7 +29,9 @@ export function PasarPanel() {
   const kolom = useMemo<ColumnDef<MasterPasarRow>[]>(
     () => [
       {
-        accessorKey: "id",
+        // `id` hanya angka surrogate; yang dikenali pengguna adalah kode pasar.
+        id: "kode",
+        accessorFn: (p) => p.kode ?? p.id,
         header: "Kode",
         cell: ({ getValue }) => (
           <span className="num text-xs">{getValue<string>()}</span>
@@ -38,14 +41,16 @@ export function PasarPanel() {
         accessorKey: "nama",
         header: "Nama",
         cell: ({ getValue }) => (
-          <span className="font-medium">{getValue<string>()}</span>
+          <SelTeks className="font-medium">{getValue<string>()}</SelTeks>
         ),
       },
       {
         accessorKey: "kabupaten",
         header: "Kabupaten/kota",
         cell: ({ getValue }) => (
-          <span className="text-muted-foreground">{getValue<string>()}</span>
+          <SelTeks className="text-muted-foreground">
+            {getValue<string>()}
+          </SelTeks>
         ),
       },
       {
@@ -54,7 +59,7 @@ export function PasarPanel() {
         accessorFn: (p) => p.kecamatanNama ?? "",
         cell: ({ getValue }) =>
           getValue<string>() ? (
-            <span>{getValue<string>()}</span>
+            <SelTeks>{getValue<string>()}</SelTeks>
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
@@ -62,9 +67,11 @@ export function PasarPanel() {
       {
         id: "geofence",
         header: "Geofence",
-        accessorFn: (p) => `Geofence ${p.radiusMeter} m`,
+        accessorFn: (p) => p.radiusMeter,
         cell: ({ getValue }) => (
-          <span className="num text-xs">{getValue<string>()}</span>
+          <span className="num text-xs">
+            {formatAngka(getValue<number>())} m
+          </span>
         ),
       },
       {
@@ -88,11 +95,12 @@ export function PasarPanel() {
         ? [
             {
               id: "aksi",
+              meta: { sematKanan: true },
               header: () => <span className="sr-only">Aksi</span>,
               cell: ({ row: { original: r } }) => (
                 <button
                   type="button"
-                  aria-label={`Ajukan perubahan ${r.id}`}
+                  aria-label={`Ajukan perubahan ${r.kode ?? r.id}`}
                   title="Ajukan perubahan"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -139,11 +147,12 @@ export function PasarPanel() {
   return (
     <>
       <DataTable
+        isiPenuh
         data={data}
         isLoading={isLoading}
         columns={kolom}
         getRowId={(r) => r.id}
-        entityLabel="data"
+        entityLabel="pasar"
         bulkActions={actions}
         searchPlaceholder="Cari pasar"
         onRowClick={(r) => setDetail(r.id)}

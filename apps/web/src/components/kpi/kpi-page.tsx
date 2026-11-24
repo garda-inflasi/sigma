@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   Building2,
@@ -11,11 +11,21 @@ import {
   Truck,
 } from "lucide-react";
 import { KpiRiwayatSheet } from "@/components/kpi/kpi-riwayat-sheet";
+import { EmptyState } from "@/components/garda/empty-state";
+import {
+  HalamanPas,
+  IsiPas,
+  PanelPas,
+  RingkasanKeputusan,
+  type ItemRingkas,
+} from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
+import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { CountUp } from "@/components/motion/count-up";
 import { Sparkline } from "@/components/motion/sparkline";
+import { Button } from "@/components/ui/button";
 import {
   capaianPersen,
   formatKpi,
@@ -26,7 +36,7 @@ import {
 } from "@/lib/api/kpi";
 import { garda } from "@/lib/design/tokens";
 import { formatTanggal } from "@/lib/format";
-import { ease, fadeUp, stagger } from "@/lib/motion/presets";
+import { ease } from "@/lib/motion/presets";
 import { useEksporKpi, useKpi } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
@@ -44,18 +54,56 @@ const STATUS: Record<
     label: string;
     tone: "normal" | "waspada" | "defisit" | "netral" | "data";
     bar: string;
+    keterangan: string;
+    arti: string;
+    urutan: number;
   }
 > = {
-  TERCAPAI: { label: "Tercapai", tone: "normal", bar: "bg-normal" },
-  WASPADA: { label: "Waspada", tone: "waspada", bar: "bg-waspada" },
   TIDAK_TERCAPAI: {
     label: "Belum tercapai",
     tone: "defisit",
     bar: "bg-defisit",
+    keterangan: "Belum memenuhi target",
+    arti: "Nilai terbaru belum memenuhi target dan melewati batas waspada. Klik untuk menyaring.",
+    urutan: 0,
   },
-  TANPA_TARGET: { label: "Tanpa target", tone: "netral", bar: "bg-data-500" },
-  MENUNGGU_DATA: { label: "Menunggu data", tone: "netral", bar: "bg-data-500" },
+  WASPADA: {
+    label: "Waspada",
+    tone: "waspada",
+    bar: "bg-waspada",
+    keterangan: "Hampir memenuhi target",
+    arti: "Nilai belum memenuhi target tetapi masih dalam batas waspada. Klik untuk menyaring.",
+    urutan: 1,
+  },
+  MENUNGGU_DATA: {
+    label: "Menunggu data",
+    tone: "netral",
+    bar: "bg-data-500",
+    keterangan: "Belum bisa dihitung",
+    arti: "Indikator belum punya nilai karena data sumber atau model belum tersedia. Klik untuk menyaring.",
+    urutan: 2,
+  },
+  TANPA_TARGET: {
+    label: "Tanpa target",
+    tone: "netral",
+    bar: "bg-data-500",
+    keterangan: "Target belum ditetapkan",
+    arti: "Nilai sudah ada, tetapi belum ada target pembanding. Klik untuk menyaring.",
+    urutan: 3,
+  },
+  TERCAPAI: {
+    label: "Tercapai",
+    tone: "normal",
+    bar: "bg-normal",
+    keterangan: "Memenuhi target",
+    arti: "Nilai terbaru sudah memenuhi target. Klik untuk menyaring.",
+    urutan: 4,
+  },
 };
+
+const URUTAN_STATUS = (Object.keys(STATUS) as KpiStatus[]).sort(
+  (a, b) => STATUS[a].urutan - STATUS[b].urutan,
+);
 
 /** Alasan nilai kosong, supaya "menunggu" tidak terbaca sebagai nol atau galat. */
 function alasanMenunggu(k: KpiIndikator): string {
@@ -64,162 +112,221 @@ function alasanMenunggu(k: KpiIndikator): string {
     : "Butuh model atau data yang belum tersedia; dihitung di tahap berikutnya.";
 }
 
-function KpiBaris({ k, onBuka }: { k: KpiIndikator; onBuka: (kode: string) => void }) {
+function KpiBaris({
+  k,
+  onBuka,
+}: {
+  k: KpiIndikator;
+  onBuka: (kode: string) => void;
+}) {
   const status = STATUS[k.status];
   const pct = capaianPersen(k);
+  const penjelasan = k.deskripsi;
   return (
-    <li
-      className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2"
-      title={k.deskripsi || undefined}
-    >
-      <div className="min-w-0">
-        <button
-          type="button"
-          onClick={() => onBuka(k.kode)}
-          aria-label={`Riwayat ${k.nama}`}
-          className="block max-w-full truncate text-left text-sm font-medium hover:text-data-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
-        >
-          {k.nama}
-        </button>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {k.target === null ? (
-            "Target belum ditetapkan"
-          ) : (
-            <>
-              Target{" "}
-              <span className="num">{formatKpi(k.target, k.satuan)}</span>
-              {k.naikBaik ? "" : ", makin rendah makin baik"}
-            </>
+    <li title={penjelasan || undefined}>
+      <button
+        type="button"
+        onClick={() => onBuka(k.kode)}
+        aria-label={`Riwayat ${k.nama}`}
+        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-left transition-colors hover:bg-secondary/60 focus-visible:ring-[3px] focus-visible:ring-ring/30 focus-visible:outline-none focus-visible:ring-inset"
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-medium">
+            {k.nama}
+          </span>
+          {penjelasan && (
+            <span className="line-clamp-2 text-xs text-muted-foreground lg:line-clamp-1">
+              {penjelasan}
+            </span>
           )}
-        </p>
-      </div>
-      {k.nilai === null ? (
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
-      ) : (
-        <div className="flex items-center gap-3">
-          {k.tren.length >= 2 && (
-            <Sparkline
-              data={k.tren}
-              color={
-                k.status === "TERCAPAI"
-                  ? garda.status.normal.base
-                  : garda.data[500]
-              }
-              width={72}
-              height={26}
-              fill={false}
-            />
-          )}
-          <CountUp
-            value={k.nilai}
-            format={(n) => formatKpi(n, k.satuan)}
-            className="min-w-20 text-right text-lg font-semibold"
-          />
-        </div>
-      )}
-      {k.nilai === null ? (
-        <p className="col-span-2 text-xs text-muted-foreground">
-          {alasanMenunggu(k)}
-        </p>
-      ) : (
-        <div className="col-span-2 space-y-1">
-          {pct !== null && (
-            <div className="h-1.5 overflow-hidden rounded-full bg-mist-200 dark:bg-white/10">
-              <motion.div
-                className={cn("h-full rounded-full", status.bar)}
-                initial={{ width: 0 }}
-                whileInView={{ width: `${pct}%` }}
-                viewport={{ once: true }}
-                transition={{ duration: 1, ease: ease.garda }}
-              />
-            </div>
-          )}
-          <p className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{status.label}</span>
-            {k.periode && (
-              <span>Per {formatTanggal(k.periode, "MMMM yyyy")}</span>
+        </span>
+        {k.nilai === null ? (
+          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        ) : (
+          <span className="flex items-center gap-2.5">
+            {k.tren.length >= 2 && (
+              <span className="hidden sm:block">
+                <Sparkline
+                  data={k.tren}
+                  color={
+                    k.status === "TERCAPAI"
+                      ? garda.status.normal.base
+                      : garda.data[500]
+                  }
+                  width={56}
+                  height={22}
+                  fill={false}
+                />
+              </span>
             )}
-          </p>
-        </div>
-      )}
+            <CountUp
+              value={k.nilai}
+              format={(n) => formatKpi(n, k.satuan)}
+              className="min-w-16 text-right text-[15px] font-semibold"
+            />
+          </span>
+        )}
+        <span className="col-span-2 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          {k.nilai !== null && pct !== null && (
+            <span className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-mist-200 sm:w-24 dark:bg-white/10">
+              <motion.span
+                className={cn("block h-full rounded-full", status.bar)}
+                initial={{ width: 0 }}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.8, ease: ease.garda }}
+              />
+            </span>
+          )}
+          <span className="min-w-0 flex-1 lg:truncate">
+            {k.nilai === null ? (
+              alasanMenunggu(k)
+            ) : k.target === null ? (
+              "Target belum ditetapkan"
+            ) : (
+              <>
+                {status.label} · target{" "}
+                <span className="num">{formatKpi(k.target, k.satuan)}</span>
+                {k.naikBaik ? "" : ", makin rendah makin baik"}
+              </>
+            )}
+          </span>
+          {k.nilai !== null && k.periode && (
+            <span className="hidden shrink-0 sm:inline">
+              Per {formatTanggal(k.periode, "MMM yyyy")}
+            </span>
+          )}
+        </span>
+      </button>
     </li>
   );
 }
 
 /** Ekosistem KPI sesuai blueprint: capaian terhadap target dari hulu ke hilir. */
 export function KpiPage() {
-  const { data, isLoading, isError } = useKpi();
+  const { data, isLoading, isError, error, refetch } = useKpi();
   const ekspor = useEksporKpi();
   const [dibuka, setDibuka] = useState<string>();
+  const [saring, setSaring] = useState<KpiStatus>();
+
+  const jumlah = useMemo(() => {
+    const n: Record<KpiStatus, number> = {
+      TERCAPAI: 0,
+      WASPADA: 0,
+      TIDAK_TERCAPAI: 0,
+      TANPA_TARGET: 0,
+      MENUNGGU_DATA: 0,
+    };
+    for (const k of data ?? []) n[k.status]++;
+    return n;
+  }, [data]);
+
+  const ringkasan: ItemRingkas[] = URUTAN_STATUS.filter(
+    (s) => s !== "TANPA_TARGET" || jumlah[s] > 0,
+  ).map((s) => ({
+    label: STATUS[s].label,
+    nilai: isLoading || !data ? "–" : `${jumlah[s]} indikator`,
+    keterangan: STATUS[s].keterangan,
+    tone: STATUS[s].tone,
+    arti: STATUS[s].arti,
+    aktif: saring === s,
+    onClick: () => setSaring((v) => (v === s ? undefined : s)),
+  }));
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <HalamanPas>
       <PageHeader
         title="Indikator kinerja"
-        description="Capaian terhadap target PRD. Untuk indikator bertanda makin rendah makin baik, nilai lebih rendah berarti lebih baik. Indikator yang butuh model atau data yang belum ada tampil sebagai menunggu data."
+        description="Capaian tiap indikator terhadap target program. Klik indikator untuk melihat riwayatnya."
         actions={
-          <button
-            type="button"
-            onClick={() => ekspor.mutate()}
-            disabled={ekspor.isPending}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-input bg-white/80 px-4 text-sm font-medium shadow-ambient-sm hover:bg-white disabled:opacity-60 dark:bg-white/[0.06]"
-          >
-            {ekspor.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Download className="size-4" />
+          <>
+            {saring && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSaring(undefined)}
+              >
+                Reset filter
+              </Button>
             )}
-            Unduh laporan CSV
-          </button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => ekspor.mutate()}
+              disabled={ekspor.isPending}
+            >
+              {ekspor.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Download className="size-4" />
+              )}
+              Unduh laporan CSV
+            </Button>
+          </>
         }
       />
+      <RingkasanKeputusan
+        items={ringkasan}
+        label="Ringkasan capaian indikator"
+        className="[&>li:last-child:nth-child(odd)]:col-span-2 lg:[&>li:last-child:nth-child(odd)]:col-auto"
+      />
       {isLoading ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Shimmer className="h-[320px] w-full rounded-xl" />
-          <Shimmer className="h-[320px] w-full rounded-xl" />
-        </div>
+        <IsiPas className="lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
+          {KPI_KELOMPOK.map((kel) => (
+            <Shimmer key={kel} className="h-48 w-full rounded-lg lg:h-full" />
+          ))}
+        </IsiPas>
       ) : isError || !data ? (
-        <p
-          role="alert"
-          className="glass rounded-xl p-6 text-sm text-defisit-ink"
-        >
-          Indikator kinerja gagal dimuat. Muat ulang halaman atau coba lagi
-          beberapa saat.
-        </p>
+        <PanelGalat
+          judul="Indikator kinerja gagal dimuat."
+          error={error}
+          onCoba={() => void refetch()}
+          className="lg:flex-1"
+        />
       ) : (
-        <motion.div
-          variants={stagger(0.08)}
-          initial="hidden"
-          animate="show"
-          className="grid gap-6 lg:grid-cols-2"
-        >
+        <IsiPas className="lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
           {KPI_KELOMPOK.map((kel) => {
-            const items = data.filter((k) => k.kelompok === kel);
-            if (items.length === 0) return null;
+            const semua = data.filter((k) => k.kelompok === kel);
+            if (semua.length === 0) return null;
+            const items = semua
+              .filter((k) => !saring || k.status === saring)
+              .sort(
+                (a, b) => STATUS[a.status].urutan - STATUS[b.status].urutan,
+              );
+            const tercapai = semua.filter(
+              (k) => k.status === "TERCAPAI",
+            ).length;
             const { judul, icon: Ikon } = KELOMPOK[kel];
             return (
-              <motion.section
+              <PanelPas
                 key={kel}
-                variants={fadeUp}
-                className="glass rounded-xl p-5 sm:p-6"
-              >
-                <h2 className="flex items-center gap-2.5 text-display-sm font-semibold">
-                  <span className="grid size-9 place-items-center rounded-xl bg-navy-50 text-navy-700 dark:bg-white/10 dark:text-navy-200">
-                    <Ikon className="size-[18px]" />
+                judul={
+                  <span className="flex items-center gap-2">
+                    <Ikon className="size-4 shrink-0 text-muted-foreground" />
+                    {judul}
                   </span>
-                  {judul}
-                </h2>
-                <ul className="mt-5 space-y-5">
-                  {items.map((k) => (
-                    <KpiBaris key={k.kode} k={k} onBuka={setDibuka} />
-                  ))}
-                </ul>
-              </motion.section>
+                }
+                deskripsi={`${tercapai} dari ${semua.length} indikator tercapai`}
+                tanpaPadding
+              >
+                {items.length === 0 ? (
+                  <EmptyState
+                    title="Tidak ada indikator"
+                    description="Tidak ada indikator kelompok ini dengan status terpilih."
+                    className="py-6"
+                  />
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {items.map((k) => (
+                      <KpiBaris key={k.kode} k={k} onBuka={setDibuka} />
+                    ))}
+                  </ul>
+                )}
+              </PanelPas>
             );
           })}
-        </motion.div>
+        </IsiPas>
       )}
       <KpiRiwayatSheet kode={dibuka} onClose={() => setDibuka(undefined)} />
-    </div>
+    </HalamanPas>
   );
 }

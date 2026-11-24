@@ -1,11 +1,22 @@
 "use client";
 
-import { History, Laptop, Loader2, ShieldAlert, Smartphone } from "lucide-react";
+import {
+  History,
+  Laptop,
+  Loader2,
+  RotateCcw,
+  ShieldAlert,
+  Smartphone,
+} from "lucide-react";
 import { useId, useState } from "react";
-import { PanelTitle } from "@/components/garda/page-header";
+import { FormAlert } from "@/components/form/form-field";
+import { PanelPas } from "@/components/garda/halaman-pas";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { kelasKontrol } from "@/components/ui/kontrol";
+import { Label } from "@/components/ui/label";
 import {
   AKSI_FILTER,
   LABEL_HASIL,
@@ -21,18 +32,31 @@ import { useAktivitasSaya, useRiwayatSesi } from "@/lib/query/aktivitas-hooks";
 import { cn } from "@/lib/utils";
 
 const POLA_WAKTU = "d MMM yyyy, HH:mm";
-const KELAS_KONTROL =
-  "h-11 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none sm:h-10";
+const UKURAN_FILTER = "h-11 sm:h-9 md:text-[13px]";
+// `scheme-dark`: daftar opsi dan ikon tanggal bawaan peramban ikut gelap; latar opsi butuh warna solid.
+const KELAS_SELECT = cn(
+  kelasKontrol,
+  UKURAN_FILTER,
+  "w-full min-w-0 px-3 text-base dark:bg-card dark:scheme-dark",
+);
+const KELAS_TANGGAL = `${UKURAN_FILTER} dark:scheme-dark`;
 
-const adalahPonsel = (perangkat: string) => /Android|iOS|iPadOS/.test(perangkat);
+const adalahPonsel = (perangkat: string) =>
+  /Android|iOS|iPadOS/.test(perangkat);
 
-function Kolom({ label, children }: { label: string; children: (id: string) => React.ReactNode }) {
+function Kolom({
+  label,
+  children,
+}: {
+  label: string;
+  children: (id: string) => React.ReactNode;
+}) {
   const id = useId();
   return (
-    <div className="min-w-0 space-y-1.5">
-      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <div className="grid min-w-0 gap-1">
+      <Label htmlFor={id} className="text-[11px] text-muted-foreground">
         {label}
-      </label>
+      </Label>
       {children(id)}
     </div>
   );
@@ -40,9 +64,9 @@ function Kolom({ label, children }: { label: string; children: (id: string) => R
 
 function Memuat({ nama }: { nama: string }) {
   return (
-    <div role="status" aria-label={`Memuat ${nama}`} className="space-y-3">
+    <div role="status" aria-label={`Memuat ${nama}`} className="space-y-2.5">
       {[0, 1, 2].map((i) => (
-        <Shimmer key={i} className="h-14 w-full rounded-lg" />
+        <Shimmer key={i} className="h-14 w-full rounded-xl" />
       ))}
     </div>
   );
@@ -50,20 +74,34 @@ function Memuat({ nama }: { nama: string }) {
 
 function Galat({ nama, onUlang }: { nama: string; onUlang: () => void }) {
   return (
-    <div role="alert" className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
+    <FormAlert className="flex flex-col items-start gap-3 p-4">
       <p>Gagal memuat {nama}. Coba lagi beberapa saat.</p>
       <Button variant="outline" size="sm" onClick={onUlang}>
         Coba lagi
       </Button>
-    </div>
+    </FormAlert>
   );
 }
 
-function MuatLagi({ ada, memuat, onMuat }: { ada: boolean; memuat: boolean; onMuat: () => void }) {
+function MuatLagi({
+  ada,
+  memuat,
+  onMuat,
+}: {
+  ada: boolean;
+  memuat: boolean;
+  onMuat: () => void;
+}) {
   if (!ada) return null;
   return (
-    <div className="mt-4 flex justify-center">
-      <Button variant="outline" onClick={onMuat} disabled={memuat} className="min-h-11">
+    <div className="mt-3 flex justify-center">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onMuat}
+        disabled={memuat}
+        className="max-sm:h-11"
+      >
         {memuat && <Loader2 className="animate-spin" aria-hidden />}
         Muat lebih banyak
       </Button>
@@ -77,22 +115,44 @@ function BarisSesi({ sesi }: { sesi: RiwayatSesi }) {
   const Ikon = adalahPonsel(sesi.perangkat) ? Smartphone : Laptop;
   const status = LABEL_STATUS_SESI[sesi.status];
   return (
-    <li className="flex items-start gap-3 rounded-lg border border-border/70 bg-white/60 p-3.5 dark:bg-white/5">
-      <Ikon className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+    <li
+      className={cn(
+        "flex items-start gap-3 rounded-xl border px-3.5 py-2.5 transition-colors",
+        sesi.saatIni
+          ? "border-data-300 bg-data-50/50 dark:border-data-500/35 dark:bg-data-500/10"
+          : "border-border bg-card hover:border-navy-300/80 dark:hover:border-white/15",
+      )}
+    >
+      <span
+        className={cn(
+          "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg",
+          sesi.saatIni
+            ? "bg-data-100 text-data-700 dark:bg-data-500/20 dark:text-data-300"
+            : "bg-secondary text-muted-foreground",
+        )}
+      >
+        <Ikon className="size-4" aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium text-navy-900 dark:text-white">{sesi.perangkat}</p>
+          <p className="text-[13px] font-medium text-navy-900 dark:text-white">
+            {sesi.perangkat}
+          </p>
           <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
           {sesi.saatIni && <StatusBadge tone="data">Sesi Ini</StatusBadge>}
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="num mt-0.5 text-xs text-muted-foreground">
           {sesi.ip ? `IP ${sesi.ip} · ` : ""}Masuk{" "}
-          <time dateTime={sesi.mulaiPada}>{formatTanggal(sesi.mulaiPada, POLA_WAKTU)}</time>
+          <time dateTime={sesi.mulaiPada}>
+            {formatTanggal(sesi.mulaiPada, POLA_WAKTU)}
+          </time>
           {sesi.berakhirPada && (
             <>
               {" "}
               · Berakhir{" "}
-              <time dateTime={sesi.berakhirPada}>{formatTanggal(sesi.berakhirPada, POLA_WAKTU)}</time>
+              <time dateTime={sesi.berakhirPada}>
+                {formatTanggal(sesi.berakhirPada, POLA_WAKTU)}
+              </time>
             </>
           )}
         </p>
@@ -107,19 +167,27 @@ export function RiwayatSesiPanel() {
   const items = q.data?.pages.flatMap((h) => h.items) ?? [];
 
   return (
-    <section className="glass rounded-xl p-5 sm:p-6" aria-label="Riwayat masuk">
-      <PanelTitle
-        title="Riwayat masuk"
-        description="Sesi masuk ke akun Anda, termasuk yang sudah berakhir. Tidak mengenali salah satunya? Ganti kata sandi dan cabut perangkat di tab Perangkat & Sesi Aktif."
-      />
-      <div className="mt-5 max-w-xs">
+    <PanelPas
+      aria-label="Riwayat masuk"
+      judul="Riwayat masuk"
+      deskripsi={
+        <span className="whitespace-normal">
+          Tidak mengenali salah satunya? Ganti kata sandi dan cabut perangkatnya
+          di tab Perangkat & Sesi Aktif.
+        </span>
+      }
+      tanpaPadding
+      isiClassName="flex flex-col lg:overflow-hidden"
+      className="rounded-xl lg:max-h-full lg:min-h-0"
+    >
+      <div className="shrink-0 border-b border-border bg-secondary/25 px-3.5 py-2.5 dark:bg-white/[0.02]">
         <Kolom label="Status sesi">
           {(id) => (
             <select
               id={id}
               value={status}
               onChange={(e) => setStatus(e.target.value as FilterStatusSesi)}
-              className={KELAS_KONTROL}
+              className={KELAS_SELECT}
             >
               <option value="semua">Semua</option>
               <option value="aktif">Aktif</option>
@@ -128,25 +196,29 @@ export function RiwayatSesiPanel() {
           )}
         </Kolom>
       </div>
-      <div className="mt-5">
+      <div className="scrollbar-thin max-h-[60dvh] overflow-y-auto p-3.5 lg:max-h-none lg:min-h-0 lg:flex-1">
         {q.isPending ? (
           <Memuat nama="riwayat masuk" />
         ) : q.isError ? (
           <Galat nama="riwayat masuk" onUlang={() => void q.refetch()} />
         ) : items.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             Belum ada sesi yang cocok.
           </p>
         ) : (
-          <ul aria-label="Riwayat sesi" className="space-y-2.5">
+          <ul aria-label="Riwayat sesi" className="space-y-2">
             {items.map((s) => (
               <BarisSesi key={s.id} sesi={s} />
             ))}
           </ul>
         )}
-        <MuatLagi ada={!!q.hasNextPage} memuat={q.isFetchingNextPage} onMuat={() => void q.fetchNextPage()} />
+        <MuatLagi
+          ada={!!q.hasNextPage}
+          memuat={q.isFetchingNextPage}
+          onMuat={() => void q.fetchNextPage()}
+        />
       </div>
-    </section>
+    </PanelPas>
   );
 }
 
@@ -157,18 +229,26 @@ function BarisAktivitas({ a }: { a: Aktivitas }) {
   const sasaran = a.sebagai === "sasaran";
   const Ikon = sasaran ? ShieldAlert : History;
   return (
-    <li className="flex items-start gap-3 rounded-lg border border-border/70 bg-white/60 p-3.5 dark:bg-white/5">
-      <Ikon
-        className={cn("mt-0.5 size-5 shrink-0", sasaran ? "text-waspada-600" : "text-muted-foreground")}
-        aria-hidden
-      />
+    <li className="flex items-start gap-3 rounded-xl border border-border bg-card px-3.5 py-2.5 transition-colors hover:border-navy-300/80 dark:hover:border-white/15">
+      <span
+        className={cn(
+          "mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg",
+          sasaran
+            ? "bg-waspada-soft text-waspada-ink dark:bg-waspada/15 dark:text-amber-300"
+            : "bg-secondary text-muted-foreground",
+        )}
+      >
+        <Ikon className="size-4" aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium text-navy-900 dark:text-white">{a.label}</p>
+          <p className="text-[13px] font-medium text-navy-900 dark:text-white">
+            {a.label}
+          </p>
           <StatusBadge tone={hasil.tone}>{hasil.label}</StatusBadge>
           {sasaran && <StatusBadge tone="waspada">Oleh orang lain</StatusBadge>}
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="num mt-0.5 text-xs text-muted-foreground">
           <time dateTime={a.waktu} title={formatTanggal(a.waktu, POLA_WAKTU)}>
             {formatRelatif(a.waktu)}
           </time>
@@ -188,19 +268,48 @@ export function AktivitasAkunPanel() {
   const q = useAktivitasSaya(filter);
   const items = q.data?.pages.flatMap((h) => h.items) ?? [];
   const ada = Object.values(filter).some((v) => v && v !== "semua");
-  const ubah = (bagian: Partial<FilterAktivitas>) => setFilter((f) => ({ ...f, ...bagian }));
+  const ubah = (bagian: Partial<FilterAktivitas>) =>
+    setFilter((f) => ({ ...f, ...bagian }));
 
   return (
-    <section className="glass rounded-xl p-5 sm:p-6" aria-label="Aktivitas akun">
-      <PanelTitle
-        title="Aktivitas akun"
-        description="Jejak tindakan di akun Anda dari audit trail: masuk, ganti kata sandi, verifikasi 2 langkah, validasi, dan persetujuan, termasuk tindakan administrator terhadap akun Anda."
-      />
-
-      <div role="group" aria-label="Saring aktivitas" className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <PanelPas
+      aria-label="Aktivitas akun"
+      judul="Aktivitas akun"
+      deskripsi={
+        <span className="whitespace-normal">
+          Jejak tindakan di akun Anda, termasuk tindakan administrator terhadap
+          akun Anda.
+        </span>
+      }
+      aksi={
+        ada && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setFilter(FILTER_KOSONG)}
+          >
+            <RotateCcw aria-hidden />
+            Hapus saringan
+          </Button>
+        )
+      }
+      tanpaPadding
+      isiClassName="flex flex-col lg:overflow-hidden"
+      className="rounded-xl lg:max-h-full lg:min-h-0"
+    >
+      <div
+        role="group"
+        aria-label="Saring aktivitas"
+        className="grid shrink-0 grid-cols-2 gap-2 border-b border-border bg-secondary/25 px-3.5 py-2.5 lg:grid-cols-3 2xl:grid-cols-5 dark:bg-white/[0.02]"
+      >
         <Kolom label="Jenis aktivitas">
           {(id) => (
-            <select id={id} value={filter.aksi ?? ""} onChange={(e) => ubah({ aksi: e.target.value || undefined })} className={KELAS_KONTROL}>
+            <select
+              id={id}
+              value={filter.aksi ?? ""}
+              onChange={(e) => ubah({ aksi: e.target.value || undefined })}
+              className={KELAS_SELECT}
+            >
               <option value="">Semua aktivitas</option>
               {AKSI_FILTER.map((k) => (
                 <option key={k} value={k}>
@@ -215,8 +324,13 @@ export function AktivitasAkunPanel() {
             <select
               id={id}
               value={filter.hasil ?? ""}
-              onChange={(e) => ubah({ hasil: (e.target.value || undefined) as FilterAktivitas["hasil"] })}
-              className={KELAS_KONTROL}
+              onChange={(e) =>
+                ubah({
+                  hasil: (e.target.value ||
+                    undefined) as FilterAktivitas["hasil"],
+                })
+              }
+              className={KELAS_SELECT}
             >
               <option value="">Semua hasil</option>
               <option value="BERHASIL">Berhasil</option>
@@ -230,8 +344,10 @@ export function AktivitasAkunPanel() {
             <select
               id={id}
               value={filter.sebagai ?? "semua"}
-              onChange={(e) => ubah({ sebagai: e.target.value as FilterAktivitas["sebagai"] })}
-              className={KELAS_KONTROL}
+              onChange={(e) =>
+                ubah({ sebagai: e.target.value as FilterAktivitas["sebagai"] })
+              }
+              className={KELAS_SELECT}
             >
               <option value="semua">Saya dan orang lain</option>
               <option value="pelaku">Dilakukan saya</option>
@@ -241,49 +357,62 @@ export function AktivitasAkunPanel() {
         </Kolom>
         <Kolom label="Dari tanggal">
           {(id) => (
-            <input id={id} type="date" value={filter.dari ?? ""} max={filter.sampai || undefined} onChange={(e) => ubah({ dari: e.target.value || undefined })} className={KELAS_KONTROL} />
+            <Input
+              id={id}
+              type="date"
+              value={filter.dari ?? ""}
+              max={filter.sampai || undefined}
+              onChange={(e) => ubah({ dari: e.target.value || undefined })}
+              className={KELAS_TANGGAL}
+            />
           )}
         </Kolom>
         <Kolom label="Sampai tanggal">
           {(id) => (
-            <input id={id} type="date" value={filter.sampai ?? ""} min={filter.dari || undefined} onChange={(e) => ubah({ sampai: e.target.value || undefined })} className={KELAS_KONTROL} />
+            <Input
+              id={id}
+              type="date"
+              value={filter.sampai ?? ""}
+              min={filter.dari || undefined}
+              onChange={(e) => ubah({ sampai: e.target.value || undefined })}
+              className={KELAS_TANGGAL}
+            />
           )}
         </Kolom>
       </div>
-      {ada && (
-        <div className="mt-3">
-          <Button variant="ghost" size="sm" onClick={() => setFilter(FILTER_KOSONG)}>
-            Hapus saringan
-          </Button>
-        </div>
-      )}
 
-      <div className="mt-5">
+      <div className="scrollbar-thin max-h-[60dvh] overflow-y-auto p-3.5 lg:max-h-none lg:min-h-0 lg:flex-1">
         {q.isPending ? (
           <Memuat nama="aktivitas akun" />
         ) : q.isError ? (
           <Galat nama="aktivitas akun" onUlang={() => void q.refetch()} />
         ) : items.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-            {ada ? "Tidak ada aktivitas yang cocok dengan saringan." : "Belum ada aktivitas tercatat."}
+          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            {ada
+              ? "Tidak ada aktivitas yang cocok dengan saringan."
+              : "Belum ada aktivitas tercatat."}
           </p>
         ) : (
-          <ul aria-label="Aktivitas akun" className="space-y-2.5">
+          <ul aria-label="Aktivitas akun" className="space-y-2">
             {items.map((a) => (
               <BarisAktivitas key={a.id} a={a} />
             ))}
           </ul>
         )}
-        <MuatLagi ada={!!q.hasNextPage} memuat={q.isFetchingNextPage} onMuat={() => void q.fetchNextPage()} />
+        <MuatLagi
+          ada={!!q.hasNextPage}
+          memuat={q.isFetchingNextPage}
+          onMuat={() => void q.fetchNextPage()}
+        />
       </div>
-    </section>
+    </PanelPas>
   );
 }
 
 /** Tab "Aktivitas Akun": riwayat masuk (sesi) dan jejak audit milik akun sendiri. */
 export function TabAktivitas() {
   return (
-    <div className="space-y-5">
+    <div className="flex min-w-0 flex-col gap-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
       <AktivitasAkunPanel />
       <RiwayatSesiPanel />
     </div>

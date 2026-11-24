@@ -69,7 +69,6 @@ GATEWAY_NETWORK="${GATEWAY_NETWORK:-caddy-gardainflasi_edge}"
 PUBLIC_HOST="${PUBLIC_HOST:-app.gardainflasi.id}"
 NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-/api}"
 NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-https://${PUBLIC_HOST}}"
-NEXT_PUBLIC_MAPBOX_TOKEN="${NEXT_PUBLIC_MAPBOX_TOKEN:-}"
 NO_CACHE=0
 SKIP_BUILD=0
 SKIP_MIGRATE=0
@@ -87,7 +86,6 @@ while [[ $# -gt 0 ]]; do
     --public-host)               shift; PUBLIC_HOST="${1:-}" ;;
     --next-public-api-base=*)    NEXT_PUBLIC_API_BASE_URL="${1#*=}" ;;
     --next-public-app-url=*)     NEXT_PUBLIC_APP_URL="${1#*=}" ;;
-    --next-public-mapbox-token=*) NEXT_PUBLIC_MAPBOX_TOKEN="${1#*=}" ;;
     --no-cache)                  NO_CACHE=1 ;;
     --skip-build)                SKIP_BUILD=1 ;;
     --keep-src)                  KEEP_SRC=1 ;;
@@ -282,9 +280,6 @@ build_vm_image() {
       --build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}"
       --build-arg "NODE_OPTIONS=--max-old-space-size=2048"
     )
-    if [[ -n "$NEXT_PUBLIC_MAPBOX_TOKEN" ]]; then
-      args+=(--build-arg "NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}")
-    fi
   fi
 
   args+=("$BUILD_SRC_DIR")

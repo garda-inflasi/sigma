@@ -3,7 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Download } from "lucide-react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
-import { DataTable } from "@/components/data-table/data-table";
+import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import type { SatuanRow } from "@/lib/api/master";
 import { exportCsv } from "@/lib/csv";
 import { formatAngka } from "@/lib/format";
@@ -21,7 +21,7 @@ const kolom: ColumnDef<SatuanRow>[] = [
     accessorKey: "nama",
     header: "Nama",
     cell: ({ getValue }) => (
-      <span className="font-medium">{getValue<string>()}</span>
+      <SelTeks className="font-medium">{getValue<string>()}</SelTeks>
     ),
   },
   {
@@ -56,6 +56,7 @@ export function SatuanPanel() {
   const { data, isLoading } = useSatuan();
   return (
     <DataTable
+      isiPenuh
       data={data}
       isLoading={isLoading}
       columns={kolom}

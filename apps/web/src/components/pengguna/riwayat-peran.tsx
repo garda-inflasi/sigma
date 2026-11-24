@@ -2,6 +2,7 @@
 
 import { ArrowRight, History } from "lucide-react";
 import Link from "next/link";
+import { FormAlert } from "@/components/form/form-field";
 import { formatRelatif, formatTanggal } from "@/lib/format";
 import { tautanAuditPengguna } from "@/lib/pengguna/riwayat-peran";
 import { useRiwayatPeran } from "@/lib/query/hooks";
@@ -16,7 +17,7 @@ export function RiwayatPeran({ userId }: { userId: string }) {
   return (
     <section
       aria-labelledby="riwayat-peran-judul"
-      className="grid gap-2 rounded-xl bg-mist-100/70 p-3 text-sm dark:bg-white/5"
+      className="grid min-w-0 gap-2 rounded-lg border border-border bg-secondary p-3 text-[13px]"
     >
       <div className="flex items-center justify-between gap-3">
         <h3
@@ -35,16 +36,13 @@ export function RiwayatPeran({ userId }: { userId: string }) {
       </div>
 
       {isLoading ? (
-        <div
-          className="h-12 animate-pulse rounded-lg bg-white/60 dark:bg-white/5"
-          aria-busy="true"
-        />
+        <div className="shimmer h-12 rounded-lg" aria-busy="true" />
       ) : isError ? (
-        <p role="alert" className="text-xs text-destructive">
+        <FormAlert>
           {error instanceof Error
             ? error.message
             : "Riwayat peran gagal dimuat."}
-        </p>
+        </FormAlert>
       ) : !data || data.entri.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Belum ada perubahan peran yang tercatat untuk akun ini.
@@ -55,7 +53,7 @@ export function RiwayatPeran({ userId }: { userId: string }) {
             {data.entri.map((e) => (
               <li
                 key={e.id}
-                className="grid gap-0.5 border-l-2 border-data-300 pl-3"
+                className="grid min-w-0 gap-0.5 border-l-2 border-data-300 pl-3 break-words"
               >
                 <p className="font-medium">{e.judul}</p>
                 <p className="flex flex-wrap items-center gap-1.5">

@@ -1,13 +1,18 @@
 "use client";
 
 import { ShieldX } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/garda/empty-state";
+import { HalamanPas } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ViewTabs } from "@/components/garda/view-tabs";
 import { useCan } from "@/lib/auth/session-context";
 import { TabCepat } from "./tab-cepat";
 import { TabKebijakan } from "./tab-kebijakan";
 import { TabRiwayat } from "./tab-riwayat";
+
+const TAB = ["kebijakan", "cepat", "riwayat"] as const;
+type TabImpersonasi = (typeof TAB)[number];
 
 /**
  * Halaman admin impersonasi (khusus superadmin): kebijakan, impersonate cepat, dan riwayat. Penjagaan berlapis:
@@ -16,6 +21,22 @@ import { TabRiwayat } from "./tab-riwayat";
  */
 export function ImpersonasiPage() {
   const boleh = useCan("impersonasi.kelola");
+  const mentah = useSearchParams().get("tab");
+  const tab: TabImpersonasi = TAB.includes(mentah as TabImpersonasi)
+    ? (mentah as TabImpersonasi)
+    : "kebijakan";
+  // History API: berpindah tab tidak perlu memuat ulang data server, dan draf kebijakan tidak terganggu navigasi.
+  const setTab = (nilai: TabImpersonasi) => {
+    const q = new URLSearchParams(window.location.search);
+    if (nilai === "kebijakan") q.delete("tab");
+    else q.set("tab", nilai);
+    const qs = q.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${qs ? `?${qs}` : ""}`,
+    );
+  };
 
   if (!boleh) {
     return (
@@ -28,27 +49,27 @@ export function ImpersonasiPage() {
   }
 
   return (
-    <div className="grid gap-5">
+    <HalamanPas>
       <PageHeader
         title="Impersonasi"
-        description="Atur siapa yang boleh bekerja sementara sebagai peran atau akun lain untuk pengecekan, lihat riwayatnya, dan mulai impersonasi. Semua aksi tercatat atas nama akun asli di audit trail."
+        description="Bekerja sementara sebagai akun lain untuk pengecekan. Semua aksi tercatat atas nama akun asli."
+        tabs={
+          <ViewTabs
+            layoutId="tab-impersonasi"
+            label="Bagian impersonasi"
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { value: "kebijakan", label: "Kebijakan" },
+              { value: "cepat", label: "Impersonate cepat" },
+              { value: "riwayat", label: "Riwayat" },
+            ]}
+          />
+        }
       />
-      <Tabs defaultValue="kebijakan">
-        <TabsList>
-          <TabsTrigger value="kebijakan">Kebijakan</TabsTrigger>
-          <TabsTrigger value="cepat">Impersonate cepat</TabsTrigger>
-          <TabsTrigger value="riwayat">Riwayat</TabsTrigger>
-        </TabsList>
-        <TabsContent value="kebijakan" className="pt-2">
-          <TabKebijakan />
-        </TabsContent>
-        <TabsContent value="cepat" className="pt-2">
-          <TabCepat />
-        </TabsContent>
-        <TabsContent value="riwayat" className="pt-2">
-          <TabRiwayat />
-        </TabsContent>
-      </Tabs>
-    </div>
+      {tab === "kebijakan" && <TabKebijakan />}
+      {tab === "cepat" && <TabCepat />}
+      {tab === "riwayat" && <TabRiwayat />}
+    </HalamanPas>
   );
 }

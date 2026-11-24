@@ -2,6 +2,7 @@
 
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "@/components/garda/empty-state";
 import { PanelTitle } from "@/components/garda/page-header";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
@@ -10,11 +11,15 @@ import { KOMODITAS, kabupatenByKode } from "@/lib/data/reference";
 import { kabupatenBerpasar } from "@/lib/data/generators";
 import { formatRupiah, formatTanggal } from "@/lib/format";
 import { useTrenHarga } from "@/lib/query/hooks";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { GlassTooltip } from "./glass-tooltip";
 
-/** Tren harga produsen vs konsumen — area & garis tergambar saat dimuat. */
-export function TrendChart() {
+/**
+ * Tren harga produsen vs konsumen — area & garis tergambar saat dimuat. `isiPenuh` membuat grafik mengisi tinggi
+ * panel di desktop; wadahnya harus punya tinggi pasti.
+ */
+export function TrendChart({ isiPenuh = false }: { isiPenuh?: boolean }) {
   const [kode, setKode] = useState("CBM-KRT");
   const [kab, setKab] = useState("1171");
   const { data, isLoading, error, refetch } = useTrenHarga(kode, kab);
@@ -23,30 +28,28 @@ export function TrendChart() {
   const satuan = kom?.satuan ?? "kg";
 
   return (
-    <section className="glass flex h-full flex-col rounded-xl p-5 sm:p-6">
+    <section className={cn("glass flex h-full flex-col rounded-lg", isiPenuh ? "p-3.5 lg:min-h-0" : "p-5 sm:p-6")}>
       <PanelTitle title="Tren harga 45 hari" description={`Produsen dan konsumen, ${namaWilayah}`} />
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className={cn("flex shrink-0 flex-wrap items-center gap-2", isiPenuh ? "mt-2" : "mt-3")}>
         <Select value={kode} onValueChange={setKode}>
-          <SelectTrigger className="h-9 w-[200px] rounded-xl bg-white/70 dark:bg-white/5"><SelectValue /></SelectTrigger>
+          <SelectTrigger className={cn("w-full text-[13px] md:text-[13px]", isiPenuh ? "min-w-0 sm:flex-1" : "sm:w-[200px]")}><SelectValue /></SelectTrigger>
           <SelectContent>{KOMODITAS.map((k) => <SelectItem key={k.kode} value={k.kode}>{k.nama}</SelectItem>)}</SelectContent>
         </Select>
         <Select value={kab} onValueChange={setKab}>
-          <SelectTrigger className="h-9 w-[170px] rounded-xl bg-white/70 dark:bg-white/5"><SelectValue /></SelectTrigger>
+          <SelectTrigger className={cn("w-full text-[13px] md:text-[13px]", isiPenuh ? "min-w-0 sm:flex-1" : "sm:w-[170px]")}><SelectValue /></SelectTrigger>
           <SelectContent>{kabupatenBerpasar().map((k) => <SelectItem key={k.kode} value={k.kode}>{k.nama}</SelectItem>)}</SelectContent>
         </Select>
       </div>
-      <div className="mt-4 min-h-[240px] flex-1">
+      <div className={isiPenuh ? "mt-2 h-64 lg:h-auto lg:min-h-0 lg:flex-1" : "mt-4 min-h-[240px] flex-1"}>
         {isLoading && !data ? (
-          <Shimmer className="h-[240px] w-full rounded-xl" />
+          <Shimmer className={cn("w-full rounded-lg", isiPenuh ? "h-full" : "h-[240px]")} />
         ) : !data ? (
           // Selesai memuat tetapi tanpa data berarti gagal: bukan "belum ada data" yang menyesatkan.
-          <PanelGalat judul="Tren harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-[240px]" />
+          <PanelGalat judul="Tren harga gagal dimuat" error={error} onCoba={() => void refetch()} className={isiPenuh ? "h-full" : "h-[240px]"} />
         ) : data.length === 0 ? (
-          <div className="grid h-[240px] place-items-center rounded-xl bg-mist-50/50 text-xs text-muted-foreground dark:bg-white/5">
-            Belum ada data tren harga tervalidasi untuk kombinasi ini.
-          </div>
+          <EmptyState title="Belum ada data tren harga tervalidasi untuk kombinasi ini." className={isiPenuh ? "h-full" : "h-[240px]"} />
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={isiPenuh ? "100%" : 260}>
             <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="g-konsumen" x1="0" y1="0" x2="0" y2="1">

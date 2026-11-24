@@ -1,5 +1,5 @@
 /**
- * Cermin token Garda untuk konsumen JavaScript (Recharts, Mapbox, canvas).
+ * Cermin token Garda untuk konsumen JavaScript (Recharts, Leaflet, canvas).
  * Sumber kebenaran tetap app/globals.css — jaga agar nilai di sini identik.
  */
 export const garda = {
@@ -65,10 +65,3 @@ export function heatTone(pct: number): { fill: string; ink: string; label: strin
   return { fill: "#fecaca", ink: "#dc2626", label: "Lonjakan" };
 }
 
-export const mapConfig = {
-  center: { longitude: 96.75, latitude: 4.45 },
-  zoom: 6.55,
-  style: "mapbox://styles/mapbox/light-v11",
-  styleDark: "mapbox://styles/mapbox/dark-v11",
-  bounds: [[94.9, 1.9], [98.4, 6.1]] as [[number, number], [number, number]],
-};

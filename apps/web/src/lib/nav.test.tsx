@@ -4,14 +4,19 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { NAV, NAV_FLAT, activeNav, judulHalaman, remahRoti } from "./nav";
+import {
+  NAV,
+  NAV_FLAT,
+  NAV_PINTASAN,
+  activeNav,
+  judulHalaman,
+  remahRoti,
+} from "./nav";
 
 describe("activeNav", () => {
-  it("antrean perubahan master menyala sendiri, bukan 'Master data'", () => {
-    assert.equal(
-      activeNav("/master/perubahan")?.label,
-      "Antrean perubahan master",
-    );
+  it("antrean perubahan menyalakan 'Master data' karena tidak lagi punya item sidebar", () => {
+    assert.equal(activeNav("/master/perubahan")?.label, "Master data");
+    assert.equal(activeNav("/master/perubahan/12")?.label, "Master data");
   });
 
   it("tab entitas master menyalakan 'Master data'", () => {
@@ -27,10 +32,29 @@ describe("activeNav", () => {
     }
   });
 
-  it("antrean perubahan ada di navigasi dengan lencana master dan izin master.lihat", () => {
-    const item = NAV_FLAT.find((i) => i.href === "/master/perubahan");
-    assert.equal(item?.badge, "master");
-    assert.equal(item?.perm, "master.lihat");
+  it("sidebar tidak memuat antrean; lencana usulan pindah ke 'Master data' dan antrean tetap bisa dicari", () => {
+    assert.equal(
+      NAV_FLAT.some((i) => i.href === "/master/perubahan"),
+      false,
+    );
+    assert.deepEqual(
+      NAV.find((g) => g.grup === "Data")?.items.map((i) => i.label),
+      ["Validasi harga", "Sumber data & API", "Master data"],
+    );
+    const master = NAV_FLAT.find((i) => i.href === "/master/komoditas");
+    assert.equal(master?.badge, "master");
+    assert.equal(master?.perm, "master.lihat");
+    const pintasan = NAV_PINTASAN.find((i) => i.href === "/master/perubahan");
+    assert.equal(pintasan?.perm, "master.lihat");
+  });
+
+  it("remah roti antrean perubahan berada di bawah Master data", () => {
+    assert.deepEqual(remahRoti("/master/perubahan"), [
+      "Data",
+      "Master data",
+      "Antrean perubahan",
+    ]);
+    assert.deepEqual(remahRoti("/master/pasar"), ["Data", "Master data"]);
   });
 
   it("path anak dan halaman lain tetap benar", () => {
@@ -46,10 +70,7 @@ describe("item nav Impersonasi", () => {
     const item = NAV_FLAT.find((i) => i.href === "/impersonasi");
     assert.equal(item?.label, "Impersonasi");
     assert.equal(item?.perm, "impersonasi.kelola");
-    assert.equal(
-      NAV.find((g) => g.items.includes(item!))?.grup,
-      "Tata kelola",
-    );
+    assert.equal(NAV.find((g) => g.items.includes(item!))?.grup, "Tata kelola");
     assert.equal(activeNav("/impersonasi")?.href, "/impersonasi");
     assert.equal(activeNav("/pengguna")?.href, "/pengguna");
     assert.equal(judulHalaman("/impersonasi"), "Impersonasi");
@@ -60,7 +81,7 @@ describe("item nav Impersonasi", () => {
 describe("judulHalaman", () => {
   it("halaman dengan item nav memakai labelnya", () => {
     assert.equal(judulHalaman("/audit"), "Audit trail");
-    assert.equal(judulHalaman("/master/perubahan"), "Antrean perubahan master");
+    assert.equal(judulHalaman("/master/perubahan"), "Antrean perubahan");
     assert.equal(judulHalaman("/data/harga/123"), "Validasi harga");
   });
 

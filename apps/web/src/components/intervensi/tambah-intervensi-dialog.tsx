@@ -5,6 +5,7 @@ import { SpringButton } from "@/components/garda/spring-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -21,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { FormBff } from "@/components/form/form-bff";
+import { FormDialog } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { validasiBuat, type BuatIntervensiInput } from "@/lib/api/intervensi";
 import { useSession } from "@/lib/auth/session-context";
 import { KABUPATEN, KOMODITAS } from "@/lib/data/reference";
@@ -126,138 +128,130 @@ export function TambahIntervensiDialog({
             di riwayat serta audit trail.
           </DialogDescription>
         </DialogHeader>
-        <FormBff onKirim={kirim} sibuk={form.pending} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="int-judul">Judul</Label>
-            <Input
-              id="int-judul"
-              value={isian.judul}
-              maxLength={255}
-              onChange={(e) => set("judul", e.target.value)}
-              aria-invalid={!!galat.judul}
-              aria-describedby={galat.judul ? "int-judul-galat" : undefined}
-              placeholder="Mis. Operasi pasar beras Banda Aceh"
-            />
-            <Galat id="int-judul-galat" pesan={galat.judul} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="int-deskripsi">Deskripsi (opsional)</Label>
-            <Textarea
-              id="int-deskripsi"
-              value={isian.deskripsi}
-              onChange={(e) => set("deskripsi", e.target.value)}
-              rows={3}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label id="int-siklus-label">Siklus</Label>
-            <OptionCards
-              name="int-siklus"
-              label="Siklus"
-              value={isian.siklus}
-              onChange={(v) => set("siklus", v)}
-              options={SIKLUS_URUTAN.map((s) => ({
-                value: s,
-                title: siklusMeta[s].label,
-                description: siklusMeta[s].deskripsi,
-                icon: IKON_SIKLUS[s],
-                accent: AKSEN_SIKLUS[s],
-              }))}
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="int-prioritas">Prioritas</Label>
-              <Select
-                value={isian.prioritas}
-                onValueChange={(v) => set("prioritas", v as Prioritas)}
-              >
-                <SelectTrigger id="int-prioritas" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITAS.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <FormDialog onKirim={kirim} sibuk={form.pending}>
+          <DialogBody>
+            <FormField id="int-judul" label="Judul">
+              <Input
+                id="int-judul"
+                value={isian.judul}
+                maxLength={255}
+                onChange={(e) => set("judul", e.target.value)}
+                aria-invalid={!!galat.judul}
+                aria-describedby={galat.judul ? "int-judul-galat" : undefined}
+                placeholder="Mis. Operasi pasar beras Banda Aceh"
+              />
+              <Galat id="int-judul-galat" pesan={galat.judul} />
+            </FormField>
+            <FormField id="int-deskripsi" label="Deskripsi" opsional>
+              <Textarea
+                id="int-deskripsi"
+                value={isian.deskripsi}
+                onChange={(e) => set("deskripsi", e.target.value)}
+                rows={3}
+              />
+            </FormField>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label id="int-siklus-label">Siklus</Label>
+              <OptionCards
+                name="int-siklus"
+                label="Siklus"
+                value={isian.siklus}
+                onChange={(v) => set("siklus", v)}
+                options={SIKLUS_URUTAN.map((s) => ({
+                  value: s,
+                  title: siklusMeta[s].label,
+                  description: siklusMeta[s].deskripsi,
+                  icon: IKON_SIKLUS[s],
+                  accent: AKSEN_SIKLUS[s],
+                }))}
+              />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="int-komoditas">Komoditas</Label>
-              <Select
-                value={isian.komoditasKode}
-                onValueChange={(v) => set("komoditasKode", v)}
-              >
-                <SelectTrigger
-                  id="int-komoditas"
-                  className="w-full"
-                  aria-invalid={!!galat.komoditasKode}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField id="int-prioritas" label="Prioritas">
+                <Select
+                  value={isian.prioritas}
+                  onValueChange={(v) => set("prioritas", v as Prioritas)}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {KOMODITAS.map((k) => (
-                    <SelectItem key={k.kode} value={k.kode}>
-                      {k.nama}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Galat id="int-komoditas-galat" pesan={galat.komoditasKode} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="int-wilayah">Wilayah</Label>
-              <Select
-                value={isian.kabupatenKode}
-                onValueChange={(v) => set("kabupatenKode", v)}
-              >
-                <SelectTrigger
-                  id="int-wilayah"
-                  className="w-full"
-                  aria-invalid={!!galat.kabupatenKode}
+                  <SelectTrigger id="int-prioritas">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITAS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField id="int-komoditas" label="Komoditas">
+                <Select
+                  value={isian.komoditasKode}
+                  onValueChange={(v) => set("komoditasKode", v)}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {KABUPATEN.map((k) => (
-                    <SelectItem key={k.kode} value={k.kode}>
-                      {k.jenis === "Kota" ? `Kota ${k.nama}` : k.nama}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Galat id="int-wilayah-galat" pesan={galat.kabupatenKode} />
+                  <SelectTrigger
+                    id="int-komoditas"
+                    aria-invalid={!!galat.komoditasKode}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {KOMODITAS.map((k) => (
+                      <SelectItem key={k.kode} value={k.kode}>
+                        {k.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Galat id="int-komoditas-galat" pesan={galat.komoditasKode} />
+              </FormField>
+              <FormField id="int-wilayah" label="Wilayah">
+                <Select
+                  value={isian.kabupatenKode}
+                  onValueChange={(v) => set("kabupatenKode", v)}
+                >
+                  <SelectTrigger
+                    id="int-wilayah"
+                    aria-invalid={!!galat.kabupatenKode}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {KABUPATEN.map((k) => (
+                      <SelectItem key={k.kode} value={k.kode}>
+                        {k.jenis === "Kota" ? `Kota ${k.nama}` : k.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Galat id="int-wilayah-galat" pesan={galat.kabupatenKode} />
+              </FormField>
+              <FormField id="int-tenggat" label="Tenggat">
+                <Input
+                  id="int-tenggat"
+                  type="date"
+                  value={isian.tenggat}
+                  onChange={(e) => set("tenggat", e.target.value)}
+                  aria-invalid={!!galat.tenggat}
+                  aria-describedby={
+                    galat.tenggat ? "int-tenggat-galat" : undefined
+                  }
+                />
+                <Galat id="int-tenggat-galat" pesan={galat.tenggat} />
+              </FormField>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="int-tenggat">Tenggat</Label>
-            <Input
-              id="int-tenggat"
-              type="date"
-              value={isian.tenggat}
-              onChange={(e) => set("tenggat", e.target.value)}
-              aria-invalid={!!galat.tenggat}
-              aria-describedby={galat.tenggat ? "int-tenggat-galat" : undefined}
-            />
-            <Galat id="int-tenggat-galat" pesan={galat.tenggat} />
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="int-saya"
-              checked={isian.tugaskanSaya}
-              onCheckedChange={(v) => set("tugaskanSaya", v === true)}
-            />
-            <Label htmlFor="int-saya" className="font-normal">
-              Jadikan saya penanggung jawab
-            </Label>
-          </div>
-          {form.galat && (
-            <p role="alert" className="text-sm text-defisit-ink dark:text-rose-300">
-              {form.galat.pesan}
-            </p>
-          )}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="int-saya"
+                checked={isian.tugaskanSaya}
+                onCheckedChange={(v) => set("tugaskanSaya", v === true)}
+              />
+              <Label htmlFor="int-saya" className="font-normal">
+                Jadikan saya penanggung jawab
+              </Label>
+            </div>
+            <FormAlert>{form.galat?.pesan}</FormAlert>
+          </DialogBody>
           <DialogFooter>
             <SpringButton variant="soft" onClick={() => onOpenChange(false)}>
               Batal
@@ -270,7 +264,7 @@ export function TambahIntervensiDialog({
               {form.pending ? "Menyimpan…" : "Simpan intervensi"}
             </SpringButton>
           </DialogFooter>
-        </FormBff>
+        </FormDialog>
       </DialogContent>
     </Dialog>
   );

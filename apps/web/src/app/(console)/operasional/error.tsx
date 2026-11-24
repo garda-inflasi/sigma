@@ -17,7 +17,7 @@ export default function OperasionalError({
 
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center p-6 text-center">
-      <div className="grid size-12 place-items-center rounded-2xl bg-defisit/10 text-defisit">
+      <div className="grid size-12 place-items-center rounded-lg bg-defisit-soft text-defisit-ink dark:bg-defisit/15 dark:text-rose-300">
         <AlertCircle className="size-6" />
       </div>
       <h2 className="mt-4 font-display text-xl font-bold tracking-tight text-foreground">
@@ -26,7 +26,7 @@ export default function OperasionalError({
       <p className="mt-2 text-sm text-muted-foreground">
         {error.message || "Terjadi kesalahan saat memuat data pantauan operasional. Silakan muat ulang atau coba lagi."}
       </p>
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
         <SpringButton onClick={() => reset()} variant="primary" className="gap-2">
           <RotateCcw className="size-4" />
           Coba lagi

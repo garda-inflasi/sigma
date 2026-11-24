@@ -131,7 +131,7 @@ const barisPengguna = (page: Page, email: string) =>
   page.getByRole("row").filter({ hasText: email });
 /** Nama pada kolom pertama tiap baris data (urutan tampil). */
 const namaTampil = (page: Page) =>
-  page.locator("tbody tr td:nth-child(2) p:first-child").allInnerTexts();
+  page.locator("tbody tr td:nth-child(2) > div > :first-child").allInnerTexts();
 const peranTampil = (page: Page) =>
   page.locator("tbody tr td:nth-child(3) p:first-child").allInnerTexts();
 

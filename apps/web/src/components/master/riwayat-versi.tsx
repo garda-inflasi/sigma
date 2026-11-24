@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "@/components/garda/empty-state";
 import {
   formatNilaiBidang,
   labelBidang,
@@ -15,9 +16,7 @@ import { cn } from "@/lib/utils";
  */
 export function RiwayatVersiList({ riwayat }: { riwayat: RiwayatVersi[] }) {
   if (riwayat.length === 0)
-    return (
-      <p className="text-xs text-muted-foreground">Belum ada riwayat versi.</p>
-    );
+    return <EmptyState title="Belum ada riwayat versi." className="py-6" />;
   const baris = perubahanAntarVersi(riwayat).sort(
     (a, b) => b.versi.versi - a.versi.versi,
   );
@@ -32,14 +31,14 @@ export function RiwayatVersiList({ riwayat }: { riwayat: RiwayatVersi[] }) {
           <li key={v.id} className="relative">
             <span
               className={cn(
-                "absolute top-1.5 -left-[21px] size-2.5 rounded-full ring-2 ring-background",
-                berjalan ? "bg-data-500" : "bg-mist-300 dark:bg-white/20",
+                "absolute top-1.5 -left-[21px] size-2.5 rounded-full ring-2 ring-card",
+                berjalan ? "bg-data-500" : "bg-navy-300",
               )}
             />
-            <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium">
               Versi {v.versi}
               {berjalan && (
-                <span className="rounded-full bg-data-50 px-2 py-0.5 text-[11px] font-medium text-data-700 dark:bg-data-500/15 dark:text-data-300">
+                <span className="rounded-md bg-data-50 px-2 py-0.5 text-[11px] font-medium text-data-700 dark:bg-data-500/15 dark:text-data-300">
                   Berlaku
                 </span>
               )}

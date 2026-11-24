@@ -5,14 +5,16 @@ import { SpringButton } from "@/components/garda/spring-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { FormBff } from "@/components/form/form-bff";
+import { FormDialog } from "@/components/form/form-bff";
+import { FormAlert, FormField } from "@/components/form/form-field";
 import { ApiError } from "@/lib/api/client";
 import {
   KANAL_EWS,
@@ -100,102 +102,103 @@ function FormAturan({
     ["kritis", "Kritis"],
   ] as const;
   return (
-    <FormBff onKirim={kirim} sibuk={kiriman.pending} className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        {ambang.map(([kunci, label]) => (
-          <div key={kunci} className="space-y-1.5">
-            <Label htmlFor={`ambang-${kunci}`}>
-              {label} ({satuan})
-            </Label>
-            <Input
+    <FormDialog onKirim={kirim} sibuk={kiriman.pending}>
+      <DialogBody>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {ambang.map(([kunci, label]) => (
+            <FormField
+              key={kunci}
               id={`ambang-${kunci}`}
-              type="number"
-              inputMode="decimal"
-              step="any"
-              min="0"
-              value={form[kunci]}
-              onChange={(e) => setForm({ ...form, [kunci]: e.target.value })}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="ambang-jendela">Jendela (hari)</Label>
-          <Input
-            id="ambang-jendela"
-            type="number"
-            min="1"
-            max="90"
-            value={form.jendelaHari}
-            onChange={(e) => setForm({ ...form, jendelaHari: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="ambang-cooldown">
-            Peredaman setelah selesai (jam)
-          </Label>
-          <Input
-            id="ambang-cooldown"
-            type="number"
-            min="0"
-            max="720"
-            value={form.cooldownJam}
-            onChange={(e) => setForm({ ...form, cooldownJam: e.target.value })}
-          />
-        </div>
-      </div>
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Kanal notifikasi</legend>
-        <div className="flex flex-wrap gap-4">
-          {KANAL_EWS.map((k) => (
-            <label key={k} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.kanal.includes(k)}
-                onCheckedChange={(on) =>
-                  setForm({
-                    ...form,
-                    kanal: on
-                      ? [...form.kanal, k]
-                      : form.kanal.filter((x) => x !== k),
-                  })
-                }
+              label={`${label} (${satuan})`}
+            >
+              <Input
+                id={`ambang-${kunci}`}
+                type="number"
+                inputMode="decimal"
+                step="any"
+                min="0"
+                value={form[kunci]}
+                onChange={(e) => setForm({ ...form, [kunci]: e.target.value })}
               />
-              {KANAL_LABEL[k]}
-            </label>
+            </FormField>
           ))}
         </div>
-      </fieldset>
-      <label className="flex items-center gap-2 text-sm">
-        <Checkbox
-          checked={form.aktif}
-          onCheckedChange={(on) => setForm({ ...form, aktif: on === true })}
-        />
-        Aturan aktif (dievaluasi rule engine)
-      </label>
-      <div className="space-y-1.5">
-        <Label htmlFor="ambang-ket">Keterangan kalibrasi</Label>
-        <Input
-          id="ambang-ket"
-          maxLength={500}
-          value={form.keterangan}
-          onChange={(e) => setForm({ ...form, keterangan: e.target.value })}
-        />
-      </div>
-      {galat && (
-        <p role="alert" className="text-sm text-defisit-ink">
-          {galat}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end">
+          <FormField id="ambang-jendela" label="Jendela (hari)">
+            <Input
+              id="ambang-jendela"
+              type="number"
+              min="1"
+              max="90"
+              value={form.jendelaHari}
+              onChange={(e) =>
+                setForm({ ...form, jendelaHari: e.target.value })
+              }
+            />
+          </FormField>
+          <FormField
+            id="ambang-cooldown"
+            label="Peredaman setelah selesai (jam)"
+          >
+            <Input
+              id="ambang-cooldown"
+              type="number"
+              min="0"
+              max="720"
+              value={form.cooldownJam}
+              onChange={(e) =>
+                setForm({ ...form, cooldownJam: e.target.value })
+              }
+            />
+          </FormField>
+        </div>
+        <fieldset className="min-w-0 space-y-2">
+          <legend className="text-[13px] font-medium">Kanal notifikasi</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {KANAL_EWS.map((k) => (
+              <label key={k} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.kanal.includes(k)}
+                  onCheckedChange={(on) =>
+                    setForm({
+                      ...form,
+                      kanal: on
+                        ? [...form.kanal, k]
+                        : form.kanal.filter((x) => x !== k),
+                    })
+                  }
+                />
+                {KANAL_LABEL[k]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={form.aktif}
+            onCheckedChange={(on) => setForm({ ...form, aktif: on === true })}
+          />
+          Aturan aktif (dievaluasi rule engine)
+        </label>
+        <FormField id="ambang-ket" label="Keterangan kalibrasi">
+          <Input
+            id="ambang-ket"
+            maxLength={500}
+            value={form.keterangan}
+            onChange={(e) => setForm({ ...form, keterangan: e.target.value })}
+          />
+        </FormField>
+        <FormAlert>{galat}</FormAlert>
+      </DialogBody>
+      <DialogFooter>
         <SpringButton variant="soft" onClick={onDone}>
           Batal
         </SpringButton>
         <SpringButton type="submit" disabled={kiriman.pending}>
           {kiriman.pending ? "Menyimpan…" : "Simpan ambang"}
         </SpringButton>
-      </div>
-    </FormBff>
+      </DialogFooter>
+    </FormDialog>
   );
 }
 
@@ -214,7 +217,7 @@ export function AturanDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="glass-strong max-h-[90dvh] overflow-y-auto rounded-xl border-0 sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Ubah ambang peringatan</DialogTitle>
           <DialogDescription>

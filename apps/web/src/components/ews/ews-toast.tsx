@@ -36,10 +36,10 @@ function EwsToastCard({ id, alert, duration, onView, onAck }: { id: string | num
       transition={spring.snappy}
       role="alert"
       aria-live="assertive"
-      className="glass-strong relative w-[384px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl p-4 pl-5"
+      className="glass-strong relative w-full max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg p-4 pl-5"
     >
       <span className={cn("absolute inset-y-0 left-0 w-1", t.bg)} />
-      <button type="button" onClick={() => toast.dismiss(id)} className="absolute top-3 right-3 grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-secondary" aria-label="Tutup">
+      <button type="button" onClick={() => toast.dismiss(id)} className="absolute top-3 right-3 grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary" aria-label="Tutup">
         <X className="size-3.5" />
       </button>
       <div className="flex gap-3.5 pr-6">
@@ -53,7 +53,7 @@ function EwsToastCard({ id, alert, duration, onView, onAck }: { id: string | num
             <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
             <span className="text-xs text-muted-foreground">Peringatan dini</span>
           </div>
-          <p className="mt-1.5 font-display leading-snug font-semibold text-navy-900 dark:text-white">{alert.judul}</p>
+          <p className="mt-1.5 font-display leading-snug font-semibold text-foreground">{alert.judul}</p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {alert.wilayah}, perubahan <span className={cn("num font-semibold", t.text)}>{formatNilaiEws(alert)}</span>
           </p>

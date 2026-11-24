@@ -1,23 +1,46 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { BrainCircuit, Download, LayoutDashboard, Scale } from "lucide-react";
 import { useState } from "react";
+import {
+  HalamanPas,
+  IsiPas,
+  RingkasanKeputusan,
+  type ItemRingkas,
+} from "@/components/garda/halaman-pas";
 import { PageHeader, PanelTitle } from "@/components/garda/page-header";
 import { PanelSkeleton, Shimmer } from "@/components/garda/shimmer";
 import { SpringLink } from "@/components/garda/spring-button";
+import { ViewTabs, type ViewTab } from "@/components/garda/view-tabs";
 import { useCan } from "@/lib/auth/session-context";
 import type { RingkasanEksekutif, SumberAngka } from "@/lib/data/types";
+import { severityMeta } from "@/lib/design/tokens";
+import { GLOSARIUM } from "@/lib/glosarium";
+import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
+import { useTabHalaman } from "@/lib/hooks/use-tab-halaman";
 import { useRingkasanEksekutif } from "@/lib/query/hooks";
-import { EwsSummary, InterventionSummary, LatestBrief } from "./exec-side";
+import {
+  EwsSummary,
+  InterventionSummary,
+  LatestBrief,
+  PenyumbangUtama,
+} from "./exec-side";
 import { FiscalSpace } from "./fiscal-space";
 import { FoodBalance } from "./food-balance";
 import { InflationHero } from "./inflation-hero";
 import { XaiPanel } from "./xai-panel";
 
+type TabEksekutif = "ringkasan" | "proyeksi" | "neraca";
+
+const TAB_PENUH: readonly TabEksekutif[] = ["ringkasan", "proyeksi", "neraca"];
+const TAB_TANPA_PROYEKSI: readonly TabEksekutif[] = ["ringkasan", "neraca"];
+
+const BARIS_TUNGGAL = "lg:grid lg:grid-cols-12 lg:items-start";
+
 /** Panel kosong: blok yang datanya belum ada, bukan galat. */
 function Kosong({ judul, pesan }: { judul: string; pesan: string }) {
   return (
-    <section className="glass rounded-xl p-5 sm:p-6">
+    <section className="glass rounded-lg p-3.5 lg:h-full">
       <PanelTitle title={judul} description={pesan} />
     </section>
   );
@@ -31,8 +54,125 @@ function blokBerSumber(d: RingkasanEksekutif) {
     { nama: "ruang fiskal", sumber: d.fiskal?.sumber },
   ].filter((b): b is { nama: string; sumber: SumberAngka } => !!b.sumber);
 }
-const blokDemo = (d: RingkasanEksekutif) => blokBerSumber(d).filter((b) => b.sumber === "DEMO").map((b) => `angka ${b.nama}`);
-const blokResmi = (d: RingkasanEksekutif) => blokBerSumber(d).filter((b) => b.sumber !== "DEMO").map((b) => `${b.nama} (${b.sumber})`);
+const blokDemo = (d: RingkasanEksekutif) =>
+  blokBerSumber(d)
+    .filter((b) => b.sumber === "DEMO")
+    .map((b) => `angka ${b.nama}`);
+const blokResmi = (d: RingkasanEksekutif) =>
+  blokBerSumber(d)
+    .filter((b) => b.sumber !== "DEMO")
+    .map((b) => `${b.nama} (${b.sumber})`);
+
+const LABEL_FISKAL = {
+  MEMADAI: "Memadai",
+  TERBATAS: "Terbatas",
+  KRITIS: "Kritis",
+} as const;
+const TONE_FISKAL = {
+  MEMADAI: "normal",
+  TERBATAS: "waspada",
+  KRITIS: "defisit",
+} as const;
+
+/** Jawaban satu pandangan, seluruhnya dihitung dari data ringkasan yang sudah dimuat. */
+function itemKeputusan(
+  d: RingkasanEksekutif | undefined,
+  {
+    lihatFiskal,
+    lihatEws,
+    bukaNeraca,
+  }: { lihatFiskal: boolean; lihatEws: boolean; bukaNeraca: () => void },
+): ItemRingkas[] {
+  const inf = d?.inflasi;
+  const dalam =
+    !!inf && inf.yoy >= inf.sasaran.bawah && inf.yoy <= inf.sasaran.atas;
+  const pendorong = inf?.penyumbang
+    .filter((p) => p.andil > 0)
+    .sort((a, b) => b.andil - a.andil)[0];
+  const terburuk = d?.neraca?.items
+    .map((i) => ({
+      nama: i.nama,
+      rasio: i.produksi / i.kebutuhan - 1,
+      selisih: i.produksi - i.kebutuhan,
+    }))
+    .sort((a, b) => a.rasio - b.rasio)[0];
+  const adaDefisit = !!terburuk && terburuk.selisih < 0;
+  const mendesak = d ? d.ews.KRITIS + d.ews.SIAGA : 0;
+
+  const items: ItemRingkas[] = [
+    {
+      label: "Inflasi vs sasaran",
+      nilai: !d
+        ? "–"
+        : !inf
+          ? "Belum ada"
+          : dalam
+            ? "Dalam koridor"
+            : "Di luar koridor",
+      keterangan: inf
+        ? `${formatPersen(inf.yoy, { digits: 2 })}, sasaran ${formatAngka(inf.sasaran.bawah, 1)}–${formatAngka(inf.sasaran.atas, 1)}%`
+        : "Menunggu impor dari BPS",
+      tone: !inf ? "netral" : dalam ? "normal" : "defisit",
+      arti: GLOSARIUM.inflasi,
+    },
+    {
+      label: "Pendorong terbesar",
+      nilai: !d ? "–" : (pendorong?.nama ?? "Belum ada"),
+      keterangan: pendorong
+        ? `+${pendorong.andil.toFixed(2).replace(".", ",")} poin ke inflasi`
+        : "Belum ada andil positif",
+      tone: pendorong ? "waspada" : "netral",
+      arti: "Komoditas dengan andil terbesar terhadap kenaikan inflasi bulan ini.",
+    },
+    {
+      label: "Defisit terbesar",
+      nilai: !d
+        ? "–"
+        : !terburuk
+          ? "Belum ada"
+          : adaDefisit
+            ? terburuk.nama
+            : "Tidak ada",
+      keterangan: adaDefisit
+        ? `Kurang ${formatAngka(Math.abs(terburuk.selisih))} ton/bulan`
+        : terburuk
+          ? "Semua komoditas mencukupi"
+          : "Belum ada data neraca",
+      tone: !terburuk ? "netral" : adaDefisit ? "defisit" : "normal",
+      arti: GLOSARIUM.neraca,
+      onClick: bukaNeraca,
+    },
+    {
+      label: "Peringatan mendesak",
+      nilai: !d ? "–" : `${formatAngka(mendesak)} peringatan`,
+      keterangan: d
+        ? `${formatAngka(d.ews.KRITIS)} kritis, ${formatAngka(d.ews.SIAGA)} siaga`
+        : undefined,
+      tone: !d
+        ? "netral"
+        : d.ews.KRITIS > 0
+          ? severityMeta.KRITIS.tone
+          : d.ews.SIAGA > 0
+            ? severityMeta.SIAGA.tone
+            : "normal",
+      arti: GLOSARIUM.kritis,
+      href: lihatEws ? "/ews" : undefined,
+    },
+  ];
+
+  if (lihatFiskal && d?.fiskal) {
+    const f = d.fiskal;
+    items.push({
+      label: "Sisa ruang fiskal",
+      nilai: formatRupiah(f.pagu - f.realisasi, { compact: true }),
+      keterangan: `${LABEL_FISKAL[f.status]}, ${formatPersen((f.realisasi / f.pagu) * 100, { digits: 0 })} terealisasi`,
+      tone: TONE_FISKAL[f.status],
+      arti: "Sisa pagu belanja pengendalian inflasi yang masih bisa dipakai.",
+      onClick: bukaNeraca,
+    });
+  }
+  return items;
+}
 
 export function ExecutiveDashboard() {
   const { data, isLoading } = useRingkasanEksekutif();
@@ -40,45 +180,153 @@ export function ExecutiveDashboard() {
   const lihatFiskal = useCan("fiskal.lihat");
   const lihatPrediksi = useCan("prediksi.lihat");
   const lihatBrief = useCan("brief.lihat");
+  const lihatEws = useCan("ews.lihat");
+  const [tab, setTab] = useTabHalaman<TabEksekutif>(
+    lihatPrediksi ? TAB_PENUH : TAB_TANPA_PROYEKSI,
+    "ringkasan",
+  );
+
+  const daftarTab: ViewTab<TabEksekutif>[] = [
+    { value: "ringkasan", label: "Ringkasan", icon: <LayoutDashboard /> },
+    ...(lihatPrediksi
+      ? [
+        {
+          value: "proyeksi" as const,
+          label: "Proyeksi",
+          icon: <BrainCircuit />,
+        },
+      ]
+      : []),
+    {
+      value: "neraca",
+      label: lihatFiskal ? "Neraca & fiskal" : "Neraca",
+      icon: <Scale />,
+    },
+  ];
+
+  const pesanDemo = data?.demo
+    ? `Data demo: ${blokDemo(data).join(", ")} di halaman ini adalah contoh, bukan angka resmi BPS, BI, atau DJPb.${blokResmi(data).length > 0 ? ` Angka resmi: ${blokResmi(data).join(", ")}.` : ""}`
+    : null;
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
+    <HalamanPas>
       <PageHeader
         title="Ringkasan Dewan Pengarah"
-        description="Kondisi inflasi, neraca pangan, ruang fiskal, dan rekomendasi AI untuk keputusan pekan ini."
-        actions={lihatBrief && <SpringLink href="/policy-brief" variant="soft"><Download /> Policy brief terbaru</SpringLink>}
+        description="Kondisi inflasi, komoditas bermasalah, dan keputusan pekan ini."
+        tabs={
+          <ViewTabs
+            layoutId="tab-eksekutif"
+            label="Tampilan ringkasan eksekutif"
+            value={tab}
+            onChange={setTab}
+            tabs={daftarTab}
+          />
+        }
+        actions={
+          lihatBrief && (
+            <SpringLink href="/policy-brief" variant="soft">
+              <Download /> Policy brief terbaru
+            </SpringLink>
+          )
+        }
       />
-      {data?.demo && (
-        <p role="status" className="rounded-xl border border-dashed border-waspada/50 bg-waspada/10 px-4 py-3 text-sm text-waspada-ink">
-          Data demo: {blokDemo(data).join(", ")} di halaman ini adalah contoh, bukan angka resmi BPS, BI, atau DJPb.
-          {blokResmi(data).length > 0 && ` Angka resmi: ${blokResmi(data).join(", ")}.`}
+
+      {pesanDemo && (
+        <p
+          role="status"
+          title={pesanDemo}
+          className="shrink-0 rounded-md border border-dashed border-waspada/50 bg-waspada/10 px-3 py-1.5 text-md text-waspada-ink lg:truncate dark:text-amber-300"
+        >
+          {pesanDemo}
         </p>
       )}
-      {isLoading || !data ? (
-        <Shimmer className="h-[420px] w-full rounded-xl" />
-      ) : data.inflasi ? (
-        <InflationHero data={data.inflasi} />
-      ) : (
-        <Kosong judul="Inflasi tahunan" pesan="Belum ada data inflasi bulanan. Angka resmi masuk lewat impor dari BPS." />
+
+      {tab === "ringkasan" && (
+        <>
+          <RingkasanKeputusan
+            label="Ringkasan keputusan"
+            className="max-lg:[&>li:last-child:nth-child(odd)]:col-span-2"
+            items={itemKeputusan(data, {
+              lihatFiskal,
+              lihatEws,
+              bukaNeraca: () => setTab("neraca"),
+            })}
+          />
+          <IsiPas className={BARIS_TUNGGAL}>
+            <div className="flex min-w-0 flex-col gap-2.5 lg:col-span-8 lg:min-h-0">
+              {isLoading || !data ? (
+                <Shimmer className="h-80 w-full rounded-lg" />
+              ) : data.inflasi ? (
+                <InflationHero data={data.inflasi} />
+              ) : (
+                <Kosong
+                  judul="Inflasi tahunan"
+                  pesan="Belum ada data inflasi bulanan. Angka resmi masuk lewat impor dari BPS."
+                />
+              )}
+              {lihatBrief && <LatestBrief />}
+            </div>
+            <div className="scrollbar-thin flex min-w-0 flex-col gap-2.5 lg:col-span-4 lg:max-h-full lg:min-h-0 lg:overflow-y-auto">
+              {data && <EwsSummary data={data.ews} />}
+              {data && (
+                <InterventionSummary
+                  data={data.intervensi}
+                  dominan={data.siklusDominan}
+                />
+              )}
+              {data?.inflasi && (
+                <PenyumbangUtama data={data.inflasi.penyumbang} />
+              )}
+            </div>
+          </IsiPas>
+        </>
       )}
-      <div className="grid gap-6 xl:grid-cols-12">
-        <div className={lihatFiskal ? "xl:col-span-7" : "xl:col-span-12"}>
-          {!data ? <PanelSkeleton /> : data.neraca ? <FoodBalance data={data.neraca.items} sumber={data.neraca.sumber} /> : <Kosong judul="Neraca pangan" pesan="Belum ada data neraca pangan." />}
-        </div>
-        {lihatFiskal && (
-          <div className="xl:col-span-5">
-            {!data ? <PanelSkeleton /> : data.fiskal ? <FiscalSpace data={data.fiskal} /> : <Kosong judul="Ruang fiskal" pesan="Belum ada data ruang fiskal. Angka resmi masuk lewat impor dari DJPb." />}
+
+      {tab === "proyeksi" && lihatPrediksi && (
+        <IsiPas>
+          <XaiPanel kode={kode} onKodeChange={setKode} className="lg:flex-1" />
+        </IsiPas>
+      )}
+
+      {tab === "neraca" && (
+        <IsiPas className={lihatFiskal ? BARIS_TUNGGAL : undefined}>
+          <div
+            className={
+              lihatFiskal
+                ? "min-w-0 lg:col-span-7 lg:min-h-0"
+                : "min-w-0 lg:min-h-0 lg:flex-1"
+            }
+          >
+            {!data ? (
+              <PanelSkeleton className="lg:h-full" />
+            ) : data.neraca ? (
+              <FoodBalance
+                data={data.neraca.items}
+                sumber={data.neraca.sumber}
+              />
+            ) : (
+              <Kosong
+                judul="Neraca pangan"
+                pesan="Belum ada data neraca pangan."
+              />
+            )}
           </div>
-        )}
-      </div>
-      <div className="grid gap-6 xl:grid-cols-12">
-        {lihatPrediksi && <XaiPanel kode={kode} onKodeChange={setKode} className="xl:col-span-8" />}
-        <div className={lihatPrediksi ? "space-y-6 xl:col-span-4" : "grid gap-6 md:grid-cols-3 xl:col-span-12"}>
-          {data && <EwsSummary data={data.ews} />}
-          {data && <InterventionSummary data={data.intervensi} dominan={data.siklusDominan} />}
-          {lihatBrief && <LatestBrief />}
-        </div>
-      </div>
-    </div>
+          {lihatFiskal && (
+            <div className="min-w-0 lg:col-span-5 lg:min-h-0">
+              {!data ? (
+                <PanelSkeleton className="lg:h-full" />
+              ) : data.fiskal ? (
+                <FiscalSpace data={data.fiskal} />
+              ) : (
+                <Kosong
+                  judul="Ruang fiskal"
+                  pesan="Belum ada data ruang fiskal. Angka resmi masuk lewat impor dari DJPb."
+                />
+              )}
+            </div>
+          )}
+        </IsiPas>
+      )}
+    </HalamanPas>
   );
 }

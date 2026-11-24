@@ -49,7 +49,7 @@ func TestGeometri_Authorization(t *testing.T) {
 	}
 }
 
-func TestGeometri_FeatureCollectionIsLabelledAsApproximate(t *testing.T) {
+func TestGeometri_FeatureCollectionUsesOfficialBoundaries(t *testing.T) {
 	s := sharedSuite(t)
 
 	w := s.call(t, "/v1/spasial/geometri", emailLihat)
@@ -62,8 +62,8 @@ func TestGeometri_FeatureCollectionIsLabelledAsApproximate(t *testing.T) {
 	for _, f := range fc.Features {
 		assert.Equal(t, "Feature", f.Type)
 		assert.Equal(t, f.Properties.Kode, f.ID)
-		assert.Equal(t, "DEMO", f.Properties.Sumber)
-		assert.True(t, f.Properties.Perkiraan, "tidak boleh tampil seperti batas resmi")
+		assert.Equal(t, domain.SumberResmi, f.Properties.Sumber)
+		assert.False(t, f.Properties.Perkiraan, "seed memakai batas BPS, bukan poligon perkiraan")
 		assert.NotEmpty(t, f.Properties.Nama)
 		levels[f.Properties.Level]++
 		_, err := domain.ParseGeoJSON(f.Geometry)

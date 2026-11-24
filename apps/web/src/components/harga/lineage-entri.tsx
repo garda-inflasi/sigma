@@ -1,8 +1,14 @@
 "use client";
 
-import { GitBranch } from "lucide-react";
 import { useLineageHarga } from "@/lib/query/hooks";
 import Link from "next/link";
+import {
+  ActivityTimeline,
+  MetaGrid,
+  MetaItem,
+} from "@/components/garda/inspector";
+import { PanelGalat } from "@/components/garda/panel-galat";
+import { Shimmer } from "@/components/garda/shimmer";
 import { STATUS_ENTRI, StatusBadge } from "@/components/garda/status-badge";
 import {
   LABEL_AKSI_VERSI,
@@ -25,123 +31,104 @@ function ringkasTahap(t: TahapLineageHarga): string {
     .join(", ");
 }
 
-function Baris({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
-    </>
-  );
-}
-
 /** Isi lineage: asal, cek otomatis, validasi, publikasi, penolakan, dan garis waktu versi. */
 export function IsiLineage({ data }: { data: LineageHarga }) {
   return (
-    <div className="space-y-3">
-      <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1.5 text-xs">
-        <Baris label="Dicatat">
+    <div className="space-y-4">
+      <MetaGrid>
+        <MetaItem label="Dicatat">
           {data.petugasNama ?? "Petugas tidak diketahui"},{" "}
-          {formatTanggal(data.dicatatPada, WAKTU)}
-        </Baris>
-        <Baris label="Diterima">
-          server {formatTanggal(data.diterimaPada, WAKTU)}
-        </Baris>
-        <Baris label="Sumber">
+          <span className="num">{formatTanggal(data.dicatatPada, WAKTU)}</span>
+        </MetaItem>
+        <MetaItem label="Diterima">
+          server{" "}
+          <span className="num">{formatTanggal(data.diterimaPada, WAKTU)}</span>
+        </MetaItem>
+        <MetaItem label="Sumber">
           {LABEL_SUMBER[data.sumber] ?? data.sumber}
           {data.kodePedagang ? <> · pedagang {data.kodePedagang}</> : null}
-        </Baris>
+        </MetaItem>
         {data.tugas.length > 0 && (
-          <Baris label="Tugas">{data.tugas.join(", ")}</Baris>
+          <MetaItem label="Tugas">{data.tugas.join(", ")}</MetaItem>
         )}
-        <Baris label="Cek otomatis">
+        <MetaItem label="Cek otomatis" wide>
           {data.bendera.length > 0
             ? data.bendera.join("; ")
             : "Lolos semua cek"}
-          <span className="block text-muted-foreground">
+          <span className="block text-xs font-normal text-muted-foreground">
             Skor anomali{" "}
             <span className="num">{data.skorAnomali.toFixed(2)}</span> · deviasi{" "}
             <span className="num">
               {formatPersen(data.deviasiPct, { signed: true })}
             </span>
           </span>
-        </Baris>
-        <Baris label="Validasi">
+        </MetaItem>
+        <MetaItem label="Validasi">
           {data.validasi ? (
             ringkasTahap(data.validasi)
           ) : (
-            <span className="text-muted-foreground">Belum</span>
+            <span className="font-normal text-muted-foreground">Belum</span>
           )}
-        </Baris>
+        </MetaItem>
         {!data.penolakan && (
-          <Baris label="Publikasi">
+          <MetaItem label="Publikasi">
             {data.publikasi ? (
               ringkasTahap(data.publikasi)
             ) : (
-              <span className="text-muted-foreground">Belum</span>
+              <span className="font-normal text-muted-foreground">Belum</span>
             )}
-          </Baris>
+          </MetaItem>
         )}
         {data.penolakan && (
-          <Baris label="Penolakan">
+          <MetaItem label="Penolakan" wide>
             {ringkasTahap(data.penolakan)}
             {data.penolakan.alasan && (
-              <span className="block text-muted-foreground">
+              <span className="block text-xs font-normal text-muted-foreground">
                 {data.penolakan.alasan}
               </span>
             )}
-          </Baris>
+          </MetaItem>
         )}
-      </dl>
+      </MetaGrid>
 
       <div>
-        <p className="mb-1.5 text-xs font-medium">
+        <p className="mb-2 text-xs font-medium">
           Versi isi{" "}
           <span className="font-normal text-muted-foreground">
             (terkini: v{data.versiTerkini})
           </span>
         </p>
-        {data.versi.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Belum ada versi tercatat.
-          </p>
-        ) : (
-          <ol aria-label="Versi entri" className="grid gap-2">
-            {data.versi.map((v) => (
-              <li
-                key={v.versi}
-                className="grid gap-0.5 border-l-2 border-data-300 pl-3 text-xs"
-              >
-                <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="num font-medium">v{v.versi}</span>
-                  <span className="font-medium">
-                    {LABEL_AKSI_VERSI[v.aksi] ?? v.aksi}
-                  </span>
-                  <StatusBadge
-                    tone={STATUS_ENTRI[v.status]?.tone ?? "netral"}
-                    className="h-5 px-2 text-[11px]"
-                  >
-                    {STATUS_ENTRI[v.status]?.label ?? v.status}
-                  </StatusBadge>
-                  <span className="num">{formatRupiah(v.harga)}</span>
-                </p>
-                <p className="text-muted-foreground">
-                  {v.olehNama ?? "Sistem"}, {formatTanggal(v.waktu, WAKTU)}
-                </p>
-                {v.perubahan.length > 0 && (
-                  <p className="text-muted-foreground">
-                    Berubah: {ringkasPerubahan(v.perubahan)}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
+        <ActivityTimeline
+          label="Versi entri"
+          empty="Belum ada versi tercatat."
+          entries={data.versi.map((v) => ({
+            id: String(v.versi),
+            tone: v.status === "DITOLAK" ? "defisit" : "data",
+            title: (
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="num">v{v.versi}</span>
+                {LABEL_AKSI_VERSI[v.aksi] ?? v.aksi}
+                <StatusBadge
+                  tone={STATUS_ENTRI[v.status]?.tone ?? "netral"}
+                  className="h-5 px-2 text-[11px]"
+                >
+                  {STATUS_ENTRI[v.status]?.label ?? v.status}
+                </StatusBadge>
+                <span className="num">{formatRupiah(v.harga)}</span>
+              </span>
+            ),
+            meta: (
+              <>
+                {v.olehNama ?? "Sistem"},{" "}
+                <span className="num">{formatTanggal(v.waktu, WAKTU)}</span>
+              </>
+            ),
+            note:
+              v.perubahan.length > 0
+                ? `Berubah: ${ringkasPerubahan(v.perubahan)}`
+                : undefined,
+          }))}
+        />
       </div>
 
       {data.aksiAudit.length > 0 && (
@@ -153,41 +140,26 @@ export function IsiLineage({ data }: { data: LineageHarga }) {
   );
 }
 
-/** Bagian "Lineage data" pada panel detail entri harga: jejak asal, validasi, publikasi, dan versi. */
+/** Isi bagian "Asal data" pada panel detail entri harga: jejak asal, validasi, publikasi, dan versi. */
 export function LineageEntri({ id }: { id: string }) {
-  const { data, isLoading, isError } = useLineageHarga(id);
+  const { data, isLoading, isError, error } = useLineageHarga(id);
   return (
-    <section
-      aria-labelledby="lineage-judul"
-      className="space-y-3 rounded-xl bg-mist-100/70 p-3 dark:bg-white/5"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h3
-          id="lineage-judul"
-          className="flex items-center gap-1.5 text-sm font-medium"
-        >
-          <GitBranch className="size-4 text-muted-foreground" aria-hidden />{" "}
-          Lineage data
-        </h3>
-        <Link
-          href={tautanAuditEntri(id)}
-          className="text-xs font-medium text-data-700 underline-offset-4 hover:underline dark:text-data-300"
-        >
-          Lihat di audit trail
-        </Link>
-      </div>
+    <div role="group" aria-label="Lineage data" className="space-y-3">
       {isLoading ? (
-        <div
-          className="h-16 animate-pulse rounded-lg bg-white/60 dark:bg-white/5"
-          aria-busy="true"
-        />
+        <div aria-busy="true" role="status" aria-label="Memuat lineage">
+          <Shimmer className="h-16 w-full" />
+        </div>
       ) : isError || !data ? (
-        <p role="alert" className="text-xs text-destructive">
-          Lineage gagal dimuat.
-        </p>
+        <PanelGalat judul="Lineage gagal dimuat." error={error} />
       ) : (
         <IsiLineage data={data} />
       )}
-    </section>
+      <Link
+        href={tautanAuditEntri(id)}
+        className="inline-block text-xs font-medium text-data-700 underline-offset-4 hover:underline dark:text-data-300"
+      >
+        Lihat di audit trail
+      </Link>
+    </div>
   );
 }

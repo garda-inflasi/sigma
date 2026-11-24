@@ -146,9 +146,6 @@ fi
 if [[ -n "${NEXT_PUBLIC_APP_URL:-}" ]]; then
   WEB_BUILD_ARGS+=(--build-arg "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}")
 fi
-if [[ -n "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]]; then
-  WEB_BUILD_ARGS+=(--build-arg "NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN}")
-fi
 
 # ------------------------------------------------------------------------------
 #  Build one image target

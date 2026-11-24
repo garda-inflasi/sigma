@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { PanelTitle } from "@/components/garda/page-header";
+import { EmptyState } from "@/components/garda/empty-state";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Segmented } from "@/components/garda/segmented";
 import { Shimmer } from "@/components/garda/shimmer";
@@ -36,13 +37,13 @@ export function PriceHeatmap({ className }: { className?: string } = {}) {
   const kab = data?.kabupaten ?? [];
 
   return (
-    <section className={cn("glass flex flex-col rounded-xl p-5 sm:p-6", className)}>
+    <section className={cn("glass flex min-w-0 flex-col rounded-lg p-3.5 lg:h-full lg:min-h-0", className)}>
       <PanelTitle
         title="Peta panas harga"
         description="Perubahan harga konsumen terhadap rata-rata 7 hari"
         actions={<Segmented layoutId="heat-mode" size="sm" value={mode} onChange={setMode} options={[{ value: "semua", label: "Semua" }, { value: "pilot", label: "Pilot" }]} />}
       />
-      <p className="mt-4 min-h-5 text-sm" aria-live="polite">
+      <p className="mt-2 min-h-5 shrink-0 truncate text-[13px]" aria-live="polite">
         {hover ? (
           <>
             <span className="font-medium">{komoditasByKode[hover.komoditasKode]?.nama ?? hover.komoditasKode}</span> di {kabupatenByKode[hover.kabupatenKode]?.nama ?? hover.kabupatenKode}:{" "}
@@ -55,37 +56,33 @@ export function PriceHeatmap({ className }: { className?: string } = {}) {
         )}
       </p>
 
-      <div className="scrollbar-thin mt-3 overflow-x-auto pb-1">
+      <div className="scrollbar-thin mt-2 overflow-x-auto pb-1 lg:min-h-0 lg:flex-1 lg:overflow-auto">
         {isLoading ? (
-          <Shimmer className="h-[420px] w-full rounded-xl" />
+          <Shimmer className="h-64 w-full rounded-lg lg:h-full" />
         ) : !data ? (
-          <PanelGalat judul="Peta panas harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-[420px]" />
+          <PanelGalat judul="Peta panas harga gagal dimuat" error={error} onCoba={() => void refetch()} className="h-64 lg:h-full" />
         ) : kab.length === 0 || data.komoditas.length === 0 ? (
-          <p className="grid h-[420px] place-items-center rounded-xl bg-mist-50/50 px-6 text-center text-sm text-muted-foreground dark:bg-white/5">
-            Belum ada harga tervalidasi untuk dipetakan di wilayah ini.
-          </p>
+          <EmptyState title="Belum ada harga tervalidasi untuk dipetakan di wilayah ini." className="h-64 lg:h-full" />
         ) : komoditas.length === 0 ? (
-          <p className="grid h-[420px] place-items-center rounded-xl bg-mist-50/50 px-6 text-center text-sm text-muted-foreground dark:bg-white/5">
-            Tidak ada komoditas pilot pada data ini.
-          </p>
+          <EmptyState title="Tidak ada komoditas pilot pada data ini." className="h-64 lg:h-full" />
         ) : (
           <motion.div
             initial="hidden"
             animate="show"
-            className="grid min-w-[760px] gap-1"
-            style={{ gridTemplateColumns: `minmax(170px,1.6fr) repeat(${kab.length}, minmax(52px,1fr))` }}
+            className="grid min-w-[640px] gap-1"
+            style={{ gridTemplateColumns: `minmax(180px,1.6fr) repeat(${kab.length}, minmax(46px,1fr))` }}
             onMouseLeave={() => setHover(null)}
           >
-            <div />
+            <div className="sticky top-0 left-0 z-30 bg-card" />
             {kab.map((k) => (
-              <div key={k.kode} className="truncate px-1 pb-1 text-center text-[11px] text-muted-foreground" title={k.nama}>{k.nama}</div>
+              <div key={k.kode} className="sticky top-0 z-20 truncate bg-card px-1 pb-1 text-center text-[11px] text-muted-foreground" title={k.nama}>{k.nama}</div>
             ))}
             {komoditas.map((kom, r) => (
               <div key={kom.kode} className="contents">
-                <div className="flex items-center gap-2 pr-2 text-sm">
-                  <KomoditasIcon kode={kom.kode} className="text-muted-foreground" />
-                  <span className="truncate">{kom.nama}</span>
-                  {kom.pilot && <span className="rounded-md bg-navy-50 px-1.5 text-[10px] font-medium text-navy-600 dark:bg-white/10 dark:text-navy-200">Pilot</span>}
+                <div className="sticky left-0 z-10 flex min-w-0 items-center gap-1.5 bg-card pr-2 text-[13px]">
+                  <KomoditasIcon kode={kom.kode} className="shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 truncate" title={kom.nama}>{kom.nama}</span>
+                  {kom.pilot && <span className="shrink-0 rounded-md bg-navy-50 px-1 text-[10px] font-medium text-navy-600 dark:bg-white/10 dark:text-navy-200">Pilot</span>}
                 </div>
                 {kab.map((k, c) => {
                   const s = index.get(`${kom.kode}:${k.kode}`);
@@ -114,7 +111,7 @@ export function PriceHeatmap({ className }: { className?: string } = {}) {
         )}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <div className="mt-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         {LEGENDA.map((l) => (
           <span key={l.label} className="inline-flex items-center gap-1.5">
             <span className="size-3 rounded" style={{ background: l.fill }} /> {l.label}

@@ -10,40 +10,46 @@ import { SpringButton } from "@/components/garda/spring-button";
  */
 export function DataDiriMemuat() {
   return (
-    <div role="status" aria-label="Memuat profil" className="space-y-5">
-      <div className="glass-strong flex flex-col items-center gap-4 rounded-xl p-5 min-h-[230px] sm:min-h-[140px] sm:flex-row sm:gap-5 sm:p-6">
-        <Shimmer className="size-20 shrink-0 rounded-2xl" />
-        <div className="flex w-full flex-1 flex-col items-center gap-2.5 sm:items-start">
-          <Shimmer className="h-6 w-48 max-w-full" />
-          <Shimmer className="h-6 w-40 rounded-full" />
-          <Shimmer className="h-4 w-32" />
+    <div
+      role="status"
+      aria-label="Memuat profil"
+      className="flex min-w-0 flex-col gap-3"
+    >
+      <div className="glass flex shrink-0 items-center justify-between gap-3 rounded-xl px-4 py-4 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-3.5">
+          <Shimmer className="size-12 shrink-0 rounded-xl" />
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <Shimmer className="h-5 w-52 max-w-full" />
+            <Shimmer className="h-3.5 w-44 max-w-full" />
+          </div>
         </div>
+        <Shimmer className="hidden h-6 w-28 rounded-full sm:block" />
       </div>
 
-      <div className="glass rounded-xl p-5 min-h-[557px] sm:p-6 md:min-h-[382px]">
-        <Shimmer className="h-6 w-36" />
-        <Shimmer className="mt-2 h-4 w-72 max-w-full" />
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <Shimmer className="h-[68px]" />
-          <Shimmer className="h-[68px]" />
-          <Shimmer className="h-[68px] md:col-span-2" />
+      <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <div className="glass rounded-xl p-5">
+          <Shimmer className="h-5 w-36" />
+          <Shimmer className="mt-2 h-4 w-72 max-w-full" />
+          <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+            <Shimmer className="h-14 rounded-lg" />
+            <Shimmer className="h-14 rounded-lg" />
+            <Shimmer className="h-14 rounded-lg sm:col-span-2" />
+          </div>
+          <div className="mt-5 flex justify-end gap-2 border-t border-border pt-3.5">
+            <Shimmer className="h-9 w-36 rounded-md" />
+            <Shimmer className="h-9 w-36 rounded-md" />
+          </div>
         </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <Shimmer className="h-11 w-44" />
-          <Shimmer className="h-11 w-40" />
+        <div className="glass rounded-xl p-5">
+          <Shimmer className="h-5 w-48" />
+          <Shimmer className="mt-2 h-4 w-80 max-w-full" />
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Shimmer className="h-16 rounded-lg" />
+            <Shimmer className="h-16 rounded-lg" />
+            <Shimmer className="h-16 rounded-lg" />
+            <Shimmer className="h-16 rounded-lg" />
+          </div>
         </div>
-      </div>
-
-      <div className="glass rounded-xl p-5 min-h-[480px] sm:p-6 sm:min-h-[356px]">
-        <Shimmer className="h-6 w-48" />
-        <Shimmer className="mt-2 h-4 w-80 max-w-full" />
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <Shimmer className="h-12" />
-          <Shimmer className="h-12" />
-          <Shimmer className="h-12" />
-          <Shimmer className="h-12" />
-        </div>
-        <Shimmer className="mt-5 h-11 w-full" />
       </div>
     </div>
   );

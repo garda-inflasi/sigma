@@ -16,6 +16,6 @@ func init() {
 		smokeCase{Name: "harga: riwayat petugas", Method: http.MethodGet, Path: "/v1/harga/saya", Email: takBerhak, MinItems: map[string]int{"": 50}, ForbiddenEmail: "strategis.bi@gardainflasi.id"},
 		// Entri HRG-D10-... ada di setiap seed (sepuluh hari lalu); riwayatnya dimulai dari pencatatan. Entri itu bisa di
 		// kabupaten mana pun, jadi dibuka peran tingkat provinsi (Koordinator hanya kabupaten tugasnya, 02-B).
-		smokeCase{Name: "harga: riwayat status entri", Method: http.MethodGet, Path: "/v1/harga/HRG-D10-00-00-K/riwayat", Email: "strategis.bi@gardainflasi.id", MinItems: map[string]int{"": 1}, ForbiddenEmail: "superadmin@gardainflasi.id"},
+		smokeCase{Name: "harga: riwayat status entri", Method: http.MethodGet, Path: "/v1/harga/HRG-D10-00-00-K/riwayat", Email: "strategis.bi@gardainflasi.id", MinItems: map[string]int{"": 1}},
 	)
 }

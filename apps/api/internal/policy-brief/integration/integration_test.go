@@ -650,6 +650,30 @@ func TestPolicyBrief_GenerateBersamaanSatuBriefPerPeriode(t *testing.T) {
 	s.tunggu(t, "PB-2027-08", "DRAF")
 }
 
+// ADMIN_SISTEM memegang brief.susun dan brief.setujui, tetapi penyusun tidak boleh menyetujui brief-nya sendiri.
+func TestPolicyBrief_PenyusunTidakMenyetujuiBriefSendiri(t *testing.T) {
+	s := sharedSuite(t)
+	const admin = "superadmin@gardainflasi.id"
+	d := s.generate(t, "2027-11")
+	require.NoError(t, s.db.Exec(`UPDATE policy_brief SET status = 'TELAAH', disusun_oleh_id = ? WHERE id = ?`, uid("superadmin"), d.ID).Error)
+	status := func() string {
+		var v string
+		require.NoError(t, s.db.Raw(`SELECT status::text FROM policy_brief WHERE id = ?`, d.ID).Scan(&v).Error)
+		return v
+	}
+	setujui := map[string]any{"action": "setujui", "ids": []string{d.ID}}
+
+	w := s.call(t, http.MethodPost, "/v1/policy-brief/bulk", admin, setujui)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, bulkRes{Gagal: 1}, decode[bulkRes](t, w))
+	assert.Equal(t, "TELAAH", status())
+
+	w = s.call(t, http.MethodPost, "/v1/policy-brief/bulk", "strategis.djpb@gardainflasi.id", setujui)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, bulkRes{Berhasil: 1}, decode[bulkRes](t, w))
+	assert.Equal(t, "DISETUJUI", status())
+}
+
 func TestPolicyBrief_BulkMovesStatusWithPermissionsAndAudit(t *testing.T) {
 	s := sharedSuite(t)
 	const emailPenyetuju = "strategis.djpb@gardainflasi.id" // brief.setujui, tanpa brief.susun

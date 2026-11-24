@@ -373,7 +373,7 @@ export function HargaPage() {
           entityLabel="entri"
           bulkActions={actions}
           hiddenColumns={["petugasNama"]}
-          toolbar={
+          filterBar={
             <FilterSelect
               label="Status"
               value={status}

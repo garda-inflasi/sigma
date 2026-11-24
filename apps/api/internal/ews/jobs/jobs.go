@@ -101,6 +101,9 @@ type Jobs struct {
 	Engine     *engine.Engine
 	Streamer   *stream.Streamer
 	Notifikasi *notifikasi.Service
+	// Publisher memberi tahu koneksi SSE (lewat bus) bahwa ada peristiwa alert baru. Dipakai penulis alert di luar
+	// rule engine (jembatan pipeline ML) bersama Notifikasi, tanpa observer lain milik Engine.
+	Publisher domain.Observer
 
 	cfg   Config
 	bus   stream.Bus
@@ -132,10 +135,12 @@ func Shared(db *gorm.DB, log *logger.Logger) *Jobs {
 		notifikasi.Config{Interval: cfg.NotifInterval, EskalasiSetelah: cfg.EskalasiSetelah, VAPIDPublicKey: notifikasi.VAPIDFromEnv().PublicKey},
 		auditWriter, log, notifikasi.DariEnv(repo)...)
 
+	publisher := stream.NewPublisher(bus)
 	j := &Jobs{
-		Engine:     engine.New(repo, auditWriter, log, stream.NewPublisher(bus), notif),
+		Engine:     engine.New(repo, auditWriter, log, publisher, notif),
 		Streamer:   stream.NewStreamer(repo, hub, poll),
 		Notifikasi: notif,
+		Publisher:  publisher,
 		cfg:        cfg, bus: bus, store: repo, log: log,
 	}
 	shared[db] = j
@@ -157,6 +162,9 @@ func newBus(redisURL string, hub *stream.Hub, log *logger.Logger) (stream.Bus, t
 	}
 	return bus, pollDenganRedis
 }
+
+// BeriSinyal memberi tahu seluruh instance bahwa ada peristiwa alert baru di ews_event.
+func (j *Jobs) BeriSinyal(ctx context.Context) { j.bus.Notify(ctx) }
 
 // RunStream menjalankan penerima sinyal Redis yang membangunkan koneksi SSE di proses ini.
 // Dijalankan setiap instance API; kembali setelah ctx selesai.

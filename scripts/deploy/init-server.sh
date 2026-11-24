@@ -134,6 +134,17 @@ AES_KEY=\$(openssl rand -hex 16)
 # Redis
 REDIS_PORT=6379
 
+# MongoDB & Pipeline Data/ML (crawler -> dataunseen, ml-worker -> datasafe)
+MONGO_USER=garda
+MONGO_PASSWORD=\$(openssl rand -hex 24)
+MONGO_DB=garda_inflasi
+MONGO_PORT=27017
+MONGO_VOLUME=garda_pipeline_mongo_data
+MONGO_DB_UNSEEN=dataunseen
+MONGO_DB_SAFE=datasafe
+ML_N_JOBS=4
+ML_INTERVAL_SELEKSI_JAM=24
+
 # Seed admin awal (dipakai cmd/seed admin saat tabel pengguna kosong)
 SEED_ADMIN_EMAIL=admin@gardainflasi.id
 SEED_ADMIN_PASSWORD=\$(openssl rand -base64 18 | tr -d '/+=')
@@ -162,6 +173,8 @@ IMAGE_TAG=latest
 API_IMAGE_TAG=latest
 WEB_IMAGE_TAG=latest
 ML_IMAGE_TAG=latest
+ML_PIPELINE_IMAGE_TAG=latest
+CRAWLER_IMAGE_TAG=latest
 EOF"
     log_success "File ${REMOTE_DIR}/.env.tags diinisialisasi."
   fi

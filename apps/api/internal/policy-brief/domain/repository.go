@@ -48,7 +48,9 @@ type Repository interface {
 	MulaiUlang(ctx context.Context, id string, basiSebelum time.Time) (bool, error)
 	// Transisi mengubah status brief (UUID atau kode) dari `dari` ke `ke` secara atomik dan melaporkan UUID
 	// brief serta apakah baris berubah (false bila tidak ada atau statusnya bukan `dari`).
-	Transisi(ctx context.Context, ref idx.RujukanUUID, dari, ke string) (id string, berubah bool, err error)
+	// bukanPenyusun (UUID, boleh kosong) menolak transisi bila brief disusun pengguna itu: penyusun tidak menyetujui
+	// brief-nya sendiri.
+	Transisi(ctx context.Context, ref idx.RujukanUUID, dari, ke, bukanPenyusun string) (id string, berubah bool, err error)
 
 	// MulaiJob mencatat percobaan penyusunan; ID BIGINT diberikan basis data dan diisi ke job.ID.
 	MulaiJob(ctx context.Context, job *BriefJob) error

@@ -66,7 +66,16 @@ import {
   useXai,
 } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
+import { PemilihSiklusMl } from "@/components/ml/siklus-ml";
+import { namaKomoditasMl } from "@/lib/ml/label";
 import { PanelPenjelasan, PanelProyeksi } from "./panel-proyeksi";
+import {
+  barisKomoditasMl,
+  KABUPATEN_ML_BAWAAN,
+  TabModelMl,
+  TabProyeksiMl,
+  usePrediksiMl,
+} from "./prediksi-ml";
 
 const TAB = ["proyeksi", "komoditas", "simulasi", "model"] as const;
 const KOMODITAS_PILOT = KOMODITAS.filter((k) => k.pilot);
@@ -252,8 +261,17 @@ export function PrediksiPage() {
     error: galatXai,
     refetch: muatUlangXai,
   } = useXai(kode);
-  const { data: proyeksi, isLoading: memuatProyeksi } = useProyeksiRingkasan();
+  const { data: proyeksiLama, isLoading: memuatProyeksiLama } =
+    useProyeksiRingkasan();
   const { data: model, isLoading: memuatModel } = useModelPrediksi();
+  // Mode Prod dengan hasil training: proyeksi, tabel komoditas, dan metrik model mengikuti siklus pilihan (?cycle_id=).
+  const [kabupaten, setKabupaten] = useState(
+    params.get("kabupaten") ?? KABUPATEN_ML_BAWAAN,
+  );
+  const ml = usePrediksiMl(kode, kabupaten);
+  const barisMl = ml.aktif ? barisKomoditasMl(ml) : undefined;
+  const proyeksi = ml.aktif ? barisMl : proyeksiLama;
+  const memuatProyeksi = ml.aktif ? barisMl === undefined : memuatProyeksiLama;
   const bisaKelola = useCan("model.kelola");
   const { data: statusMl } = useStatusMl();
   const latih = useLatihModel();
@@ -266,7 +284,8 @@ export function PrediksiPage() {
     resetSegarkan();
   }, [kode, resetSegarkan]);
   const barisTerpilih = proyeksi?.find((p) => p.id === kode);
-  const namaTerpilih = barisTerpilih?.nama ?? kode;
+  const namaTerpilih =
+    barisTerpilih?.nama ?? (ml.aktif ? namaKomoditasMl(kode) : kode);
   const demo = [...(proyeksi ?? []), ...(model ?? [])].some((r) => r.demo);
   const alasanSegarkan = alasanTakBisaSegarkan(
     model,
@@ -572,21 +591,24 @@ export function PrediksiPage() {
           />
         }
         actions={
-          <Select value={kode} onValueChange={setKode}>
-            <SelectTrigger
-              aria-label="Pilih komoditas"
-              className="w-full text-[13px] sm:w-52 md:text-[13px]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {opsiKomoditas.map((k) => (
-                <SelectItem key={k.kode} value={k.kode}>
-                  {k.nama}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <Select value={kode} onValueChange={setKode}>
+              <SelectTrigger
+                aria-label="Pilih komoditas"
+                className="w-full text-[13px] sm:w-52 md:text-[13px] lg:w-40 min-[88rem]:w-52"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {opsiKomoditas.map((k) => (
+                  <SelectItem key={k.kode} value={k.kode}>
+                    {k.nama}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <PemilihSiklusMl />
+          </>
         }
       />
 
@@ -637,7 +659,19 @@ export function PrediksiPage() {
         </div>
       )}
 
-      {tab === "proyeksi" && (
+      {tab === "proyeksi" && ml.aktif && (
+        <TabProyeksiMl
+          ml={ml}
+          kode={kode}
+          kabupaten={kabupaten}
+          onKabupaten={setKabupaten}
+          onKomoditas={setKode}
+          bukaKomoditas={() => setTab("komoditas")}
+          bukaModel={() => setTab("model")}
+        />
+      )}
+
+      {tab === "proyeksi" && !ml.aktif && (
         <>
           <RingkasanKeputusan items={ringkasan} label="Ringkasan proyeksi" />
           <IsiPas kolom="lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -754,68 +788,73 @@ export function PrediksiPage() {
               </p>
             </div>
           )}
-          <p className="shrink-0 text-xs text-muted-foreground">
-            MAPE backtest bukan jaminan akurasi ke depan. MAPE realisasi
-            dihitung dari proyeksi yang sudah jatuh tempo (jumlahnya dalam
-            kurung).
-          </p>
-          <DataTable
-            isiPenuh
-            data={model}
-            isLoading={memuatModel}
-            columns={kolomModel}
-            getRowId={(r) => r.id}
-            entityLabel="model"
-            pageSize={25}
-            hiddenColumns={["versi"]}
-            searchPlaceholder="Cari model"
-            facets={[
-              {
-                columnId: "status",
-                label: "Status",
-                options: [
-                  { value: "PRODUKSI", label: "Produksi" },
-                  { value: "KANDIDAT", label: "Kandidat" },
-                  { value: "ARSIP", label: "Arsip" },
-                ],
-              },
-            ]}
-            bulkActions={[
-              {
-                id: "promosi",
-                label: "Promosikan ke produksi",
-                icon: Rocket,
-                perm: "model.kelola",
-                tone: "data",
-                enabled: (r) => r.every((x) => x.status !== "PRODUKSI"),
-                confirm: {
-                  title: "Promosikan model terpilih?",
-                  description: (n) =>
-                    `${n} model menggantikan versi produksi komoditasnya; versi lama diarsipkan dan dapat dipromosikan kembali (rollback). Model hasil pelatihan yang MAPE-nya lebih buruk dari baseline ditolak.`,
-                  actionLabel: "Promosikan",
+          {ml.aktif && <TabModelMl ml={ml} kabupaten={kabupaten} />}
+          {!ml.aktif && (
+            <p className="shrink-0 text-xs text-muted-foreground">
+              MAPE backtest bukan jaminan akurasi ke depan. MAPE realisasi
+              dihitung dari proyeksi yang sudah jatuh tempo (jumlahnya dalam
+              kurung).
+            </p>
+          )}
+          {!ml.aktif && (
+            <DataTable
+              isiPenuh
+              data={model}
+              isLoading={memuatModel}
+              columns={kolomModel}
+              getRowId={(r) => r.id}
+              entityLabel="model"
+              pageSize={25}
+              hiddenColumns={["versi"]}
+              searchPlaceholder="Cari model"
+              facets={[
+                {
+                  columnId: "status",
+                  label: "Status",
+                  options: [
+                    { value: "PRODUKSI", label: "Produksi" },
+                    { value: "KANDIDAT", label: "Kandidat" },
+                    { value: "ARSIP", label: "Arsip" },
+                  ],
                 },
-                run: (r) =>
-                  aksiModel.mutateAsync({
-                    aksi: "promosi",
-                    ids: r.map((x) => x.id),
-                    label: "Model dipromosikan",
-                  }),
-              },
-              {
-                id: "arsip",
-                label: "Arsipkan kandidat",
-                icon: Archive,
-                perm: "model.kelola",
-                enabled: (r) => r.every((x) => x.status === "KANDIDAT"),
-                run: (r) =>
-                  aksiModel.mutateAsync({
-                    aksi: "arsip",
-                    ids: r.map((x) => x.id),
-                    label: "Model diarsipkan",
-                  }),
-              },
-            ]}
-          />
+              ]}
+              bulkActions={[
+                {
+                  id: "promosi",
+                  label: "Promosikan ke produksi",
+                  icon: Rocket,
+                  perm: "model.kelola",
+                  tone: "data",
+                  enabled: (r) => r.every((x) => x.status !== "PRODUKSI"),
+                  confirm: {
+                    title: "Promosikan model terpilih?",
+                    description: (n) =>
+                      `${n} model menggantikan versi produksi komoditasnya; versi lama diarsipkan dan dapat dipromosikan kembali (rollback). Model hasil pelatihan yang MAPE-nya lebih buruk dari baseline ditolak.`,
+                    actionLabel: "Promosikan",
+                  },
+                  run: (r) =>
+                    aksiModel.mutateAsync({
+                      aksi: "promosi",
+                      ids: r.map((x) => x.id),
+                      label: "Model dipromosikan",
+                    }),
+                },
+                {
+                  id: "arsip",
+                  label: "Arsipkan kandidat",
+                  icon: Archive,
+                  perm: "model.kelola",
+                  enabled: (r) => r.every((x) => x.status === "KANDIDAT"),
+                  run: (r) =>
+                    aksiModel.mutateAsync({
+                      aksi: "arsip",
+                      ids: r.map((x) => x.id),
+                      label: "Model diarsipkan",
+                    }),
+                },
+              ]}
+            />
+          )}
         </IsiPas>
       )}
     </HalamanPas>

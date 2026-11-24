@@ -5,6 +5,7 @@ import { ClipboardList, History, LayoutDashboard, PenLine } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { PageEnter } from "@/components/garda/page-enter";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { useSession } from "@/lib/auth/session-context";
 import { namaWilayah } from "@/lib/data/generators";
@@ -106,7 +107,7 @@ export function FieldShell({ children }: { children: ReactNode }) {
         id="konten"
         className="min-w-0 flex-1 px-4 pt-4 pb-[calc(11rem+env(safe-area-inset-bottom))]"
       >
-        {children}
+        <PageEnter key={pathname}>{children}</PageEnter>
       </main>
 
       <nav

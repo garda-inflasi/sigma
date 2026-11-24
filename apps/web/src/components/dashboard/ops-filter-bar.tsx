@@ -2,6 +2,7 @@
 
 import { Calendar, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { kelasKontrol } from "@/components/ui/kontrol";
 import { KABUPATEN, KOMODITAS } from "@/lib/data/reference";
 import { cn } from "@/lib/utils";
@@ -84,13 +85,12 @@ export function OpsFilterBar() {
           <label htmlFor="ops-filter-dari" className={LABEL_CLASS}>
             <Calendar className="size-3.5" /> Dari tanggal
           </label>
-          <input
+          <DateField
             id="ops-filter-dari"
-            type="date"
             max={mentah.sampai || hariIni}
             value={mentah.dari ?? ""}
-            onChange={(e) => setFilter({ dari: e.target.value || undefined })}
-            className={INPUT_CLASS}
+            onValueChange={(v) => setFilter({ dari: v || undefined })}
+            kelasInput="px-2.5 pr-9 text-sm text-foreground md:text-[13px]"
           />
         </div>
 
@@ -105,14 +105,13 @@ export function OpsFilterBar() {
           <label htmlFor="ops-filter-sampai" className={LABEL_CLASS}>
             Sampai tanggal
           </label>
-          <input
+          <DateField
             id="ops-filter-sampai"
-            type="date"
             min={mentah.dari || undefined}
             max={hariIni}
             value={mentah.sampai ?? ""}
-            onChange={(e) => setFilter({ sampai: e.target.value || undefined })}
-            className={INPUT_CLASS}
+            onValueChange={(v) => setFilter({ sampai: v || undefined })}
+            kelasInput="px-2.5 pr-9 text-sm text-foreground md:text-[13px]"
           />
         </div>
 

@@ -30,6 +30,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 
 	ref := http.NewReferensi(usecase.NewReferensi(postgres.NewReferensi(deps.DB), auditWriter, deps.Logger)).
 		DenganUsulan(ucUsulan)
+	langsung := http.NewLangsung(deps.DB, auditWriter)
 
 	master := engine.Group("/master")
 	master.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("master.lihat"))
@@ -62,5 +63,11 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		// Hapus hanya untuk penyetuju; master yang sudah dirujuk dijawab 409 (nonaktifkan/arsipkan, bukan hapus).
 		master.DELETE("/komoditas/:kode", middleware.RequirePermission(domain.IzinSetujui), ref.HapusKomoditas)
 		master.DELETE("/pasar/:kode", middleware.RequirePermission(domain.IzinSetujui), ref.HapusPasar)
+
+		// Lokasi spasial (sentra pertanian & perkampungan) dan input langsung khusus Superadmin (ADMIN_SISTEM).
+		master.GET("/lokasi-spasial", langsung.ListLokasiSpasial)
+		master.POST("/langsung/:entitas", middleware.RequireRole("ADMIN_SISTEM"), langsung.CreateLangsung)
+		master.PUT("/langsung/:entitas/:kode", middleware.RequireRole("ADMIN_SISTEM"), langsung.UpdateLangsung)
+		master.DELETE("/langsung/:entitas/:kode", middleware.RequireRole("ADMIN_SISTEM"), langsung.DeleteLangsung)
 	}
 }

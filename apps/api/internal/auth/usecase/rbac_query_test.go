@@ -8,8 +8,8 @@ import (
 
 func TestRolesWithPermission(t *testing.T) {
 	assert.Equal(t,
-		[]string{"MANAJER_PROGRAM", "MANAJER_DATA", "MANAJER_RISIKO", "OPS_KOORDINATOR"},
+		[]string{"MANAJER_PROGRAM", "MANAJER_DATA", "MANAJER_RISIKO", "OPS_KOORDINATOR", "ADMIN_SISTEM"},
 		RolesWithPermission("ews.akui"))
-	assert.Equal(t, []string{"MANAJER_DATA"}, RolesWithPermission("ews.atur_ambang"))
+	assert.Equal(t, []string{"MANAJER_DATA", "ADMIN_SISTEM"}, RolesWithPermission("ews.atur_ambang"))
 	assert.Empty(t, RolesWithPermission("izin.tidak.ada"))
 }

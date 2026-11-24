@@ -13,7 +13,7 @@ import {
   usePreferensiNotifikasi,
   useSimpanPreferensi,
 } from "@/lib/query/hooks";
-import { aktifkanPush, nonaktifkanPush, pushDidukung } from "@/lib/push";
+import { aktifkanPush, pushDidukung } from "@/lib/push";
 import { cn } from "@/lib/utils";
 
 const KANAL_LABEL: Record<KanalNotifikasi, string> = {
@@ -35,25 +35,11 @@ export function NotifikasiPreferensi() {
     patch: Partial<PreferensiNotifikasi>,
   ) => {
     if (!data) return;
+    // Langganan perangkat sengaja tidak dilepas saat kanal dimatikan: peringatan KRITIS tetap harus sampai ke sini.
     simpan.mutate(
       data.preferensi.map((p) => (p.kanal === kanal ? { ...p, ...patch } : p)),
     );
-    // Push dimatikan: langganan perangkat ini ikut dilepas agar server berhenti mengirim ke sini.
-    if (kanal === "PUSH" && patch.aktif === false) void lepasPush();
   };
-
-  async function lepasPush() {
-    try {
-      const hasil = await nonaktifkanPush();
-      if (hasil === "dilepas")
-        toast.success("Push dinonaktifkan di perangkat ini");
-    } catch (err) {
-      toast.error("Langganan push belum terlepas", {
-        description:
-          err instanceof Error ? err.message : "Coba lagi beberapa saat.",
-      });
-    }
-  }
 
   async function pasangPush() {
     if (!data) return;
@@ -86,6 +72,10 @@ export function NotifikasiPreferensi() {
         <p className="text-xs leading-snug text-muted-foreground">
           Hanya mengatur alert yang dikirim kepada Anda. Halaman ini tetap
           menampilkan semuanya.
+        </p>
+        <p className="text-xs leading-snug font-medium text-kritis">
+          Peringatan kritis selalu dikirim, apa pun tingkat minimum atau kanal
+          yang dimatikan di sini.
         </p>
         {isLoading && (
           <p className="text-xs text-muted-foreground">Memuat preferensi…</p>
@@ -129,7 +119,7 @@ export function NotifikasiPreferensi() {
                 belum dikonfigurasi di server; notifikasi hanya dicatat.
               </p>
             )}
-            {p.kanal === "PUSH" && p.tersedia && p.aktif && pushDidukung() && (
+            {p.kanal === "PUSH" && p.tersedia && pushDidukung() && (
               <SpringButton
                 variant="soft"
                 size="sm"

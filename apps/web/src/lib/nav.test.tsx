@@ -12,6 +12,8 @@ import {
   judulHalaman,
   remahRoti,
 } from "./nav";
+import { can } from "./rbac/permissions";
+import { canAccessRoute } from "./rbac/routes";
 
 describe("activeNav", () => {
   it("antrean perubahan menyalakan 'Master data' karena tidak lagi punya item sidebar", () => {
@@ -39,7 +41,7 @@ describe("activeNav", () => {
     );
     assert.deepEqual(
       NAV.find((g) => g.grup === "Data")?.items.map((i) => i.label),
-      ["Validasi harga", "Sumber data & API", "Master data"],
+      ["Validasi harga", "Sumber data & API", "Pipeline & Crawler", "Master data"],
     );
     const master = NAV_FLAT.find((i) => i.href === "/master/komoditas");
     assert.equal(master?.badge, "master");
@@ -75,6 +77,16 @@ describe("item nav Impersonasi", () => {
     assert.equal(activeNav("/pengguna")?.href, "/pengguna");
     assert.equal(judulHalaman("/impersonasi"), "Impersonasi");
     assert.deepEqual(remahRoti("/impersonasi"), ["Tata kelola", "Impersonasi"]);
+  });
+});
+
+describe("menu ADMIN_SISTEM", () => {
+  it("seluruh menu konsol, lapangan, dan pintasan terbuka", () => {
+    for (const item of [...NAV_FLAT, ...NAV_PINTASAN]) {
+      assert.ok(!item.perm || can("ADMIN_SISTEM", item.perm), item.href);
+      assert.ok(canAccessRoute("ADMIN_SISTEM", item.href), item.href);
+    }
+    assert.ok(NAV_FLAT.some((i) => i.href === "/lapangan/input"));
   });
 });
 

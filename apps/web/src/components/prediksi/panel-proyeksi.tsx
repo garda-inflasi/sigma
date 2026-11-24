@@ -48,11 +48,6 @@ export function PanelProyeksi({
   aksiModel?: ReactNode;
   catatan?: string | null;
 }) {
-  const router = useRouter();
-  const bisaKelola = useCan("intervensi.kelola");
-  const bisaSetujui = useCan("intervensi.setujui");
-  const bisaUnduh = useCan("prediksi.lihat");
-  const unduh = useUnduhProyeksi();
   const naik = data.perubahanPct >= 0;
   const warna = naik ? garda.status.defisit.base : garda.status.surplus.base;
   // Titik proyeksi berjarak mingguan: sumbu waktu menjaga 14 hari ke depan tampil sesuai skalanya.
@@ -205,55 +200,78 @@ export function PanelProyeksi({
           {catatan}
         </p>
       )}
-      <div className="flex shrink-0 flex-wrap gap-2 border-t border-border pt-2.5">
-        {bisaKelola && (
-          <SpringButton
-            size="sm"
-            variant="primary"
-            onClick={() => {
-              toast.success("Kartu intervensi dibuat", {
-                description: `${data.nama} masuk ke tahap EWS terpicu.`,
-              });
-              router.push("/intervensi?siklus=tekanan");
-            }}
-          >
-            <ArrowRightLeft /> Teruskan ke intervensi
-          </SpringButton>
-        )}
-        {bisaSetujui && (
-          <SpringButton
-            size="sm"
-            variant="data"
-            onClick={() =>
-              toast.success("Rekomendasi disetujui", {
-                description: "Keputusan tercatat di audit trail.",
-              })
-            }
-          >
-            <CheckCircle2 /> Setujui rekomendasi
-          </SpringButton>
-        )}
-        {bisaUnduh && (
-          <SpringButton
-            size="sm"
-            variant="soft"
-            disabled={unduh.isPending}
-            onClick={() => unduh.mutate(data.komoditasKode)}
-          >
-            <Download /> Unduh CSV
-          </SpringButton>
-        )}
+      <AksiTindakLanjut nama={data.nama} komoditasKode={data.komoditasKode} />
+    </PanelPas>
+  );
+}
+
+/**
+ * Tindak lanjut proyeksi (human-in-the-loop): teruskan ke intervensi, setujui, unduh CSV, minta kajian. `unduh`
+ * dimatikan bila ekspor CSV (data PostgreSQL) tidak mewakili angka yang sedang tampil.
+ */
+export function AksiTindakLanjut({
+  nama,
+  komoditasKode,
+  unduh: bolehUnduh = true,
+}: {
+  nama: string;
+  komoditasKode: string;
+  unduh?: boolean;
+}) {
+  const router = useRouter();
+  const bisaKelola = useCan("intervensi.kelola");
+  const bisaSetujui = useCan("intervensi.setujui");
+  const bisaUnduh = useCan("prediksi.lihat") && bolehUnduh;
+  const unduh = useUnduhProyeksi();
+  return (
+    <div className="flex shrink-0 flex-wrap gap-2 border-t border-border pt-2.5">
+      {bisaKelola && (
+        <SpringButton
+          size="sm"
+          variant="primary"
+          onClick={() => {
+            toast.success("Kartu intervensi dibuat", {
+              description: `${nama} masuk ke tahap EWS terpicu.`,
+            });
+            router.push("/intervensi?siklus=tekanan");
+          }}
+        >
+          <ArrowRightLeft /> Teruskan ke intervensi
+        </SpringButton>
+      )}
+      {bisaSetujui && (
+        <SpringButton
+          size="sm"
+          variant="data"
+          onClick={() =>
+            toast.success("Rekomendasi disetujui", {
+              description: "Keputusan tercatat di audit trail.",
+            })
+          }
+        >
+          <CheckCircle2 /> Setujui rekomendasi
+        </SpringButton>
+      )}
+      {bisaUnduh && (
         <SpringButton
           size="sm"
           variant="soft"
-          onClick={() =>
-            toast("Permintaan kajian dikirim ke Unit Data & Statistik")
-          }
+          disabled={unduh.isPending}
+          onClick={() => unduh.mutate(komoditasKode)}
         >
-          <MessageSquareWarning /> Minta kajian ulang
+          <Download /> Unduh CSV
         </SpringButton>
-      </div>
-    </PanelPas>
+      )}
+      <SpringButton
+        size="sm"
+        variant="soft"
+        onClick={() =>
+          toast("Permintaan kajian dikirim ke Unit Data & Statistik")
+        }
+      >
+        <MessageSquareWarning /> Minta kajian ulang
+      </SpringButton>
+    </div>
   );
 }
 

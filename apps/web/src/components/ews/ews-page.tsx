@@ -40,18 +40,20 @@ import { severityMeta, toneClass, type Severity } from "@/lib/design/tokens";
 import { formatAngka, formatRelatif } from "@/lib/format";
 import { useTabHalaman } from "@/lib/hooks/use-tab-halaman";
 import { labelKode } from "@/lib/kode";
+import { kritisAktif, pesanTutupMassal } from "@/lib/ews/kritis";
 import {
-  useBulkAction,
+  useAksiEws,
   useEvaluasiEws,
   useEwsAturan,
   useEwsList,
 } from "@/lib/query/hooks";
-import { qk } from "@/lib/query/keys";
 import { cn } from "@/lib/utils";
 import { AturanDialog } from "./aturan-dialog";
 import { EwsDetailSheet } from "./ews-detail-sheet";
 import { JENIS_EWS, JenisIcon, formatNilaiEws } from "./ews-meta";
 import { NotifikasiPreferensi } from "./notifikasi-preferensi";
+import { PanelSinyalPipelineMl } from "./sinyal-pipeline-ml";
+import { PemilihSiklusMl } from "@/components/ml/siklus-ml";
 
 const TAB = ["peringatan", "ambang"] as const;
 const URUTAN_TINGKAT: Severity[] = ["KRITIS", "SIAGA", "WASPADA", "INFO"];
@@ -83,6 +85,10 @@ const KANAL_LABEL: Record<string, string> = {
 const KEPALA_AMBANG =
   "sticky top-0 z-10 h-9 border-b border-border bg-secondary px-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase";
 const SEL_AMBANG = "h-11 border-b border-border px-3 text-[13px]";
+
+/** KRITIS aktif selalu di puncak tabel, apa pun urutan yang dipilih pengguna. */
+const KOLOM_PRIORITAS = "prioritasKritis";
+const URUTAN_KRITIS = [{ id: KOLOM_PRIORITAS, desc: true }];
 
 const tingkatSah = (nilai: string | null): Severity | undefined =>
   URUTAN_TINGKAT.find((s) => s === nilai);
@@ -239,12 +245,7 @@ export function EwsPage() {
       : aksi === "eskalasi"
         ? "DIESKALASI"
         : "SELESAI") as StatusEws;
-  const mut = useBulkAction<EwsAlert>({
-    sumber: "ews",
-    queryKey: qk.ews.list(),
-    invalidate: qk.ews.all(),
-    patch: (r, a) => ({ ...r, status: patch(a) }),
-  });
+  const mut = useAksiEws((r, a) => ({ ...r, status: patch(a) }));
   // Detail yang terbuka ikut tersegarkan setelah aksi (invalidate di atas); ?id= dari feed langsung membukanya.
   const [detailId, setDetailId] = useState<string | null>(sorot);
   useEffect(() => {
@@ -426,6 +427,13 @@ export function EwsPage() {
         },
       },
       { accessorKey: "status", header: "Status", filterFn: "equals" },
+      {
+        id: KOLOM_PRIORITAS,
+        accessorFn: (a) => (kritisAktif(a) ? 1 : 0),
+        header: "Prioritas",
+        sortingFn: "basic",
+        enableGlobalFilter: false,
+      },
     ],
     [sorot],
   );
@@ -461,8 +469,7 @@ export function EwsPage() {
       perm: "ews.akui",
       confirm: {
         title: "Tutup alert terpilih?",
-        description: (n) =>
-          `${n} alert ditandai selesai dan keluar dari feed peringatan aktif.`,
+        description: pesanTutupMassal,
         actionLabel: "Tandai selesai",
       },
       run: (r) =>
@@ -502,6 +509,7 @@ export function EwsPage() {
       <PageHeader
         title="Peringatan dini"
         description="Lihat alert yang paling berdampak, lalu akui, eskalasi, atau selesaikan."
+        actions={tab === "peringatan" ? <PemilihSiklusMl /> : undefined}
         tabs={
           <ViewTabs
             layoutId="tab-ews"
@@ -545,7 +553,7 @@ export function EwsPage() {
               getRowId={(r) => r.id}
               entityLabel="alert"
               bulkActions={actions}
-              hiddenColumns={["jenis", "wilayah", "status"]}
+              hiddenColumns={["jenis", "wilayah", "status", KOLOM_PRIORITAS]}
               facets={[
                 { columnId: "status", label: "Status", options: opsiStatus },
                 {
@@ -588,6 +596,7 @@ export function EwsPage() {
                 </>
               }
               initialSorting={[{ id: "skorDampak", desc: true }]}
+              urutanTetap={URUTAN_KRITIS}
               searchPlaceholder="Cari peringatan atau wilayah"
               rowTone={(a) =>
                 cocokRujukanAlert(a, sorot) ? "data" : undefined
@@ -615,6 +624,7 @@ export function EwsPage() {
               }
             />
             <div className={KOLOM_PAS}>
+              <PanelSinyalPipelineMl onBukaAlert={setDetailId} />
               <PanelPas judul="Arti tingkat" className="lg:shrink-0">
                 <dl className="space-y-2">
                   {URUTAN_TINGKAT.map((s) => (

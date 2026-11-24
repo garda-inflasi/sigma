@@ -56,10 +56,10 @@ function ChipKembali({ imp, className }: { imp: ImpersonasiSesi; className?: str
           )}
         >
           <Undo2 className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
-          <span aria-hidden className="hidden max-w-44 truncate md:inline">
-            {sibuk ? "Mengembalikan…" : `Kembali ke ${peran}`}
+          <span aria-hidden className="hidden whitespace-nowrap xl:inline">
+            {sibuk ? "Mengembalikan…" : "Akhiri Impersonate"}
           </span>
-          <span aria-hidden className="md:hidden">
+          <span aria-hidden className="whitespace-nowrap xl:hidden">
             {sibuk ? "…" : "Kembali"}
           </span>
         </button>

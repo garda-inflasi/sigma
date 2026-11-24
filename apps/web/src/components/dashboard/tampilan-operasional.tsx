@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BrainCircuit,
   ClipboardCheck,
   LayoutDashboard,
   LineChart,
@@ -29,8 +30,19 @@ import { OpsProducerCard } from "./ops-producer-card";
 import { OpsStockCard } from "./ops-stock-card";
 import { OpsWilayahPrioritas } from "./ops-wilayah-prioritas";
 import { PriceHeatmap } from "./price-heatmap";
+import {
+  adaProyeksiOps,
+  TabProyeksiOpsMl,
+  useOperasionalMl,
+} from "./proyeksi-wilayah-ml";
 
-type TabOps = "ringkasan" | "harga" | "pasokan" | "validasi" | "lapangan";
+type TabOps =
+  | "ringkasan"
+  | "harga"
+  | "pasokan"
+  | "proyeksi"
+  | "validasi"
+  | "lapangan";
 
 const TAB_PENUH: readonly TabOps[] = [
   "ringkasan",
@@ -81,9 +93,15 @@ export function TampilanOperasional({
   bisaValidasi: boolean;
   bisaInput: boolean;
 }) {
+  // Hasil training (mode Prod): tab Proyeksi hanya ada bila lampiran `ml` operasional tersedia untuk pengguna ini.
+  const lampiranMl = useOperasionalMl();
+  const adaMl = adaProyeksiOps(lampiranMl.data);
   // Antrean dan aktivitas lapangan hanya untuk pemegang harga.lihat; tab keduanya tanpa izin kembali ke bawaan.
   const [tab, setTab] = useTabHalaman<TabOps>(
-    lihatHarga ? TAB_PENUH : TAB_TANPA_HARGA,
+    [
+      ...(lihatHarga ? TAB_PENUH : TAB_TANPA_HARGA),
+      ...(adaMl ? (["proyeksi"] as const) : []),
+    ],
     "ringkasan",
   );
 
@@ -91,6 +109,15 @@ export function TampilanOperasional({
     { value: "ringkasan", label: "Ringkasan", icon: <LayoutDashboard /> },
     { value: "harga", label: "Harga", icon: <LineChart /> },
     { value: "pasokan", label: "Pasokan", icon: <Package /> },
+    ...(adaMl
+      ? [
+          {
+            value: "proyeksi" as const,
+            label: "Proyeksi",
+            icon: <BrainCircuit />,
+          },
+        ]
+      : []),
     ...(lihatHarga
       ? [
           {
@@ -217,6 +244,13 @@ export function TampilanOperasional({
             </SelBento>
           </div>
         </IsiPas>
+      )}
+
+      {tab === "proyeksi" && adaMl && (
+        <TabProyeksiOpsMl
+          lampiran={lampiranMl.data}
+          memuat={lampiranMl.isLoading}
+        />
       )}
 
       {tab === "validasi" && lihatHarga && (

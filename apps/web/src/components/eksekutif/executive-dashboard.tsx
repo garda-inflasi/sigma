@@ -20,6 +20,7 @@ import { GLOSARIUM } from "@/lib/glosarium";
 import { formatAngka, formatPersen, formatRupiah } from "@/lib/format";
 import { useTabHalaman } from "@/lib/hooks/use-tab-halaman";
 import { useRingkasanEksekutif } from "@/lib/query/hooks";
+import { useUi } from "@/lib/stores/ui-store";
 import { cn } from "@/lib/utils";
 import {
   EwsSummary,
@@ -27,10 +28,27 @@ import {
   LatestBrief,
   PenyumbangUtama,
 } from "./exec-side";
+import { Segmented } from "@/components/garda/segmented";
+import { PemilihSiklusMl } from "@/components/ml/siklus-ml";
+import {
+  TabProyeksiMl,
+  usePrediksiMl,
+  KABUPATEN_ML_BAWAAN,
+} from "@/components/prediksi/prediksi-ml";
+import { KOMODITAS } from "@/lib/data/reference";
+import { keadaanBlok } from "@/lib/ml/label";
+import {
+  useLampiranMl,
+  useMlAktif,
+  useSiklusMlTerpilih,
+} from "@/lib/query/ml-hooks";
 import { FiscalSpace } from "./fiscal-space";
 import { FoodBalance } from "./food-balance";
 import { InflationHero } from "./inflation-hero";
+import { PanelTekananMl } from "./tekanan-ml";
 import { XaiPanel } from "./xai-panel";
+
+const KOMODITAS_PILOT = KOMODITAS.filter((k) => k.pilot);
 
 type TabEksekutif = "ringkasan" | "proyeksi" | "neraca";
 
@@ -176,6 +194,8 @@ function itemKeputusan(
 
 export function ExecutiveDashboard() {
   const { data, isLoading } = useRingkasanEksekutif();
+  const lingkunganData = useUi((s) => s.lingkunganData);
+  const mlInfo = useUi((s) => s.mlInfo);
   const [kode, setKode] = useState("CBM-KRT");
   const lihatFiskal = useCan("fiskal.lihat");
   const lihatPrediksi = useCan("prediksi.lihat");
@@ -185,17 +205,32 @@ export function ExecutiveDashboard() {
     lihatPrediksi ? TAB_PENUH : TAB_TANPA_PROYEKSI,
     "ringkasan",
   );
+  // Hasil training (mode Prod): sinyal tekanan dan kesegaran dari lampiran `ml` endpoint ini, untuk siklus pilihan.
+  const mlAktif = useMlAktif();
+  const [cycleId] = useSiklusMlTerpilih();
+  const lampiran = useLampiranMl("/v1/dashboard/eksekutif", {
+    cycleId,
+    enabled: mlAktif,
+  });
+  const kInflasi = keadaanBlok(
+    lampiran.data,
+    lampiran.data?.inflasi,
+    lampiran.isLoading,
+  );
+  const kKesegaran = keadaanBlok(lampiran.data, lampiran.data?.kesegaran);
+  const [kabupatenMl, setKabupatenMl] = useState(KABUPATEN_ML_BAWAAN);
+  const proyeksiMl = usePrediksiMl(kode, kabupatenMl, tab === "proyeksi");
 
   const daftarTab: ViewTab<TabEksekutif>[] = [
     { value: "ringkasan", label: "Ringkasan", icon: <LayoutDashboard /> },
     ...(lihatPrediksi
       ? [
-        {
-          value: "proyeksi" as const,
-          label: "Proyeksi",
-          icon: <BrainCircuit />,
-        },
-      ]
+          {
+            value: "proyeksi" as const,
+            label: "Proyeksi",
+            icon: <BrainCircuit />,
+          },
+        ]
       : []),
     {
       value: "neraca",
@@ -204,9 +239,17 @@ export function ExecutiveDashboard() {
     },
   ];
 
-  const pesanDemo = data?.demo
-    ? `Data demo: ${blokDemo(data).join(", ")} di halaman ini adalah contoh, bukan angka resmi BPS, BI, atau DJPb.${blokResmi(data).length > 0 ? ` Angka resmi: ${blokResmi(data).join(", ")}.` : ""}`
-    : null;
+  const pesanDemo =
+    lingkunganData === "staging" && data?.demo
+      ? `Data demo: ${blokDemo(data).join(", ")} di halaman ini adalah contoh, bukan angka resmi BPS, BI, atau DJPb.${blokResmi(data).length > 0 ? ` Angka resmi: ${blokResmi(data).join(", ")}.` : ""}`
+      : null;
+  const pesanProdKosong =
+    lingkunganData === "prod" &&
+    !isLoading &&
+    kInflasi.jenis === "sembunyi" &&
+    (!data?.inflasi || mlInfo?.tersedia === false)
+      ? "Mode Prod (Real) aktif — belum ada hasil training MongoDB (datasafe) untuk ditampilkan pada blok yang kosong."
+      : null;
 
   return (
     <HalamanPas>
@@ -223,11 +266,14 @@ export function ExecutiveDashboard() {
           />
         }
         actions={
-          lihatBrief && (
-            <SpringLink href="/policy-brief" variant="soft">
-              <Download /> Policy brief terbaru
-            </SpringLink>
-          )
+          <>
+            <PemilihSiklusMl />
+            {lihatBrief && (
+              <SpringLink href="/policy-brief" variant="soft">
+                <Download /> Policy brief terbaru
+              </SpringLink>
+            )}
+          </>
         }
       />
 
@@ -238,6 +284,15 @@ export function ExecutiveDashboard() {
           className="shrink-0 rounded-md border border-dashed border-waspada/50 bg-waspada/10 px-3 py-1.5 text-md text-waspada-ink lg:truncate dark:text-amber-300"
         >
           {pesanDemo}
+        </p>
+      )}
+      {pesanProdKosong && (
+        <p
+          role="status"
+          title={pesanProdKosong}
+          className="shrink-0 rounded-md border border-dashed border-data-500/40 bg-data-50 px-3 py-1.5 text-xs text-data-800 lg:truncate dark:bg-data-950/40 dark:text-data-200"
+        >
+          {pesanProdKosong}
         </p>
       )}
 
@@ -264,6 +319,11 @@ export function ExecutiveDashboard() {
                   pesan="Belum ada data inflasi bulanan. Angka resmi masuk lewat impor dari BPS."
                 />
               )}
+              <PanelTekananMl
+                inflasi={kInflasi}
+                kesegaran={kKesegaran}
+                cycleId={cycleId}
+              />
               {lihatBrief && <LatestBrief />}
             </div>
             <div className="scrollbar-thin flex min-w-0 flex-col gap-2.5 lg:col-span-4 lg:max-h-full lg:min-h-0 lg:overflow-y-auto">
@@ -282,7 +342,29 @@ export function ExecutiveDashboard() {
         </>
       )}
 
-      {tab === "proyeksi" && lihatPrediksi && (
+      {tab === "proyeksi" && lihatPrediksi && proyeksiMl.aktif && (
+        <TabProyeksiMl
+          ml={proyeksiMl}
+          kode={kode}
+          kabupaten={kabupatenMl}
+          onKabupaten={setKabupatenMl}
+          onKomoditas={setKode}
+          pilihKomoditas={
+            <Segmented
+              layoutId="xai-komoditas-ml"
+              size="sm"
+              value={kode}
+              onChange={setKode}
+              options={KOMODITAS_PILOT.map((k) => ({
+                value: k.kode,
+                label: k.nama.replace(" keriting", ""),
+              }))}
+            />
+          }
+        />
+      )}
+
+      {tab === "proyeksi" && lihatPrediksi && !proyeksiMl.aktif && (
         <IsiPas>
           <XaiPanel kode={kode} onKodeChange={setKode} className="lg:flex-1" />
         </IsiPas>

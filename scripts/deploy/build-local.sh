@@ -5,17 +5,20 @@
 #  Zero-Git workflow: uses timestamped RELEASE_TAG (or --tag=<tag>).
 #
 #  Images produced:
-#      garda-api:<tag>    (shared by api, worker, migrate, seed)
+#      garda-api:<tag>          (shared by api, worker, migrate, seed)
 #      garda-web:<tag>
 #      garda-ml:<tag>
-#      garda-caddy:<tag>  (only if GATEWAY_MODE=builtin or --only=caddy)
+#      garda-ml-pipeline:<tag>  (target=pipeline dari ml.Dockerfile; venv di container)
+#      garda-crawler:<tag>      (venv di container dari crawler.Dockerfile)
+#      garda-caddy:<tag>        (only if GATEWAY_MODE=builtin or --only=caddy)
 #
 #  Usage:
 #      bash scripts/deploy/build-local.sh [options]
 #
 #  Options:
-#      --only=api,web,ml,worker   Build only the listed services
-#      --tag=<tag>                Explicit release tag (default: vYYYYMMDD-HHMMSS)
+#      --only=api,web,ml,ml-worker,crawler,worker   Build only the listed services
+#      --with-pipeline                              Include crawler & ml-worker
+#      --tag=<tag>                                  Explicit release tag (default: vYYYYMMDD-HHMMSS)
 #      --no-cache                 Disable buildx cache (slow, but clean)
 #      --push-registry            Also push to a registry (off by default)
 #      --dry-run                  Print commands without executing
@@ -36,19 +39,21 @@ install_traps
 #  Defaults + argument parsing
 # ------------------------------------------------------------------------------
 ONLY_RAW=""
+WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
 TAG_OVERRIDE=""
 NO_CACHE=0
 PUSH_REGISTRY=0
 DRY_RUN="${DRY_RUN:-0}"
 
 usage() {
-  sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --only=*)        ONLY_RAW="${1#*=}" ;;
     --only)          shift; ONLY_RAW="${1:-}" ;;
+    --with-pipeline) WITH_PIPELINE=1 ;;
     --tag=*)         TAG_OVERRIDE="${1#*=}" ;;
     --tag)           shift; TAG_OVERRIDE="${1:-}" ;;
     --sha=*)         TAG_OVERRIDE="${1#*=}" ;;
@@ -96,6 +101,9 @@ else
   else
     REQUESTED_SERVICES=(api worker ml web)
   fi
+  if [[ "$WITH_PIPELINE" -eq 1 ]]; then
+    REQUESTED_SERVICES+=(crawler ml-worker)
+  fi
 fi
 
 # Map compose services -> dockerfile image names (api & worker share garda-api)
@@ -114,9 +122,11 @@ for svc in "${REQUESTED_SERVICES[@]}"; do
     api|worker) add_build_image "api" ;;
     web)        add_build_image "web" ;;
     ml)         add_build_image "ml" ;;
+    ml-worker)  add_build_image "ml-pipeline" ;;
+    crawler)    add_build_image "crawler" ;;
     caddy)      add_build_image "caddy" ;;
     *)
-      die "Service tidak dikenal: '$svc'" "Pilih dari: api, worker, web, ml, caddy (contoh: --only=web)."
+      die "Service tidak dikenal: '$svc'" "Pilih dari: api, worker, web, ml, ml-worker, crawler, caddy (contoh: --only=web)."
       ;;
   esac
 done
@@ -152,7 +162,13 @@ fi
 # ------------------------------------------------------------------------------
 build_image_target() {
   local target="$1"
-  local dockerfile="docker/${target}.Dockerfile"
+  local dockerfile_name="$target"
+  local docker_target=""
+  if [[ "$target" == "ml-pipeline" ]]; then
+    dockerfile_name="ml"
+    docker_target="pipeline"
+  fi
+  local dockerfile="docker/${dockerfile_name}.Dockerfile"
   local image="${IMAGE_TAG_PREFIX}-${target}"
 
   require_file "$dockerfile" "Dockerfile untuk image '$target' tidak ditemukan."
@@ -165,6 +181,7 @@ build_image_target() {
     -t "${image}:latest"
     -f "$dockerfile"
   )
+  [[ -n "$docker_target" ]] && args+=(--target "$docker_target")
 
   if [[ "$NO_CACHE" -eq 1 ]]; then
     args+=(--no-cache)

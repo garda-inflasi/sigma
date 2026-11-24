@@ -189,6 +189,7 @@ func TestVersi_EntriBerkodeLamaDanBackfillSeed(t *testing.T) {
 func TestVersi_AksesSamaDenganRiwayat(t *testing.T) {
 	s := sharedSuite(t)
 	id := s.buat(t, emailMahasiswa)
+	tanpaIzin := s.akunTanpaIzinHarga(t)
 
 	for _, jalur := range []string{"versi", "lineage"} {
 		t.Run(jalur, func(t *testing.T) {
@@ -196,7 +197,7 @@ func TestVersi_AksesSamaDenganRiwayat(t *testing.T) {
 			assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, url, emailKoordinator, nil).Code, "pemegang harga.lihat")
 			assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, url, emailMahasiswa, nil).Code, "petugas pencatat")
 			assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, url, "mahasiswa.2@gardainflasi.id", nil).Code, "petugas lain: tampil sebagai tidak ada")
-			assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, url, "superadmin@gardainflasi.id", nil).Code, "tanpa harga.lihat dan harga.input")
+			assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, url, tanpaIzin, nil).Code, "tanpa harga.lihat dan harga.input")
 			assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodGet, url, "", nil).Code)
 			assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/harga/tidak-ada/"+jalur, emailKoordinator, nil).Code)
 			assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/harga/999999999/"+jalur, emailKoordinator, nil).Code)

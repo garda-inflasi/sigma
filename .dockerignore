@@ -34,9 +34,16 @@ build
 # Worktree dan data lokal Claude Code (bisa berukuran gigabyte)
 .claude
 
-# Python (layanan ML)
+# Python (layanan crawler & ML — venv dipasang di container saat build, jangan kirim dari host)
 **/__pycache__
 **/*.pyc
+**/.venv
+**/venv
+**/.venv*
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
 
 # IDE
 .idea

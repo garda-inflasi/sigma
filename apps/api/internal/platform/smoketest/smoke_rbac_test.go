@@ -37,7 +37,7 @@ var routePermissions = map[string]string{
 
 // lapanganTugasRoles adalah peran yang boleh membuka /v1/lapangan/tugas/saya:
 // pemegang tugas.lihat_sendiri atau tugas.kelola (sebelumnya selalu 403 karena izin yatim).
-var lapanganTugasRoles = []string{"OPS_KOORDINATOR", "OPS_AGREGATOR", "OPS_MAHASISWA", "MANAJER_PROGRAM"}
+var lapanganTugasRoles = []string{"OPS_KOORDINATOR", "OPS_AGREGATOR", "OPS_MAHASISWA", "MANAJER_PROGRAM", "ADMIN_SISTEM"}
 
 // rolePermissionsFromContract membaca packages/contracts/permissions.json, yang dijaga sama dengan peta di kode oleh tes auth.
 func rolePermissionsFromContract(t *testing.T) map[string][]string {

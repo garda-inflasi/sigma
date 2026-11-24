@@ -138,7 +138,7 @@ function FormAturan({
           </FormField>
           <FormField
             id="ambang-cooldown"
-            label="Peredaman setelah selesai (jam)"
+            label="Peredaman setelah selesai (jam, kecuali Kritis)"
           >
             <Input
               id="ambang-cooldown"

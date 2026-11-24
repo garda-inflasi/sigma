@@ -36,7 +36,7 @@ export interface BulkAction<T> {
   /** `alasan` menambah isian teks wajib di dialog (minimal `min` karakter) yang diteruskan ke `run`. */
   confirm?: {
     title: string;
-    description: (n: number) => string;
+    description: (n: number, rows: T[]) => string;
     actionLabel: string;
     alasan?: { label: string; min: number };
   };
@@ -219,7 +219,7 @@ export function BulkActionBar<T>({
           <AlertDialogHeader>
             <AlertDialogTitle>{pending?.confirm?.title}</AlertDialogTitle>
             <AlertDialogDescription>
-              {pending?.confirm?.description(rows.length)}
+              {pending?.confirm?.description(rows.length, rows)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {pending?.confirm?.alasan && (

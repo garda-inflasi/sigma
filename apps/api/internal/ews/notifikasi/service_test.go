@@ -27,25 +27,31 @@ type tandaan struct {
 
 // fakeRepo adalah NotifikasiRepository dalam memori.
 type fakeRepo struct {
-	mu         sync.Mutex
-	antre      []idx.ID
-	antreErr   error
-	klaim      []domain.Pesan
-	klaimErr   error
-	ditandai   []tandaan
-	tandaiErr  error
-	prefs      []domain.PreferensiNotifikasi
-	tersimpan  []domain.PreferensiNotifikasi
-	eskalasi   []idx.ID
-	batasEsk   time.Duration
-	minimumEsk string
-	langganan  []domain.LanggananPush
-	dihapus    bool
+	mu            sync.Mutex
+	antre         []idx.ID
+	antreErr      error
+	antreUlang    []idx.ID
+	antreUlangErr error
+	klaim         []domain.Pesan
+	klaimErr      error
+	ditandai      []tandaan
+	tandaiErr     error
+	prefs         []domain.PreferensiNotifikasi
+	tersimpan     []domain.PreferensiNotifikasi
+	eskalasi      []idx.ID
+	batasEsk      time.Duration
+	minimumEsk    string
+	langganan     []domain.LanggananPush
+	dihapus       bool
 }
 
 func (f *fakeRepo) Antrekan(_ context.Context, alertID idx.ID, _ []string, _ time.Time) (int, error) {
 	f.antre = append(f.antre, alertID)
 	return 1, f.antreErr
+}
+func (f *fakeRepo) AntrekanUlangKritis(_ context.Context, alertID idx.ID, _ time.Time) (int, error) {
+	f.antreUlang = append(f.antreUlang, alertID)
+	return 1, f.antreUlangErr
 }
 func (f *fakeRepo) Klaim(context.Context, time.Time, int, time.Duration) ([]domain.Pesan, error) {
 	return f.klaim, f.klaimErr
@@ -207,6 +213,26 @@ func TestAlertDitulis_EnqueuesAndWakesDispatcher(t *testing.T) {
 	s.AlertDitulis(t.Context(), domain.Alert{EwsAlert: domain.EwsAlert{ID: 2001}}, domain.HasilDibuat) // galat hanya dilog
 }
 
+func TestAlertDitulis_NaikKeKritisMengantrekanUlangPenerimaLama(t *testing.T) {
+	kritis := domain.Alert{EwsAlert: domain.EwsAlert{ID: 7, Severity: domain.SeverityKritis}}
+	siaga := domain.Alert{EwsAlert: domain.EwsAlert{ID: 8, Severity: domain.SeveritySiaga}}
+
+	repo := &fakeRepo{}
+	s, _ := newService(repo, Config{})
+	s.AlertDitulis(t.Context(), kritis, domain.HasilDinaikkan)
+	assert.Equal(t, []idx.ID{7}, repo.antreUlang, "kenaikan ke KRITIS wajib sampai walau tingkat lama sudah diberitahukan")
+
+	repo = &fakeRepo{}
+	s, _ = newService(repo, Config{})
+	s.AlertDitulis(t.Context(), kritis, domain.HasilDibuat)
+	s.AlertDitulis(t.Context(), siaga, domain.HasilDinaikkan)
+	assert.Empty(t, repo.antreUlang, "alert baru dan kenaikan di bawah KRITIS tidak mengirim ulang")
+
+	repo = &fakeRepo{antreUlangErr: assert.AnError}
+	s, _ = newService(repo, Config{})
+	assert.NotPanics(t, func() { s.AlertDitulis(t.Context(), kritis, domain.HasilDinaikkan) }, "galat hanya dilog")
+}
+
 func TestEskalasi(t *testing.T) {
 	t.Run("mati bila batas 0", func(t *testing.T) {
 		repo := &fakeRepo{eskalasi: []idx.ID{1}}
@@ -275,6 +301,25 @@ func TestSimpanPreferensi(t *testing.T) {
 
 		assert.Nil(t, repo.tersimpan)
 		assert.Empty(t, rec.Entries())
+	})
+	t.Run("nilai yang mencoba mengecualikan KRITIS ditolak", func(t *testing.T) {
+		repo := &fakeRepo{}
+		s, rec := newService(repo, Config{})
+
+		for _, nilai := range []string{"", "NONE", "TIDAK_ADA", "MATI", "kritis", "DI_ATAS_KRITIS"} {
+			err := s.SimpanPreferensi(t.Context(), "u", []Preferensi{{Kanal: "EMAIL", SeverityMin: nilai, Aktif: true}})
+			require.ErrorIs(t, err, ErrSeverityTidakValid, "%q", nilai)
+			assert.Contains(t, err.Error(), "peringatan kritis selalu dikirim")
+		}
+		assert.Nil(t, repo.tersimpan)
+		assert.Empty(t, rec.Entries())
+	})
+	t.Run("menonaktifkan kanal tetap boleh: hanya berlaku di bawah KRITIS", func(t *testing.T) {
+		repo := &fakeRepo{}
+		s, _ := newService(repo, Config{})
+
+		require.NoError(t, s.SimpanPreferensi(t.Context(), "u", []Preferensi{{Kanal: "PUSH", SeverityMin: "KRITIS", Aktif: false}}))
+		require.Len(t, repo.tersimpan, 1)
 	})
 }
 

@@ -110,6 +110,34 @@ func TestPersetujuan_SeparationOfDutiesViolationIsAudited(t *testing.T) {
 		AND aktor_id = garda_uuid_stabil('pengguna', 'manajer_program') AND metadata->>'sebab' = 'pemisahan_tugas'`))
 }
 
+// ADMIN_SISTEM memegang izin kelola dan setujui sekaligus: ia tidak boleh memutus ajuannya sendiri, dan tidak boleh
+// memindahkan kartu langsung ke atau melewati tahap persetujuan.
+func TestPersetujuan_AdminSistemTetapTundukPemisahanTugas(t *testing.T) {
+	s := newSuite(t, "intervensi_sod_admin")
+	const admin = "superadmin@gardainflasi.id"
+	kartu := card(t, s, "INT-301")
+
+	for _, tujuan := range []string{"t-petakan", "t-fiskal"} {
+		h := s.pindah(t, admin, "INT-301", tujuan, 0, kartu.Versi)
+		assert.Equal(t, http.StatusForbidden, h.Code, tujuan)
+		assert.Contains(t, h.Body, "Pemisahan tugas", tujuan)
+	}
+	assert.Equal(t, "t-ews", card(t, s, "INT-301").Tahap, "kartu tidak berpindah")
+	assert.Positive(t, s.hitung(t, `SELECT count(*) FROM audit_log WHERE aksi = 'PINDAH_TAHAP' AND hasil = 'DITOLAK'
+		AND aktor_id = garda_uuid_stabil('pengguna', 'superadmin') AND metadata->>'sebab' = 'pemisahan_tugas'`))
+
+	code, p, body := s.ajukan(t, admin, "INT-301", "t-petakan")
+	require.Equal(t, http.StatusCreated, code, body)
+	code, _, body = s.putus(t, admin, p.ID, "SETUJU", "")
+	assert.Equal(t, http.StatusForbidden, code)
+	assert.Contains(t, body, "Pemisahan tugas")
+	assert.Equal(t, "MENUNGGU", s.statusPersetujuan(t, p.ID))
+
+	code, _, body = s.putus(t, emailSetuju, p.ID, "SETUJU", "")
+	require.Equal(t, http.StatusOK, code, body)
+	assert.Equal(t, "t-petakan", card(t, s, "INT-301").Tahap, "orang lain yang memutus")
+}
+
 // Pemeriksaan di repository berdiri sendiri: walau usecase dilewati (potret basi, pemanggil lain), keputusan
 // oleh pengaju atau oleh pemutus langkah sebelumnya tidak tersimpan.
 func TestRepository_PutusMenegakkanPemisahanTugasDiBawahKunci(t *testing.T) {

@@ -26,6 +26,19 @@ export const GLOSARIUM = {
   mfa: "Verifikasi dua langkah: selain kata sandi, pengguna memasukkan kode dari aplikasi autentikator.",
   impersonasi:
     "Melihat sistem sebagai peran atau akun lain untuk pengujian. Setiap sesi tercatat di audit trail.",
+  siklusTraining:
+    "Satu putaran pelatihan model per jam. Semua angka hasil training di halaman ini berasal dari siklus yang dipilih.",
+  indeksPangan:
+    "Indeks dari harga pangan harian PIHPS, dipakai karena inflasi resmi BPS belum tersedia. Ini bukan angka inflasi resmi.",
+  kelayakanModel:
+    "Model klasifikasi dianggap layak bila ROC-AUC pada data uji minimal 0,60 dan lebih akurat dari tebakan dasar. Di bawah itu hasilnya belum dapat diandalkan.",
+  persistensi:
+    "Baseline yang menganggap harga ke depan sama dengan harga terakhir (atau pola musimannya). Dipakai bila tidak ada model yang lebih akurat.",
+  rentangKuantil:
+    "P10 dan P90: 80% kemungkinan harga berada di antara keduanya. P50 adalah nilai tengah proyeksi.",
+  rmse: "Rata-rata besar kesalahan prediksi dalam rupiah. Semakin kecil semakin akurat.",
+  kontribusiFaktor:
+    "Seberapa besar tiap kelompok faktor menggeser proyeksi. Satuannya tertulis di samping angka.",
 } as const;
 
 export type IstilahGlosarium = keyof typeof GLOSARIUM;

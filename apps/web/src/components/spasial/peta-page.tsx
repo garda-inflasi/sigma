@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/garda/empty-state";
 import {
   HalamanPas,
   IsiPas,
+  KOLOM_PAS,
   PanelPas,
   RingkasanKeputusan,
   type ItemRingkas,
@@ -29,8 +30,11 @@ import { ViewTabs } from "@/components/garda/view-tabs";
 import { RegionMap } from "@/components/map/region-map";
 import { Button } from "@/components/ui/button";
 import { LokasiPanel, type TitikLokasi } from "./lokasi-panel";
+import { KalkulatorJarakPanel } from "./kalkulator-jarak";
+import type { GarisUkurPeta } from "@/components/map/region-map-leaflet";
 import { NeracaPanel } from "./neraca-panel";
 import { OptimasiPanel } from "./optimasi-panel";
+import { PanelStatusWilayahMl } from "./status-wilayah-ml";
 import { ZOOM_GEOMETRI, type Rute } from "@/lib/api/spasial";
 import { useCan } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
@@ -49,6 +53,7 @@ import {
   useMarkerWilayah,
   useMasterPasar,
   useRuteDistribusi,
+  useTitikDesa,
 } from "@/lib/query/hooks";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +84,8 @@ export function PetaPage() {
   const { data: kandidat } = useKandidatColdStorage();
   const { data: pasar } = useMasterPasar(useCan("master.lihat"));
   const { data: cold } = useColdStorage(PARAM_CS, useCan("coldstorage.lihat"));
+  const { data: titikDesa } = useTitikDesa();
+  const [garisUkur, setGarisUkur] = useState<GarisUkurPeta | null>(null);
 
   const titikLain = useMemo<TitikPeta[]>(
     () => [
@@ -88,7 +95,7 @@ export function PetaPage() {
           id: `pasar-${p.id}`,
           jenis: "pasar" as const,
           nama: p.nama,
-          keterangan: `Pasar · ${p.kabupaten}`,
+          keterangan: `Pasar · ${p.kabupaten}${p.kecamatanNama ? ` (${p.kecamatanNama})` : ""}`,
           lat: p.lat,
           lng: p.lng,
         })),
@@ -96,12 +103,25 @@ export function PetaPage() {
         id: `cold-${f.id}`,
         jenis: "cold-storage" as const,
         nama: f.nama,
-        keterangan: `Cold storage · ${f.wilayah}`,
+        keterangan: `Cold storage · ${f.wilayah} (${f.suhuAktualC ?? f.suhuTargetC}°C)`,
         lat: f.lat,
         lng: f.lng,
       })),
+      ...(titikDesa ?? []).map((d) => ({
+        id: `desa-${d.kode}`,
+        jenis: (d.jenis === "PERTANIAN" ? "pertanian" : "perkampungan") as
+          | "pertanian"
+          | "perkampungan",
+        nama: d.nama,
+        keterangan:
+          d.jenis === "PERTANIAN"
+            ? `Sentra Pertanian · ${d.komoditas_utama}${d.estimasi_panen_ton ? ` (${d.estimasi_panen_ton} ton)` : ""}`
+            : `Perkampungan · ${d.kabupaten_nama}${d.populasi ? ` (${d.populasi.toLocaleString("id-ID")} jiwa)` : ""}`,
+        lat: d.lat,
+        lng: d.lng,
+      })),
     ],
-    [pasar, cold],
+    [pasar, cold, titikDesa],
   );
 
   const jumlahStatus = useMemo(() => {
@@ -266,78 +286,87 @@ export function PetaPage() {
                 geometri={geometri}
                 titikLain={titikLain}
                 titikCari={titik}
+                garisUkur={garisUkur}
                 isLoading={isLoading}
                 selected={pilih}
                 onSelect={setPilih}
                 onKlikPeta={(lat, lng) => cariTitik({ lat, lng }, true)}
                 fokusPilihan={fokusPilihan}
-                className="h-[62dvh] rounded-none border-0 lg:h-auto lg:min-h-0 lg:flex-1"
+                className="h-[58dvh] rounded-none border-0 lg:h-auto lg:min-h-0 lg:flex-1"
+              />
+              <KalkulatorJarakPanel
+                titikLain={titikLain}
+                garisUkur={garisUkur}
+                onChangeGaris={setGarisUkur}
               />
             </section>
-            <PanelPas
-              judul="Wilayah"
-              deskripsi={
-                saringStatus
-                  ? `Hanya status ${META_STATUS[saringStatus].label}`
-                  : "Urut dari yang paling tertekan"
-              }
-              aksi={
-                saringStatus && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSaringStatus(undefined)}
-                  >
-                    Reset filter
-                  </Button>
-                )
-              }
-              tanpaPadding
-              isiClassName="max-h-[50dvh] overflow-y-auto lg:max-h-none"
-            >
-              {urut.length === 0 && !isLoading ? (
-                <EmptyState
-                  title="Tidak ada wilayah"
-                  description="Tidak ada wilayah dengan status ini."
-                  className="py-10"
-                />
-              ) : (
-                <ul className="divide-y divide-border">
-                  {urut.map((m) => (
-                    <li key={m.kode}>
-                      <button
-                        type="button"
-                        onClick={() => pilihWilayah(m.kode)}
-                        aria-current={pilih === m.kode ? "true" : undefined}
-                        className={cn(
-                          "flex w-full items-center gap-2.5 px-3.5 py-2 text-left transition-colors hover:bg-secondary/60",
-                          pilih === m.kode && "bg-secondary",
-                        )}
-                      >
-                        <span
-                          aria-hidden
-                          className="size-2 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor: META_STATUS[m.status].warna,
-                          }}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-medium">
-                            {m.nama}
+            <div className={KOLOM_PAS}>
+              <PanelPas
+                judul="Wilayah"
+                deskripsi={
+                  saringStatus
+                    ? `Hanya status ${META_STATUS[saringStatus].label}`
+                    : "Urut dari yang paling tertekan"
+                }
+                aksi={
+                  saringStatus && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSaringStatus(undefined)}
+                    >
+                      Reset filter
+                    </Button>
+                  )
+                }
+                tanpaPadding
+                isiClassName="max-h-[50dvh] overflow-y-auto lg:max-h-none"
+              >
+                {urut.length === 0 && !isLoading ? (
+                  <EmptyState
+                    title="Tidak ada wilayah"
+                    description="Tidak ada wilayah dengan status ini."
+                    className="py-10"
+                  />
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {urut.map((m) => (
+                      <li key={m.kode}>
+                        <button
+                          type="button"
+                          onClick={() => pilihWilayah(m.kode)}
+                          aria-current={pilih === m.kode ? "true" : undefined}
+                          className={cn(
+                            "flex w-full items-center gap-2.5 px-3.5 py-2 text-left transition-colors hover:bg-secondary/60",
+                            pilih === m.kode && "bg-secondary",
+                          )}
+                        >
+                          <span
+                            aria-hidden
+                            className="size-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: META_STATUS[m.status].warna,
+                            }}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-medium">
+                              {m.nama}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {META_STATUS[m.status].label} · {m.komoditas}
+                            </span>
                           </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {META_STATUS[m.status].label} · {m.komoditas}
+                          <span className="num text-[13px] font-semibold">
+                            {formatPersen(m.delta, { signed: true })}
                           </span>
-                        </span>
-                        <span className="num text-[13px] font-semibold">
-                          {formatPersen(m.delta, { signed: true })}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </PanelPas>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelPas>
+              <PanelStatusWilayahMl pilih={pilih} onPilih={pilihWilayah} />
+            </div>
           </IsiPas>
         </>
       )}

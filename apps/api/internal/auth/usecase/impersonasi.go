@@ -40,6 +40,7 @@ var (
 	ErrImpersonasiTidakDitemukan = errors.New("sesi impersonasi tidak ditemukan atau sudah berakhir")
 	ErrKebijakanTidakValid       = errors.New("kebijakan impersonasi tidak valid")
 	ErrIzinEksklusif             = errors.New("izin impersonasi.kelola eksklusif milik administrator sistem")
+	ErrIzinAdminTerkunci         = errors.New("administrator sistem selalu memegang seluruh izin; kolomnya tidak dapat dikurangi")
 	ErrImpersonasiTidakTersedia  = errors.New("penyimpanan impersonasi tidak tersedia")
 
 	ErrVersiKebijakanBerubah = domain.ErrVersiKebijakanBerubah
@@ -137,17 +138,21 @@ func (uc *UseCase) bersihkanCacheImpersonasi() {
 
 // ── Izin eksklusif ────────────────────────────────────────────────────
 
-// terapkanIzinEksklusif menjadikan domain.IzinImpersonasi milik ADMIN_SISTEM saja: selalu ada pada izin efektif
-// ADMIN_SISTEM dan tidak pernah pada peran lain, apa pun isi role_permissions atau user_permissions. Dengan begitu
-// penegakannya tidak bergantung pada seeder atau pengeditan matriks.
+// terapkanIzinEksklusif menegakkan dua aturan pada izin efektif, apa pun isi role_permissions atau user_permissions,
+// sehingga keduanya tidak bergantung pada seeder atau pengeditan matriks:
+//   - ADMIN_SISTEM selalu memegang seluruh katalog, termasuk izin yang ditambahkan kelak;
+//   - domain.IzinImpersonasi tidak pernah dimiliki peran lain.
+//
+// Peran yang dinilai adalah peran akun pemilik izin. Selama impersonasi itu akun sasaran (bukan pelaku), dan ADMIN_SISTEM
+// tidak pernah boleh menjadi sasaran, jadi aturan pertama tidak menaikkan hak sesi impersonasi.
 func terapkanIzinEksklusif(peran string, izin []string) []string {
-	ada := slices.Contains(izin, domain.IzinImpersonasi)
-	switch {
-	case peran == domain.PeranSuperadmin && !ada:
-		izin = append(slices.Clone(izin), domain.IzinImpersonasi)
-		slices.Sort(izin)
-	case peran != domain.PeranSuperadmin && ada:
-		izin = slices.DeleteFunc(slices.Clone(izin), func(p string) bool { return p == domain.IzinImpersonasi })
+	if peran == domain.PeranSuperadmin {
+		lengkap := append(slices.Clone(izin), semuaIzinKatalog()...)
+		slices.Sort(lengkap)
+		return slices.Compact(lengkap)
+	}
+	if slices.Contains(izin, domain.IzinImpersonasi) {
+		return slices.DeleteFunc(slices.Clone(izin), func(p string) bool { return p == domain.IzinImpersonasi })
 	}
 	return izin
 }

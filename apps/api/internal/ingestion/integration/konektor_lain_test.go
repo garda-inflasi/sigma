@@ -305,4 +305,14 @@ func TestIngestion_AlertEWSKegagalanBerulang(t *testing.T) {
 	var status string
 	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE id = ?`, alert.ID).Scan(&status).Error)
 	assert.Equal(t, "SELESAI", status)
+
+	// Alert KRITIS pada kunci yang sama tidak pernah ditutup otomatis walau sumbernya pulih.
+	require.NoError(t, s.db.Exec(`UPDATE ews_alert SET status = 'BARU', selesai_pada = NULL, severity = 'KRITIS' WHERE id = ?`, alert.ID).Error)
+	run, err = r.Mulai(t.Context(), pihps.Kode, domain.PemicuCLI, nil)
+	require.NoError(t, err)
+	e, err = run.Jalankan(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, domain.StatusSukses, e.Status)
+	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE id = ?`, alert.ID).Scan(&status).Error)
+	assert.Equal(t, "BARU", status, "KRITIS harus ditindaklanjuti manusia")
 }

@@ -138,6 +138,9 @@ func (uc *UseCase) Move(ctx context.Context, ref idx.RujukanUUID, tahap string, 
 		})
 		return 0, forbidden
 	}
+	if err := uc.jagaAlurPersetujuan(ctx, defs, card, target, actorID); err != nil {
+		return 0, err
+	}
 
 	versiBaru, err := uc.repo.Move(ctx, id, tahap, index, final, versi, actorID)
 	if err != nil {
@@ -175,6 +178,46 @@ func izinPemindahan(defs []domain.TahapDef, card *domain.Intervensi, target doma
 		}
 	}
 	return nil
+}
+
+// peranAdminSistem memegang seluruh katalog izin, termasuk izin kelola dan setujui sekaligus.
+const peranAdminSistem = "ADMIN_SISTEM"
+
+// jagaAlurPersetujuan menolak (dan mengaudit) pemindahan maju oleh administrator sistem yang memasuki atau melewati
+// tahap persetujuan. Izin tahap saja tidak cukup baginya: tanpa penjaga ini satu orang dapat menyusun kartu lalu
+// melompati seluruh rantai persetujuan, sehingga pemisahan tugas gugur. Jalurnya: ajukan, lalu orang lain memutus.
+func (uc *UseCase) jagaAlurPersetujuan(ctx context.Context, defs []domain.TahapDef, card *domain.Intervensi, target domain.TahapDef, actorID string) error {
+	var asal domain.TahapDef
+	for _, d := range defs {
+		if d.Siklus == card.Siklus && d.KodeTahap == card.Tahap {
+			asal = d
+		}
+	}
+	var dilintasi string
+	for _, d := range defs {
+		if d.Siklus == card.Siklus && d.Urutan > asal.Urutan && d.Urutan <= target.Urutan && d.IzinDibutuhkan != domain.IzinBawaan {
+			dilintasi = d.KodeTahap
+			break
+		}
+	}
+	if dilintasi == "" {
+		return nil
+	}
+	pengguna, err := uc.cakupan.PenggunaCakupan(ctx, actorID)
+	if errors.Is(err, domain.ErrPenggunaTidakAda) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("baca peran aktor: %w", err)
+	}
+	if pengguna.Peran != peranAdminSistem {
+		return nil
+	}
+	uc.writeAudit(ctx, audit.Entry{
+		AktorID: actorID, Aksi: "PINDAH_TAHAP", Entitas: "intervensi", EntitasID: card.ID, Hasil: audit.HasilDitolak,
+		Metadata: map[string]any{"tahap": target.KodeTahap, "dilintasi": dilintasi, "sebab": "pemisahan_tugas"},
+	})
+	return ErrWajibAlurPersetujuan
 }
 
 // BulkAksi menerapkan aksi massal ("tugaskan" ke pemanggil, atau "eskalasi" ke Dewan

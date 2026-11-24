@@ -179,7 +179,7 @@ func TestEngine_CooldownSuppressesRecentlyClosedCondition(t *testing.T) {
 	s := newSuite(t, "ews_engine_cooldown")
 	now := time.Now()
 	s.entriHarga(t, "H1", "BWM", "PSR-1107-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
-	s.entriHarga(t, "H2", "BWM", "PSR-1107-01", 60000, "DIVALIDASI", now.Add(-2*time.Hour))
+	s.entriHarga(t, "H2", "BWM", "PSR-1107-01", 56500, "DIVALIDASI", now.Add(-2*time.Hour)) // +13% = SIAGA
 	require.Equal(t, 1, s.evaluasi(t).Dibuat)
 	id := s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")[0].ID
 
@@ -197,6 +197,102 @@ func TestEngine_CooldownSuppressesRecentlyClosedCondition(t *testing.T) {
 	require.Len(t, alerts, 2)
 	assert.Equal(t, "SELESAI", alerts[0].Status)
 	assert.Equal(t, "BARU", alerts[1].Status)
+}
+
+func TestEngine_KondisiKritisTidakDiredamCooldown(t *testing.T) {
+	s := newSuite(t, "ews_engine_kritis_cooldown")
+	now := time.Now()
+	s.entriHarga(t, "H1", "BWM", "PSR-1107-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
+	s.entriHarga(t, "H2", "BWM", "PSR-1107-01", 60000, "DIVALIDASI", now.Add(-2*time.Hour)) // +20% = KRITIS
+	require.Equal(t, 1, s.evaluasi(t).Dibuat)
+	id := s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")[0].ID
+
+	w := s.call(t, http.MethodPost, "/v1/ews/bulk", emailPenuh, map[string]any{"action": "selesai", "ids": []string{id}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	res := s.evaluasi(t)
+	assert.Zero(t, res.Diredam, "KRITIS tidak mengenal masa peredaman")
+	assert.Equal(t, 1, res.Dibuat, "kondisi yang masih KRITIS langsung memicu alert baru")
+	alerts := s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")
+	require.Len(t, alerts, 2)
+	assert.Equal(t, "SELESAI", alerts[0].Status)
+	assert.Equal(t, "BARU", alerts[1].Status)
+	assert.Equal(t, "KRITIS", alerts[1].Severity)
+}
+
+func TestEngine_NaikKeKritisMembukaKembaliAlertYangSudahDiakui(t *testing.T) {
+	for _, tc := range []struct{ aksi, email, status string }{
+		{"akui", emailPenuh, "DIAKUI"}, // manajer provinsi: alert uji ada di luar kabupaten koordinator
+		{"eskalasi", emailPenuh, "DIESKALASI"},
+	} {
+		t.Run(tc.aksi, func(t *testing.T) {
+			s := newSuite(t, "ews_engine_buka_"+tc.aksi)
+			now := time.Now()
+			s.entriHarga(t, "H1", "BWM", "PSR-1107-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
+			s.entriHarga(t, "H2", "BWM", "PSR-1107-01", 56500, "DIVALIDASI", now.Add(-2*time.Hour)) // SIAGA
+			require.Equal(t, 1, s.evaluasi(t).Dibuat)
+			id := s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")[0].ID
+			w := s.call(t, http.MethodPost, "/v1/ews/bulk", tc.email, map[string]any{"action": tc.aksi, "ids": []string{id}})
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Equal(t, tc.status, s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")[0].Status)
+
+			require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 60000 WHERE kode = 'H2'`).Error) // KRITIS
+			require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
+
+			after := s.alertMesin(t, "LONJAKAN_HARGA|BWM|1107")
+			require.Len(t, after, 1)
+			assert.Equal(t, "KRITIS", after[0].Severity)
+			assert.Equal(t, "BARU", after[0].Status, "tindak lanjut tingkat lama tidak berlaku untuk KRITIS")
+			var jejak struct {
+				DiakuiPada, DieskalasiPada *time.Time
+			}
+			require.NoError(t, s.db.Raw(`SELECT diakui_pada, dieskalasi_pada FROM ews_alert WHERE id = ?`, id).Scan(&jejak).Error)
+			assert.Nil(t, jejak.DiakuiPada)
+			assert.Nil(t, jejak.DieskalasiPada)
+			var catatan string
+			require.NoError(t, s.db.Raw(`SELECT catatan FROM ews_riwayat WHERE alert_id = ? AND dari = ? AND ke = 'BARU'`, id, tc.status).Scan(&catatan).Error)
+			assert.Contains(t, catatan, "dibuka kembali")
+		})
+	}
+}
+
+func TestList_KritisAktifSelaluDiDepanDanTidakTerpotongLimit(t *testing.T) {
+	s := newSuite(t, "ews_list_kritis")
+	require.NoError(t, s.db.Exec(`UPDATE ews_alert SET dibuat_pada = now() - interval '30 days' WHERE kode = 'EWS-1001'`).Error)
+
+	w := s.call(t, http.MethodGet, "/v1/ews?limit=2", emailLihat, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	rows := data[[]struct {
+		Kode     string `json:"kode"`
+		Severity string `json:"severity"`
+		Status   string `json:"status"`
+	}](t, w)
+	require.Len(t, rows, 2)
+	for _, r := range rows {
+		assert.Equal(t, "KRITIS", r.Severity, r.Kode)
+		assert.NotEqual(t, "SELESAI", r.Status, r.Kode)
+	}
+	assert.Contains(t, []string{rows[0].Kode, rows[1].Kode}, "EWS-1001", "KRITIS lama tetap di halaman pertama")
+}
+
+func TestBulk_PerubahanStatusMasukAliranUntukRekonsiliasi(t *testing.T) {
+	s := newSuite(t, "ews_bulk_event")
+	id := s.alertID(t, "EWS-1000")
+	hitung := func() int64 {
+		var n int64
+		require.NoError(t, s.db.Raw(`SELECT count(*) FROM ews_event WHERE alert_id = ?`, id).Scan(&n).Error)
+		return n
+	}
+	awal := hitung()
+
+	w := s.call(t, http.MethodPost, "/v1/ews/bulk", emailAkui, map[string]any{"action": "akui", "ids": []string{id}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, awal+1, hitung(), "tab dan pengguna lain menerima perubahan lewat SSE")
+
+	// Aksi yang tidak mengubah apa pun tidak menambah peristiwa.
+	w = s.call(t, http.MethodPost, "/v1/ews/bulk", emailAkui, map[string]any{"action": "akui", "ids": []string{id}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, awal+1, hitung())
 }
 
 func TestEngine_StockDeclineAndRainfallRules(t *testing.T) {

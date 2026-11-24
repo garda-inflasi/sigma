@@ -146,7 +146,7 @@ export function PedagangPanel() {
       bulkActions={actions}
       searchPlaceholder="Cari pedagang"
       server={tabel(data?.total ?? 0, isPlaceholderData)}
-      toolbar={
+      filterBar={
         <>
           <FilterSelect
             label="Pasar"
@@ -167,6 +167,9 @@ export function PedagangPanel() {
               label: s.label,
             }))}
           />
+        </>
+      }
+      toolbar={
           <SpringButton
             variant="soft"
             size="md"
@@ -176,7 +179,6 @@ export function PedagangPanel() {
             {mengekspor ? <Loader2 className="animate-spin" /> : <Download />}{" "}
             Ekspor semua hasil
           </SpringButton>
-        </>
       }
     />
   );

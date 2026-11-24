@@ -111,11 +111,13 @@ func (r *Repository) MulaiUlang(ctx context.Context, id string, basiSebelum time
 	return res.RowsAffected > 0, nil
 }
 
-func (r *Repository) Transisi(ctx context.Context, ref idx.RujukanUUID, dari, ke string) (string, bool, error) {
+func (r *Repository) Transisi(ctx context.Context, ref idx.RujukanUUID, dari, ke, bukanPenyusun string) (string, bool, error) {
 	kondisi, arg := ref.Kondisi("id", "kode")
 	var ids []string
+	// Pemisahan tugas diperiksa di pernyataan yang sama supaya tidak ada celah antara baca dan tulis.
 	err := r.db.WithContext(ctx).
-		Raw(`UPDATE policy_brief SET status = ?, diperbarui = now() WHERE `+kondisi+` AND status = ? RETURNING id::text`, ke, arg, dari).
+		Raw(`UPDATE policy_brief SET status = ?, diperbarui = now() WHERE `+kondisi+` AND status = ?
+			AND disusun_oleh_id IS DISTINCT FROM NULLIF(?, '')::uuid RETURNING id::text`, ke, arg, dari, bukanPenyusun).
 		Scan(&ids).Error
 	if err != nil {
 		return "", false, fmt.Errorf("ubah status policy brief: %w", err)

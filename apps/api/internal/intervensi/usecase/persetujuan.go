@@ -19,6 +19,8 @@ var (
 	ErrPersetujuanSelesai  = domain.ErrPersetujuanSelesai
 	// ErrPemisahanTugas: pemutus tidak boleh sama dengan pengaju, dan satu orang tidak memutus dua langkah.
 	ErrPemisahanTugas = domain.ErrPemisahanTugas
+	// ErrWajibAlurPersetujuan: administrator sistem tidak boleh memindahkan kartu langsung ke atau melewati tahap persetujuan.
+	ErrWajibAlurPersetujuan = domain.ErrWajibAlurPersetujuan
 	// ErrCatatanWajib: penolakan harus disertai alasan.
 	ErrCatatanWajib = errors.New("penolakan wajib disertai catatan")
 )

@@ -19,39 +19,99 @@ import { ApiError, MODE_MOCK, mockDelay } from "@/lib/api/client";
 import type { ColdStorageBulkAction, ColdStorageParams } from "@/lib/api/cold-storage-query";
 import type { PembacaanManualPayload, TransaksiPayload, UbahFasilitasPayload } from "@/lib/api/cold-storage";
 import type { OptimasiParams } from "@/lib/api/spasial";
+import {
+  getCrawlerFreshness,
+  getPipelineJobs,
+  listMlCycles,
+  triggerCrawlerJob,
+  triggerPipelineJob,
+} from "@/lib/api/pipeline-jobs";
+import {
+  hapusMasterLangsung,
+  listLokasiSpasial,
+  simpanMasterLangsung,
+  type EntitasLangsung,
+  type LokasiSpasialParams,
+} from "@/lib/api/master-langsung";
+import { listTitikDesa, type JenisTitikDesa } from "@/lib/api/spasial-jarak";
 import { unduhLaporanKpi } from "@/lib/api/kpi-laporan";
 import { unduhProyeksiCsv } from "@/lib/api/prediksi-ekspor";
-import type { StokColdStorage } from "@/lib/data/types";
+import type { EwsAlert, StokColdStorage } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { ROLES, type Role } from "@/lib/rbac/roles";
 import { kunciCachePengguna, type StateTabelPengguna } from "@/lib/pengguna/tabel";
+import { useUi } from "@/lib/stores/ui-store";
 import { qk } from "./keys";
 
 const LIVE = 30_000;
+const useDataEnv = () => useUi((s) => s.lingkunganData);
+
+export interface LiveQueryOptions {
+  enabled?: boolean;
+  refetchInterval?: number | false;
+  refetchIntervalInBackground?: boolean;
+}
 
 /**
  * Siklus aktif menggerakkan tema ambient. Hanya boleh dipanggil bila peran
  * memiliki `dashboard.operasional`; shell meneruskan hasil `can()` sebagai
  * `enabled` supaya peran tanpa izin tidak memicu 403 di setiap halaman.
  */
-export const useSiklusAktif = (enabled = true) =>
-  useQuery({ queryKey: qk.siklus(), queryFn: api.siklus.aktif, staleTime: 5 * 60_000, enabled });
+export const useSiklusAktif = (enabled = true, opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.siklus(),
+    queryFn: api.siklus.aktif,
+    staleTime: 5 * 60_000,
+    enabled: opsi?.enabled ?? enabled,
+    refetchInterval: opsi?.refetchInterval,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
 /** Kartu KPI; filter opsional (kabupaten, komoditas, periode), tanpa filter seluruh Aceh 14 hari terakhir. */
-export const useKpiOperasional = (filter?: FilterOperasional) => {
+export const useKpiOperasional = (filter?: FilterOperasional, opsi?: LiveQueryOptions) => {
+  useDataEnv();
   const f = bersihkanFilter(filter);
-  return useQuery({ queryKey: qk.operasional.kpi(f), queryFn: () => api.operasional.kpi(f), refetchInterval: LIVE });
+  return useQuery({
+    queryKey: qk.operasional.kpi(f),
+    queryFn: () => api.operasional.kpi(f),
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval ?? LIVE,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
 };
 /** Peta panas harga; filter opsional seperti KPI. */
-export const useHeatmap = (filter?: FilterOperasional) => {
+export const useHeatmap = (filter?: FilterOperasional, opsi?: LiveQueryOptions) => {
+  useDataEnv();
   const f = bersihkanFilter(filter);
-  return useQuery({ queryKey: qk.operasional.heatmap(f), queryFn: () => api.operasional.heatmap(f), refetchInterval: LIVE * 2 });
+  return useQuery({
+    queryKey: qk.operasional.heatmap(f),
+    queryFn: () => api.operasional.heatmap(f),
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval ?? LIVE * 2,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
 };
-export const useAktivitasLapangan = () => useQuery({ queryKey: qk.operasional.aktivitas(), queryFn: api.operasional.aktivitas, refetchInterval: LIVE });
+export const useAktivitasLapangan = (opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.operasional.aktivitas(),
+    queryFn: api.operasional.aktivitas,
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval ?? LIVE,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
 /**
  * Aktivitas per petugas. `enabled` menunda permintaan sampai rinciannya diminta (daftar bisa ratusan petugas).
  * 403 (peran kustom tanpa `harga.lihat`) bersifat tetap: tidak diulang dan tidak dimuat ulang berkala.
  */
 export const useAktivitasPetugas = (opsi: { kabupatenKode?: string; enabled?: boolean } = {}) => {
+  useDataEnv();
   const { kabupatenKode, enabled = true } = opsi;
   return useQuery({
     queryKey: qk.operasional.petugas(kabupatenKode),
@@ -62,24 +122,67 @@ export const useAktivitasPetugas = (opsi: { kabupatenKode?: string; enabled?: bo
   });
 };
 /** Stok cold storage real-time per komoditas. Belum dipakai kartu UI. */
-export const useStokOperasional = (saringan?: SaringanOperasional) => {
+export const useStokOperasional = (saringan?: SaringanOperasional, opsi?: LiveQueryOptions) => {
+  useDataEnv();
   const f = bersihkanFilter(saringan);
-  return useQuery({ queryKey: qk.operasional.stok(f), queryFn: () => api.operasional.stok(f), refetchInterval: LIVE });
+  return useQuery({
+    queryKey: qk.operasional.stok(f),
+    queryFn: () => api.operasional.stok(f),
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval ?? LIVE,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
 };
 /** Harga dan produksi di tingkat produsen. Belum dipakai kartu UI. */
 export const useProdusenOperasional = (saringan?: SaringanOperasional) => {
+  useDataEnv();
   const f = bersihkanFilter(saringan);
   return useQuery({ queryKey: qk.operasional.produsen(f), queryFn: () => api.operasional.produsen(f), refetchInterval: LIVE * 2 });
 };
 /** Pergerakan logistik dan rute aktif sepekan terakhir. Belum dipakai kartu UI. */
-export const useLogistikOperasional = (saringan?: SaringanOperasional) => {
+export const useLogistikOperasional = (saringan?: SaringanOperasional, opsi?: LiveQueryOptions) => {
+  useDataEnv();
   const f = bersihkanFilter(saringan);
-  return useQuery({ queryKey: qk.operasional.logistik(f), queryFn: () => api.operasional.logistik(f), refetchInterval: LIVE });
+  return useQuery({
+    queryKey: qk.operasional.logistik(f),
+    queryFn: () => api.operasional.logistik(f),
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval ?? LIVE,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
 };
-export const usePembandingHarga = () => useQuery({ queryKey: qk.operasional.pembanding(), queryFn: api.operasional.pembandingHarga, refetchInterval: LIVE * 2 });
-export const useCuacaTerbaru = () => useQuery({ queryKey: qk.operasional.cuaca(), queryFn: api.operasional.cuaca, refetchInterval: LIVE * 10 });
-export const useMarkerWilayah = () => useQuery({ queryKey: qk.operasional.marker(), queryFn: api.operasional.marker });
-export const useRuteDistribusi = () => useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
+export const usePembandingHarga = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.operasional.pembanding(), queryFn: api.operasional.pembandingHarga, refetchInterval: LIVE * 2 });
+};
+export const useCuacaTerbaru = (opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.operasional.cuaca(),
+    queryFn: api.operasional.cuaca,
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval ?? LIVE * 10,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
+export const useMarkerWilayah = (opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.operasional.marker(),
+    queryFn: api.operasional.marker,
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
+export const useRuteDistribusi = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.spasial.rute(), queryFn: api.spasial.rute });
+};
 /** Menghitung rencana distribusi; bila disimpan, daftar rute disegarkan. */
 export function useOptimasiRute() {
   const qc = useQueryClient();
@@ -97,23 +200,64 @@ export function useOptimasiRute() {
     },
   });
 }
-export const useGeometriWilayah = (zoom: number) =>
-  useQuery({ queryKey: qk.spasial.geometri(zoom), queryFn: () => api.spasial.geometri(zoom), staleTime: 60 * 60_000 });
-export const useKandidatColdStorage = () => useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });
+export const useGeometriWilayah = (zoom: number) => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.spasial.geometri(zoom), queryFn: () => api.spasial.geometri(zoom), staleTime: 60 * 60_000 });
+};
+export const useKandidatColdStorage = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.spasial.kandidat(), queryFn: api.spasial.kandidatColdStorage });
+};
 /** Neraca per wilayah untuk satu komoditas ("" = semua komoditas), periode terbaru. */
-export const useNeracaWilayah = (komoditas: string) =>
-  useQuery({ queryKey: qk.spasial.neraca(komoditas), queryFn: () => api.spasial.neraca(komoditas || undefined), placeholderData: keepPreviousData });
+export const useNeracaWilayah = (komoditas: string) => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.spasial.neraca(komoditas), queryFn: () => api.spasial.neraca(komoditas || undefined), placeholderData: keepPreviousData });
+};
 /** Mencari kabupaten/kota untuk satu koordinat; galat (mis. 404 tanpa data wilayah) ditampilkan oleh pemanggil. */
 export const useCariLokasi = () => useMutation({ mutationFn: (t: { lat: number; lng: number }) => api.spasial.lokasi(t.lat, t.lng) });
-export const useRiwayatOptimasi = () => useQuery({ queryKey: qk.spasial.riwayat(), queryFn: api.spasial.riwayatOptimasi });
-export const useTrenHarga = (kode: string, kab: string) =>
-  useQuery({ queryKey: qk.operasional.tren(kode, kab), queryFn: () => api.operasional.tren(kode, kab), placeholderData: (prev) => prev });
-export const useRingkasanEksekutif = () => useQuery({ queryKey: qk.eksekutif.ringkasan(), queryFn: api.eksekutif.ringkasan });
-export const useXai = (kode: string) => useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
-export const useProyeksiRingkasan = () => useQuery({ queryKey: qk.prediksi.ringkasan(), queryFn: api.prediksi.ringkasan });
-export const useModelPrediksi = () => useQuery({ queryKey: qk.prediksi.model(), queryFn: api.prediksi.model });
+export const useRiwayatOptimasi = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.spasial.riwayat(), queryFn: api.spasial.riwayatOptimasi });
+};
+export const useTrenHarga = (kode: string, kab: string, opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.operasional.tren(kode, kab),
+    queryFn: () => api.operasional.tren(kode, kab),
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
+export const useRingkasanEksekutif = (opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.eksekutif.ringkasan(),
+    queryFn: api.eksekutif.ringkasan,
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
+export const useXai = (kode: string) => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.eksekutif.xai(kode), queryFn: () => api.eksekutif.xai(kode), placeholderData: (prev) => prev });
+};
+export const useProyeksiRingkasan = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.prediksi.ringkasan(), queryFn: api.prediksi.ringkasan });
+};
+export const useModelPrediksi = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.prediksi.model(), queryFn: api.prediksi.model });
+};
 /** Status layanan ML; `enabled` mencegah 403 bagi peran tanpa `prediksi.lihat`. */
-export const useStatusMl = (enabled = true) => useQuery({ queryKey: qk.prediksi.ml(), queryFn: api.prediksi.statusMl, enabled, staleTime: 30_000 });
+export const useStatusMl = (enabled = true) => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.prediksi.ml(), queryFn: api.prediksi.statusMl, enabled, staleTime: 30_000 });
+};
 /** Melatih model kandidat lalu menyegarkan registri; galat (mis. 503 layanan ML mati) ditampilkan sebagai toast. */
 export function useLatihModel() {
   const qc = useQueryClient();
@@ -185,7 +329,32 @@ export const useRiwayatStatus = (id: string | undefined) =>
 /** Jejak asal satu entri (pencatat, cek otomatis, validasi, publikasi, versi, rujukan audit). */
 export const useLineageHarga = (id: string | undefined) =>
   useQuery({ queryKey: qk.harga.lineage(id ?? ""), queryFn: () => api.harga.lineage(id!), enabled: !!id });
-export const useEwsList = () => useQuery({ queryKey: qk.ews.list(), queryFn: api.ews.list });
+export const useEwsList = (opsi?: LiveQueryOptions) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.ews.list(),
+    queryFn: api.ews.list,
+    enabled: opsi?.enabled ?? true,
+    refetchInterval: opsi?.refetchInterval,
+    refetchIntervalInBackground: opsi?.refetchIntervalInBackground,
+    placeholderData: keepPreviousData,
+  });
+};
+/**
+ * KRITIS berstatus BARU menurut server, terpisah dari daftar utama supaya pembaruan optimistis tidak pernah
+ * menghilangkan toast atau banner. Polling dan fokus jendela adalah jaring pengaman bila aliran SSE terputus.
+ */
+export const useKritisBaru = (enabled: boolean) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.ews.kritisBaru(),
+    queryFn: api.ews.kritisBaru,
+    enabled,
+    staleTime: 5_000,
+    refetchInterval: MODE_MOCK ? false : LIVE,
+    refetchOnWindowFocus: !MODE_MOCK,
+  });
+};
 /** Alert lengkap dari server; mati bila `id` kosong. */
 export const useEwsDetail = (id: string | null) =>
   useQuery({ queryKey: qk.ews.detail(id ?? ""), queryFn: () => api.ews.detail(id!), enabled: !!id, retry: false });
@@ -325,11 +494,17 @@ export const useColdStorage = (params: ColdStorageParams, enabled = true) =>
     // menembak BFF tiap menit; dilanjutkan begitu "Coba lagi" atau perubahan kriteria berhasil.
     refetchInterval: (query) => (query.state.status === "error" ? false : 60_000),
   });
-export const useSumberData = () => useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+export const useSumberData = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.sumber.list(), queryFn: api.sumber.list });
+};
 /** Sumber lengkap dari server (dimuat ulang bersama katalog lewat prefix key). */
 export const useSumberDetail = (id: string | null) =>
   useQuery({ queryKey: qk.sumber.detail(id ?? ""), queryFn: () => api.sumber.detail(id!), enabled: !!id, retry: false });
-export const useSumberPipeline = () => useQuery({ queryKey: qk.sumber.pipeline(), queryFn: api.sumber.pipeline, refetchInterval: LIVE * 2 });
+export const useSumberPipeline = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.sumber.pipeline(), queryFn: api.sumber.pipeline, refetchInterval: LIVE * 2 });
+};
 /** Riwayat eksekusi; dimuat ulang tiap 2 detik selama masih ada run BERJALAN. */
 export const useSumberEksekusi = (id: string | null) =>
   useQuery({
@@ -385,10 +560,15 @@ export function useEksporKpi() {
     },
   });
 }
-export const useKpi = () => useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
+export const useKpi = () => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.kpi.list(), queryFn: api.kpi.list, staleTime: 60_000 });
+};
 /** Riwayat satu indikator; baru diminta saat `kode` terisi (lembar detail terbuka). */
-export const useKpiRiwayat = (kode: string | undefined) =>
-  useQuery({ queryKey: qk.kpi.riwayat(kode ?? ""), queryFn: () => api.kpi.riwayat(kode as string), enabled: !!kode, staleTime: 60_000 });
+export const useKpiRiwayat = (kode: string | undefined) => {
+  useDataEnv();
+  return useQuery({ queryKey: qk.kpi.riwayat(kode ?? ""), queryFn: () => api.kpi.riwayat(kode as string), enabled: !!kode, staleTime: 60_000 });
+};
 export const usePengguna = (search?: string) =>
   useQuery({
     queryKey: qk.pengguna.list(search),
@@ -588,6 +768,8 @@ export function useBulkAction<T extends { id: string }>(opts: {
   patch?: (row: T, aksi: string) => T | null; // null = hapus dari daftar
   /** Segarkan query berawalan key ini dari server setelah selesai (tidak di mode mock). */
   invalidate?: QueryKey;
+  /** Dipanggil setelah server menerima aksi. */
+  saatBerhasil?: (ids: string[]) => void;
 }) {
   const qc = useQueryClient();
   return useMutation({
@@ -605,13 +787,31 @@ export function useBulkAction<T extends { id: string }>(opts: {
       if (ctx?.prev) qc.setQueryData(opts.queryKey, ctx.prev);
       toast.error("Aksi massal gagal", { description: err instanceof Error ? err.message : "Coba lagi beberapa saat." });
     },
-    onSuccess: (res, { label }) => {
+    onSuccess: (res, { label, ids }) => {
+      opts.saatBerhasil?.(ids);
       toast.success(`${label}: ${res.berhasil.toLocaleString("id-ID")} data`, {
         description: res.gagal ? `${res.gagal} data dilewati: ${ringkasSebab(res.rincian) || "status atau pemisahan tugas"}.` : "Tercatat di audit trail.",
       });
     },
     onSettled: () => {
       if (opts.invalidate && !MODE_MOCK) qc.invalidateQueries({ queryKey: opts.invalidate });
+    },
+  });
+}
+
+/**
+ * Aksi massal alert EWS. Tanpa `patch` tidak ada pembaruan optimistis. Daftar KRITIS (toast dan banner) hanya berubah
+ * dari jawaban server lewat invalidasi; mode mock tidak punya server, jadi ia dikurangi setelah aksi berhasil.
+ */
+export function useAksiEws(patch?: (row: EwsAlert, aksi: string) => EwsAlert | null) {
+  const qc = useQueryClient();
+  return useBulkAction<EwsAlert>({
+    sumber: "ews",
+    queryKey: qk.ews.list(),
+    invalidate: qk.ews.all(),
+    patch,
+    saatBerhasil: (ids) => {
+      if (MODE_MOCK) qc.setQueryData<EwsAlert[]>(qk.ews.kritisBaru(), (lama) => lama?.filter((a) => !ids.includes(a.id)));
     },
   });
 }
@@ -865,6 +1065,144 @@ export function useColdStorageBulk() {
     onError: (err) => {
       toast.error("Aksi massal gagal", {
         description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    },
+  });
+}
+
+// ── Pipeline & Crawler (dataunseen / datasafe & trigger realtime) ───────────
+
+export const useCrawlerFreshness = () => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.crawler.freshness(),
+    queryFn: getCrawlerFreshness,
+    refetchInterval: LIVE,
+  });
+};
+
+export const useMlCycles = (limit = 24) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.crawler.cycles(limit),
+    queryFn: () => listMlCycles(limit),
+    refetchInterval: LIVE,
+  });
+};
+
+export const usePipelineJobs = () => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.crawler.jobs(),
+    queryFn: getPipelineJobs,
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d && (d.crawler.berjalan || d.pipeline.berjalan || d.chain.aktif) ? 2_500 : 15_000;
+    },
+  });
+};
+
+export function useTriggerCrawler() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { sumber?: string[]; gagal_saja?: boolean; lanjut_ml?: boolean }) =>
+      triggerCrawlerJob(input),
+    onSuccess: (snap, vars) => {
+      qc.setQueryData(qk.crawler.jobs(), snap);
+      qc.invalidateQueries({ queryKey: qk.crawler.freshness() });
+      qc.invalidateQueries({ queryKey: qk.sumber.list() });
+      toast.success(
+        vars.lanjut_ml ? "Crawler -> ML Pipeline dimulai" : "Crawler manual dimulai",
+        { description: "Pantau progres dan log eksekusi secara langsung di panel status." },
+      );
+    },
+    onError: (err) => {
+      toast.error("Gagal menjalankan crawler", {
+        description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    },
+  });
+}
+
+export function useTriggerPipeline() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => triggerPipelineJob(),
+    onSuccess: (snap) => {
+      qc.setQueryData(qk.crawler.jobs(), snap);
+      qc.invalidateQueries({ queryKey: qk.crawler.cycles(24) });
+      toast.success("Training ulang ML datasafe dimulai", {
+        description: "Hasil model & proyeksi akan otomatis diperbarui begitu siklus selesai.",
+      });
+    },
+    onError: (err) => {
+      toast.error("Gagal memicu ML pipeline", {
+        description: err instanceof Error ? err.message : "Coba lagi beberapa saat.",
+      });
+    },
+  });
+}
+
+// ── Titik spasial desa & input langsung Superadmin ───────────────────────────
+
+export const useTitikDesa = (jenis?: JenisTitikDesa, enabled = true) => {
+  useDataEnv();
+  return useQuery({
+    queryKey: qk.spasial.titikDesa(jenis),
+    queryFn: () => listTitikDesa(jenis),
+    enabled,
+  });
+};
+
+export const useLokasiSpasial = (params: LokasiSpasialParams = {}, enabled = true) =>
+  useQuery({
+    queryKey: qk.master.lokasiSpasial(params),
+    queryFn: () => listLokasiSpasial(params),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+
+export function useSimpanMasterLangsung() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      entitas,
+      payload,
+      kodeEdit,
+    }: {
+      entitas: EntitasLangsung;
+      payload: Record<string, unknown>;
+      kodeEdit?: string;
+    }) => simpanMasterLangsung(entitas, payload, kodeEdit),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: qk.master.all() });
+      qc.invalidateQueries({ queryKey: qk.spasial.titikDesa() });
+      toast.success(
+        vars.kodeEdit ? "Data master diperbarui langsung" : "Data master ditambahkan",
+        { description: "Perubahan langsung aktif & tercatat di audit trail." },
+      );
+    },
+    onError: (err) => {
+      toast.error("Gagal menyimpan data master", {
+        description: err instanceof Error ? err.message : "Periksa kembali isian formulir.",
+      });
+    },
+  });
+}
+
+export function useHapusMasterLangsung() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ entitas, kode }: { entitas: EntitasLangsung; kode: string }) =>
+      hapusMasterLangsung(entitas, kode),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.master.all() });
+      qc.invalidateQueries({ queryKey: qk.spasial.titikDesa() });
+      toast.success("Data master dihapus");
+    },
+    onError: (err) => {
+      toast.error("Gagal menghapus data master", {
+        description: err instanceof Error ? err.message : "Data masih dirujuk oleh transaksi lain.",
       });
     },
   });

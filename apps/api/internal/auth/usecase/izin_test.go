@@ -336,9 +336,10 @@ func TestUpdateRolePermissions_Penolakan(t *testing.T) {
 	assert.Contains(t, err.Error(), "izin.palsu", "nama izin asing disebut sekali")
 	assert.Equal(t, 1, strings.Count(err.Error(), "izin.palsu"))
 
-	// Menghapus pengguna.kelola dari satu-satunya peran yang memegangnya.
+	// Kolom ADMIN_SISTEM terkunci: himpunan yang kurang ditolak sebelum menyentuh penyimpanan.
 	_, err = s.uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"audit.lihat"}, uid("admin-1"))
-	assert.ErrorIs(t, err, ErrPemegangTerakhir)
+	require.ErrorIs(t, err, ErrIzinAdminTerkunci)
+	assert.Contains(t, err.Error(), "pengguna.kelola", "izin yang hilang disebut")
 
 	assert.Empty(t, s.audit.Entries())
 	roles, _ := s.uc.ListRoles(ctx)
@@ -347,10 +348,40 @@ func TestUpdateRolePermissions_Penolakan(t *testing.T) {
 	}
 }
 
-func TestUpdateRolePermissions_PeranBukanPemegangBolehKehilanganIzinLain(t *testing.T) {
+func TestUpdateRolePermissions_AdminSistemTidakBisaDikurangiTetapiBolehSeluruhKatalog(t *testing.T) {
 	s := newIzinSuite(t, time.Hour)
-	_, err := s.uc.UpdateRolePermissions(context.Background(), "ADMIN_SISTEM", 1, []string{"pengguna.kelola"}, uid("admin-1"))
-	require.NoError(t, err, "selama pengguna.kelola tetap dipegang, izin lain boleh dicabut")
+	ctx := context.Background()
+
+	for _, izin := range [][]string{nil, {"pengguna.kelola"}, semuaIzinKatalog()[1:]} {
+		_, err := s.uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, izin, uid("admin-1"))
+		require.ErrorIs(t, err, ErrIzinAdminTerkunci, "%v", izin)
+	}
+
+	_, err := s.uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, semuaIzinKatalog(), uid("admin-1"))
+	require.NoError(t, err, "seluruh katalog bukan pengurangan")
+}
+
+func TestIzinEfektif_AdminSistemSeluruhKatalogWalauTabelTertinggal(t *testing.T) {
+	s := newIzinSuite(t, time.Hour)
+	ctx := context.Background()
+	s.izin.peran["ADMIN_SISTEM"].izin = map[string]bool{"pengguna.kelola": true} // tabel tertinggal dari katalog
+
+	izin, err := s.uc.PermissionResolver().Permissions(ctx, uid("admin-1"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, semuaIzinKatalog(), izin, "dijamin saat runtime, bukan oleh isi tabel")
+
+	roles, err := s.uc.ListRoles(ctx)
+	require.NoError(t, err)
+	for _, r := range roles {
+		if r.ID == "ADMIN_SISTEM" {
+			assert.ElementsMatch(t, semuaIzinKatalog(), r.Permissions, "editor menampilkan izin yang berlaku")
+		}
+	}
+
+	info, err := s.uc.ListUserPermissions(ctx, uid("admin-1"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, semuaIzinKatalog(), info.Efektif)
+	assert.ElementsMatch(t, semuaIzinKatalog(), info.IzinPeran)
 }
 
 func TestUpdateRolePermissions_TanpaPenyimpananBasisData(t *testing.T) {

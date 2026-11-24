@@ -14,20 +14,20 @@ export const ease = {
 
 export const spring = {
   /** Kartu, panel, hover lift */
-  soft: { type: "spring", stiffness: 260, damping: 28, mass: 0.9 },
+  soft: { type: "spring", stiffness: 240, damping: 28, mass: 0.9 },
   /** Tombol, toggle, chip */
-  snappy: { type: "spring", stiffness: 480, damping: 30 },
+  snappy: { type: "spring", stiffness: 420, damping: 30 },
   /** Pop-in, marker peta, badge baru */
-  bouncy: { type: "spring", stiffness: 520, damping: 17, mass: 0.8 },
+  bouncy: { type: "spring", stiffness: 440, damping: 22, mass: 0.85 },
   /** Indikator layoutId (sidebar, tab, bottom nav) */
-  layout: { type: "spring", stiffness: 400, damping: 34 },
+  layout: { type: "spring", stiffness: 360, damping: 32 },
 } satisfies Record<string, Transition>;
 
 /* ── Entrance ─────────────────────────────────────────────── */
 export const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 14, filter: "blur(4px)" },
-  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.55, ease: ease.garda } },
-  exit: { opacity: 0, y: -6, filter: "blur(2px)", transition: { duration: 0.18 } },
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.44, ease: ease.garda } },
+  exit: { opacity: 0, y: -4, transition: { duration: 0.16, ease: ease.inOut } },
 };
 
 export const fadeIn: Variants = {
@@ -73,14 +73,14 @@ export const bulkBar: Variants = {
 /* ── Interaksi ────────────────────────────────────────────── */
 /** Hover lift untuk kartu yang dapat diklik. Bayangan ditangani kelas `hover:shadow-lift`. */
 export const hoverLift = {
-  whileHover: { y: -4, transition: spring.soft },
-  whileTap: { y: -1, scale: 0.995, transition: spring.snappy },
+  whileHover: { y: -2.5, transition: spring.soft },
+  whileTap: { y: -0.5, scale: 0.995, transition: spring.snappy },
 } as const;
 
 /** Pegas tombol. */
 export const buttonSpring = {
-  whileHover: { scale: 1.02 },
-  whileTap: { scale: 0.955 },
+  whileHover: { scale: 1.012 },
+  whileTap: { scale: 0.975 },
   transition: spring.snappy,
 } as const;
 

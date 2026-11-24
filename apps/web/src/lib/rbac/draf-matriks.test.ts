@@ -30,6 +30,17 @@ describe("store draf matriks", () => {
     assert.equal(sebelum.size, 0, "peta lama tidak berubah");
   });
 
+  it("kolom ADMIN_SISTEM terkunci: tidak pernah punya draf", () => {
+    const store = buatStoreDraf();
+    let dipanggil = 0;
+    store.langgan(() => dipanggil++);
+
+    store.atur("ADMIN_SISTEM", { versi: 1, izin: new Set(["audit.lihat"]) });
+
+    assert.equal(store.ambil().size, 0);
+    assert.equal(dipanggil, 0);
+  });
+
   it("hapus membuang satu draf; menghapus yang tidak ada tidak memberi tahu siapa pun", () => {
     const store = buatStoreDraf();
     let dipanggil = 0;

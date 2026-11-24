@@ -6,6 +6,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { peranIzinTerkunci } from "./permissions";
 import type { Role } from "./roles";
 
 export interface DrafPeran {
@@ -25,7 +26,9 @@ export function buatStoreDraf() {
   };
   return {
     ambil: (): DrafMatriks => state,
+    /** Peran terkunci (Administrator Sistem) tidak pernah punya draf. */
     atur(peran: Role, draf: DrafPeran) {
+      if (peranIzinTerkunci(peran)) return;
       ubah(new Map(state).set(peran, draf));
     },
     hapus(peran: Role) {

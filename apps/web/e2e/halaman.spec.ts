@@ -95,7 +95,7 @@ for (const peran of ROLE_IDS) {
 }
 
 const DITOLAK: [Akun, string][] = [
-  ["superadmin", "/kpi"],
+  ["mahasiswa", "/kpi"],
   ["strategisFmipa", "/pengguna"],
   // Kebijakan impersonasi eksklusif superadmin (izin impersonasi.kelola).
   ["manajerProgram", "/impersonasi"],

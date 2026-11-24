@@ -113,7 +113,8 @@ Prinsip yang ditegakkan:
   - harga: pencatat ≠ validator ≠ penerbit. `domain.Evaluasi` menolak validasi oleh pencatat dan publikasi oleh pencatat maupun validator (`pemisahan_tugas`); CHECK `chk_entri_harga_pemisahan_tugas` dan `chk_entri_harga_pemisahan_penerbit` menjaga tulis langsung ke tabel; percobaan yang ditolak dicatat di audit dengan hasil `DITOLAK`.
   - intervensi: pengaju permintaan persetujuan dan pemutus langkah sebelumnya tidak boleh memutus langkah berikutnya (dicek di usecase dan diulang di transaksi repository).
   - master data: pengaju usulan tidak boleh memutusnya.
-  - Admin Sistem tidak memegang izin `validasi`, `publikasi`, atau `setujui` apa pun (dikunci tes).
+  - policy brief: penyusun tidak boleh menyetujui brief-nya sendiri (diperiksa di pernyataan `UPDATE` yang sama).
+  - Admin Sistem memegang **seluruh** katalog izin (dijamin saat runtime oleh `terapkanIzinEksklusif`, kolomnya terkunci di editor matriks), tetapi tunduk pada semua aturan per aksi di atas. Karena ia memegang izin kelola sekaligus setujui, ia juga tidak boleh memindahkan kartu intervensi langsung ke atau melewati tahap persetujuan: ia mengajukan, orang lain memutus. Saat mengimpersonasi, izin yang berlaku tetap milik akun sasaran.
 - **Cakupan baris** — dibaca segar dari `pengguna.peran` dan `pengguna.kabupaten_kode` per permintaan: Koordinator dan Agregator hanya kabupatennya (ditambah entri yang ia catat sendiri); Mahasiswa hanya entrinya sendiri; peran provinsi ke atas seluruh Aceh; peran tak dikenal hanya miliknya. Berlaku di `harga`, `lapangan`, `dashboard`, `ews`, dan `intervensi` (ajuan, pindah tahap, aksi massal, dan keputusan persetujuan atas kartu di luar kabupaten dijawab seperti tidak ada). Data di luar cakupan dijawab 404/tidak_ditemukan agar keberadaannya tidak bocor.
 - **Persetujuan berjenjang** — rantai langkah didefinisikan sebagai data (`alur_persetujuan*`): "Petakan suplai" dan "Selesai" butuh `intervensi.setujui` (Dewan Pengarah); "Dukungan instrumen belanja" ditambah `intervensi.setujui_fiskal` (Kanwil DJPb). Pemindahan maju tidak boleh melompati tahap persetujuan yang izinnya tidak dimiliki; kartu bisa dibuat otomatis dari alert EWS dan dieskalasi bila melewati SLA.
 - **Audit** — append-only, berantai hash SHA-256, berpartisi bulanan dengan arsip; peran aplikasi database tanpa UPDATE/DELETE. Pemilik akun dapat melihat jejaknya sendiri di `/profil` (aksi yang ia lakukan dan aksi orang lain terhadap akunnya) tanpa snapshot sebelum/sesudah dan tanpa identitas pelaku lain.
@@ -123,21 +124,21 @@ Prinsip yang ditegakkan:
 
 | Rute | Izin | FMIPA | BI | BPS | DJPb | Prog | Data | Kebj | Biaya | Risk | Mutu | Koord | Agreg | Mhs | Admin |
 |---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `/operasional` | `dashboard.operasional` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · |
-| `/eksekutif` | `dashboard.eksekutif` | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | · | · | · | · | · | · |
-| `/data/harga` | `harga.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · |
-| `/ews` | `ews.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | · | · |
-| `/prediksi` | `prediksi.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `/peta` | `spasial.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | · | · | · |
-| `/cold-storage` | `coldstorage.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | ✓ | ✓ | · | ✓ | · | · |
-| `/intervensi` | `intervensi.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · |
-| `/policy-brief` | `brief.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `/kpi` | `kpi.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · | · |
+| `/operasional` | `dashboard.operasional` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ |
+| `/eksekutif` | `dashboard.eksekutif` | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | · | · | · | · | · | ✓ |
+| `/data/harga` | `harga.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ |
+| `/ews` | `ews.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | · | ✓ |
+| `/prediksi` | `prediksi.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | · | · | · | ✓ |
+| `/peta` | `spasial.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | · | · | ✓ |
+| `/cold-storage` | `coldstorage.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | ✓ | ✓ | · | ✓ | · | ✓ |
+| `/intervensi` | `intervensi.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ |
+| `/policy-brief` | `brief.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · | · | · | ✓ |
+| `/kpi` | `kpi.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · | ✓ |
 | `/master` | `master.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | · | ✓ | · | · | ✓ |
 | `/sumber-data` | `sumber.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · | · | · | · | · | ✓ |
 | `/pengguna` | `pengguna.kelola` | · | · | · | · | · | · | · | · | · | · | · | · | · | ✓ |
 | `/audit` | `audit.lihat` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | ✓ | · | · | · | · | ✓ |
-| `/lapangan` | `harga.input` | · | · | · | · | · | · | · | · | · | · | ✓ | ✓ | ✓ | · |
+| `/lapangan` | `harga.input` | · | · | · | · | · | · | · | · | · | · | ✓ | ✓ | ✓ | ✓ |
 | `/profil` | — (semua pengguna masuk) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `/alur-sistem` | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 

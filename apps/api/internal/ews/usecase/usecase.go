@@ -43,10 +43,18 @@ type UseCase struct {
 	evaluator domain.Evaluator
 	audit     audit.Writer
 	log       *logger.Logger
+	// sinyal membangunkan aliran SSE setelah status alert berubah; nil berarti cukup menunggu polling.
+	sinyal func(context.Context)
 }
 
 func New(repo domain.Repository, evaluator domain.Evaluator, auditWriter audit.Writer, log *logger.Logger) *UseCase {
 	return &UseCase{repo: repo, evaluator: evaluator, audit: auditWriter, log: log}
+}
+
+// DenganSinyal memasang pembangun aliran SSE, supaya tindak lanjut alert segera sampai ke tab dan pengguna lain.
+func (uc *UseCase) DenganSinyal(sinyal func(context.Context)) *UseCase {
+	uc.sinyal = sinyal
+	return uc
 }
 
 // Cakupan menurunkan jangkauan baris pemanggil dari peran dan kabupaten tugasnya di DB (02-B).
@@ -204,6 +212,9 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []idx.ID, action, actorID
 	result := BulkResult{Berhasil: len(changed), Gagal: len(ids) - len(changed)}
 	if len(changed) == 0 {
 		return result, nil
+	}
+	if uc.sinyal != nil {
+		uc.sinyal(ctx)
 	}
 
 	uc.writeAudit(ctx, audit.Entry{

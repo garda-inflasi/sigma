@@ -1,0 +1,33 @@
+[project]
+name = "garda-ml"
+version = "0.2.0"
+description = "Layanan ML Garda Inflasi: server HTTP tanpa dependensi dan pipeline training opsional"
+requires-python = ">=3.12"
+# Server HTTP lama (garda_ml.server) sengaja tanpa dependensi.
+dependencies = []
+
+[project.optional-dependencies]
+# Dependensi pipeline training (garda_ml.pipeline). Tidak dibutuhkan server HTTP.
+pipeline = [
+    # pandas 2.3 memicu DeprecationWarning timedelta generik pada numpy 2.5.
+    "numpy>=2.1,<2.5",
+    "pandas>=2.2,<3",
+    "scikit-learn>=1.6,<1.8",
+    "lightgbm>=4.5,<5",
+    "statsmodels>=0.14.4,<0.15",
+    "shap>=0.48,<1",
+    "pymongo>=4.10,<5",
+    "joblib>=1.4,<2",
+    "threadpoolctl>=3.5,<4",
+]
+dev = ["pytest>=8.3,<9"]
+
+[tool.uv]
+# Bukan paket terpasang: modul dijalankan dari direktori apps/ml.
+package = false
+
+[tool.pytest.ini_options]
+# Tes pipeline dipisah dari tests/ agar `make test/ml` (unittest tanpa dependensi) tetap lulus.
+testpaths = ["tests_pipeline"]
+pythonpath = ["."]
+markers = ["integrasi: butuh MongoDB sungguhan lewat GARDA_UJI_MONGO_URI"]

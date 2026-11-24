@@ -57,6 +57,8 @@ func (h *Handler) UpdateRolePermissions(c *gin.Context) {
 			response.Error(c, http.StatusBadRequest, dto.KodeIzinTidakDikenal, err.Error())
 		case errors.Is(err, usecase.ErrIzinEksklusif):
 			response.Error(c, http.StatusBadRequest, dto.KodeIzinEksklusif, err.Error())
+		case errors.Is(err, usecase.ErrIzinAdminTerkunci):
+			response.Error(c, http.StatusConflict, dto.KodeIzinAdminTerkunci, "Administrator sistem selalu memegang seluruh izin; kolomnya tidak dapat dikurangi.")
 		case errors.Is(err, usecase.ErrPemegangTerakhir):
 			jawabPemegangTerakhir(c)
 		default:

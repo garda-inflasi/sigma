@@ -434,9 +434,20 @@ describe("izin rute", () => {
       { kind: "next" },
     );
     assert.equal(
-      decide("/kpi", jwt({ role: "ADMIN_SISTEM", exp: NOW + 60 })).kind,
+      decide("/kpi", jwt({ role: "OPS_MAHASISWA", exp: NOW + 60 })).kind,
       "redirect",
     );
+  });
+
+  it("ADMIN_SISTEM membuka seluruh rute konsol dan lapangan, dari klaim maupun matriks", () => {
+    for (const { prefix } of ROUTE_ACCESS) {
+      assert.deepEqual(decide(prefix, tokenFor("ADMIN_SISTEM")), { kind: "next" }, prefix);
+      assert.deepEqual(
+        decide(prefix, jwt({ role: "ADMIN_SISTEM", exp: NOW + 60 })),
+        { kind: "next" },
+        `${prefix} tanpa klaim`,
+      );
+    }
   });
 
   it("rute tanpa izin terdaftar (/alur-sistem) terbuka bagi semua yang masuk", () => {

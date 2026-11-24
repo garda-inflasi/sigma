@@ -92,9 +92,12 @@ func (r *fakeRepo) ListVersi(_ context.Context, briefID string) ([]domain.VersiV
 	return out, nil
 }
 
-func (r *fakeRepo) Transisi(_ context.Context, ref idx.RujukanUUID, dari, ke string) (string, bool, error) {
+func (r *fakeRepo) Transisi(_ context.Context, ref idx.RujukanUUID, dari, ke, bukanPenyusun string) (string, bool, error) {
 	kode, ada := r.cari(ref)
 	if !ada || r.rows[kode].Status != dari {
+		return "", false, nil
+	}
+	if bukanPenyusun != "" && r.rows[kode].DisusunOlehID == bukanPenyusun {
 		return "", false, nil
 	}
 	pb := r.rows[kode]
@@ -603,6 +606,23 @@ func TestBulkAction_SetujuiHanyaDariTelaah(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, BulkResult{Gagal: 1}, hasil)
+}
+
+func TestBulkAction_PenyusunTidakMenyetujuiBriefSendiri(t *testing.T) {
+	repo := newFakeRepo()
+	pb := brief("PB-2026-09", domain.StatusTelaah)
+	pb.DisusunOlehID = uid("admin")
+	repo.rows["PB-2026-09"] = pb
+	uc, _ := newUseCase(repo, nil)
+
+	hasil, err := uc.BulkAction(context.Background(), []string{"PB-2026-09"}, domain.AksiSetujui, uid("admin"))
+	require.NoError(t, err)
+	assert.Equal(t, BulkResult{Gagal: 1}, hasil, "memegang brief.susun dan brief.setujui tidak melonggarkan pemisahan tugas")
+	assert.Equal(t, domain.StatusTelaah, repo.rows["PB-2026-09"].Status)
+
+	hasil, err = uc.BulkAction(context.Background(), []string{"PB-2026-09"}, domain.AksiSetujui, uid("penyetuju"))
+	require.NoError(t, err)
+	assert.Equal(t, BulkResult{Berhasil: 1}, hasil)
 }
 
 func TestBulkAction_AksiTidakValid(t *testing.T) {

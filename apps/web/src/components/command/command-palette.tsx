@@ -6,6 +6,7 @@ import {
   MapPin,
   Moon,
   PlusCircle,
+  Radio,
   RefreshCw,
   Siren,
   Sparkles,
@@ -83,6 +84,15 @@ export function CommandPalette() {
 
   const aksi: Aksi[] = (
     [
+      {
+        id: "command-center",
+        label: "Buka Command Center (Pusat Kendali)",
+        icon: Radio,
+        perm: "dashboard.operasional",
+        shortcut: "C",
+        keywords: ["wallboard", "realtime", "kendali", "fullscreen", "live"],
+        run: go("/command-center"),
+      },
       {
         id: "input",
         label: "Input harga baru",

@@ -102,3 +102,50 @@ describe("EwsPage: tautan ?id= menyorot dan membuka alert", () => {
     assert.equal(screen.queryByRole("dialog"), null);
   });
 });
+
+describe("EwsPage: KRITIS aktif", () => {
+  const kritis: EwsAlertResponse = { ...dasar, id: "9", kode: "EWS-0909", severity: "KRITIS", judul: "Lonjakan kritis", skor_dampak: 10, status: "DIAKUI" };
+  const siaga: EwsAlertResponse = { ...dasar, id: "8", kode: "EWS-0908", judul: "Siaga berdampak tinggi", skor_dampak: 99, status: "BARU" };
+  const selesai: EwsAlertResponse = { ...dasar, id: "7", kode: "EWS-0907", severity: "KRITIS", judul: "Kritis selesai", skor_dampak: 50, status: "SELESAI" };
+
+  const judulBaris = () =>
+    screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((r) => [kritis.judul, siaga.judul].find((j) => r.textContent?.includes(j)));
+
+  function pasang() {
+    api = pasangFetchPalsu({
+      "GET /v1/ews": amplop([siaga, kritis, selesai]),
+      "GET /v1/ews/aturan": amplop([]),
+      "GET /v1/ews/notifikasi/preferensi": amplop({ preferensi: [], vapid_public_key: "" }),
+    });
+  }
+
+  it("selalu di urutan teratas walau skor dampaknya terendah, dan tetap di atas setelah urutan diganti", async () => {
+    pasang();
+    const { user } = renderHalaman(<EwsPage />, { url: "/ews" });
+    await screen.findByText(kritis.judul);
+
+    assert.deepEqual(judulBaris(), [kritis.judul, siaga.judul]);
+
+    await user.click(screen.getByRole("button", { name: /Dampak/ }));
+    assert.deepEqual(judulBaris(), [kritis.judul, siaga.judul]);
+    await user.click(screen.getByRole("button", { name: /Dampak/ }));
+    assert.deepEqual(judulBaris(), [kritis.judul, siaga.judul]);
+    assert.equal(screen.queryByText(selesai.judul), null, "KRITIS yang selesai tidak dianggap aktif");
+  });
+
+  it("konfirmasi 'Tandai selesai' menyebut jumlah KRITIS terdampak", async () => {
+    pasang();
+    const { user } = renderHalaman(<EwsPage />, { url: "/ews" });
+    await screen.findByText(kritis.judul);
+
+    await user.click(screen.getByRole("checkbox", { name: /Pilih semua/i }));
+    await user.click(screen.getByRole("button", { name: "Tandai selesai" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    assert.match(dialog.textContent ?? "", /2 alert ditandai selesai/);
+    assert.match(dialog.textContent ?? "", /1 peringatan KRITIS/);
+  });
+});

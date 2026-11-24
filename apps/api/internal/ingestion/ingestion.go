@@ -141,10 +141,11 @@ func PeriksaAlertKegagalan(ctx context.Context, db *gorm.DB, log *logger.Logger,
 	} else if e.Status == domain.StatusSukses {
 		_ = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var ids []int64
+			// KRITIS tidak pernah ditutup otomatis: harus ditindaklanjuti manusia lewat alur resmi.
 			tx.Raw(`
 				UPDATE ews_alert
 				   SET status = 'SELESAI', selesai_pada = now()
-				 WHERE dedup_key = ? AND status <> 'SELESAI'
+				 WHERE dedup_key = ? AND status <> 'SELESAI' AND severity <> 'KRITIS'
 				RETURNING id`, dedup).Scan(&ids)
 			for _, id := range ids {
 				_ = tx.Exec(`

@@ -102,8 +102,12 @@ type Pengirim interface {
 type NotifikasiRepository interface {
 	// Antrekan memasukkan notifikasi alert untuk pengguna aktif dengan salah satu peran
 	// yang memenuhi preferensi (kanal diizinkan aturan alert, tingkat >= minimum, aktif).
+	// Alert KRITIS mengabaikan preferensi (tingkat minimum dan kanal nonaktif), tetapi tetap mengikuti kanal aturannya.
 	// Idempoten per (alert, pengguna, kanal); mengembalikan jumlah baris baru.
 	Antrekan(ctx context.Context, alertID idx.ID, peran []string, now time.Time) (int, error)
+	// AntrekanUlangKritis menjadwalkan ulang notifikasi yang sudah selesai diproses untuk alert yang baru naik ke
+	// KRITIS, supaya penerima pemberitahuan tingkat lebih rendah tetap mengetahui kenaikannya. Mengembalikan jumlah baris.
+	AntrekanUlangKritis(ctx context.Context, alertID idx.ID, now time.Time) (int, error)
 	// Klaim mengambil paling banyak limit notifikasi jatuh tempo dan menunda jadwalnya
 	// sebesar lease agar tidak diambil pekerja lain selagi dikirim.
 	Klaim(ctx context.Context, now time.Time, limit int, lease time.Duration) ([]Pesan, error)
@@ -120,6 +124,7 @@ type NotifikasiRepository interface {
 	HapusLanggananKadaluwarsa(ctx context.Context, endpoint string) error
 
 	// EskalasiOtomatis mengeskalasi alert BARU berseverity >= minimum yang berumur lebih dari
-	// batas dan mengembalikan id-nya (riwayat dicatat oleh sistem).
+	// batas dan mengembalikan id-nya (riwayat dicatat oleh sistem). Alert KRITIS hanya ditandai
+	// (dieskalasi_pada dan riwayat) dan tetap BARU: tindak lanjutnya harus datang dari manusia.
 	EskalasiOtomatis(ctx context.Context, now time.Time, batas time.Duration, minimum string) ([]idx.ID, error)
 }

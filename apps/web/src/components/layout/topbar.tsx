@@ -9,6 +9,7 @@ import {
   Menu,
   MonitorSmartphone,
   Moon,
+  Radio,
   Search,
   ShieldCheck,
   Sun,
@@ -55,9 +56,8 @@ import { ROLES } from "@/lib/rbac/roles";
 import { useEwsStore } from "@/lib/stores/ews-store";
 import { useUi } from "@/lib/stores/ui-store";
 import { cn } from "@/lib/utils";
-import { BrandMark } from "./brand-mark";
 import { RoleSwitcher } from "./role-switcher";
-import { NavList } from "./sidebar";
+import { NavList, WorkspaceSwitcher } from "./sidebar";
 
 interface ItemMenuProfil {
   tab: TabProfil;
@@ -104,14 +104,19 @@ export function Topbar() {
   const impersonasiTersedia = useImpersonasiTersedia();
   const remah = remahRoti(pathname);
   const meta = siklus ? siklusMeta[siklus.siklus] : null;
+  const bolehCommandCenter =
+    can(user, "dashboard.operasional") ||
+    can(user, "dashboard.eksekutif") ||
+    can(user, "ews.lihat");
+  const diCommandCenter = pathname.startsWith("/command-center");
 
   return (
-    <header className="sticky top-[var(--bar-atas,0px)] z-20 border-b border-sidebar-border bg-sidebar tipe-chrome">
-      <div className="flex h-14 items-center gap-3 px-3 sm:px-5">
+    <header className="sticky top-[var(--bar-atas,0px)] z-20 shrink-0 border-b border-sidebar-border bg-sidebar tipe-chrome lg:static">
+      <div className="flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-5">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="grid size-8 place-items-center rounded-md hover:bg-secondary lg:hidden"
+          className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-secondary lg:hidden"
           aria-label="Buka navigasi"
         >
           <Menu className="size-5" strokeWidth={1.75} />
@@ -156,9 +161,9 @@ export function Topbar() {
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          className="hidden h-8 w-64 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-[13px] whitespace-nowrap text-muted-foreground shadow-ambient-xs transition-colors hover:bg-secondary md:flex"
+          className="hidden h-8 w-44 shrink-0 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-[13px] whitespace-nowrap text-muted-foreground shadow-ambient-xs transition-colors hover:bg-secondary md:flex lg:w-48 xl:w-60 2xl:w-64"
         >
-          <Search className="size-4" strokeWidth={1.75} />
+          <Search className="size-4 shrink-0" strokeWidth={1.75} />
           <span className="flex-1 truncate text-left">
             Cari atau jalankan perintah
           </span>
@@ -174,7 +179,7 @@ export function Topbar() {
             }
             title={keteranganSiklus(siklus!) || undefined}
             className={cn(
-              "hidden h-7 items-center gap-2 rounded-md px-2.5 text-xs font-medium sm:inline-flex",
+              "hidden h-7 shrink-0 items-center gap-2 rounded-md px-2.5 text-xs font-medium whitespace-nowrap sm:inline-flex",
               toneClass[meta.tone].soft,
               toneClass[meta.tone].text,
             )}
@@ -189,17 +194,49 @@ export function Topbar() {
         )}
 
         {MODE_MOCK && (
-          <span className="hidden rounded-md border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground 2xl:inline">
+          <span className="hidden shrink-0 rounded-md border border-dashed border-border px-2 py-1 text-[11px] whitespace-nowrap text-muted-foreground 2xl:inline">
             Data demo
           </span>
         )}
+
+        {bolehCommandCenter && (
+          <Link
+            href="/command-center"
+            aria-label="Buka Command Center"
+            aria-current={diCommandCenter ? "page" : undefined}
+            title="Pusat Kendali Real-Time (Fullscreen tersedia)"
+            className={cn(
+              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium whitespace-nowrap shadow-ambient-xs transition-colors",
+              diCommandCenter
+                ? "border-navy-800 bg-navy-800 text-white dark:border-white dark:bg-white dark:text-navy-900"
+                : "border-border bg-card text-foreground hover:bg-secondary",
+            )}
+          >
+            <Radio
+              className={cn(
+                "size-3.5 shrink-0",
+                diCommandCenter ? "text-emerald-300 dark:text-emerald-600" : "text-emerald-600",
+              )}
+              strokeWidth={1.85}
+            />
+            <span className="hidden xl:inline">Command Center</span>
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 rounded-full animate-live",
+                diCommandCenter ? "bg-emerald-300 dark:bg-emerald-600" : "bg-emerald-500",
+              )}
+            />
+          </Link>
+        )}
+
         <RoleSwitcher />
 
         {can(user, "ews.lihat") && (
           <Link
             href="/ews"
             onClick={bacaSemua}
-            className="relative grid size-8 place-items-center rounded-md hover:bg-secondary"
+            className="relative grid size-8 shrink-0 place-items-center rounded-md hover:bg-secondary"
             aria-label={`Peringatan dini, ${unread} belum dibaca`}
           >
             <Bell className="size-[18px]" strokeWidth={1.75} />
@@ -236,7 +273,7 @@ export function Topbar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="grid size-8 place-items-center rounded-full bg-navy-800 text-[11px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-white dark:text-navy-900"
+            className="grid size-8 shrink-0 place-items-center rounded-full bg-navy-800 text-[11px] font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-white dark:text-navy-900"
             aria-label="Menu akun"
           >
             {inisialNama(user.nama)}
@@ -306,9 +343,10 @@ export function Topbar() {
           side="left"
           className="tipe-chrome flex w-[280px] flex-col gap-0 bg-sidebar p-0"
         >
-          <SheetTitle className="tipe-chrome flex h-14 items-center gap-2.5 px-4 text-[13px] font-semibold">
-            <BrandMark /> <span>Garda Inflasi</span>
-          </SheetTitle>
+          <SheetTitle className="sr-only">Navigasi Garda Inflasi</SheetTitle>
+          <div className="border-b border-sidebar-border p-2.5">
+            <WorkspaceSwitcher />
+          </div>
           <NavList
             layoutId="mobile-nav-active"
             onNavigate={() => setMobileOpen(false)}

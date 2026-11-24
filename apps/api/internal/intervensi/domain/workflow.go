@@ -42,6 +42,9 @@ var (
 	ErrPersetujuanNotFound = errors.New("permintaan persetujuan tidak ditemukan")
 	// ErrPemisahanTugas: pemutus tidak boleh sama dengan pengaju, dan satu orang tidak memutus dua langkah.
 	ErrPemisahanTugas = errors.New("pengaju atau pemutus langkah sebelumnya tidak boleh memutus langkah ini")
+	// ErrWajibAlurPersetujuan: administrator sistem memegang semua izin tahap, jadi pemindahan langsung akan melompati
+	// rantai persetujuan; ia harus mengajukan permintaan yang diputuskan orang lain.
+	ErrWajibAlurPersetujuan = errors.New("administrator sistem wajib melewati alur persetujuan untuk tahap ini")
 	// ErrPersetujuanSelesai: permintaan sudah diputuskan, atau langkahnya sudah berpindah.
 	ErrPersetujuanSelesai = errors.New("permintaan persetujuan sudah diputuskan atau langkahnya berubah")
 )

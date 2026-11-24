@@ -4,7 +4,7 @@
  *
  * Asumsi data seed: seeder `spasial.demo` (neraca periode terbaru untuk CBM-KRT dan BRS-MED di
  * 23 kabupaten/kota, poligon wilayah) dan akun demo: manajer.data (spasial.lihat), manajer.program
- * (spasial.lihat + logistik.kelola), superadmin (ADMIN_SISTEM, tanpa spasial.lihat).
+ * (spasial.lihat + logistik.kelola), agregator (OPS_AGREGATOR, tanpa spasial.lihat).
  *
  * Uji simpan optimasi memakai Tomat (TMT) dan menghapus baris yang dibuatnya (optimasi_rute dan
  * rute_distribusi tidak punya endpoint hapus); baris audit OPTIMASI_RUTE bersifat tambah-saja.
@@ -254,8 +254,8 @@ test.describe("API spasial", () => {
     await api.dispose();
   });
 
-  test("superadmin (tanpa spasial.lihat) mendapat 403", async () => {
-    const api = await apiSebagai("superadmin");
+  test("agregator (tanpa spasial.lihat) mendapat 403", async () => {
+    const api = await apiSebagai("agregator");
     for (const path of [
       "spasial/neraca",
       "spasial/lokasi?lat=5.5&lng=95.3",

@@ -256,9 +256,12 @@ describe("Topbar: impersonasi", () => {
       sesiImpersonate("OPS_MAHASISWA", { permissions: ["ews.lihat", "harga.input"] }),
     );
 
+    const topbar = screen.getByRole("banner");
     const lonceng = await screen.findByRole("link", { name: /Peringatan dini/ });
     const chip = screen.getByRole("button", { name: "Kembali ke Administrator Sistem" });
     const avatar = screen.getByRole("button", { name: "Menu akun" });
+    assert.match(topbar.className, /\bshrink-0\b/);
+    assert.match(chip.className, /\bshrink-0\b/);
     const urutan = (a: Node, b: Node) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     assert.ok(urutan(lonceng, chip), "chip sesudah lonceng");

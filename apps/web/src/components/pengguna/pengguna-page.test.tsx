@@ -1105,7 +1105,7 @@ describe("PenggunaPage: matriks akses", () => {
   });
 
   it("penolakan pemegang terakhir mempertahankan draf agar dapat diperbaiki", async () => {
-    fetchPalsu.atur("PUT /api/rbac/roles/ADMIN_SISTEM/permissions", {
+    fetchPalsu.atur("PUT /api/rbac/roles/OPS_MAHASISWA/permissions", {
       __status: 409,
       body: { message: "Perubahan ditolak", kode: "LAST_PERMISSION_HOLDER" },
     });
@@ -1118,24 +1118,48 @@ describe("PenggunaPage: matriks akses", () => {
 
     await user.click(
       within(tabel).getByRole("button", {
-        name: "pengguna.kelola untuk Administrator Sistem",
+        name: "pengguna.kelola untuk Mahasiswa",
       }),
     );
     await user.click(
       within(tabel).getByRole("button", {
-        name: "Simpan matriks Administrator Sistem",
+        name: "Simpan matriks Mahasiswa",
       }),
     );
 
     await waitFor(() =>
       assert.equal(
-        fetchPalsu.ke("PUT", "/api/rbac/roles/ADMIN_SISTEM/permissions").length,
+        fetchPalsu.ke("PUT", "/api/rbac/roles/OPS_MAHASISWA/permissions").length,
         1,
       ),
     );
     await waitFor(() => assert.ok(screen.getByText("1 peran belum disimpan")), {
       timeout: 2000,
     });
+  });
+
+  it("kolom Administrator Sistem terkunci: sel hanya baca, tanpa draf, dengan penjelasan", async () => {
+    const { user } = renderHalaman(<PenggunaPage />);
+    await tungguBaris();
+    await user.click(screen.getByText("Matriks akses"));
+    const tabel = await screen.findByRole("table", {
+      name: "Matriks akses peran dan izin",
+    });
+
+    const sel = within(tabel).getByRole("button", {
+      name: "pengguna.kelola untuk Administrator Sistem",
+    }) as HTMLButtonElement;
+    assert.equal(sel.disabled, true);
+    assert.match(sel.title, /selalu memegang seluruh izin/);
+    assert.ok(within(tabel).getByText("Seluruh izin"));
+    assert.ok(screen.getByText(/Kolom\s+Administrator Sistem terkunci/));
+
+    await user.click(sel);
+    assert.equal(screen.queryByText(/peran belum disimpan/), null);
+    assert.equal(
+      within(tabel).queryByRole("button", { name: "Pulihkan bawaan Administrator Sistem" }),
+      null,
+    );
   });
 
   it("tanpa pengguna.kelola hanya tampilan baca-saja (tidak ada tombol sel)", async () => {

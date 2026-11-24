@@ -5,16 +5,19 @@
 #  from the Mac to the Ubuntu VM over SSH.
 #
 #  Zero-Git & Clean Server:
-#    * Excludes node_modules, .next, .git, local .env files, tests/reports.
+#    * Excludes node_modules, .next, .venv/venv, .git, local .env files, tests/reports.
+#    * Python dependencies for crawler & ml-worker are installed inside their
+#      containers on the server during build from pyproject.toml + uv.lock.
 #    * `.build-src/` is deleted immediately after `remote-deploy.sh` builds.
 #
 #  Usage:
 #      bash scripts/deploy/sync-source.sh [options]
 #
 #  Options:
-#      --only=api,web,ml,worker   Sync only source needed for those services
-#      --dry-run                  Print commands without touching the VM
-#      -h, --help                 Show this help
+#      --only=api,web,ml,ml-worker,crawler,worker   Sync only source needed for those services
+#      --with-pipeline                              Include crawler & ml-worker in default full sync
+#      --dry-run                                    Print commands without touching the VM
+#      -h, --help                                   Show this help
 # ==============================================================================
 
 set -euo pipefail
@@ -28,18 +31,20 @@ source "${SCRIPT_DIR}/../lib/ssh-wrapper.sh"
 install_traps
 
 ONLY_RAW=""
+WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 
 usage() {
-  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --only=*)  ONLY_RAW="${1#*=}" ;;
-    --only)    shift; ONLY_RAW="${1:-}" ;;
-    --dry-run) DRY_RUN=1 ;;
-    -h|--help) usage; exit 0 ;;
+    --only=*)        ONLY_RAW="${1#*=}" ;;
+    --only)          shift; ONLY_RAW="${1:-}" ;;
+    --with-pipeline) WITH_PIPELINE=1 ;;
+    --dry-run)       DRY_RUN=1 ;;
+    -h|--help)       usage; exit 0 ;;
     *) die "Opsi tidak dikenal: $1" "Jalankan 'bash scripts/deploy/sync-source.sh --help'." ;;
   esac
   shift
@@ -65,19 +70,26 @@ else
   else
     TARGET_SERVICES=(api worker ml web)
   fi
+  if [[ "$WITH_PIPELINE" -eq 1 ]]; then
+    TARGET_SERVICES+=(crawler ml-worker)
+  fi
 fi
 
 NEED_API=0
 NEED_WEB=0
 NEED_ML=0
+NEED_ML_WORKER=0
+NEED_CRAWLER=0
 NEED_CADDY=0
 for svc in "${TARGET_SERVICES[@]}"; do
   case "$svc" in
     api|worker) NEED_API=1 ;;
     web)        NEED_WEB=1 ;;
     ml)         NEED_ML=1 ;;
+    ml-worker)  NEED_ML_WORKER=1 ;;
+    crawler)    NEED_CRAWLER=1 ;;
     caddy)      NEED_CADDY=1 ;;
-    *) die "Service tidak dikenal: '$svc'" "Pilih dari: api, worker, web, ml, caddy." ;;
+    *) die "Service tidak dikenal: '$svc'" "Pilih dari: api, worker, web, ml, ml-worker, crawler, caddy." ;;
   esac
 done
 
@@ -154,8 +166,17 @@ RSYNC_BUILD_ARGS=(
   --exclude=playwright-report/
   --exclude=/bin/
   --exclude=/tmp/
+  --exclude=.venv/
+  --exclude=venv/
+  --exclude=.venv*/
   --exclude=__pycache__/
   --exclude=*.pyc
+  --exclude=.pytest_cache/
+  --exclude=.mypy_cache/
+  --exclude=.ruff_cache/
+  --exclude=*.egg-info/
+  --exclude=/tests/
+  --exclude=/tests_pipeline/
   --exclude=.env
   --exclude=.env.*
   --exclude=.DS_Store
@@ -192,11 +213,18 @@ if [[ "$NEED_WEB" -eq 1 ]]; then
   vm_rsync "${GARDA_ROOT}/apps/web/" "${BUILD_SRC_REMOTE}/apps/web/" "${RSYNC_BUILD_ARGS[@]}"
 fi
 
-if [[ "$NEED_ML" -eq 1 ]]; then
-  log_info "Sync context: ml (Python) ..."
+if [[ "$NEED_ML" -eq 1 || "$NEED_ML_WORKER" -eq 1 ]]; then
+  log_info "Sync context: ml (Python — pyproject.toml + uv.lock + source, tanpa .venv) ..."
   vm_rsync "${GARDA_ROOT}/docker/ml.Dockerfile" "${BUILD_SRC_REMOTE}/docker/"
   vm_ssh "mkdir -p '${BUILD_SRC_REMOTE}/apps/ml'"
   vm_rsync "${GARDA_ROOT}/apps/ml/" "${BUILD_SRC_REMOTE}/apps/ml/" "${RSYNC_BUILD_ARGS[@]}"
+fi
+
+if [[ "$NEED_CRAWLER" -eq 1 ]]; then
+  log_info "Sync context: crawler (Python — pyproject.toml + uv.lock + source, tanpa .venv) ..."
+  vm_rsync "${GARDA_ROOT}/docker/crawler.Dockerfile" "${BUILD_SRC_REMOTE}/docker/"
+  vm_ssh "mkdir -p '${BUILD_SRC_REMOTE}/apps/crawler'"
+  vm_rsync "${GARDA_ROOT}/apps/crawler/" "${BUILD_SRC_REMOTE}/apps/crawler/" "${RSYNC_BUILD_ARGS[@]}"
 fi
 
 if [[ "$NEED_CADDY" -eq 1 ]]; then

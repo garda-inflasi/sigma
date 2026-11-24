@@ -15,8 +15,8 @@ import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta, toneClass } from "@/lib/design/tokens";
 import { formatRelatif } from "@/lib/format";
 import { feedItem } from "@/lib/motion/presets";
-import { useBulkAction, useEwsList } from "@/lib/query/hooks";
-import { qk } from "@/lib/query/keys";
+import { isiFeed } from "@/lib/ews/kritis";
+import { useAksiEws, useEwsList } from "@/lib/query/hooks";
 import { useEwsStore } from "@/lib/stores/ews-store";
 import { cn } from "@/lib/utils";
 import { JenisIcon, formatNilaiEws } from "./ews-meta";
@@ -36,10 +36,10 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
   const baru = useEwsStore((s) => s.baru);
   const status = useEwsStore((s) => s.status);
   const [sel, setSel] = useState<string[]>([]);
-  const patch = (aksi: string) => (r: EwsAlert): EwsAlert => ({ ...r, status: aksi === "akui" ? "DIAKUI" : "DIESKALASI" });
-  const mutate = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), invalidate: qk.ews.all(), patch: (r, a) => patch(a)(r) });
+  const mutate = useAksiEws((r, aksi) => ({ ...r, status: aksi === "akui" ? "DIAKUI" : "DIESKALASI" }));
 
-  const items = (data ?? []).filter((a) => a.status === "BARU" || a.status === "DIESKALASI" || baru.includes(a.id)).slice(0, limit);
+  // KRITIS aktif selalu di depan dan tidak terpotong `limit`.
+  const items = isiFeed(data ?? [], baru, limit);
   const selectedRows = items.filter((i) => sel.includes(i.id));
   const actions: BulkAction<EwsAlert>[] = [
     { id: "akui", label: "Akui", icon: Check, perm: "ews.akui", tone: "data", run: (rows) => mutate.mutateAsync({ aksi: "akui", ids: rows.map((r) => r.id), label: "Alert diakui" }) },
@@ -147,6 +147,11 @@ export function EwsLiveFeed({ limit = 35, className }: { limit?: number; classNa
                               {a.status === "DIESKALASI" && (
                                 <StatusBadge tone="waspada" dot={false}>
                                   Dieskalasi
+                                </StatusBadge>
+                              )}
+                              {a.status === "DIAKUI" && (
+                                <StatusBadge tone="data" dot={false}>
+                                  Diakui
                                 </StatusBadge>
                               )}
                             </div>

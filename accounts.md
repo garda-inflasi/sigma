@@ -27,3 +27,4 @@ Lapis: KOORDINATOR (Dewan Pengarah)
 Lembaga: FMIPA USK
 Beranda / Halaman Awal: /eksekutif
 Hak Akses Utama: Pemegang mandat satu komando — persetujuan intervensi pasar, persetujuan policy brief, persetujuan perubahan master data, serta pemantauan dashboard eksekutif/operasional, EWS, dan prediksi.
+

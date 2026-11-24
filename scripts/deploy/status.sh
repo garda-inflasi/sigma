@@ -80,14 +80,14 @@ if [[ "${GATEWAY_MODE:-external}" == "external" ]]; then
   compose_app_files+=" -f compose/compose.gateway.yaml"
 fi
 
-vm_env_prefix="cd '${REMOTE_DIR}' && set -a && . ./.env 2>/dev/null || true && . ./.env.tags 2>/dev/null || true && set +a && export POSTGRES_DB=\${POSTGRES_DB:-garda_inflasi} POSTGRES_USER=\${POSTGRES_USER:-garda} && export DB_USER=\${DB_USER:-\$POSTGRES_USER} DB_PASSWORD=\${DB_PASSWORD:-\$POSTGRES_PASSWORD} DB_NAME=\${DB_NAME:-\$POSTGRES_DB}"
+vm_env_prefix="cd '${REMOTE_DIR}' && set -a && . ./.env 2>/dev/null || true && . ./.env.tags 2>/dev/null || true && set +a && export POSTGRES_DB=\${POSTGRES_DB:-garda_inflasi} POSTGRES_USER=\${POSTGRES_USER:-garda} MONGO_VOLUME=\${MONGO_VOLUME:-garda_pipeline_mongo_data} && export DB_USER=\${DB_USER:-\$POSTGRES_USER} DB_PASSWORD=\${DB_PASSWORD:-\$POSTGRES_PASSWORD} DB_NAME=\${DB_NAME:-\$POSTGRES_DB}"
 
 log_section "Container — infra"
 vm_ssh "${vm_env_prefix} && docker compose --project-directory '${REMOTE_DIR}' -f compose/compose.infra.yaml -f compose/compose.prod.yaml ps" || \
   log_warn "Tidak bisa membaca status infra."
 
 log_section "Container — aplikasi"
-vm_ssh "${vm_env_prefix} && docker compose --project-directory '${REMOTE_DIR}' ${compose_app_files} ps" || \
+vm_ssh "${vm_env_prefix} && docker compose --project-directory '${REMOTE_DIR}' ${compose_app_files} --profile pipeline ps" || \
   log_warn "Tidak bisa membaca status aplikasi."
 
 # ------------------------------------------------------------------------------

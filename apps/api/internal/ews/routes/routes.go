@@ -22,7 +22,7 @@ type Dependencies struct {
 func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	repo := postgres.New(deps.DB)
 	shared := jobs.Shared(deps.DB, deps.Logger)
-	uc := usecase.New(repo, shared.Engine, audit.NewWriter(deps.DB), deps.Logger)
+	uc := usecase.New(repo, shared.Engine, audit.NewWriter(deps.DB), deps.Logger).DenganSinyal(shared.BeriSinyal)
 	handler := http.New(uc, shared.Streamer, shared.Notifikasi)
 
 	group := engine.Group("/ews")

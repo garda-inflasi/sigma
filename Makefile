@@ -60,7 +60,7 @@ test/api/short: ## Run short Go tests (no integration)
 	cd apps/api && go test ./... -v -count=1 -short
 
 # Paket integrasi: tiap yang memakai Docker (dockertest). Tambahkan paket baru di sini.
-INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/lapangan/integration/... ./internal/dashboard/integration/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./pkg/gardactl/... ./pkg/seed/integration/... ./internal/master/integration/... ./internal/audit/integration/...
+INTEGRATION_PACKAGES = ./internal/auth/integration/... ./internal/cold-storage/integration/... ./internal/policy-brief/integration/... ./internal/prediksi/integration/... ./internal/ews/integration/... ./internal/intervensi/integration/... ./internal/spasial/integration/... ./internal/platform/... ./cmd/migrate/... ./internal/harga/integration/... ./internal/lapangan/integration/... ./internal/dashboard/integration/... ./internal/sumber-data/integration/... ./internal/ingestion/integration/... ./pkg/gardactl/... ./pkg/seed/integration/... ./internal/master/integration/... ./internal/audit/integration/... ./internal/ml/integration/...
 
 test/api/integration: ## Run Go integration tests (requires Docker)
 	cd apps/api && go test $(INTEGRATION_PACKAGES) -v -count=1
@@ -70,6 +70,38 @@ test/ml: ## Jalankan tes unit layanan ML (Python, tanpa dependensi)
 
 test/web: ## Run web unit tests (node:test + tsx)
 	cd apps/web && pnpm test
+
+.PHONY: test/crawler test/ml/pipeline pipeline/up pipeline/down pipeline/logs crawler/run crawler/backfill-pihps ml/siklus
+
+# Volume lama garda_mongo_data ditulis MongoDB 8.2 dan tidak bisa dibuka mongo:7, jadi pipeline memakai volume sendiri.
+MONGO_VOLUME ?= garda_pipeline_mongo_data
+export MONGO_VOLUME
+
+test/crawler: ## Jalankan tes crawler (Python)
+	cd apps/crawler && uv run pytest -q
+
+test/ml/pipeline: ## Tes pipeline ML (GARDA_UJI_MONGO_URI mengaktifkan tes integrasi)
+	cd apps/ml && uv sync --extra pipeline --extra dev && .venv/bin/python -m pytest
+
+pipeline/up: ## Nyalakan MongoDB, crawler harian, dan worker training per jam
+	docker compose -f compose.infra.yaml up -d --wait mongodb
+	docker compose --profile pipeline up -d --build crawler ml-worker
+
+pipeline/down: ## Hentikan crawler dan worker training (data MongoDB tetap ada)
+	docker compose --profile pipeline stop crawler ml-worker
+
+pipeline/logs: ## Lihat log crawler dan worker training
+	docker compose --profile pipeline logs -f crawler ml-worker
+
+crawler/run: ## Jalankan crawl manual sekarang
+	docker compose --profile pipeline run --rm crawler python -m garda_crawler run --pemicu MANUAL
+
+PIHPS_DARI ?= 2017-04-01
+crawler/backfill-pihps: ## Backfill harga PIHPS (PIHPS_DARI=YYYY-MM-DD, bawaan April 2017)
+	docker compose --profile pipeline run --rm crawler python -m garda_crawler backfill --sumber PIHPS --dari $(PIHPS_DARI) --sampai $$(date +%F)
+
+ml/siklus: ## Jalankan satu siklus training sekarang
+	docker compose --profile pipeline run --rm ml-worker python -m garda_ml.pipeline run
 
 # Stack harus dinyalakan lewat `make docker/demo/up`: e2e login ke API Go langsung (/api/v1/auth/login) ratusan kali
 # per putaran, sedangkan bawaan API membatasi 10 percobaan auth per menit per IP (AUTH_RATE_LIMIT_PER_MENIT).
@@ -247,7 +279,7 @@ clean: ## Clean build artifacts
 # ── Deploy targets (build di Mac → transfer → jalankan di VM) ───────────
 # Semua target memakai scripts/deploy/*.sh. Lihat docs/DEPLOYMENT.md.
 
-deploy: ## Full/selective deploy: sync → build di VM → hapus source → up (ARGS=--only=web dsb)
+deploy: ## Full/selective deploy: sync → build di VM → hapus source → up (ARGS=--only=web,crawler,ml-worker dsb)
 	@env -u NEXT_PUBLIC_API_BASE_URL -u NEXT_PUBLIC_APP_URL bash scripts/deploy/deploy.sh $(ARGS)
 
 deploy/sync: ## Sync source & compose sementara ke VM (.build-src)

@@ -23,6 +23,7 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 	uc := usecase.New(repo, deps.Logger)
 	opt := usecase.NewOptimasi(repo, deps.Logger, audit.NewWriter(deps.DB))
 	handler := http.New(uc, opt)
+	titik := http.NewTitik(deps.DB)
 
 	spasial := engine.Group("/spasial")
 	spasial.Use(middleware.JWTAuth(deps.Token), middleware.RequirePermission("spasial.lihat"))
@@ -33,6 +34,8 @@ func Register(engine *gin.RouterGroup, deps *Dependencies) {
 		spasial.GET("/kandidat-cold-storage", handler.ListKandidat)
 		spasial.GET("/geometri", handler.ListGeometri)
 		spasial.GET("/lokasi", handler.Lokasi)
+		spasial.GET("/titik-desa", titik.ListTitikDesa)
+		spasial.GET("/jarak", titik.HitungJarak)
 		spasial.POST("/optimasi-rute", handler.Optimasi)
 		spasial.GET("/optimasi-rute", handler.RiwayatOptimasi)
 	}

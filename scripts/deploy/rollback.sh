@@ -91,18 +91,28 @@ export DB_USER="\${DB_USER:-\$POSTGRES_USER}"
 export DB_PASSWORD="\${DB_PASSWORD:-\$POSTGRES_PASSWORD}"
 export DB_NAME="\${DB_NAME:-\$POSTGRES_DB}"
 export APP_ENV=production
+export MONGO_USER="\${MONGO_USER:-garda}"
+export MONGO_PASSWORD="\${MONGO_PASSWORD:-}"
+export MONGO_DB="\${MONGO_DB:-garda_inflasi}"
+export MONGO_VOLUME="\${MONGO_VOLUME:-garda_pipeline_mongo_data}"
+export MONGO_DB_UNSEEN="\${MONGO_DB_UNSEEN:-dataunseen}"
+export MONGO_DB_SAFE="\${MONGO_DB_SAFE:-datasafe}"
 
 if [ -n "${TARGET_TAG}" ]; then
   export IMAGE_TAG="${TARGET_TAG}"
   export API_IMAGE_TAG="${TARGET_TAG}"
   export WEB_IMAGE_TAG="${TARGET_TAG}"
   export ML_IMAGE_TAG="${TARGET_TAG}"
+  export ML_PIPELINE_IMAGE_TAG="${TARGET_TAG}"
+  export CRAWLER_IMAGE_TAG="${TARGET_TAG}"
   export CADDY_IMAGE_TAG="${TARGET_TAG}"
   cat > ./.env.tags <<EOT
 IMAGE_TAG=${TARGET_TAG}
 API_IMAGE_TAG=${TARGET_TAG}
 WEB_IMAGE_TAG=${TARGET_TAG}
 ML_IMAGE_TAG=${TARGET_TAG}
+ML_PIPELINE_IMAGE_TAG=${TARGET_TAG}
+CRAWLER_IMAGE_TAG=${TARGET_TAG}
 CADDY_IMAGE_TAG=${TARGET_TAG}
 EOT
 elif [ -f ./.env.tags.prev ]; then
@@ -118,10 +128,21 @@ elif [ -f ./.previous-deploy ]; then
   export API_IMAGE_TAG="\$prev"
   export WEB_IMAGE_TAG="\$prev"
   export ML_IMAGE_TAG="\$prev"
+  export ML_PIPELINE_IMAGE_TAG="\$prev"
+  export CRAWLER_IMAGE_TAG="\$prev"
   export CADDY_IMAGE_TAG="\$prev"
 else
   echo "Tidak ditemukan .env.tags.prev maupun .previous-deploy di VM." >&2
   exit 1
+fi
+
+pipeline_args=""
+pipeline_services=""
+if docker ps -a --format '{{.Names}}' | grep -Eq '^(garda-crawler|garda-ml-worker)\$'; then
+  pipeline_args="--profile pipeline"
+  pipeline_services="crawler ml-worker"
+  export CRAWLER_IMAGE_TAG="\${CRAWLER_IMAGE_TAG:-latest}"
+  export ML_PIPELINE_IMAGE_TAG="\${ML_PIPELINE_IMAGE_TAG:-\${ML_IMAGE_TAG:-latest}}"
 fi
 
 for pair in "api:\${API_IMAGE_TAG}" "web:\${WEB_IMAGE_TAG}" "ml:\${ML_IMAGE_TAG}"; do
@@ -133,7 +154,7 @@ for pair in "api:\${API_IMAGE_TAG}" "web:\${WEB_IMAGE_TAG}" "ml:\${ML_IMAGE_TAG}
   }
 done
 
-docker compose --project-directory '${REMOTE_DIR}' ${compose_app_files} up -d --no-build --no-deps ${app_services}
+docker compose --project-directory '${REMOTE_DIR}' ${compose_app_files} \$pipeline_args up -d --no-build --no-deps ${app_services} \$pipeline_services
 
 for i in \$(seq 1 10); do
   if docker exec garda-api wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 \

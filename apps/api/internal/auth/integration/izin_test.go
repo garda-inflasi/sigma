@@ -569,9 +569,10 @@ func TestIzin_PemegangTerakhirTidakBisaDihilangkanLewatMatriksMaupunPerubahanAku
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	tanpaKelola := slices.DeleteFunc(usecase.IzinBawaan("ADMIN_SISTEM"), func(p string) bool { return p == "pengguna.kelola" })
 
+	// Kolom ADMIN_SISTEM terkunci: pengurangan apa pun ditolak sebelum penjaga pemegang terakhir.
 	w := s.ubahMatriks(t, admin.access, "ADMIN_SISTEM", 1, tanpaKelola)
 	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
-	assert.Equal(t, "LAST_PERMISSION_HOLDER", s.kodeDari(t, w))
+	assert.Equal(t, "ADMIN_PERMISSIONS_LOCKED", s.kodeDari(t, w))
 
 	w = s.panggil(t, http.MethodPut, "/v1/users/"+userAdminID+"/roles", map[string]any{"peran": "OPS_MAHASISWA"}, admin.access)
 	assert.Equal(t, http.StatusConflict, w.Code, w.Body.String())
@@ -618,19 +619,35 @@ func TestIzin_MatriksBolehMencabutKelolaDariPeranBilaPeranLainMemegangnya(t *tes
 	s := setupSuite(t)
 	admin := s.mulaiSesi(t, emailAdmin, uaMac)
 	repo := postgres.New(s.db)
+	beriKelola := func() {
+		require.NoError(t, s.db.Exec("INSERT INTO role_permissions (role_kunci, permission_nama) VALUES ('OPS_KOORDINATOR', 'pengguna.kelola')").Error)
+	}
 	// test-user-mfa (OPS_KOORDINATOR, aktif) menjadi pemegang lewat peran lain.
-	require.NoError(t, s.db.Exec("INSERT INTO role_permissions (role_kunci, permission_nama) VALUES ('OPS_KOORDINATOR', 'pengguna.kelola')").Error)
-	tanpaKelola := slices.DeleteFunc(usecase.IzinBawaan("ADMIN_SISTEM"), func(p string) bool { return p == "pengguna.kelola" })
+	beriKelola()
+	tanpaKelola := usecase.IzinBawaan("OPS_KOORDINATOR")
 
-	w := s.ubahMatriks(t, admin.access, "ADMIN_SISTEM", 1, tanpaKelola)
+	// ADMIN_SISTEM masih memegang: peran lain boleh kehilangan pengguna.kelola.
+	w := s.ubahMatriks(t, admin.access, "OPS_KOORDINATOR", 1, tanpaKelola)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 
-	// Kini hanya OPS_KOORDINATOR yang memegang: mencabutnya dari peran itu ditolak.
-	_, err := repo.SetIzinPeran(context.Background(), domain.SetIzinPeran{
-		Peran: "OPS_KOORDINATOR", Versi: 1, Izin: slices.DeleteFunc(append(usecase.IzinBawaan("OPS_KOORDINATOR"), "pengguna.kelola"), func(p string) bool { return p == "pengguna.kelola" }),
-	})
+	// Tanpa admin aktif, OPS_KOORDINATOR menjadi pemegang terakhir: mencabutnya ditolak.
+	beriKelola()
+	require.NoError(t, s.db.Exec("UPDATE pengguna SET status = 'NONAKTIF' WHERE peran = 'ADMIN_SISTEM'").Error)
+	_, err := repo.SetIzinPeran(context.Background(), domain.SetIzinPeran{Peran: "OPS_KOORDINATOR", Versi: 2, Izin: tanpaKelola})
 	assert.ErrorIs(t, err, domain.ErrPemegangTerakhir)
 	assert.EqualValues(t, 1, s.pemegangKelola(t))
+}
+
+func TestIzin_AdminSistemSeluruhKatalogWalauTabelTertinggal(t *testing.T) {
+	s := setupSuite(t)
+	// Baris yang hilang (mis. izin baru sebelum migrasi jalan) tidak mengurangi izin efektif admin.
+	require.NoError(t, s.db.Exec("DELETE FROM role_permissions WHERE role_kunci = 'ADMIN_SISTEM' AND permission_nama IN ('kpi.lihat', 'harga.validasi')").Error)
+	admin := s.mulaiSesi(t, emailAdmin, uaMac)
+
+	assert.ElementsMatch(t, usecase.IzinBawaan("ADMIN_SISTEM"), mustClaims(t, s.tokenMgr, admin.access).Permissions, "klaim token")
+	assert.Equal(t, http.StatusOK, s.panggil(t, http.MethodGet, "/v1/users/"+userAdminID+"/permissions", nil, admin.access).Code)
+	w := s.panggil(t, http.MethodGet, "/v1/users/"+userAdminID+"/permissions", nil, admin.access)
+	assert.ElementsMatch(t, usecase.IzinBawaan("ADMIN_SISTEM"), daftarString(t, s.dataObj(t, w)["efektif"]))
 }
 
 func TestIzin_PemegangTerakhirKebalBalapan(t *testing.T) {

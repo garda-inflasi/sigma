@@ -310,8 +310,7 @@ func TestStok_Otorisasi(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodGet, jalur, "", nil).Code)
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, jalur, emailTakBerhak, nil).Code)
-	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, jalur, "superadmin@gardainflasi.id", nil).Code)
-	for _, email := range []string{emailBerhak, emailKoordinator, emailAgregator, emailManajerData} {
+	for _, email := range []string{emailBerhak, emailKoordinator, emailAgregator, emailManajerData, "superadmin@gardainflasi.id"} {
 		assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, jalur, email, nil).Code, email)
 	}
 }

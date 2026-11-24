@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	ewsdomain "github.com/garda-inflasi/api/internal/ews/domain"
 	"github.com/garda-inflasi/api/internal/siklus/domain"
 	"github.com/garda-inflasi/api/pkg/idx"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -159,6 +160,9 @@ func (s *sesi) Ukur(ctx context.Context, aturan domain.AturanSiklus, sekarang ti
 // alertSQL menghitung alert yang belum SELESAI (BARU, DIAKUI, DIESKALASI: kondisinya masih dianggap berlangsung)
 // di kabupaten milik provinsi, menurut jenis dan tingkat minimum (enum severity berurut INFO < WASPADA < SIAGA <
 // KRITIS). Jumlah total ikut di tiap baris (jendela, dihitung sebelum LIMIT); tanpa baris berarti nol.
+// Alert jembatan pipeline ML (sumber @sumber_ml) tidak dihitung: penentuan siklus 08-B tetap memakai alert rule
+// engine dan input operasional, sampai keputusan memasukkan sinyal ML (yang bisa berbasis indeks pangan, bukan
+// inflasi resmi) diambil secara eksplisit.
 const alertSQL = `
 SELECT count(*) OVER () AS jumlah, COALESCE(a.kode, a.id::text) AS rujukan
   FROM ews_alert a
@@ -167,6 +171,7 @@ SELECT count(*) OVER () AS jumlah, COALESCE(a.kode, a.id::text) AS rujukan
    AND a.jenis = CAST(@jenis AS jenis_ews)
    AND a.status <> 'SELESAI'
    AND a.severity >= CAST(@minimal AS severity)
+   AND a.sumber <> @sumber_ml
  ORDER BY a.severity DESC, a.dibuat_pada DESC, a.id DESC
  LIMIT 5`
 
@@ -178,7 +183,7 @@ func (s *sesi) ukurAlert(ctx context.Context, a domain.AturanSiklus) (domain.Pen
 		Jumlah  int
 		Rujukan string
 	}
-	err := s.db(ctx).Raw(alertSQL, map[string]any{"wilayah": s.wilayah, "jenis": *a.JenisEws, "minimal": *a.SeverityMin}).Scan(&rows).Error
+	err := s.db(ctx).Raw(alertSQL, map[string]any{"wilayah": s.wilayah, "jenis": *a.JenisEws, "minimal": *a.SeverityMin, "sumber_ml": ewsdomain.SumberPipelineML}).Scan(&rows).Error
 	if err != nil {
 		return domain.Pengukuran{}, err
 	}

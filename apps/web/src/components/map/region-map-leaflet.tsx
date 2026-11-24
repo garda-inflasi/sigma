@@ -24,14 +24,22 @@ type KoleksiFitur = GeoJSON.FeatureCollection<
   GeoJSON.Polygon | GeoJSON.MultiPolygon
 >;
 
+export interface GarisUkurPeta {
+  asal: [number, number];
+  tujuan: [number, number];
+  label?: string;
+}
+
 export interface PropsPetaLeaflet {
   markers: MarkerWilayah[];
   geometri?: GeometriWilayah[];
   titikLain?: TitikPeta[];
   titikCari?: { lat: number; lng: number };
+  garisUkur?: GarisUkurPeta | null;
   selected?: string;
   onSelect?: (kode: string) => void;
   onKlikPeta?: (lat: number, lng: number) => void;
+  onKlikTitik?: (titik: TitikPeta) => void;
   /** Tombol tambahan di kartu wilayah, mis. "Buka peta lengkap". */
   aksiPopup?: { label: string; onClick: (kode: string) => void };
   /** Geser peta ke wilayah saat `selected` berubah dari luar. Matikan untuk pilihan hasil klik peta. */
@@ -114,10 +122,17 @@ const ikonWilayah = (
     iconAnchor: [9, 9],
   });
 
+const KELAS_PIN_TITIK: Record<TitikPeta["jenis"], string> = {
+  pasar: "garda-pin-pasar",
+  "cold-storage": "garda-pin-cold",
+  pertanian: "garda-pin-pertanian",
+  perkampungan: "garda-pin-perkampungan",
+};
+
 const ikonTitik = (jenis: TitikPeta["jenis"]) =>
   L.divIcon({
     className: "garda-pin-wadah",
-    html: `<span class="${jenis === "pasar" ? "garda-pin-pasar" : "garda-pin-cold"}"></span>`,
+    html: `<span class="${KELAS_PIN_TITIK[jenis] ?? "garda-pin-pasar"}"></span>`,
     iconSize: [12, 12],
     iconAnchor: [6, 6],
   });
@@ -139,9 +154,11 @@ export default function PetaLeaflet({
   geometri,
   titikLain,
   titikCari,
+  garisUkur,
   selected,
   onSelect,
   onKlikPeta,
+  onKlikTitik,
   aksiPopup,
   fokusPilihan = true,
 }: PropsPetaLeaflet) {
@@ -156,6 +173,7 @@ export default function PetaLeaflet({
   const terbaru = useRef({
     onSelect,
     onKlikPeta,
+    onKlikTitik,
     aksiPopup,
     selected,
     fokusPilihan,
@@ -164,6 +182,7 @@ export default function PetaLeaflet({
     terbaru.current = {
       onSelect,
       onKlikPeta,
+      onKlikTitik,
       aksiPopup,
       selected,
       fokusPilihan,
@@ -499,6 +518,7 @@ export default function PetaLeaflet({
       pin.on("click", (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e);
         pin.closeTooltip();
+        terbaru.current.onKlikTitik?.(t);
         L.popup({
           className: "garda-peta-popup",
           offset: [0, -4],
@@ -513,6 +533,30 @@ export default function PetaLeaflet({
       grup.remove();
     };
   }, [peta, titikLain]);
+
+  // Garis pengukur jarak antara dua titik (mis. sentra pertanian/perkampungan <-> pasar/cold storage).
+  useEffect(() => {
+    if (!peta || !garisUkur) return;
+    const line = L.polyline([garisUkur.asal, garisUkur.tujuan], {
+      color: "#0284c7",
+      weight: 3,
+      dashArray: "6 6",
+      opacity: 0.9,
+    }).addTo(peta);
+    if (garisUkur.label) {
+      line
+        .bindTooltip(garisUkur.label, {
+          permanent: true,
+          direction: "center",
+          className: "garda-peta-tooltip",
+        })
+        .openTooltip();
+    }
+    peta.fitBounds(line.getBounds(), { padding: [48, 48], maxZoom: 11, animate: geserHalus() });
+    return () => {
+      line.remove();
+    };
+  }, [peta, garisUkur]);
 
   // Pin titik yang sedang dicari (geolokasi atau klik peta).
   useEffect(() => {

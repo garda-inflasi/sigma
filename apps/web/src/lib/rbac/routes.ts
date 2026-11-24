@@ -32,6 +32,13 @@ export function requiredPermission(pathname: string): Permission | null {
 }
 
 export function canAccessRoute(subject: Role | PemegangIzin | undefined, pathname: string) {
+  if (pathname === "/command-center" || pathname.startsWith("/command-center/")) {
+    return (
+      can(subject, "dashboard.operasional") ||
+      can(subject, "dashboard.eksekutif") ||
+      can(subject, "ews.lihat")
+    );
+  }
   const perm = requiredPermission(pathname);
   return perm ? can(subject, perm) : true;
 }

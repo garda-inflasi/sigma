@@ -53,6 +53,11 @@ services:
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET wajib diisi}"
       AES_KEY: "${AES_KEY:?AES_KEY wajib diisi}"
       APP_ALLOWED_ORIGINS: "${APP_ALLOWED_ORIGINS:?APP_ALLOWED_ORIGINS wajib diisi (origin publik)}"
+      MONGO_URI: "${MONGO_URI:-}"
+      MONGO_DB_UNSEEN: "${MONGO_DB_UNSEEN:-dataunseen}"
+      MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
+      CRAWLER_SERVICE_URL: "${CRAWLER_SERVICE_URL:-http://crawler:8091}"
+      ML_PIPELINE_SERVICE_URL: "${ML_PIPELINE_SERVICE_URL:-http://ml-worker:8092}"
     volumes:
       - lapangan_uploads:/app/uploads
     restart: unless-stopped
@@ -65,6 +70,11 @@ services:
       APP_ENV: production
       GIN_MODE: release
       DB_PASSWORD: "${DB_APP_PASSWORD:-${DB_PASSWORD:?DB_PASSWORD wajib diisi}}"
+      MONGO_URI: "${MONGO_URI:-}"
+      MONGO_DB_UNSEEN: "${MONGO_DB_UNSEEN:-dataunseen}"
+      MONGO_DB_SAFE: "${MONGO_DB_SAFE:-datasafe}"
+      CRAWLER_SERVICE_URL: "${CRAWLER_SERVICE_URL:-http://crawler:8091}"
+      ML_PIPELINE_SERVICE_URL: "${ML_PIPELINE_SERVICE_URL:-http://ml-worker:8092}"
     restart: unless-stopped
 
   # Migrasi dijalankan remote-deploy.sh sebelum aplikasi naik; kegagalannya
@@ -91,6 +101,16 @@ services:
 
   ml:
     image: garda-ml:${ML_IMAGE_TAG:-${IMAGE_TAG:-latest}}
+    build: !reset null
+    restart: unless-stopped
+
+  crawler:
+    image: garda-crawler:${CRAWLER_IMAGE_TAG:-${IMAGE_TAG:-latest}}
+    build: !reset null
+    restart: unless-stopped
+
+  ml-worker:
+    image: garda-ml-pipeline:${ML_PIPELINE_IMAGE_TAG:-${ML_IMAGE_TAG:-${IMAGE_TAG:-latest}}}
     build: !reset null
     restart: unless-stopped
 
@@ -129,6 +149,17 @@ services:
     restart: unless-stopped
     ports: !override
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+
+  mongodb:
+    image: mongo:7
+    build: !reset null
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_USER:-garda}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_PASSWORD:-garda_secret}"
+      MONGO_INITDB_DATABASE: "${MONGO_DB:-garda_inflasi}"
+    ports: !override
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
 
 volumes:
   lapangan_uploads:

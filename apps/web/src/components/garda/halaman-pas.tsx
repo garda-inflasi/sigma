@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useRef, type ComponentProps, type ReactNode } from "react";
+import { softReveal, useGSAP } from "@/lib/motion/gsap";
 import { toneClass, type Tone } from "@/lib/design/tokens";
 import { cn } from "@/lib/utils";
 
@@ -39,11 +42,12 @@ export function IsiPas({
   children,
   className,
   kolom,
+  ...props
 }: {
   children: ReactNode;
   className?: string;
   kolom?: string;
-}) {
+} & Omit<ComponentProps<"div">, "children" | "className">) {
   return (
     <div
       className={cn(
@@ -53,6 +57,7 @@ export function IsiPas({
         kolom,
         className,
       )}
+      {...props}
     >
       {children}
     </div>
@@ -115,6 +120,7 @@ export function PanelPas({
         </div>
       )}
       <div
+        data-lenis-prevent
         className={cn(
           "scrollbar-thin min-w-0 flex-1 lg:min-h-0 lg:overflow-y-auto",
           !tanpaPadding && "p-3.5",
@@ -150,8 +156,23 @@ export function RingkasanKeputusan({
   label?: string;
   className?: string;
 }) {
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useGSAP(
+    () => {
+      if (!listRef.current?.children.length) return;
+      softReveal(listRef.current.children, {
+        y: 8,
+        duration: 0.38,
+        stagger: 0.035,
+      });
+    },
+    { scope: listRef },
+  );
+
   return (
     <ul
+      ref={listRef}
       aria-label={label}
       className={cn(
         "grid shrink-0 grid-cols-2 gap-2 lg:auto-cols-fr lg:grid-flow-col lg:grid-cols-none",

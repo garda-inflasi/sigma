@@ -41,6 +41,7 @@ import {
   type ItemRingkas,
 } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
+import { BadgeSiklusMl } from "@/components/ml/siklus-ml";
 import { SpringButton } from "@/components/garda/spring-button";
 import { Segmented } from "@/components/garda/segmented";
 import { ViewTabs } from "@/components/garda/view-tabs";
@@ -72,7 +73,7 @@ import {
   useTahapIntervensi,
 } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
-import { can, type Permission } from "@/lib/rbac/permissions";
+import { can, peranIzinTerkunci, type Permission } from "@/lib/rbac/permissions";
 import { useKanban } from "@/lib/stores/kanban-store";
 import { labelKode } from "@/lib/kode";
 import { cn } from "@/lib/utils";
@@ -168,7 +169,11 @@ export function KanbanBoard() {
       ? `Butuh persetujuan berjenjang: ${ringkasRantai(alur)}`
       : IZIN_LABEL[izinMasuk(tahapId)];
   };
-  const bolehMasuk = (tahapId: string) => can(sesi, izinMasuk(tahapId));
+  // Administrator Sistem memegang semua izin tahap, tetapi tahap persetujuan tetap harus lewat alur berjenjang
+  // (diputuskan orang lain); API menolak pemindahan langsungnya.
+  const bolehMasuk = (tahapId: string) =>
+    can(sesi, izinMasuk(tahapId)) &&
+    !(peranIzinTerkunci(sesi.role) && izinMasuk(tahapId) !== "intervensi.kelola");
   const bisaSeret =
     can(sesi, "intervensi.kelola") ||
     can(sesi, "intervensi.setujui") ||
@@ -612,6 +617,7 @@ export function KanbanBoard() {
               Reset filter
             </Button>
           )}
+          <BadgeSiklusMl className="sm:ml-auto" />
         </div>
         <RingkasanKeputusan
           items={ringkasan}

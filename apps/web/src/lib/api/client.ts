@@ -3,9 +3,12 @@
  * yang diterbitkan layanan auth (SSO + MFA). Tanpa NEXT_PUBLIC_API_BASE_URL → mode mock.
  */
 import { fetchSesi } from "@/lib/auth/sesi-client";
+import { getLingkunganData, useUi, type LingkunganData } from "@/lib/stores/ui-store";
+import type { LampiranMlResponse } from "./ml-prod";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 export const MODE_MOCK = !API_BASE;
+export const HEADER_DATA_ENV = "X-Garda-Data-Env";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public payload?: unknown) {
@@ -13,15 +16,26 @@ export class ApiError extends Error {
   }
 }
 
-async function kirimApi<T>(path: string, init: RequestInit & { idempotencyKey?: string }): Promise<{ data: T; res: Response }> {
+export interface ApiEnvelope<T> {
+  data: T;
+  ml?: LampiranMlResponse;
+  dataEnv?: LingkunganData;
+}
+
+async function kirimApi<T>(
+  path: string,
+  init: RequestInit & { idempotencyKey?: string },
+): Promise<ApiEnvelope<T> & { res: Response }> {
   const { idempotencyKey, headers, ...rest } = init;
   const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
+  const envAktif = getLingkunganData();
   // 401 karena access token habis/dicabut → refresh senyap lalu ulangi sekali (lihat sesi-client).
   const res = await fetchSesi(`${API_BASE}${path}`, {
     credentials: "include",
     ...rest,
     headers: {
       Accept: "application/json",
+      [HEADER_DATA_ENV]: envAktif,
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       ...headers,
@@ -37,16 +51,44 @@ async function kirimApi<T>(path: string, init: RequestInit & { idempotencyKey?: 
   }
   if (res.status === 204) return { data: undefined as T, res };
   const body = (await res.json()) as unknown;
-  // Backend Go membungkus semua respons sebagai { code, message, data }.
+  // Backend Go membungkus semua respons sebagai { code, message, data, ml?, data_env? }.
   // Envelope di-unwrap di satu tempat ini agar pemanggil menerima payload langsung.
   if (body && typeof body === "object" && "code" in body && "data" in body) {
-    return { data: (body as { data: T }).data, res };
+    const envBody = body as {
+      data: T;
+      ml?: LampiranMlResponse;
+      data_env?: LingkunganData;
+    };
+    if (envBody.ml) {
+      useUi.getState().setMlInfo({
+        tersedia: envBody.ml.tersedia,
+        cycleId: envBody.ml.siklus?.cycle_id,
+        cycleTimestamp: envBody.ml.siklus?.cycle_timestamp,
+        dataUtama: envBody.ml.data_utama,
+        alasan: envBody.ml.alasan,
+      });
+    }
+    return {
+      data: envBody.data,
+      ml: envBody.ml,
+      dataEnv: envBody.data_env,
+      res,
+    };
   }
   return { data: body as T, res };
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit & { idempotencyKey?: string } = {}): Promise<T> {
   return (await kirimApi<T>(path, init)).data;
+}
+
+/** Memuat respons lengkap termasuk lampiran `ml` (MongoDB datasafe/dataunseen) bila dikirim backend. */
+export async function apiFetchEnvelope<T>(
+  path: string,
+  init: RequestInit & { idempotencyKey?: string } = {},
+): Promise<ApiEnvelope<T>> {
+  const { data, ml, dataEnv } = await kirimApi<T>(path, init);
+  return { data, ml, dataEnv };
 }
 
 /** Jumlah seluruh baris dari header `X-Total-Count`; null bila header tidak ada atau bukan bilangan bulat tak negatif. */

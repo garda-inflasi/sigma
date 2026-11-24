@@ -27,7 +27,7 @@ func (r *Repository) EventsAfter(ctx context.Context, after int64, limit int) ([
 		Select("e.id AS event_id, "+kolomAlert).
 		Joins("JOIN ews_alert a ON a.id = e.alert_id").
 		Joins("LEFT JOIN komoditas k ON k.kode = a.komoditas_kode").
-		Joins("JOIN kabupaten w ON w.kode = a.kabupaten_kode").
+		Joins("LEFT JOIN kabupaten w ON w.kode = a.kabupaten_kode").
 		Joins("LEFT JOIN aturan_ews t ON t.id = a.aturan_id").
 		Where("e.id > ?", after).
 		Order("e.id").Limit(limit).

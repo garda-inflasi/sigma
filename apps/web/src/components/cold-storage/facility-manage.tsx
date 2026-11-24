@@ -8,6 +8,7 @@ import { FormAlert, FormField } from "@/components/form/form-field";
 import { SpringButton } from "@/components/garda/spring-button";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Button } from "@/components/ui/button";
+import { DateTimeField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -409,14 +410,7 @@ function FormCatatSuhu({
           label="Waktu pembacaan"
           className="sm:col-span-2"
         >
-          <Input
-            id="catat-waktu"
-            type="datetime-local"
-            step={1}
-            value={waktu}
-            onChange={(e) => setWaktu(e.target.value)}
-            className="dark:scheme-dark"
-          />
+          <DateTimeField id="catat-waktu" value={waktu} onValueChange={setWaktu} />
         </FormField>
       </div>
       {suhu.trim() !== "" && <FormAlert>{galat}</FormAlert>}

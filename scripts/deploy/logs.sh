@@ -71,8 +71,8 @@ cd "$GARDA_ROOT"
 # ------------------------------------------------------------------------------
 #  Validate the service name
 # ------------------------------------------------------------------------------
-INFRA_SERVICES=(postgres redis)
-APP_SERVICES=(api worker ml web caddy backup)
+INFRA_SERVICES=(postgres redis mongodb)
+APP_SERVICES=(api worker ml ml-worker crawler web caddy backup)
 
 if [[ "$SERVICE" != "all" ]]; then
   valid=0
@@ -81,7 +81,7 @@ if [[ "$SERVICE" != "all" ]]; then
   done
   if [[ "$valid" -ne 1 ]]; then
     die "Service tidak dikenal: '$SERVICE'" \
-        "Pilih salah satu: api, worker, ml, web, caddy, backup, postgres, redis, all"
+        "Pilih salah satu: api, worker, ml, ml-worker, crawler, web, caddy, backup, postgres, redis, mongodb, all"
   fi
 fi
 
@@ -91,6 +91,9 @@ fi
 compose_files="-f compose/compose.infra.yaml -f compose/compose.yaml -f compose/compose.prod.yaml"
 if [[ "${GATEWAY_MODE:-external}" == "external" ]]; then
   compose_files+=" -f compose/compose.gateway.yaml"
+fi
+if [[ "$SERVICE" == "crawler" || "$SERVICE" == "ml-worker" || "$SERVICE" == "all" ]]; then
+  compose_files+=" --profile pipeline"
 fi
 
 log_args=("logs" "--tail=${TAIL}")

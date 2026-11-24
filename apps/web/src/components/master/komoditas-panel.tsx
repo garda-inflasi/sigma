@@ -8,12 +8,13 @@ import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import { KomoditasIcon } from "@/components/garda/komoditas-icon";
 import { StatusBadge } from "@/components/garda/status-badge";
 import type { MasterBulkAksi } from "@/lib/api/master";
-import { useCan } from "@/lib/auth/session-context";
+import { useCan, useOptionalSession } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import type { MasterKomoditasRow } from "@/lib/data/types";
 import { formatRupiah } from "@/lib/format";
 import { useBulkMasterKomoditas, useMasterKomoditas } from "@/lib/query/hooks";
 import { KomoditasDetailSheet } from "./komoditas-detail-sheet";
+import { LangsungDialog } from "./langsung-dialog";
 import { STATUS_KOMODITAS } from "./status";
 import { UsulanDialog } from "./usulan-dialog";
 
@@ -21,9 +22,12 @@ import { UsulanDialog } from "./usulan-dialog";
 export function KomoditasPanel() {
   const { data, isLoading } = useMasterKomoditas();
   const bulk = useBulkMasterKomoditas();
+  const sesi = useOptionalSession();
+  const isSuperadmin = sesi?.role === "ADMIN_SISTEM";
   const bisaAjukan = useCan("master.ajukan");
   const [detail, setDetail] = useState<string | null>(null);
   const [ubah, setUbah] = useState<MasterKomoditasRow | null>(null);
+  const [editLangsung, setEditLangsung] = useState<MasterKomoditasRow | null>(null);
 
   const kolom = useMemo<ColumnDef<MasterKomoditasRow>[]>(
     () => [
@@ -82,7 +86,7 @@ export function KomoditasPanel() {
           return <StatusBadge tone={s.tone}>{s.label}</StatusBadge>;
         },
       },
-      ...(bisaAjukan
+      ...(bisaAjukan || isSuperadmin
         ? [
             {
               id: "aksi",
@@ -91,16 +95,19 @@ export function KomoditasPanel() {
               cell: ({ row: { original: r } }) => (
                 <button
                   type="button"
-                  aria-label={`Ajukan perubahan ${r.kode}`}
+                  aria-label={`${isSuperadmin ? "Ubah langsung" : "Ajukan perubahan"} ${r.kode}`}
                   title={
-                    r.status === "AKTIF"
-                      ? "Ajukan perubahan"
-                      : "Hanya komoditas aktif yang dapat diubah"
+                    isSuperadmin
+                      ? "Ubah langsung (Superadmin)"
+                      : r.status === "AKTIF"
+                        ? "Ajukan perubahan"
+                        : "Hanya komoditas aktif yang dapat diubah"
                   }
-                  disabled={r.status !== "AKTIF"}
+                  disabled={!isSuperadmin && r.status !== "AKTIF"}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setUbah(r);
+                    if (isSuperadmin) setEditLangsung(r);
+                    else setUbah(r);
                   }}
                   className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-40"
                 >
@@ -111,7 +118,7 @@ export function KomoditasPanel() {
           ]
         : []),
     ],
-    [bisaAjukan],
+    [bisaAjukan, isSuperadmin],
   );
 
   const kirim = (aksi: MasterBulkAksi) => (r: MasterKomoditasRow[]) =>
@@ -206,6 +213,11 @@ export function KomoditasPanel() {
         target={ubah ? { entitas: "komoditas", awal: ubah } : null}
         open={!!ubah}
         onOpenChange={(o) => !o && setUbah(null)}
+      />
+      <LangsungDialog
+        target={editLangsung ? { entitas: "komoditas", awal: editLangsung } : null}
+        open={!!editLangsung}
+        onOpenChange={(o) => !o && setEditLangsung(null)}
       />
     </>
   );

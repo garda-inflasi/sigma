@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   can,
   canAll,
+  PERMISSIONS,
   ROLE_PERMISSIONS,
   type PemegangIzin,
 } from "./permissions";
@@ -45,6 +46,23 @@ describe("can: izin efektif dari token (02-C)", () => {
       true,
     );
     assert.equal(can({ role: "OPS_MAHASISWA" }, "pengguna.kelola"), false);
+  });
+
+  it("ADMIN_SISTEM tanpa klaim memegang seluruh katalog", () => {
+    for (const izin of PERMISSIONS) {
+      assert.equal(can("ADMIN_SISTEM", izin), true, izin);
+      assert.equal(can({ role: "ADMIN_SISTEM" }, izin), true, izin);
+    }
+  });
+
+  it("sesi impersonasi memakai klaim sasaran, bukan katalog pelaku", () => {
+    const sasaran: PemegangIzin = {
+      role: "OPS_MAHASISWA",
+      permissions: [...ROLE_PERMISSIONS.OPS_MAHASISWA],
+    };
+    assert.equal(can(sasaran, "harga.input"), true);
+    assert.equal(can(sasaran, "pengguna.kelola"), false);
+    assert.equal(can(sasaran, "impersonasi.kelola"), false);
   });
 
   it("klaim kosong berarti sungguh tanpa izin, bukan 'tidak ada klaim'", () => {

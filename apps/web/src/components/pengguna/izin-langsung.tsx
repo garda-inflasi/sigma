@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import {
   Select,
   SelectContent,
@@ -251,12 +251,11 @@ function FormBeriIzin({
         bantuan="Kosongkan untuk izin tanpa batas waktu. Izin berhenti berlaku di akhir hari yang dipilih."
         galat={g.berlaku}
       >
-        <Input
+        <DateField
           id="il-berlaku"
-          type="date"
           min={hariIni()}
           value={isian.berlaku}
-          onChange={(e) => setIsian({ ...isian, berlaku: e.target.value })}
+          onValueChange={(v) => setIsian({ ...isian, berlaku: v })}
           {...atribut("berlaku")}
         />
       </FormField>

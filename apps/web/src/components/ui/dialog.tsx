@@ -60,6 +60,7 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        data-lenis-prevent
         className={cn(
           // Kolom flex (bukan grid auto): anak ber-`nowrap` tidak bisa melebarkan modal melewati batasnya.
           "fixed top-[50%] left-[50%] z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] min-w-0 translate-x-[-50%] translate-y-[-50%] flex-col gap-4 overflow-y-auto rounded-modal border border-border bg-card p-5 shadow-ambient-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-h-[90dvh] sm:max-w-lg sm:p-6",

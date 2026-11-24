@@ -1936,6 +1936,7 @@ paths:
         (data berisi peran saat ini) dan tidak ada yang ditimpa. Nama izin harus ada di katalog
         (`400 UNKNOWN_PERMISSION`); katalog didefinisikan di kode. Perubahan yang membuat sistem tidak punya
         lagi pengguna aktif pemegang `pengguna.kelola` lewat perannya ditolak (`409 LAST_PERMISSION_HOLDER`).
+        `ADMIN_SISTEM` selalu memegang seluruh katalog: himpunan yang kurang ditolak (`409 ADMIN_PERMISSIONS_LOCKED`).
       operationId: updateRolePermissions
       tags:
         - User Management
@@ -3031,9 +3032,10 @@ paths:
 
   /v1/ews:
     get:
-      summary: Mendaftar alert EWS (terbaru dahulu)
+      summary: Mendaftar alert EWS (KRITIS aktif dahulu, lalu terbaru)
       description: |
-        Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server. Setiap alert membawa `id`
+        Memerlukan izin `ews.lihat`. Filter dan paginasi dijalankan di server. Alert KRITIS yang belum SELESAI
+        selalu di urutan terdepan supaya tidak terpotong batas halaman. Setiap alert membawa `id`
         (BIGINT, string desimal) dan `kode` tampilan (`EWS-…`, mis. `EWS-0901`); UI menampilkan `kode`.
       operationId: listEwsAlerts
       tags:
@@ -3041,6 +3043,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: status
           in: query
           schema:
@@ -3072,6 +3075,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 1000
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: ews (sinyal aktif dalam cakupan baris, dengan tautan alert). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar alert
@@ -3127,7 +3131,8 @@ paths:
         Memerlukan izin `ews.lihat`. Autentikasi lewat header `Authorization: Bearer` atau cookie
         `garda_access` (EventSource browser). Koneksi tetap terbuka (`Content-Type: text/event-stream`);
         server mengirim `retry: 5000`, komentar `: ping` tiap 25 detik, dan event `alert` setiap
-        alert dibuat atau naik tingkat oleh rule engine. `id` frame adalah nomor event berurut
+        alert dibuat, naik tingkat oleh rule engine, atau berubah status lewat aksi massal (klien memakainya
+        untuk merekonsiliasi peringatan KRITIS antar-tab dan antar-pengguna). `id` frame adalah nomor event berurut
         (`ews_event.id`, bukan ID alert); klien yang menyambung ulang mengirim `Last-Event-ID`
         (otomatis oleh EventSource) dan hanya menerima peristiwa setelahnya, tanpa duplikat. Tanpa
         `Last-Event-ID` aliran dimulai dari sekarang. `data` memuat alert bentuk `EwsAlert`: `id` adalah
@@ -3176,6 +3181,8 @@ paths:
         diatur: aktif, tingkat minimum SIAGA. `tersedia: false` berarti server belum mengonfigurasi
         pengiriman nyata untuk kanal itu (SMTP_HOST untuk EMAIL, kunci VAPID untuk PUSH): notifikasi
         hanya dicatat di outbox `ews_notifikasi`. `vapid_public_key` dipakai browser untuk berlangganan push.
+        Tingkat minimum dan kanal nonaktif hanya berlaku di bawah KRITIS: peringatan kritis selalu dikirim
+        lewat kanal aturannya.
       operationId: getEwsPreferensi
       tags:
         - Early Warning System
@@ -3428,6 +3435,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: id
           in: path
           required: true
@@ -3437,6 +3445,7 @@ paths:
             ID alert: bilangan bulat positif (string desimal, `IdBigint`) atau kode lama/tampilan `EWS-…` (maks 64 karakter)
             sebagai alias, sehingga tautan lama di notifikasi dan email tetap berlaku. ID yang salah bentuk atau
             tidak ada dijawab 404.
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: ews (hanya sinyal yang dijembatani ke alert ini). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Detail alert
@@ -3946,6 +3955,9 @@ paths:
         - Sumber Data
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: kesegaran. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar sumber, terurut menurut kode
@@ -3969,6 +3981,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: id
           in: path
           required: true
@@ -3982,6 +3995,7 @@ paths:
               - type: string
                 maxLength: 64
           example: SRC-BPS
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: kesegaran. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Detail sumber data
@@ -4020,6 +4034,9 @@ paths:
         - Sumber Data
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: kesegaran. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Hitungan lapisan dan mutu data
@@ -4259,6 +4276,9 @@ paths:
         - Dashboard
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: inflasi, model, ews (ringkas), kesegaran, makro. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Ringkasan eksekutif
@@ -4291,6 +4311,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: periode
           in: query
           description: Bulan acuan `YYYY-MM` (bawaan bulan berjalan)
@@ -4303,6 +4324,7 @@ paths:
           schema:
             type: string
             example: "1171"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: model. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar KPI terurut menurut kelompok dan urutan baku
@@ -4392,6 +4414,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: kode
           in: path
           required: true
@@ -4408,6 +4431,7 @@ paths:
           schema:
             type: string
             example: "1171"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: model. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: KPI beserta riwayat nilainya
@@ -4808,10 +4832,12 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - $ref: "#/components/parameters/DashboardKabupatenKode"
         - $ref: "#/components/parameters/DashboardKomoditasKode"
         - $ref: "#/components/parameters/DashboardDari"
         - $ref: "#/components/parameters/DashboardSampai"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Kartu KPI
@@ -4863,10 +4889,12 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - $ref: "#/components/parameters/DashboardKabupatenKode"
         - $ref: "#/components/parameters/DashboardKomoditasKode"
         - $ref: "#/components/parameters/DashboardDari"
         - $ref: "#/components/parameters/DashboardSampai"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Kabupaten, komoditas, dan sel peta panas
@@ -4907,6 +4935,9 @@ paths:
         - Dashboard
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Aktivitas per kabupaten/kota berpetugas
@@ -4941,6 +4972,9 @@ paths:
         - Dashboard
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Ringkasan pasangan dan selisih terbesar (kosong bila belum ada pasangan)
@@ -4973,6 +5007,9 @@ paths:
         - Dashboard
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Cuaca per kabupaten/kota yang punya data (kosong bila belum ada)
@@ -5027,7 +5064,9 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - $ref: "#/components/parameters/DashboardKabupatenKode"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Aktivitas tiap petugas lapangan aktif (kosong bila tidak ada)
@@ -5089,8 +5128,10 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - $ref: "#/components/parameters/DashboardKabupatenKode"
         - $ref: "#/components/parameters/DashboardKomoditasKode"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Ringkasan dan stok berlaku per komoditas
@@ -5150,8 +5191,10 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - $ref: "#/components/parameters/DashboardKabupatenKode"
         - $ref: "#/components/parameters/DashboardKomoditasKode"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Harga produsen, konsumen pembanding, margin, dan produksi per komoditas
@@ -5206,8 +5249,10 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - $ref: "#/components/parameters/DashboardKabupatenKode"
         - $ref: "#/components/parameters/DashboardKomoditasKode"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (filter `kabupaten_kode`, `komoditas_kode`), ews (ringkas). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Ringkasan transaksi stok, transaksi terbaru, dan rute aktif
@@ -6850,6 +6895,9 @@ paths:
         - Spasial
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: wilayah. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar marker
@@ -6878,6 +6926,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: zoom
           in: query
           schema:
@@ -6891,6 +6940,7 @@ paths:
           schema:
             type: string
           example: "95.30,5.53,95.34,5.57"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: wilayah. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: FeatureCollection
@@ -7053,6 +7103,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: komoditas
           in: query
           description: Kode komoditas
@@ -7064,6 +7115,7 @@ paths:
           schema:
             type: string
             format: date
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: wilayah. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar neraca
@@ -7141,6 +7193,9 @@ paths:
         - Policy Brief
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: inflasi, makro. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar brief
@@ -7174,6 +7229,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: id
           in: path
           required: true
@@ -7183,6 +7239,7 @@ paths:
               - $ref: "#/components/schemas/IdUuid"
               - $ref: "#/components/schemas/PolicyBriefKode"
           example: dfb2ba45-a711-317e-a45e-313f19d1ab43
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: inflasi, makro. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Brief lengkap
@@ -7313,6 +7370,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: kabupaten
           in: query
           description: Kode kabupaten/kota BPS (4 digit). Bawaan 1171 (Kota Banda Aceh).
@@ -7326,6 +7384,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 365
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast_ringkas (kabupaten = `kabupaten`, bawaan 1171), model. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Daftar proyeksi (kosong bila tidak ada proyeksi untuk kombinasi itu)
@@ -7357,6 +7416,9 @@ paths:
         - Prediksi
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: model. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Status layanan
@@ -7524,6 +7586,9 @@ paths:
         - Prediksi
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MlCycleId"
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: model. Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Registri model
@@ -7641,6 +7706,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/MlCycleId"
         - name: kode
           in: path
           required: true
@@ -7660,6 +7726,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 365
+      x-ml-lampiran: "Respons 200 membawa `ml` (MlLampiran) dengan blok: forecast (detail: kurva, riwayat, metrik vs baseline, penjelasan XAI; kabupaten = `kabupaten`, bawaan 1171). Lihat docs/PIPELINE-DATA-ML.md §5."
       responses:
         "200":
           description: Proyeksi lengkap
@@ -7750,6 +7817,145 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/ml/cycles:
+    get:
+      summary: Riwayat siklus training pipeline ML
+      description: |
+        Memerlukan izin `prediksi.lihat`. Membaca `datasafe.ml_training_cycles` (MongoDB, hanya dibaca), terbaru dahulu,
+        semua status (`BERJALAN`, `BERHASIL`, `SEBAGIAN`, `GAGAL`) kecuali disaring, supaya kegagalan tetap terlihat.
+        Hanya siklus `final` (BERHASIL/SEBAGIAN) yang isinya dipakai lampiran `ml`. Daftar tidak memuat
+        `source_freshness`. Mongo yang tidak dikonfigurasi atau mati dijawab 200 dengan `tersedia: false`, `alasan`,
+        dan `items` kosong (docs/PIPELINE-DATA-ML.md §5).
+      operationId: listMlCycles
+      tags:
+        - Pipeline ML
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 168, default: 24}
+        - name: dari
+          in: query
+          description: Batas bawah `cycle_timestamp` (inklusif). `YYYY-MM-DD` (tanggal WIB) atau RFC3339.
+          schema: {type: string}
+        - name: sampai
+          in: query
+          description: Batas atas `cycle_timestamp`. `YYYY-MM-DD` mencakup seluruh tanggal WIB itu; RFC3339 eksklusif.
+          schema: {type: string}
+        - name: status
+          in: query
+          description: Daftar dipisah koma dari BERJALAN, BERHASIL, SEBAGIAN, GAGAL, atau FINAL (= BERHASIL,SEBAGIAN).
+          schema: {type: string, example: "FINAL"}
+      responses:
+        "200":
+          description: Satu halaman siklus
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh hasil filter
+              schema: {type: integer}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MlDaftarSiklusResponse"
+        "400":
+          description: Parameter tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tanpa token atau token tidak sah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ml/cycles/{cycle_id}:
+    get:
+      summary: Detail satu siklus training
+      description: |
+        Memerlukan izin `prediksi.lihat`. Metadata siklus apa pun statusnya, termasuk `model_metrics` (klasifikasi
+        dengan kelayakan, regresi dengan pemenang dan MAPE vs baseline). `source_freshness` hanya dikirim kepada
+        pemegang `sumber.lihat`.
+      operationId: getMlCycle
+      tags:
+        - Pipeline ML
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: cycle_id
+          in: path
+          required: true
+          schema: {type: string, pattern: "^C[0-9]{8}T[0-9]{2}Z$", example: "C20261124T04Z"}
+      responses:
+        "200":
+          description: Siklus
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MlSiklusResponse"
+        "400":
+          description: Format `cycle_id` salah
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tanpa izin `prediksi.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Siklus tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Mongo tidak dikonfigurasi atau tidak tersedia (`data.tersedia` false, `data.alasan`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ml/freshness:
+    get:
+      summary: Kesegaran sumber data pipeline
+      description: |
+        Memerlukan izin `sumber.lihat`. Run crawl terakhir non-BACKFILL per (sumber, dataset) dari
+        `dataunseen.crawl_runs` (BACKFILL hanya informasi di `backfill_terakhir`), kesegaran menurut siklus training
+        terbaru, dan sinyal `SUMBER_DATA` siklus terbaru termasuk INFO (sumber yang sengaja dilewati, pesan berawalan
+        `DILEWATI:`), yang tidak pernah menjadi alert. Tanpa Mongo: 200 dengan `tersedia: false`.
+      operationId: getMlFreshness
+      tags:
+        - Pipeline ML
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Kesegaran sumber
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MlKesegaranResponse"
+        "403":
+          description: Tanpa izin `sumber.lihat`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -7789,6 +7995,15 @@ components:
             $ref: "#/components/schemas/BatasLajuResponse"
 
   parameters:
+    MlCycleId:
+      name: cycle_id
+      in: query
+      required: false
+      description: |
+        Siklus pipeline ML untuk lampiran `ml` (C{YYYYMMDD}T{HH}Z). Kosong: siklus final terbaru. Siklus yang tidak ada,
+        belum final, atau berformat salah tidak menggagalkan endpoint: `ml.tersedia` false dengan `ml.alasan`.
+        Tidak memengaruhi `data`.
+      schema: {type: string, pattern: "^C[0-9]{8}T[0-9]{2}Z$", example: "C20261124T04Z"}
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -9487,6 +9702,8 @@ components:
     KpiListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -9501,6 +9718,8 @@ components:
     KpiRiwayatResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -9665,6 +9884,8 @@ components:
     RingkasanEksekutifResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -9851,6 +10072,8 @@ components:
     PipelineSumberResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -9896,6 +10119,8 @@ components:
     SumberDataResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -9908,6 +10133,8 @@ components:
     SumberDataListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11128,6 +11355,8 @@ components:
     KpiOperasionalListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11141,6 +11370,8 @@ components:
     HeatmapResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11192,6 +11423,8 @@ components:
     PembandingHargaResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11242,6 +11475,8 @@ components:
     CuacaWilayahListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11278,6 +11513,8 @@ components:
     AktivitasLapanganListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11340,7 +11577,10 @@ components:
 
     AktivitasPetugasResponse:
       type: object
+      required: [code, message, data]
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11417,7 +11657,10 @@ components:
 
     StokResponse:
       type: object
+      required: [code, message, data]
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11513,7 +11756,10 @@ components:
 
     ProdusenResponse:
       type: object
+      required: [code, message, data]
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -11669,7 +11915,10 @@ components:
 
     LogistikResponse:
       type: object
+      required: [code, message, data]
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -12235,6 +12484,8 @@ components:
     EwsAlertResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -12247,6 +12498,8 @@ components:
     EwsAlertListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -12576,6 +12829,8 @@ components:
     SpasialMarkerListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -12613,6 +12868,8 @@ components:
     SpasialNeracaListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -13470,6 +13727,8 @@ components:
     SpasialGeometriResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -14369,6 +14628,8 @@ components:
     PolicyBriefDetailResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -14381,6 +14642,8 @@ components:
     PolicyBriefListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code:
           type: string
           example: "200"
@@ -14604,6 +14867,8 @@ components:
     PrediksiStatusMlResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code: {type: string, example: "200"}
         message: {type: string, example: "OK"}
         data:
@@ -14640,6 +14905,8 @@ components:
     PrediksiRingkasanListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code: {type: string, example: "200"}
         message: {type: string, example: "OK"}
         data:
@@ -14650,6 +14917,8 @@ components:
     PrediksiProyeksiResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code: {type: string, example: "200"}
         message: {type: string, example: "OK"}
         data:
@@ -14658,9 +14927,495 @@ components:
     PrediksiModelListResponse:
       type: object
       properties:
+        ml:
+          $ref: "#/components/schemas/MlLampiran"
         code: {type: string, example: "200"}
         message: {type: string, example: "OK"}
         data:
           type: array
           items:
             $ref: "#/components/schemas/PrediksiModel"
+
+    # ── Pipeline ML (docs/PIPELINE-DATA-ML.md §5) ─────────────────────
+    MlMeta:
+      type: object
+      description: |
+        Penanda setiap blok lampiran `ml`. `tersedia` false berarti blok tidak boleh ditampilkan sebagai angka; `alasan`
+        salah satu dari TIDAK_DIKONFIGURASI, KONFIGURASI_TIDAK_VALID, MONGO_TIDAK_TERSEDIA, MONGO_LAMBAT,
+        BELUM_ADA_SIKLUS, CYCLE_ID_TIDAK_VALID, SIKLUS_TIDAK_DITEMUKAN, SIKLUS_BELUM_FINAL, TANPA_IZIN,
+        CAKUPAN_TIDAK_DAPAT_DIPERIKSA, TIDAK_ADA_DATA, WILAYAH_TANPA_DATA, LUAR_CAKUPAN.
+      required: [tersedia]
+      properties:
+        tersedia: {type: boolean}
+        alasan: {type: string}
+        sumber_data: {type: string, enum: [DATASAFE, DATAUNSEEN]}
+        cycle_id: {type: string, example: "C20261124T04Z"}
+        cycle_timestamp: {type: string, format: date-time}
+
+    MlSiklusRingkas:
+      type: object
+      properties:
+        cycle_id: {type: string}
+        cycle_timestamp: {type: string, format: date-time}
+        data_cutoff: {type: string, format: date-time, nullable: true}
+        status: {type: string, enum: [BERJALAN, BERHASIL, SEBAGIAN, GAGAL]}
+        target_inflasi: {type: string, enum: [RESMI_BPS, INDEKS_PANGAN], nullable: true}
+        label_target: {type: string, nullable: true, example: "Indeks harga pangan PIHPS (bukan inflasi resmi)"}
+
+    MlLampiran:
+      type: object
+      description: |
+        Lampiran hasil pipeline ML di samping `data` pada endpoint lama yang diperkaya (hanya respons sukses GET).
+        `data` tidak pernah diubah (`data_utama: POSTGRES`; penanda DEMO miliknya tetap). Blok yang dikirim
+        bergantung pada endpoint; setiap blok membawa `MlMeta` sendiri.
+      required: [tersedia, data_utama]
+      properties:
+        tersedia: {type: boolean, description: "Siklus final tersedia untuk request ini"}
+        alasan: {type: string}
+        data_utama: {type: string, enum: [POSTGRES, DATASAFE], description: "Asal `data`; selalu POSTGRES kecuali mode X-Garda-Data-Env prod"}
+        siklus: {$ref: "#/components/schemas/MlSiklusRingkas"}
+        inflasi: {$ref: "#/components/schemas/MlBlokInflasi"}
+        forecast_ringkas: {$ref: "#/components/schemas/MlBlokForecastRingkas"}
+        forecast: {$ref: "#/components/schemas/MlBlokForecast"}
+        model: {$ref: "#/components/schemas/MlBlokModel"}
+        ews: {$ref: "#/components/schemas/MlBlokEws"}
+        wilayah: {$ref: "#/components/schemas/MlBlokWilayah"}
+        kesegaran: {$ref: "#/components/schemas/MlBlokKesegaran"}
+        makro: {$ref: "#/components/schemas/MlBlokMakro"}
+
+    MlPenjelasan:
+      type: object
+      properties:
+        metode: {type: string, enum: [shap, dekomposisi]}
+        satuan_kontribusi: {type: string, enum: [poin_persen_harga, poin_persen_probabilitas], nullable: true}
+        narasi: {type: string}
+        faktor:
+          type: array
+          items:
+            type: object
+            properties:
+              kelompok: {type: string, enum: [CUACA, PASOKAN, KONSUMSI_PENDAPATAN, TENAGA_KERJA, NERACA_EKONOMI, TREN_HARGA_LAPANGAN, KALENDER]}
+              label: {type: string}
+              kontribusi: {type: number, nullable: true}
+              arah: {type: string, enum: [NAIK, TURUN]}
+              fitur:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    nama: {type: string}
+                    kontribusi: {type: number, nullable: true}
+
+    MlInflasiWilayah:
+      type: object
+      description: |
+        Sinyal inflasi satu wilayah. `kelas` hanya boleh ditampilkan sebagai prediksi bila `kelayakan` = LAYAK;
+        TIDAK_LAYAK (`kelas` null) dan TIDAK_DIKETAHUI (dokumen lama tanpa `layak`) ditampilkan "belum dapat
+        diandalkan". `target` INDEKS_PANGAN wajib disebut indeks pangan, bukan inflasi resmi.
+      properties:
+        wilayah_kode: {type: string}
+        tingkat: {type: string, enum: [PROVINSI, KABUPATEN]}
+        periode: {type: string, format: date, nullable: true}
+        kelas: {type: string, enum: [INFLASI, TIDAK_INFLASI], nullable: true}
+        layak: {type: boolean, nullable: true}
+        kelayakan: {type: string, enum: [LAYAK, TIDAK_LAYAK, TIDAK_DIKETAHUI]}
+        alasan_kelayakan: {type: string, nullable: true}
+        probabilitas: {type: number, nullable: true}
+        skor_tekanan: {type: number, nullable: true}
+        siklus: {type: string, enum: [NORMAL, TEKANAN, SURPLUS]}
+        target: {type: string, enum: [RESMI_BPS, INDEKS_PANGAN]}
+        label_target: {type: string}
+        bukan_inflasi_resmi: {type: boolean}
+        proyeksi:
+          type: object
+          properties:
+            yoy: {type: number, nullable: true}
+            mtm: {type: number, nullable: true}
+            ytd: {type: number, nullable: true}
+        aktual:
+          type: object
+          properties:
+            yoy: {type: number, nullable: true}
+            mtm: {type: number, nullable: true}
+            ytd: {type: number, nullable: true}
+            periode: {type: string, format: date, nullable: true}
+        penyumbang:
+          type: array
+          items:
+            type: object
+            properties:
+              komoditas_kode: {type: string}
+              nama: {type: string}
+              andil: {type: number, nullable: true}
+        kalibrasi:
+          type: object
+          properties:
+            metode: {type: string, nullable: true}
+            brier: {type: number, nullable: true}
+        penjelasan:
+          allOf: [{$ref: "#/components/schemas/MlPenjelasan"}]
+          nullable: true
+
+    MlBlokInflasi:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            kelayakan: {type: string, enum: [LAYAK, TIDAK_LAYAK, TIDAK_DIKETAHUI]}
+            alasan_kelayakan: {type: string, nullable: true}
+            target: {type: string, nullable: true}
+            label_target: {type: string, nullable: true}
+            bukan_inflasi_resmi: {type: boolean}
+            wilayah:
+              type: array
+              items: {$ref: "#/components/schemas/MlInflasiWilayah"}
+
+    MlForecast:
+      type: object
+      properties:
+        komoditas_kode: {type: string}
+        kabupaten_kode: {type: string}
+        harga_terakhir: {type: number, nullable: true}
+        tanggal_terakhir: {type: string, format: date, nullable: true}
+        satuan: {type: string, example: "Rp/kg"}
+        kurva:
+          type: array
+          description: Horizon 7, 14, 30 berurutan
+          items:
+            type: object
+            properties:
+              horizon: {type: integer, enum: [7, 14, 30]}
+              tanggal: {type: string, format: date}
+              p10: {type: number, nullable: true}
+              p50: {type: number, nullable: true}
+              p90: {type: number, nullable: true}
+              perubahan_p50_pct: {type: number, nullable: true}
+        model:
+          type: object
+          properties:
+            nama: {type: string, example: "seasonal_naive"}
+            adalah_baseline: {type: boolean}
+            fallback: {type: boolean}
+            alasan: {type: string, nullable: true}
+            n_kandidat: {type: integer, nullable: true}
+        metrik:
+          type: object
+          properties:
+            mape: {type: number, nullable: true}
+            rmse: {type: number, nullable: true}
+            baseline: {type: string, nullable: true, enum: [naive, seasonal_naive]}
+            mape_baseline: {type: number, nullable: true}
+            mengalahkan_baseline: {type: boolean, nullable: true}
+            evaluasi: {type: string, nullable: true}
+            n_lipatan: {type: integer, nullable: true}
+            n_lipatan_seleksi: {type: integer, nullable: true}
+            horizon:
+              type: array
+              items: {type: integer}
+
+    MlBlokForecastRingkas:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            kabupaten_kode: {type: string, nullable: true}
+            wilayah_tersedia:
+              type: array
+              items: {type: string}
+            items:
+              type: array
+              items: {$ref: "#/components/schemas/MlForecast"}
+
+    MlBlokForecast:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            komoditas_kode: {type: string}
+            kabupaten_kode: {type: string}
+            wilayah_tersedia:
+              type: array
+              items: {type: string}
+            item:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/MlForecast"
+                - type: object
+                  properties:
+                    riwayat:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          tanggal: {type: string, format: date}
+                          nilai: {type: number, nullable: true}
+                    penjelasan:
+                      allOf: [{$ref: "#/components/schemas/MlPenjelasan"}]
+                      nullable: true
+
+    MlMetrikModel:
+      type: object
+      properties:
+        klasifikasi:
+          type: object
+          nullable: true
+          properties:
+            model: {type: string, nullable: true}
+            f1: {type: number, nullable: true}
+            roc_auc: {type: number, nullable: true}
+            brier: {type: number, nullable: true}
+            brier_baseline: {type: number, nullable: true}
+            n_uji: {type: integer, nullable: true}
+            kalibrasi: {type: string, nullable: true}
+            layak: {type: boolean, nullable: true}
+            kelayakan: {type: string, enum: [LAYAK, TIDAK_LAYAK, TIDAK_DIKETAHUI]}
+            alasan: {type: string, nullable: true}
+        regresi:
+          type: object
+          nullable: true
+          properties:
+            pemenang:
+              type: object
+              additionalProperties: {type: integer}
+              example: {naive: 22, seasonal_naive: 8, lightgbm_quantile: 0}
+            mape_median: {type: number, nullable: true}
+            rmse_median: {type: number, nullable: true}
+            mape_baseline_median: {type: number, nullable: true}
+            n_seri: {type: integer, nullable: true}
+            mengalahkan_baseline: {type: integer, nullable: true}
+            n_dievaluasi_holdout: {type: integer, nullable: true}
+            n_dilewati: {type: integer, nullable: true}
+            n_gagal: {type: integer, nullable: true}
+            model_global: {type: string, nullable: true}
+            tingkat: {type: string, nullable: true}
+
+    MlBlokModel:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - $ref: "#/components/schemas/MlMetrikModel"
+        - type: object
+          properties:
+            status: {type: string}
+            target_inflasi: {type: string, nullable: true}
+            label_target: {type: string, nullable: true}
+
+    MlSinyalEws:
+      type: object
+      properties:
+        sinyal_kunci: {type: string, example: "ANOMALI_HARGA:DAG-AYM:1107:TURUN"}
+        severity: {type: string, enum: [INFO, WASPADA, SIAGA, KRITIS]}
+        jenis: {type: string, enum: [ANOMALI_HARGA, PROYEKSI_LONJAKAN, TEKANAN_INFLASI, SUMBER_DATA]}
+        komoditas_kode: {type: string, nullable: true}
+        kabupaten_kode: {type: string, nullable: true}
+        nilai: {type: number, nullable: true}
+        ambang: {type: number, nullable: true}
+        metode: {type: string, nullable: true}
+        judul: {type: string}
+        pesan: {type: string}
+        aktif: {type: boolean}
+        menjadi_alert: {type: boolean, description: "Sinyal aktif WASPADA ke atas; INFO tidak pernah menjadi alert"}
+        alert:
+          type: object
+          nullable: true
+          description: Alert EWS hasil jembatan (null bila belum/tidak dijembatani; hanya di /v1/ews dan freshness)
+          properties:
+            id: {$ref: "#/components/schemas/IdBigint"}
+            kode: {type: string, nullable: true}
+            status: {type: string, enum: [BARU, DIAKUI, DIESKALASI, SELESAI]}
+
+    MlRingkasanSinyal:
+      type: object
+      properties:
+        aktif: {type: integer}
+        kritis: {type: integer}
+        siaga: {type: integer}
+        waspada: {type: integer}
+        info: {type: integer}
+
+    MlBlokEws:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            ringkasan: {$ref: "#/components/schemas/MlRingkasanSinyal"}
+            sinyal:
+              type: array
+              items: {$ref: "#/components/schemas/MlSinyalEws"}
+            terpotong: {type: boolean}
+
+    MlBlokWilayah:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  wilayah_kode: {type: string}
+                  tingkat: {type: string, enum: [PROVINSI, KABUPATEN]}
+                  komoditas_forecast:
+                    type: array
+                    items: {type: string}
+                  inflasi:
+                    type: object
+                    nullable: true
+                    properties:
+                      kelas: {type: string, nullable: true}
+                      kelayakan: {type: string, enum: [LAYAK, TIDAK_LAYAK, TIDAK_DIKETAHUI]}
+                      probabilitas: {type: number, nullable: true}
+                      skor_tekanan: {type: number, nullable: true}
+                      siklus: {type: string}
+                      target: {type: string}
+                      label_target: {type: string}
+                  sinyal_aktif: {$ref: "#/components/schemas/MlRingkasanSinyal"}
+
+    MlRun:
+      type: object
+      properties:
+        run_id: {type: string}
+        crawler: {type: string}
+        crawl_date: {type: string}
+        mulai: {type: string, format: date-time, nullable: true}
+        selesai: {type: string, format: date-time, nullable: true}
+        status: {type: string, enum: [FRESH, STALE_CARRIED_FORWARD, ERROR]}
+        jumlah_baru: {type: integer, nullable: true}
+        jumlah_diteruskan: {type: integer, nullable: true}
+        last_available_date: {type: string, format: date, nullable: true}
+        pesan: {type: string}
+        pemicu: {type: string, enum: [JADWAL, MANUAL, BACKFILL]}
+        dilewati: {type: boolean}
+
+    MlKesegaranSiklus:
+      type: object
+      properties:
+        status: {type: string, nullable: true}
+        last_available_date: {type: string, format: date, nullable: true}
+        crawled_at: {type: string, format: date-time, nullable: true}
+        umur_hari: {type: integer, nullable: true}
+        pesan: {type: string}
+
+    MlBlokKesegaran:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            dihitung_pada: {type: string, format: date-time}
+            siklus:
+              allOf: [{$ref: "#/components/schemas/MlSiklusRingkas"}]
+              nullable: true
+            alasan_siklus: {type: string}
+            ringkasan:
+              type: object
+              properties:
+                segar: {type: integer}
+                basi: {type: integer}
+                gagal: {type: integer}
+                dilewati: {type: integer}
+                belum_ada_run_terjadwal: {type: integer}
+            sumber:
+              type: array
+              items:
+                type: object
+                properties:
+                  sumber: {type: string}
+                  dataset: {type: string}
+                  kategori: {type: string, enum: [SEGAR, BASI, GAGAL, DILEWATI, BELUM_ADA_RUN_TERJADWAL, TIDAK_DIKENAL]}
+                  status: {type: string, nullable: true}
+                  pesan: {type: string}
+                  last_available_date: {type: string, format: date, nullable: true}
+                  umur_hari: {type: integer, nullable: true}
+                  run_terakhir:
+                    allOf: [{$ref: "#/components/schemas/MlRun"}]
+                    nullable: true
+                  backfill_terakhir:
+                    allOf: [{$ref: "#/components/schemas/MlRun"}]
+                    nullable: true
+                  menurut_siklus:
+                    allOf: [{$ref: "#/components/schemas/MlKesegaranSiklus"}]
+                    nullable: true
+            sinyal_sumber:
+              type: array
+              items: {$ref: "#/components/schemas/MlSinyalEws"}
+
+    MlBlokMakro:
+      allOf:
+        - $ref: "#/components/schemas/MlMeta"
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  domain: {type: string}
+                  indikator: {type: string}
+                  wilayah_kode: {type: string, nullable: true}
+                  periode: {type: string, format: date, nullable: true}
+                  nilai: {type: number, nullable: true}
+                  satuan: {type: string}
+                  perubahan: {type: number, nullable: true}
+                  sumber: {type: string}
+                  is_carried_forward: {type: boolean}
+                  last_available_date: {type: string, format: date, nullable: true}
+
+    MlSiklus:
+      type: object
+      properties:
+        cycle_id: {type: string}
+        cycle_timestamp: {type: string, format: date-time}
+        data_cutoff: {type: string, format: date-time, nullable: true}
+        status: {type: string, enum: [BERJALAN, BERHASIL, SEBAGIAN, GAGAL]}
+        final: {type: boolean}
+        duration_ms: {type: integer, nullable: true}
+        pesan: {type: string}
+        versi_kode: {type: string}
+        jumlah:
+          type: object
+          additionalProperties: {type: integer}
+        target_inflasi: {type: string, nullable: true}
+        label_target: {type: string, nullable: true}
+        model_metrics: {$ref: "#/components/schemas/MlMetrikModel"}
+        source_freshness:
+          type: array
+          description: Hanya untuk pemegang `sumber.lihat`
+          items:
+            allOf:
+              - $ref: "#/components/schemas/MlKesegaranSiklus"
+              - type: object
+                properties:
+                  sumber: {type: string}
+                  dataset: {type: string}
+                  dilewati: {type: boolean}
+
+    MlSiklusResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data: {$ref: "#/components/schemas/MlSiklus"}
+
+    MlDaftarSiklusResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data:
+          type: object
+          properties:
+            tersedia: {type: boolean}
+            alasan: {type: string}
+            items:
+              type: array
+              items: {$ref: "#/components/schemas/MlSiklus"}
+            total: {type: integer}
+            page: {type: integer}
+            limit: {type: integer}
+
+    MlKesegaranResponse:
+      type: object
+      properties:
+        code: {type: string, example: "200"}
+        message: {type: string, example: "OK"}
+        data: {$ref: "#/components/schemas/MlBlokKesegaran"}

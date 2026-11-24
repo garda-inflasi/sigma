@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, RotateCcw, Save, Undo2 } from "lucide-react";
+import { Check, Lock, RotateCcw, Save, Undo2 } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/rbac";
 import { useMatriksAkses, useSimpanPeran } from "@/lib/query/rbac-hooks";
 import { drafMatriks, useDrafMatriks } from "@/lib/rbac/draf-matriks";
+import { peranIzinTerkunci } from "@/lib/rbac/permissions";
 import { LAPIS_META, ROLES } from "@/lib/rbac/roles";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +22,8 @@ import { cn } from "@/lib/utils";
  * mengubah DRAF (belum berlaku); "Simpan" per peran mengirim seluruh izin peran itu dengan versi yang dibaca
  * (kunci optimistis: bila admin lain menyimpan lebih dulu, draf dibuang dan matriks dimuat ulang). Sel yang berbeda
  * dari bawaan di kode ditandai, dan "Pulihkan bawaan" menjadikannya draf. Draf bertahan saat berpindah tab di
- * halaman dan memperingatkan sebelum halaman ditutup.
+ * halaman dan memperingatkan sebelum halaman ditutup. Kolom Administrator Sistem hanya baca: peran itu selalu
+ * memegang seluruh izin dan API menolak pengurangannya.
  */
 export function MatriksAksesEditor() {
   const { data: matriks, isLoading, isError, refetch } = useMatriksAkses();
@@ -108,7 +110,9 @@ export function MatriksAksesEditor() {
         <p className="min-w-0 flex-1 basis-64 text-xs text-muted-foreground">
           Klik sel untuk mengubah izin sebuah peran, lalu simpan per peran.
           Perubahan berlaku pada request berikutnya dan tercatat di audit trail.
-          Titik kuning menandai izin yang berbeda dari matriks bawaan.
+          Titik kuning menandai izin yang berbeda dari matriks bawaan. Kolom
+          Administrator Sistem terkunci karena peran ini selalu memegang seluruh
+          izin; pemisahan tugas per aksi tetap berlaku.
         </p>
         {jumlahDraf > 0 && (
           <div
@@ -182,6 +186,7 @@ export function MatriksAksesEditor() {
                         tampil={izinTampil(p)}
                         onKlik={() => klikSel(p, izin.id)}
                         terkunci={menyimpan === p.id}
+                        hanyaBaca={peranIzinTerkunci(p.id)}
                       />
                     ))}
                   </tr>
@@ -232,6 +237,14 @@ function KepalaPeran({
       <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
         v{peran.versi}
       </span>
+      {peranIzinTerkunci(peran.id) && (
+        <span
+          className="mt-1 inline-flex items-center gap-1 text-[10px] font-normal text-muted-foreground"
+          title="Administrator Sistem selalu memegang seluruh izin"
+        >
+          <Lock aria-hidden className="size-3" /> Seluruh izin
+        </span>
+      )}
       {punyaDraf && (
         <span className="mt-1 block text-[10px] font-normal text-waspada-ink">
           Belum disimpan · +{ditambah.length} −{dicabut.length}
@@ -259,7 +272,7 @@ function KepalaPeran({
             </Button>
           </>
         )}
-        {bedaDariBawaan && (
+        {bedaDariBawaan && !peranIzinTerkunci(peran.id) && (
           <Button
             variant="ghost"
             size="xs"
@@ -281,12 +294,14 @@ function SelIzin({
   tampil,
   onKlik,
   terkunci,
+  hanyaBaca,
 }: {
   peran: PeranAkses;
   izin: string;
   tampil: ReadonlySet<string>;
   onKlik: () => void;
   terkunci: boolean;
+  hanyaBaca: boolean;
 }) {
   const aktif = tampil.has(izin);
   const berubah = aktif !== peran.izin.has(izin);
@@ -298,9 +313,13 @@ function SelIzin({
         aria-pressed={aktif}
         aria-label={`${izin} untuk ${peran.label}`}
         data-berubah={berubah || undefined}
-        disabled={terkunci}
+        disabled={terkunci || hanyaBaca}
+        title={hanyaBaca ? "Terkunci: Administrator Sistem selalu memegang seluruh izin" : undefined}
         onClick={onKlik}
-        className="relative inline-grid size-9 place-items-center rounded-md outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className={cn(
+          "relative inline-grid size-9 place-items-center rounded-md outline-none transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+          hanyaBaca && "cursor-not-allowed hover:bg-transparent disabled:opacity-70",
+        )}
       >
         {aktif ? (
           <span

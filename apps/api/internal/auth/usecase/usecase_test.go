@@ -903,7 +903,7 @@ func TestGetPermissionsForRole(t *testing.T) {
 	perms := uc.getPermissionsForRole("ADMIN_SISTEM")
 	assert.Contains(t, perms, "pengguna.kelola")
 	assert.Contains(t, perms, "audit.lihat")
-	assert.NotContains(t, perms, "harga.input")
+	assert.ElementsMatch(t, semuaIzinKatalog(), perms, "ADMIN_SISTEM memegang seluruh katalog")
 
 	perms = uc.getPermissionsForRole("OPS_MAHASISWA")
 	assert.Contains(t, perms, "harga.input")

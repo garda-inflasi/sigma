@@ -136,6 +136,7 @@ type AturanEws struct {
 	AmbangKritis  float64 `gorm:"column:ambang_kritis"`
 	JendelaHari   int     `gorm:"column:jendela_hari"`
 	// CooldownJam adalah jeda setelah alert SELESAI sebelum kondisi yang sama boleh memicu alert baru.
+	// Tidak berlaku untuk kondisi KRITIS (KenaPeredaman).
 	CooldownJam int    `gorm:"column:cooldown_jam"`
 	Kanal       Kanal  `gorm:"column:kanal;type:_text"`
 	Aktif       bool   `gorm:"column:aktif"`

@@ -73,6 +73,7 @@ NO_CACHE=0
 SKIP_BUILD=0
 SKIP_MIGRATE=0
 WITH_MIGRATE=0
+WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -80,6 +81,7 @@ while [[ $# -gt 0 ]]; do
     --tag)                       shift; RELEASE_TAG="${1:-}" ;;
     --only=*)                    ONLY_RAW="${1#*=}" ;;
     --only)                      shift; ONLY_RAW="${1:-}" ;;
+    --with-pipeline)             WITH_PIPELINE=1 ;;
     --gateway=*)                 GATEWAY_MODE="${1#*=}" ;;
     --gateway)                   shift; GATEWAY_MODE="${1:-}" ;;
     --public-host=*)             PUBLIC_HOST="${1#*=}" ;;
@@ -128,12 +130,18 @@ else
   else
     DEPLOY_SERVICES=(api worker ml web)
   fi
+  if [[ "$WITH_PIPELINE" -eq 1 ]]; then
+    DEPLOY_SERVICES+=(crawler ml-worker)
+  fi
 fi
 
 NEED_API_IMG=0
 NEED_WEB_IMG=0
 NEED_ML_IMG=0
+NEED_ML_WORKER_IMG=0
+NEED_CRAWLER_IMG=0
 NEED_CADDY_IMG=0
+NEED_PIPELINE=0
 RUN_MIGRATE=0
 
 for svc in "${DEPLOY_SERVICES[@]}"; do
@@ -141,6 +149,8 @@ for svc in "${DEPLOY_SERVICES[@]}"; do
     api|worker) NEED_API_IMG=1; RUN_MIGRATE=1 ;;
     web)        NEED_WEB_IMG=1 ;;
     ml)         NEED_ML_IMG=1 ;;
+    ml-worker)  NEED_ML_WORKER_IMG=1; NEED_PIPELINE=1 ;;
+    crawler)    NEED_CRAWLER_IMG=1; NEED_PIPELINE=1 ;;
     caddy)
       if [[ "$GATEWAY_MODE" == "external" ]]; then
         die "Service 'caddy' tidak bisa dideploy saat GATEWAY_MODE=external."
@@ -207,6 +217,38 @@ export DB_NAME="${DB_NAME:-$POSTGRES_DB}"
 export DB_APP_USER="${DB_APP_USER:-}"
 export DB_APP_PASSWORD="${DB_APP_PASSWORD:-}"
 export APP_ENV=production
+export MONGO_VOLUME="${MONGO_VOLUME:-garda_pipeline_mongo_data}"
+export MONGO_USER="${MONGO_USER:-garda}"
+export MONGO_DB="${MONGO_DB:-garda_inflasi}"
+export MONGO_DB_UNSEEN="${MONGO_DB_UNSEEN:-dataunseen}"
+export MONGO_DB_SAFE="${MONGO_DB_SAFE:-datasafe}"
+if [[ -n "${MONGO_PASSWORD:-}" && -z "${MONGO_URI:-}" ]]; then
+  export MONGO_URI="mongodb://${MONGO_USER}:${MONGO_PASSWORD}@garda-mongodb:27017/?authSource=admin"
+fi
+
+if [[ "$NEED_PIPELINE" -eq 1 ]]; then
+  if [[ -z "${MONGO_PASSWORD:-}" ]]; then
+    log_warn "MONGO_PASSWORD belum ada di ${REMOTE_DIR}/.env — menambahkan kredensial MongoDB acak ..."
+    MONGO_PASSWORD="$(openssl rand -hex 24)"
+    {
+      printf '\n# MongoDB & Pipeline Data/ML (ditambahkan otomatis oleh remote-deploy.sh)\n'
+      printf 'MONGO_USER=%s\n' "$MONGO_USER"
+      printf 'MONGO_PASSWORD=%s\n' "$MONGO_PASSWORD"
+      printf 'MONGO_DB=%s\n' "$MONGO_DB"
+      printf 'MONGO_PORT=%s\n' "${MONGO_PORT:-27017}"
+      printf 'MONGO_VOLUME=%s\n' "$MONGO_VOLUME"
+      printf 'MONGO_DB_UNSEEN=%s\n' "$MONGO_DB_UNSEEN"
+      printf 'MONGO_DB_SAFE=%s\n' "$MONGO_DB_SAFE"
+      printf 'ML_N_JOBS=%s\n' "${ML_N_JOBS:-4}"
+      printf 'ML_INTERVAL_SELEKSI_JAM=%s\n' "${ML_INTERVAL_SELEKSI_JAM:-24}"
+    } >> ./.env
+  fi
+  require_secret MONGO_PASSWORD 16
+  export MONGO_PASSWORD
+  export MONGO_URI="${MONGO_URI:-mongodb://${MONGO_USER}:${MONGO_PASSWORD}@garda-mongodb:27017/?authSource=admin}"
+  export ML_N_JOBS="${ML_N_JOBS:-4}"
+  export ML_INTERVAL_SELEKSI_JAM="${ML_INTERVAL_SELEKSI_JAM:-24}"
+fi
 
 if [[ -f ./.env.tags ]]; then
   cp ./.env.tags ./.env.tags.prev
@@ -220,6 +262,8 @@ IMAGE_TAG=latest
 API_IMAGE_TAG=latest
 WEB_IMAGE_TAG=latest
 ML_IMAGE_TAG=latest
+ML_PIPELINE_IMAGE_TAG=latest
+CRAWLER_IMAGE_TAG=latest
 CADDY_IMAGE_TAG=latest
 EOF
   cp ./.env.tags ./.env.tags.prev
@@ -229,6 +273,8 @@ export IMAGE_TAG="${RELEASE_TAG}"
 export API_IMAGE_TAG="${API_IMAGE_TAG:-latest}"
 export WEB_IMAGE_TAG="${WEB_IMAGE_TAG:-latest}"
 export ML_IMAGE_TAG="${ML_IMAGE_TAG:-latest}"
+export ML_PIPELINE_IMAGE_TAG="${ML_PIPELINE_IMAGE_TAG:-latest}"
+export CRAWLER_IMAGE_TAG="${CRAWLER_IMAGE_TAG:-latest}"
 export CADDY_IMAGE_TAG="${CADDY_IMAGE_TAG:-latest}"
 
 compose_infra() {
@@ -243,13 +289,29 @@ compose_app() {
   fi
 }
 
+# Pre-flight validasi konfigurasi compose (infra + app + profil pipeline) sebelum build & up.
+log_info "Validasi konfigurasi Docker Compose produksi (infra + app --profile pipeline) ..."
+compose_infra config --quiet || die "Validasi ${COMPOSE_INFRA} + ${COMPOSE_PROD} gagal."
+compose_app --profile pipeline config --quiet || die "Validasi ${COMPOSE_APP} + ${COMPOSE_PROD} (--profile pipeline) gagal."
+log_success "Konfigurasi Docker Compose valid."
+
 # ------------------------------------------------------------------------------
 #  1. Build selected image(s) directly on the VM (sequentially for 3.6GB RAM safety)
 # ------------------------------------------------------------------------------
 build_vm_image() {
   local target="$1"
-  local dockerfile="${BUILD_SRC_DIR}/docker/${target}.Dockerfile"
-  local image="garda-${target}"
+  local dockerfile_name="$target"
+  local image_suffix="$target"
+  local docker_target=""
+
+  if [[ "$target" == "ml-worker" ]]; then
+    dockerfile_name="ml"
+    image_suffix="ml-pipeline"
+    docker_target="pipeline"
+  fi
+
+  local dockerfile="${BUILD_SRC_DIR}/docker/${dockerfile_name}.Dockerfile"
+  local image="garda-${image_suffix}"
 
   [[ -f "$dockerfile" ]] || die "Dockerfile tidak ditemukan di ${dockerfile}."
 
@@ -260,6 +322,7 @@ build_vm_image() {
     -t "${image}:latest"
     -f "$dockerfile"
   )
+  [[ -n "$docker_target" ]] && args+=(--target "$docker_target")
   [[ "$NO_CACHE" -eq 1 ]] && args+=(--no-cache)
 
   if [[ "$target" == "web" ]]; then
@@ -299,10 +362,12 @@ else
   [[ -d "$BUILD_SRC_DIR" ]] || die "Direktori staging source tidak ditemukan: ${BUILD_SRC_DIR}" \
       "Jalankan sync-source.sh terlebih dahulu."
 
-  [[ "$NEED_API_IMG" -eq 1 ]]   && build_vm_image "api"
-  [[ "$NEED_ML_IMG" -eq 1 ]]    && build_vm_image "ml"
-  [[ "$NEED_WEB_IMG" -eq 1 ]]   && build_vm_image "web"
-  [[ "$NEED_CADDY_IMG" -eq 1 ]] && build_vm_image "caddy"
+  [[ "$NEED_API_IMG" -eq 1 ]]       && build_vm_image "api"
+  [[ "$NEED_ML_IMG" -eq 1 ]]        && build_vm_image "ml"
+  [[ "$NEED_ML_WORKER_IMG" -eq 1 ]] && build_vm_image "ml-worker"
+  [[ "$NEED_CRAWLER_IMG" -eq 1 ]]   && build_vm_image "crawler"
+  [[ "$NEED_WEB_IMG" -eq 1 ]]       && build_vm_image "web"
+  [[ "$NEED_CADDY_IMG" -eq 1 ]]     && build_vm_image "caddy"
 fi
 
 # ------------------------------------------------------------------------------
@@ -342,6 +407,14 @@ if [[ "$NEED_ML_IMG" -eq 1 ]]; then
   check_image ml
   export ML_IMAGE_TAG="$RELEASE_TAG"
 fi
+if [[ "$NEED_ML_WORKER_IMG" -eq 1 ]]; then
+  check_image ml-pipeline
+  export ML_PIPELINE_IMAGE_TAG="$RELEASE_TAG"
+fi
+if [[ "$NEED_CRAWLER_IMG" -eq 1 ]]; then
+  check_image crawler
+  export CRAWLER_IMAGE_TAG="$RELEASE_TAG"
+fi
 if [[ "$NEED_CADDY_IMG" -eq 1 ]]; then
   check_image caddy
   export CADDY_IMAGE_TAG="$RELEASE_TAG"
@@ -352,9 +425,12 @@ IMAGE_TAG=${RELEASE_TAG}
 API_IMAGE_TAG=${API_IMAGE_TAG}
 WEB_IMAGE_TAG=${WEB_IMAGE_TAG}
 ML_IMAGE_TAG=${ML_IMAGE_TAG}
+ML_PIPELINE_IMAGE_TAG=${ML_PIPELINE_IMAGE_TAG}
+CRAWLER_IMAGE_TAG=${CRAWLER_IMAGE_TAG}
 CADDY_IMAGE_TAG=${CADDY_IMAGE_TAG}
 EOF
-log_info "Tag aktif: API=${API_IMAGE_TAG}, WEB=${WEB_IMAGE_TAG}, ML=${ML_IMAGE_TAG}"
+log_info "Tag aktif: API=${API_IMAGE_TAG}, WEB=${WEB_IMAGE_TAG}, ML=${ML_IMAGE_TAG}, ML_PIPELINE=${ML_PIPELINE_IMAGE_TAG}, CRAWLER=${CRAWLER_IMAGE_TAG}"
+compose_app --profile pipeline config --quiet || die "Validasi konfigurasi compose dengan .env.tags baru gagal."
 
 # ------------------------------------------------------------------------------
 #  4. Ensure networks exist
@@ -375,11 +451,12 @@ if [[ "$GATEWAY_MODE" == "external" ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-#  5. Ensure infrastructure (postgres, redis) is running & healthy
+#  5. Ensure infrastructure (postgres, redis, dan mongodb bila pipeline aktif)
 # ------------------------------------------------------------------------------
-log_section "5/8 — Pastikan infra sehat (postgres, redis)"
 infra_services=(postgres redis)
+[[ "$NEED_PIPELINE" -eq 1 ]] && { infra_services+=(mongodb); INFRA_SERVICE_COUNT=$((INFRA_SERVICE_COUNT + 1)); }
 case ",${COMPOSE_PROFILES:-}," in *,backup,*) infra_services+=(backup) ;; esac
+log_section "5/8 — Pastikan infra sehat (${infra_services[*]})"
 compose_infra up -d --no-build "${infra_services[@]}"
 
 deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECONDS ))
@@ -419,7 +496,11 @@ fi
 #  7. Bring up only target services (--no-deps preserves unaffected containers)
 # ------------------------------------------------------------------------------
 log_section "7/8 — Up layanan: ${DEPLOY_SERVICES[*]}"
-compose_app up -d --no-build --no-deps "${DEPLOY_SERVICES[@]}"
+if [[ "$NEED_PIPELINE" -eq 1 ]]; then
+  compose_app --profile pipeline up -d --no-build --no-deps "${DEPLOY_SERVICES[@]}"
+else
+  compose_app up -d --no-build --no-deps "${DEPLOY_SERVICES[@]}"
+fi
 
 # ------------------------------------------------------------------------------
 #  8. Targeted service healthchecks
@@ -452,6 +533,12 @@ for svc in "${DEPLOY_SERVICES[@]}"; do
     ml)
       check_container_cmd "garda-ml" ":8000/health" "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\""
       ;;
+    ml-worker)
+      check_container_cmd "garda-ml-worker" "venv pipeline ML (lightgbm, pymongo)" "python -c \"import garda_ml.pipeline, lightgbm, pymongo\""
+      ;;
+    crawler)
+      check_container_cmd "garda-crawler" "detak crawler & venv Python" "python -m garda_crawler health"
+      ;;
     web)
       check_container_cmd "garda-web" ":3000/" "wget -qO- http://127.0.0.1:3000/"
       ;;
@@ -481,5 +568,9 @@ printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .last-deploy-time
 
 log_section "Ringkasan container VM"
 compose_infra ps || true
-compose_app ps || true
+if [[ "$NEED_PIPELINE" -eq 1 ]] || docker ps -a --format '{{.Names}}' | grep -Eq '^(garda-crawler|garda-ml-worker)$'; then
+  compose_app --profile pipeline ps || true
+else
+  compose_app ps || true
+fi
 log_success "Remote deploy ${RELEASE_TAG} (${DEPLOY_SERVICES[*]}) berhasil dan bersih."

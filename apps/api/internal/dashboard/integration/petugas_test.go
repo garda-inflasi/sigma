@@ -405,8 +405,7 @@ func TestAktivitasPetugas_Otorisasi(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodGet, jalur, "", nil).Code, "tanpa token")
 	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, jalur, emailTakBerhak, nil).Code, "mahasiswa tanpa dashboard.operasional")
-	assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, jalur, "superadmin@gardainflasi.id", nil).Code, "admin sistem tanpa dashboard.operasional")
-	for _, email := range []string{emailBerhak, emailKoordinator, emailAgregator, emailManajerData} {
+	for _, email := range []string{emailBerhak, emailKoordinator, emailAgregator, emailManajerData, "superadmin@gardainflasi.id"} {
 		assert.Equal(t, http.StatusOK, s.call(t, http.MethodGet, jalur, email, nil).Code, email)
 	}
 }

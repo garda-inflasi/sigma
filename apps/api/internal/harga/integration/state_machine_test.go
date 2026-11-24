@@ -184,7 +184,7 @@ func TestRiwayat_RecordsEveryTransition(t *testing.T) {
 	})
 	t.Run("izin dan entri tidak ada", func(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, s.call(t, http.MethodGet, "/v1/harga/tidak-ada/riwayat", emailKoordinator, nil).Code)
-		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/harga/"+id+"/riwayat", "superadmin@gardainflasi.id", nil).Code, "tanpa harga.lihat dan harga.input")
+		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodGet, "/v1/harga/"+id+"/riwayat", s.akunTanpaIzinHarga(t), nil).Code, "tanpa harga.lihat dan harga.input")
 		assert.Equal(t, http.StatusUnauthorized, s.call(t, http.MethodGet, "/v1/harga/"+id+"/riwayat", "", nil).Code)
 	})
 }
@@ -254,18 +254,53 @@ func TestDatabaseEnforcesPublisherSeparation(t *testing.T) {
 		dipublikasi_oleh = garda_uuid_stabil('pengguna', 'manajer_data') WHERE id = ?`, id).Error, "tiga orang berbeda lolos")
 }
 
-// 02-B: Admin Sistem mengelola akun dan konfigurasi, bukan keputusan bisnis. Izin persetujuan apa pun (validasi,
-// publikasi, setujui) tidak boleh masuk ke matriks bawaannya.
-func TestRBAC_AdminSistemTanpaHakPersetujuanBisnis(t *testing.T) {
+// akunTanpaIzinHarga mengembalikan akun yang perannya sementara tidak memegang harga.lihat maupun harga.input. Sejak
+// ADMIN_SISTEM memegang seluruh katalog, tidak ada peran bawaan seperti itu; MANAJER_PEMBIAYAAN dipilih karena tidak
+// dipakai tes lain di paket ini. Izinnya dipulihkan saat tes selesai.
+func (s *suite) akunTanpaIzinHarga(t *testing.T) string {
+	t.Helper()
+	require.NoError(t, s.db.Exec(`DELETE FROM role_permissions WHERE role_kunci = 'MANAJER_PEMBIAYAAN' AND permission_nama = 'harga.lihat'`).Error)
+	t.Cleanup(func() {
+		require.NoError(t, s.db.Exec(`INSERT INTO role_permissions (role_kunci, permission_nama) VALUES ('MANAJER_PEMBIAYAAN', 'harga.lihat')
+			ON CONFLICT DO NOTHING`).Error)
+	})
+	return "manajer.pembiayaan@gardainflasi.id"
+}
+
+// ADMIN_SISTEM memegang seluruh izin, tetapi pemisahan tugas per aksi tetap berlaku: ia tidak memvalidasi atau
+// menerbitkan entri yang ia catat, dan tidak menerbitkan entri yang ia validasi sendiri.
+func TestRBAC_AdminSistemTetapTundukPemisahanTugas(t *testing.T) {
 	s := sharedSuite(t)
-
-	var terlarang []string
-	require.NoError(t, s.db.Raw(`SELECT permission_nama FROM role_permissions
-		WHERE role_kunci = 'ADMIN_SISTEM' AND permission_nama ~ '(validasi|publikasi|setujui)' ORDER BY 1`).Scan(&terlarang).Error)
-
-	assert.Empty(t, terlarang, "ADMIN_SISTEM tidak boleh memegang izin persetujuan bisnis")
-	for _, email := range []string{"superadmin@gardainflasi.id"} {
-		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", email, map[string]any{"action": "validasi", "ids": []string{"1"}}).Code)
-		assert.Equal(t, http.StatusForbidden, s.call(t, http.MethodPost, "/v1/harga/bulk", email, map[string]any{"action": "publikasi", "ids": []string{"1"}}).Code)
+	const admin = "superadmin@gardainflasi.id"
+	aksi := func(aksi, id string) *hasilBulkRincian {
+		return s.bulk(t, admin, map[string]any{"action": aksi, "ids": []string{id}})
 	}
+	ditolak := func(h *hasilBulkRincian, id string) {
+		t.Helper()
+		assert.Equal(t, hasilBulkRincian{Gagal: 1, Rincian: []rincianBulk{{ID: id, Sebab: "pemisahan_tugas"}}}, *h)
+	}
+
+	t.Run("entri yang ia catat sendiri", func(t *testing.T) {
+		milik := s.buat(t, admin)
+		ditolak(aksi("validasi", milik), milik)
+		assert.Equal(t, "DIAJUKAN", s.status(t, milik))
+
+		require.Equal(t, 1, s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{milik}}).Berhasil)
+		ditolak(aksi("publikasi", milik), milik)
+		assert.Equal(t, "DIVALIDASI", s.status(t, milik))
+	})
+
+	t.Run("entri yang ia validasi sendiri tidak boleh ia terbitkan", func(t *testing.T) {
+		id := s.buat(t, emailMahasiswa)
+		require.Equal(t, 1, aksi("validasi", id).Berhasil, "entri orang lain boleh divalidasi")
+		ditolak(aksi("publikasi", id), id)
+		assert.Equal(t, "DIVALIDASI", s.status(t, id))
+		require.Equal(t, 1, s.bulk(t, emailManajerData, map[string]any{"action": "publikasi", "ids": []string{id}}).Berhasil)
+	})
+
+	t.Run("entri orang lain yang divalidasi orang lain boleh ia terbitkan", func(t *testing.T) {
+		id := s.buat(t, emailMahasiswa)
+		require.Equal(t, 1, s.bulk(t, emailKoordinator, map[string]any{"action": "validasi", "ids": []string{id}}).Berhasil)
+		assert.Equal(t, 1, aksi("publikasi", id).Berhasil)
+	})
 }

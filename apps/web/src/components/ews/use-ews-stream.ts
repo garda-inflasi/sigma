@@ -11,7 +11,8 @@ import { pulihkanSesi } from "@/lib/auth/sesi-client";
 import { useSession } from "@/lib/auth/session-context";
 import type { EwsAlert } from "@/lib/data/types";
 import { severityMeta } from "@/lib/design/tokens";
-import { useBulkAction } from "@/lib/query/hooks";
+import { terapkanPeristiwaKritis } from "@/lib/ews/kritis";
+import { useAksiEws } from "@/lib/query/hooks";
 import { qk } from "@/lib/query/keys";
 import { can } from "@/lib/rbac/permissions";
 import { useEwsStore } from "@/lib/stores/ews-store";
@@ -30,7 +31,7 @@ export function useEwsStream() {
   const bolehAkui = can(sesi, "ews.akui");
   const catat = useEwsStore((s) => s.catat);
   const setStatus = useEwsStore((s) => s.setStatus);
-  const ack = useBulkAction<EwsAlert>({ sumber: "ews", queryKey: qk.ews.list(), patch: (r) => ({ ...r, status: "DIAKUI" }) });
+  const ack = useAksiEws();
   const ackRef = useRef(ack.mutate);
   ackRef.current = ack.mutate;
 
@@ -40,9 +41,12 @@ export function useEwsStream() {
     const handle = (a: EwsAlert) => {
       const diumumkan = layakDiumumkan(qc.getQueryData<EwsAlert[]>(qk.ews.list()), a);
       qc.setQueryData<EwsAlert[]>(qk.ews.list(), (old) => mergeAlert(old, a));
+      // Sumber toast dan banner KRITIS: masuk bila BARU, keluar begitu server menyatakan sudah ditindaklanjuti.
+      qc.setQueryData<EwsAlert[]>(qk.ews.kritisBaru(), (old) => terapkanPeristiwaKritis(old, a));
       if (!diumumkan) return;
       catat(a.id);
-      if (severityMeta[a.severity].rank >= 2) {
+      // Toast KRITIS dirender PengelolaToastKritis dari data di atas supaya bertahan sampai ditindaklanjuti.
+      if (a.severity !== "KRITIS" && severityMeta[a.severity].rank >= 2) {
         notifyEws(a, {
           onView: () => router.push(`/ews?id=${a.id}`),
           onAck: bolehAkui ? () => ackRef.current({ aksi: "akui", ids: [a.id], label: "Alert diakui" }) : undefined,
@@ -80,8 +84,11 @@ export function useEwsStream() {
         const alert = parseAlertEvent(data);
         if (alert) handle(alert);
       },
-      // Perubahan status (diakui pengguna lain, dst.) dan event yang terlewat tidak lewat aliran: segarkan daftar.
-      saatTersambungUlang: () => qc.invalidateQueries({ queryKey: qk.ews.list() }),
+      // Event yang terlewat selama terputus: segarkan daftar dan KRITIS yang menahan toast serta banner.
+      saatTersambungUlang: () => {
+        qc.invalidateQueries({ queryKey: qk.ews.list() });
+        qc.invalidateQueries({ queryKey: qk.ews.kritisBaru() });
+      },
     });
   }, [bolehLihat, bolehAkui, qc, router, catat, setStatus]);
 }

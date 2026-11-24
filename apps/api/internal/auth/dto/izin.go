@@ -6,6 +6,8 @@ import "time"
 const (
 	// KodePemegangTerakhir (409): perubahan akan menghapus pemegang terakhir izin pengguna.kelola.
 	KodePemegangTerakhir = "LAST_PERMISSION_HOLDER"
+	// KodeIzinAdminTerkunci (409): perubahan mengurangi izin ADMIN_SISTEM, yang selalu memegang seluruh katalog.
+	KodeIzinAdminTerkunci = "ADMIN_PERMISSIONS_LOCKED"
 	// KodeVersiPeranBerubah (409): matriks peran sudah diubah admin lain; data berisi peran saat ini.
 	KodeVersiPeranBerubah = "ROLE_VERSION_CONFLICT"
 	// KodeIzinTidakDikenal (400): nama izin tidak ada di katalog.

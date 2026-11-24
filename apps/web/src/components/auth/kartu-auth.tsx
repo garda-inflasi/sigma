@@ -1,6 +1,9 @@
+"use client";
+
 import { ShieldCheck } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { softReveal, useGSAP } from "@/lib/motion/gsap";
 
 /** Kerangka halaman autentikasi: satu kartu, satu tujuan, dan catatan keamanan yang tidak menyaingi form. */
 export function KartuAuth({
@@ -14,9 +17,22 @@ export function KartuAuth({
   catatan?: ReactNode;
   children: ReactNode;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      if (!cardRef.current) return;
+      softReveal(cardRef.current, { y: 10, duration: 0.44, stagger: 0 });
+    },
+    { scope: cardRef },
+  );
+
   return (
     <main className="grid min-h-dvh place-items-center px-4 py-4">
-      <div className="glass-strong w-full max-w-[420px] rounded-xl p-6 sm:p-7">
+      <div
+        ref={cardRef}
+        className="glass-strong w-full max-w-[420px] rounded-xl p-6 sm:p-7"
+      >
         <BrandMark className="size-10" />
         <h1 className="mt-4 text-display-md font-bold text-navy-900 dark:text-white">
           {judul}

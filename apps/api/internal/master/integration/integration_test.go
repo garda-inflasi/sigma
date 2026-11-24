@@ -30,9 +30,10 @@ import (
 const (
 	jwtSecret = "master-integration-secret-key-32chars!"
 
-	// ADMIN_SISTEM dan MANAJER_DATA: master.lihat + master.ajukan; STRATEGIS_BPS dan STRATEGIS_FMIPA:
+	// MANAJER_PROGRAM dan MANAJER_DATA: master.lihat + master.ajukan; STRATEGIS_BPS dan STRATEGIS_FMIPA:
 	// master.lihat + master.setujui; OPS_KOORDINATOR: hanya master.lihat; OPS_MAHASISWA: tidak ada.
-	emailAjukan   = "superadmin@gardainflasi.id"
+	// ADMIN_SISTEM memegang keduanya, jadi tidak dipakai sebagai contoh pengaju murni.
+	emailAjukan   = "manajer.program@gardainflasi.id"
 	emailManajer  = "manajer.data@gardainflasi.id"
 	emailSetujui  = "strategis.bps@gardainflasi.id"
 	emailFMIPA    = "strategis.fmipa@gardainflasi.id"
@@ -367,7 +368,7 @@ func TestMaster_BulkKomoditas(t *testing.T) {
 		assert.Equal(t, 2, decodeBulk(t, w).Berhasil)
 		assert.Equal(t, "DIARSIPKAN", statusOf("GLA"))
 		assert.Equal(t, "DIARSIPKAN", statusOf("MYK"))
-		assert.EqualValues(t, 1, auditCount("BULK_arsipkan", uid("superadmin")))
+		assert.EqualValues(t, 1, auditCount("BULK_arsipkan", uid("manajer_program")))
 	})
 
 	t.Run("transisi tidak valid dan kode tak dikenal menjadi item gagal", func(t *testing.T) {

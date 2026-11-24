@@ -19,11 +19,44 @@ export interface MarkerWilayah {
 /** Titik tambahan di peta selain pusat kabupaten/kota. */
 export interface TitikPeta {
   id: string;
-  jenis: "pasar" | "cold-storage";
+  jenis: "pasar" | "cold-storage" | "pertanian" | "perkampungan";
   nama: string;
   keterangan?: string;
   lat: number;
   lng: number;
+}
+
+/** Jarak garis lurus (Haversine) dua koordinat dalam kilometer. */
+export function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371.0088;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function estimasiJalanKm(lurusKm: number, faktor = 1.28): number {
+  return Math.round(lurusKm * faktor * 10) / 10;
+}
+
+export function estimasiMenitTempuh(jalanKm: number, kecepatanKmh = 42): number {
+  return Math.round((jalanKm / kecepatanKmh) * 60);
+}
+
+export function risikoFoodLossDariMenit(
+  menit: number,
+): "RENDAH" | "SEDANG" | "TINGGI" {
+  if (menit >= 240) return "TINGGI";
+  if (menit >= 120) return "SEDANG";
+  return "RENDAH";
 }
 
 export type LatLng = [lat: number, lng: number];

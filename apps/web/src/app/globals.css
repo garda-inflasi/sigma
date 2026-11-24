@@ -5,6 +5,7 @@
    ════════════════════════════════════════════════════════════════════ */
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "lenis/dist/lenis.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -624,7 +625,9 @@
   animation: var(--animate-live);
 }
 .garda-pin-pasar,
-.garda-pin-cold {
+.garda-pin-cold,
+.garda-pin-pertanian,
+.garda-pin-perkampungan {
   display: inline-block;
   width: 10px;
   height: 10px;
@@ -640,8 +643,18 @@
   background: #7c3aed;
   transform: rotate(45deg);
 }
+.garda-pin-pertanian {
+  border-radius: 9999px;
+  background: #059669;
+}
+.garda-pin-perkampungan {
+  border-radius: 3px 3px 9999px 9999px;
+  background: #4f46e5;
+}
 .dark .garda-pin-pasar,
-.dark .garda-pin-cold {
+.dark .garda-pin-cold,
+.dark .garda-pin-pertanian,
+.dark .garda-pin-perkampungan {
   border-color: #16171c;
 }
 .garda-pin-cari {

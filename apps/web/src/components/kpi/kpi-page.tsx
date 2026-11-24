@@ -20,6 +20,7 @@ import {
   type ItemRingkas,
 } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
+import { KonteksMl, konteksModel } from "@/components/ml/konteks-ml";
 import { PanelGalat } from "@/components/garda/panel-galat";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
@@ -269,6 +270,7 @@ export function KpiPage() {
         label="Ringkasan capaian indikator"
         className="[&>li:last-child:nth-child(odd)]:col-span-2 lg:[&>li:last-child:nth-child(odd)]:col-auto"
       />
+      <KonteksMl path="/v1/kpi" ringkas={konteksModel} />
       {isLoading ? (
         <IsiPas className="lg:grid lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
           {KPI_KELOMPOK.map((kel) => (

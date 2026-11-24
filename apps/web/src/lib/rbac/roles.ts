@@ -158,7 +158,7 @@ export const ROLES: Record<Role, RoleMeta> = {
     label: "Administrator Sistem",
     lapis: "SISTEM",
     lembaga: "FMIPA USK",
-    tugas: "Mengelola akun, integrasi, dan master data. Tidak memiliki hak persetujuan bisnis.",
+    tugas: "Mengelola sistem dengan seluruh izin. Pemisahan tugas tetap berlaku: tidak dapat menyetujui usulan atau entrinya sendiri.",
     cakupan: "SELURUH",
     beranda: "/pengguna",
     mfaWajib: true,

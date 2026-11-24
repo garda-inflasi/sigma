@@ -351,8 +351,8 @@ func TestCakupan_SetiapPeranBerizinPunyaCakupanYangJelas(t *testing.T) {
 			assert.True(t, cakupan.Semua, "%s: peran tingkat provinsi memegang seluruh Aceh", peran)
 		}
 	}
-	assert.Equal(t, 12, dibuka, "4 strategis, 6 manajerial, Koordinator, dan Agregator memegang dashboard.operasional")
-	assert.Equal(t, 2, ditolak, "Mahasiswa dan admin sistem tidak memegangnya")
+	assert.Equal(t, 13, dibuka, "4 strategis, 6 manajerial, Koordinator, Agregator, dan admin sistem memegang dashboard.operasional")
+	assert.Equal(t, 1, ditolak, "hanya Mahasiswa yang tidak memegangnya")
 }
 
 // Penjaga: rute baru di /v1/dashboard/operasional/* harus ikut cakupan baris (handler.cakupan, usecase menerima

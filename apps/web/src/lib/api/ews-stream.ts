@@ -38,14 +38,15 @@ export function mergeAlert(
     : [alert, ...list];
 }
 
-/** Alert layak diumumkan bila baru, atau tingkatnya naik dibanding yang sudah ada di daftar. */
+/**
+ * Alert layak diumumkan bila baru dan masih berstatus BARU, atau tingkatnya naik dibanding yang sudah ada di daftar.
+ * Aliran juga membawa perubahan status (diakui, dieskalasi, selesai); itu rekonsiliasi, bukan peringatan baru.
+ */
 export function layakDiumumkan(
   list: EwsAlert[] | undefined,
   alert: EwsAlert,
 ): boolean {
   const lama = list?.find((a) => a.id === alert.id);
-  return (
-    !lama ||
-    severityMeta[alert.severity].rank > severityMeta[lama.severity].rank
-  );
+  if (!lama) return alert.status === "BARU";
+  return severityMeta[alert.severity].rank > severityMeta[lama.severity].rank;
 }

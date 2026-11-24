@@ -58,6 +58,7 @@ function SheetContent({
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        data-lenis-prevent
         className={cn(
           "fixed z-50 flex min-w-0 flex-col gap-0 overflow-y-auto border-border bg-card shadow-ambient-lg transition ease-in-out outline-none data-[state=closed]:animate-out data-[state=closed]:duration-200 data-[state=open]:animate-in data-[state=open]:duration-300",
           side === "right" &&

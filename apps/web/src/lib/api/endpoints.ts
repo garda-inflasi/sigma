@@ -1,4 +1,17 @@
-import { ApiError, apiFetch, mockDelay, MODE_MOCK } from "./client";
+import { ApiError, apiFetch, apiFetchEnvelope, mockDelay, MODE_MOCK } from "./client";
+import { getLingkunganData } from "@/lib/stores/ui-store";
+import {
+  ringkasanEksekutifKosong,
+  toBarisModelProd,
+  toBarisProyeksiProd,
+  toEwsListProd,
+  toProyeksiXaiProd,
+  toRingkasanEksekutifProd,
+  toSiklusAktifProd,
+  toStatusMlProd,
+  toSumberListProd,
+  toSumberPipelineProd,
+} from "./ml-prod";
 import {
   mockAuditIntegritas, queryMockAudit, toAuditDetail, toAuditIntegritas, toAuditPage, toAuditQuery, toMockAuditDetail, unduhEksporAudit,
   type AuditDetailResponse, type AuditFilter, type AuditIntegritasResponse, type AuditPage, type AuditPageResponse, type HasilEkspor,
@@ -64,6 +77,7 @@ import type { StateTabelPengguna } from "@/lib/pengguna/tabel";
 import { toRiwayatPeran, type RiwayatPeran } from "@/lib/pengguna/riwayat-peran";
 import { toEksekusi, toPipeline, toSampel, toSumberData, toSumberDetail, type SumberDetailData, type EksekusiResponse, type PipelineResponse, type SampelResponse, type SumberBulkAksi, type SumberDataResponse } from "./sumber";
 import * as m from "./mock";
+import { kritisAktif, kritisBelumDitindaklanjuti } from "@/lib/ews/kritis";
 import type {
   AuditDetail, AuditIntegritas, ColdStorageView, DetailFasilitas, FasilitasColdStorage, EksekusiSumber, EntriHarga, EwsAlert, KartuIntervensi, KpiOperasional, LineageHarga, MasterKomoditasRow, MasterPasarRow,
   MasterWilayahRow, PenggunaRow, PipelineSumber, PolicyBrief, ProyeksiXai, RingkasanEksekutif, StokColdStorage, SampelSumber, SumberData, TugasLapangan,
@@ -72,6 +86,7 @@ import type {
 export type BulkResult = { berhasil: number; gagal: number; pesan?: string; rincian?: RincianBulk[] };
 
 const get = <T,>(path: string, mock: () => T) => (MODE_MOCK ? mockDelay(mock) : apiFetch<T>(path));
+const isProd = () => getLingkunganData() === "prod";
 
 /** Aksi massal generik: POST /v1/{sumber}/bulk { action, ids } */
 export function bulk(sumber: string, aksi: string, ids: string[], alasan?: string): Promise<BulkResult> {
@@ -83,22 +98,42 @@ export function bulk(sumber: string, aksi: string, ids: string[], alasan?: strin
 const listColdStorage = (params: ColdStorageParams = {}): Promise<ColdStorageView> =>
   MODE_MOCK ? mockDelay(() => queryMockColdStorage(m.mockColdStorage(), params)) : coldStorageClient.list(params);
 
+/** Ukuran halaman daftar EWS, ukuran halaman KRITIS (batas API 1000), dan pengaman bila server mengabaikan `page`. */
+const UKURAN_HALAMAN_EWS = 200;
+const UKURAN_HALAMAN_KRITIS = 1000;
+const MAKS_HALAMAN_EWS = 25;
+
 export const api = {
   /** Siklus ekonomi dominan wilayah — menggerakkan warna ambient seluruh UI; sejak 08-B memuat apakah mesin yang menetapkannya dan alasannya. */
   siklus: {
-    aktif: (): Promise<SiklusAktif> =>
-      MODE_MOCK
-        ? mockDelay<SiklusAktif>({
-            siklus: "tekanan",
-            sejak: "2026-09-27",
-            otomatis: true,
-            alasan: {
-              ringkasan: "Berpindah dari NORMAL ke TEKANAN: 3 alert LONJAKAN_HARGA ≥ SIAGA.",
-              pemicu: [{ aturan: "SKL-TKN-LONJAKAN-HARGA", siklus: "tekanan", indikator: "ALERT_EWS", nilai: 3, ambang: 1, satuan: "alert", prioritas: 10, rujukan: ["EWS-1000", "EWS-1001", "EWS-1002"], rincian: "" }],
-              ditekan: [],
-            },
-          })
-        : apiFetch<SiklusAktifResponse>("/v1/siklus/aktif").then(toSiklusAktif),
+    aktif: async (): Promise<SiklusAktif> => {
+      if (MODE_MOCK) {
+        return mockDelay<SiklusAktif>(() =>
+          isProd()
+            ? {
+                siklus: "normal",
+                sejak: new Date().toISOString().slice(0, 10),
+                otomatis: false,
+                alasan: null,
+              }
+            : {
+                siklus: "tekanan",
+                sejak: "2026-09-27",
+                otomatis: true,
+                alasan: {
+                  ringkasan: "Berpindah dari NORMAL ke TEKANAN: 3 alert LONJAKAN_HARGA ≥ SIAGA.",
+                  pemicu: [{ aturan: "SKL-TKN-LONJAKAN-HARGA", siklus: "tekanan", indikator: "ALERT_EWS", nilai: 3, ambang: 1, satuan: "alert", prioritas: 10, rujukan: ["EWS-1000", "EWS-1001", "EWS-1002"], rincian: "" }],
+                  ditekan: [],
+                },
+              },
+        );
+      }
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<SiklusAktifResponse>("/v1/siklus/aktif");
+        return toSiklusAktifProd(data, ml);
+      }
+      return apiFetch<SiklusAktifResponse>("/v1/siklus/aktif").then(toSiklusAktif);
+    },
   },
   operasional: {
     /** Filter opsional (kabupaten, komoditas, periode); mode mock selalu mengembalikan data seluruh Aceh. */
@@ -147,21 +182,64 @@ export const api = {
       get<ReturnType<typeof m.mockTrenHarga>>(`/v1/harga/tren?komoditas=${kode}&wilayah=${kab}`, () => m.mockTrenHarga(kode, kab)),
   },
   eksekutif: {
-    ringkasan: (): Promise<RingkasanEksekutif> =>
-      MODE_MOCK ? mockDelay(m.mockEksekutif) : apiFetch<RingkasanEksekutifResponse>("/v1/dashboard/eksekutif").then(toRingkasanEksekutif),
-    xai: (kode: string): Promise<ProyeksiXai> =>
-      MODE_MOCK ? mockDelay(() => m.mockXai(kode)) : apiFetch<ProyeksiResponse>(`/v1/prediksi/${encodeURIComponent(kode)}`).then(toProyeksiXai),
+    ringkasan: async (): Promise<RingkasanEksekutif> => {
+      if (MODE_MOCK) {
+        return mockDelay(() => (isProd() ? ringkasanEksekutifKosong() : m.mockEksekutif()));
+      }
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<RingkasanEksekutifResponse>("/v1/dashboard/eksekutif");
+        return toRingkasanEksekutifProd(data, ml);
+      }
+      return apiFetch<RingkasanEksekutifResponse>("/v1/dashboard/eksekutif").then(toRingkasanEksekutif);
+    },
+    xai: async (kode: string): Promise<ProyeksiXai> => {
+      if (MODE_MOCK) {
+        if (isProd()) {
+          throw new ApiError(404, "Belum ada hasil training MongoDB (datasafe) pada mode mock.");
+        }
+        return mockDelay(() => m.mockXai(kode));
+      }
+      if (isProd()) {
+        const { ml } = await apiFetchEnvelope<ProyeksiResponse>(`/v1/prediksi/${encodeURIComponent(kode)}`);
+        return toProyeksiXaiProd(kode, ml);
+      }
+      return apiFetch<ProyeksiResponse>(`/v1/prediksi/${encodeURIComponent(kode)}`).then(toProyeksiXai);
+    },
   },
   prediksi: {
     /** Proyeksi 14 hari seluruh komoditas (Kota Banda Aceh). */
-    ringkasan: (): Promise<BarisProyeksi[]> =>
-      MODE_MOCK ? mockDelay(mockBarisProyeksi) : apiFetch<RingkasanResponse[]>("/v1/prediksi").then((rows) => rows.map(toBarisProyeksi)),
+    ringkasan: async (): Promise<BarisProyeksi[]> => {
+      if (MODE_MOCK) {
+        return mockDelay(() => (isProd() ? [] : mockBarisProyeksi()));
+      }
+      if (isProd()) {
+        const { ml } = await apiFetchEnvelope<RingkasanResponse[]>("/v1/prediksi");
+        return toBarisProyeksiProd(ml);
+      }
+      return apiFetch<RingkasanResponse[]>("/v1/prediksi").then((rows) => rows.map(toBarisProyeksi));
+    },
     /** Registri model seluruh komoditas. */
-    model: (): Promise<BarisModel[]> =>
-      MODE_MOCK ? mockDelay(mockBarisModel) : apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel)),
+    model: async (): Promise<BarisModel[]> => {
+      if (MODE_MOCK) {
+        return mockDelay(() => (isProd() ? [] : mockBarisModel()));
+      }
+      if (isProd()) {
+        const { ml } = await apiFetchEnvelope<ModelResponse[]>("/v1/prediksi/registri");
+        return toBarisModelProd(ml);
+      }
+      return apiFetch<ModelResponse[]>("/v1/prediksi/registri").then((rows) => rows.map(toBarisModel));
+    },
     /** Keadaan layanan ML (pelatihan hanya bisa bila tersedia). */
-    statusMl: (): Promise<StatusMl> =>
-      MODE_MOCK ? mockDelay<StatusMl>(() => ({ dikonfigurasi: false, tersedia: false, versi: "" })) : apiFetch<StatusMl>("/v1/prediksi/ml"),
+    statusMl: async (): Promise<StatusMl> => {
+      if (MODE_MOCK) {
+        return mockDelay<StatusMl>(() => ({ dikonfigurasi: false, tersedia: false, versi: "" }));
+      }
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<StatusMl>("/v1/prediksi/ml");
+        return ml ? toStatusMlProd(ml) : data;
+      }
+      return apiFetch<StatusMl>("/v1/prediksi/ml");
+    },
     /** Melatih model kandidat dari harga tervalidasi; galat 503 bila layanan ML mati. */
     latih: (komoditasKode: string): Promise<BarisModel> =>
       MODE_MOCK
@@ -235,8 +313,47 @@ export const api = {
       MODE_MOCK ? mockDelay(() => ringkasanDariEntri(m.mockEntri())) : apiFetch<RingkasanHarga>(`/v1/harga/ringkasan?hari=${hari}`),
   },
   ews: {
-    list: (): Promise<EwsAlert[]> =>
-      MODE_MOCK ? mockDelay(m.mockEws) : apiFetch<EwsAlertResponse[]>("/v1/ews?limit=200").then((rows) => rows.map(toEwsAlert)),
+    /**
+     * Daftar alert. Server menaruh KRITIS aktif paling depan, jadi halaman berikutnya hanya diambil selama halaman
+     * ini penuh dan masih berakhir dengan KRITIS aktif: tidak ada KRITIS aktif yang terpotong batas.
+     */
+    list: async (): Promise<EwsAlert[]> => {
+      if (MODE_MOCK) return mockDelay(() => (isProd() ? [] : m.mockEws()));
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<EwsAlertResponse[]>(
+          `/v1/ews?limit=${UKURAN_HALAMAN_EWS}&page=1`,
+        );
+        return toEwsListProd(data, ml);
+      }
+      const semua: EwsAlert[] = [];
+      for (let page = 1; page <= MAKS_HALAMAN_EWS; page++) {
+        const rows = await apiFetch<EwsAlertResponse[]>(`/v1/ews?limit=${UKURAN_HALAMAN_EWS}&page=${page}`);
+        const baris = rows.map(toEwsAlert);
+        semua.push(...baris);
+        const terakhir = baris[baris.length - 1];
+        if (baris.length < UKURAN_HALAMAN_EWS || !terakhir || !kritisAktif(terakhir)) break;
+      }
+      return semua;
+    },
+    /** Seluruh alert KRITIS berstatus BARU menurut server: sumber toast dan banner global. */
+    kritisBaru: async (): Promise<EwsAlert[]> => {
+      if (MODE_MOCK) {
+        return mockDelay(() => (isProd() ? [] : m.mockEws().filter(kritisBelumDitindaklanjuti)));
+      }
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<EwsAlertResponse[]>(
+          `/v1/ews?status=BARU&severity=KRITIS&limit=${UKURAN_HALAMAN_KRITIS}&page=1`,
+        );
+        return toEwsListProd(data, ml).filter((a) => a.severity === "KRITIS" && a.status === "BARU");
+      }
+      const semua: EwsAlert[] = [];
+      for (let page = 1; page <= MAKS_HALAMAN_EWS; page++) {
+        const rows = await apiFetch<EwsAlertResponse[]>(`/v1/ews?status=BARU&severity=KRITIS&limit=${UKURAN_HALAMAN_KRITIS}&page=${page}`);
+        semua.push(...rows.map(toEwsAlert));
+        if (rows.length < UKURAN_HALAMAN_KRITIS) break;
+      }
+      return semua;
+    },
     /**
      * Satu alert lengkap (jejak pengakuan, eskalasi, penutupan); 404 (ApiError) bila tidak ada. `id` boleh
      * ID desimal atau kode lama (EWS-0901): server menerima keduanya (alias tautan lama).
@@ -376,8 +493,14 @@ export const api = {
         : coldStorageClient.bulk(action, rows.map((r) => r.id)),
   },
   sumber: {
-    list: (): Promise<SumberData[]> =>
-      MODE_MOCK ? mockDelay(m.mockSumber) : apiFetch<SumberDataResponse[]>("/v1/sumber-data").then((rows) => rows.map(toSumberData)),
+    list: async (): Promise<SumberData[]> => {
+      if (MODE_MOCK) return mockDelay(m.mockSumber);
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<SumberDataResponse[]>("/v1/sumber-data");
+        return toSumberListProd(data, ml);
+      }
+      return apiFetch<SumberDataResponse[]>("/v1/sumber-data").then((rows) => rows.map(toSumberData));
+    },
     /** Satu sumber lengkap dengan data segar (status, terakhir jalan, atribusi, URL dasar); 404 (ApiError) bila tidak ada. */
     detail: (id: string): Promise<SumberDetailData> =>
       MODE_MOCK
@@ -391,10 +514,16 @@ export const api = {
     bulk: (action: SumberBulkAksi, ids: string[]): Promise<BulkResult> =>
       MODE_MOCK ? mockDelay({ berhasil: ids.length, gagal: 0 }, 300, 600) : apiFetch<BulkResult>("/v1/sumber-data/bulk", { method: "POST", body: JSON.stringify({ action, ids }) }),
     /** Isi lapisan bronze/silver/gold dan mutu data dari eksekusi nyata. */
-    pipeline: (): Promise<PipelineSumber> =>
-      MODE_MOCK
-        ? mockDelay({ bronze: 0, silver: 0, gold: 0, demo: false, mutu: { kelengkapan: null, akurasi: null, ketepatanWaktu: null, konsistensi: null } })
-        : apiFetch<PipelineResponse>("/v1/sumber-data/pipeline").then(toPipeline),
+    pipeline: async (): Promise<PipelineSumber> => {
+      if (MODE_MOCK) {
+        return mockDelay({ bronze: 0, silver: 0, gold: 0, demo: false, mutu: { kelengkapan: null, akurasi: null, ketepatanWaktu: null, konsistensi: null } });
+      }
+      if (isProd()) {
+        const { data, ml } = await apiFetchEnvelope<PipelineResponse>("/v1/sumber-data/pipeline");
+        return toSumberPipelineProd(data, ml);
+      }
+      return apiFetch<PipelineResponse>("/v1/sumber-data/pipeline").then(toPipeline);
+    },
     /** Riwayat eksekusi ingestion, terbaru lebih dulu. */
     eksekusi: (id: string): Promise<EksekusiSumber[]> =>
       MODE_MOCK ? mockDelay([]) : apiFetch<EksekusiResponse[]>(`/v1/sumber-data/${encodeURIComponent(id)}/eksekusi`).then((rows) => rows.map(toEksekusi)),

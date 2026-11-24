@@ -14,6 +14,7 @@ import (
 	"github.com/garda-inflasi/api/internal/audit"
 	auditdomain "github.com/garda-inflasi/api/internal/audit/domain"
 	"github.com/garda-inflasi/api/internal/auth/routes"
+	"github.com/garda-inflasi/api/internal/auth/usecase"
 	"github.com/garda-inflasi/api/pkg/token"
 )
 
@@ -191,6 +192,20 @@ func TestImpersonasi_SuperadminMulaiBekerjaDanBerhenti(t *testing.T) {
 		w := s.panggil(t, c.metode, c.jalur, map[string]any{}, imp.access)
 		assert.Equal(t, http.StatusForbidden, w.Code, "%s %s", c.metode, c.jalur)
 		assert.Equal(t, "IMPERSONATION_RESTRICTED", s.kodeDari(t, w), "%s %s", c.metode, c.jalur)
+	}
+}
+
+// Pelaku ADMIN_SISTEM memegang seluruh katalog, tetapi sesi impersonasi hanya membawa izin akun sasaran.
+func TestImpersonasi_TidakMembawaSeluruhKatalogPelaku(t *testing.T) {
+	s := suiteImpersonasi(t)
+	admin := s.mulaiSesi(t, emailAdmin, uaMac)
+	require.ElementsMatch(t, usecase.IzinBawaan("ADMIN_SISTEM"), mustClaims(t, s.tokenMgr, admin.access).Permissions)
+
+	imp := s.sesiDariStart(t, s.mulaiImp(t, admin.access, map[string]any{"target_pengguna_id": userBiasaID, "alasan": "uji hak"}).w)
+
+	assert.ElementsMatch(t, usecase.IzinBawaan("OPS_MAHASISWA"), mustClaims(t, s.tokenMgr, imp.access).Permissions)
+	for _, jalur := range []string{"/v1/users", "/v1/roles", "/v1/admin/impersonation/policy"} {
+		assert.Equal(t, http.StatusForbidden, s.panggil(t, http.MethodGet, jalur, nil, imp.access).Code, jalur)
 	}
 }
 

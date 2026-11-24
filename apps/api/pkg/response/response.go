@@ -12,6 +12,79 @@ type Envelope struct {
 	Code    string      `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
+	// ML adalah lampiran hasil pipeline ML (docs/PIPELINE-DATA-ML.md §5): hanya ada pada respons Success endpoint
+	// yang diperkaya, berdampingan dengan data yang isinya tidak pernah diubah. Kosong: kunci tidak dikirim.
+	ML interface{} `json:"ml,omitempty"`
+	// DataEnv mencatat mode sumber data yang diminta ("staging" | "prod") bila dikirim pemanggil.
+	DataEnv string `json:"data_env,omitempty"`
+}
+
+// kunciLampiranML adalah kunci gin.Context untuk penyusun lampiran ML (LampirkanML).
+const (
+	kunciLampiranML    = "response.lampiran_ml"
+	kunciPenyaringData = "response.penyaring_data"
+	kunciDataEnv       = "response.data_env"
+)
+
+// PasangDataEnv mencatat mode sumber data aktif pada gin.Context dan header respons.
+func PasangDataEnv(c *gin.Context, env string) {
+	if env == "" {
+		return
+	}
+	c.Set(kunciDataEnv, env)
+	c.Header("X-Garda-Data-Env", env)
+}
+
+func bacaDataEnv(c *gin.Context) string {
+	v, _ := c.Get(kunciDataEnv)
+	s, _ := v.(string)
+	return s
+}
+
+// PasangPenyaringData mendaftarkan transformasi aman-panic untuk payload Data saat mode prod aktif (mis. membuang baris DEMO).
+func PasangPenyaringData(c *gin.Context, fn func(interface{}) interface{}) {
+	c.Set(kunciPenyaringData, fn)
+}
+
+func saringData(c *gin.Context, data interface{}) (hasil interface{}) {
+	v, ok := c.Get(kunciPenyaringData)
+	if !ok {
+		return data
+	}
+	fn, ok := v.(func(interface{}) interface{})
+	if !ok || fn == nil {
+		return data
+	}
+	defer func() {
+		if recover() != nil {
+			hasil = data
+		}
+	}()
+	return fn(data)
+}
+
+// LampirkanML memasang penyusun lampiran `ml` untuk respons Success request ini. Penyusun baru dipanggil saat respons
+// sukses ditulis (galat tidak memicu bacaan ML), dan kegagalan atau panic di dalamnya tidak pernah menggagalkan
+// respons: lampiran dibuang dan data tetap terkirim seperti sebelumnya.
+func LampirkanML(c *gin.Context, penyusun func() interface{}) {
+	c.Set(kunciLampiranML, penyusun)
+}
+
+func lampiranML(c *gin.Context) (hasil interface{}) {
+	v, ok := c.Get(kunciLampiranML)
+	if !ok {
+		return nil
+	}
+	penyusun, ok := v.(func() interface{})
+	if !ok || penyusun == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			hasil = nil
+		}
+	}()
+	return penyusun()
 }
 
 // Success sends a 200 OK response
@@ -19,7 +92,9 @@ func Success(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, Envelope{
 		Code:    "200",
 		Message: "OK",
-		Data:    data,
+		Data:    saringData(c, data),
+		ML:      lampiranML(c),
+		DataEnv: bacaDataEnv(c),
 	})
 }
 

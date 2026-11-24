@@ -9,6 +9,8 @@ export const ENTITAS = {
   kecamatan: "Kecamatan",
   satuan: "Satuan",
   pedagang: "Pedagang",
+  pertanian: "Sentra pertanian",
+  perkampungan: "Perkampungan",
 } as const;
 export type Entitas = keyof typeof ENTITAS;
 

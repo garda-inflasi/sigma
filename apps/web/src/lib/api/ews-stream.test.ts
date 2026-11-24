@@ -117,4 +117,13 @@ describe("layakDiumumkan", () => {
       false,
     );
   });
+
+  it("perubahan status lewat aliran adalah rekonsiliasi, bukan peringatan baru", () => {
+    const daftar = [alert({ id: "1", severity: "KRITIS", status: "BARU" })];
+    for (const status of ["DIAKUI", "DIESKALASI", "SELESAI"] as const) {
+      assert.equal(layakDiumumkan(daftar, alert({ id: "1", severity: "KRITIS", status })), false, status);
+      assert.equal(layakDiumumkan(daftar, alert({ id: "9", severity: "KRITIS", status })), false, `${status} di luar daftar`);
+      assert.equal(layakDiumumkan(undefined, alert({ id: "9", severity: "KRITIS", status })), false, `${status} daftar belum dimuat`);
+    }
+  });
 });

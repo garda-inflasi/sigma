@@ -53,8 +53,9 @@ const KEPUTUSAN_STRATEGIS: Permission[] = ["intervensi.setujui", "brief.setujui"
  * token tanpa klaim (lihat `can`), serta cermin matriks bawaan di API (dijaga sama oleh permissions.test.ts).
  * Prinsip matriks bawaan:
  * - Least privilege: tiap peran hanya izin yang dibutuhkan tugasnya.
- * - Pemisahan tugas (SoD): penginput ≠ validator ≠ publisher; admin tanpa hak persetujuan.
- * - Persetujuan dukungan fiskal khusus Kanwil DJPb.
+ * - Pemisahan tugas (SoD) ditegakkan API per aksi, bukan lewat ketiadaan izin: penginput ≠ validator ≠ publisher,
+ *   pengaju ≠ penyetuju, penyusun ≠ penyetuju. Berlaku juga bagi Administrator Sistem.
+ * - Persetujuan dukungan fiskal khusus Kanwil DJPb (selain Administrator Sistem yang memegang seluruh katalog).
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   STRATEGIS_FMIPA: [...BACA_STRATEGIS, ...KEPUTUSAN_STRATEGIS, "master.setujui"],
@@ -102,10 +103,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ],
   OPS_MAHASISWA: ["harga.input", "tugas.lihat_sendiri"],
 
-  // `impersonasi.kelola` eksklusif ADMIN_SISTEM (superadmin): kebijakan dan riwayat impersonasi. API Go menolaknya
-  // bagi peran lain, baik lewat matriks maupun izin langsung.
-  ADMIN_SISTEM: ["pengguna.kelola", "impersonasi.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat"],
+  // ADMIN_SISTEM (superadmin) memegang seluruh katalog, termasuk izin yang ditambahkan kelak; API menjaminnya saat
+  // runtime. `impersonasi.kelola` tetap eksklusif miliknya: API Go menolaknya bagi peran lain, lewat matriks maupun izin langsung.
+  ADMIN_SISTEM: [...PERMISSIONS],
 };
+
+/** Peran yang kolomnya di matriks akses hanya baca: selalu memegang seluruh izin, API menolak pengurangannya. */
+export const peranIzinTerkunci = (role: Role) => role === "ADMIN_SISTEM";
 
 const cache = new Map<Role, Set<Permission>>();
 function izinBawaan(role: Role, perm: Permission): boolean {

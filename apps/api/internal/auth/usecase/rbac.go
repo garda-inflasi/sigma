@@ -115,7 +115,7 @@ var rolePermissions = map[string][]string{
 	"OPS_MAHASISWA": {
 		"harga.input", "tugas.lihat_sendiri",
 	},
-	"ADMIN_SISTEM": {
-		"pengguna.kelola", "master.lihat", "master.ajukan", "sumber.lihat", "sumber.kelola", "audit.lihat", "impersonasi.kelola",
-	},
+	// ADMIN_SISTEM memegang seluruh katalog, termasuk izin yang ditambahkan kelak. Pemisahan tugas tetap ditegakkan
+	// per aksi (harga/domain/transisi.go, persetujuan master, intervensi/domain/workflow.go, policy brief).
+	"ADMIN_SISTEM": semuaIzinKatalog(),
 }

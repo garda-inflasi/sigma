@@ -120,6 +120,8 @@ func (h *Handler) UpdateTahap(c *gin.Context) {
 		response.BadRequest(c, "Tahap tidak valid untuk siklus kartu ini")
 	case errors.Is(err, usecase.ErrVersiUsang):
 		response.Conflict(c, "Kartu telah diubah pengguna lain. Papan dimuat ulang; ulangi pemindahan bila masih perlu.")
+	case errors.Is(err, usecase.ErrWajibAlurPersetujuan):
+		response.Forbidden(c, "Pemisahan tugas: ajukan persetujuan agar tahap ini diputuskan oleh orang lain")
 	case errors.As(err, &forbidden):
 		response.Forbidden(c, "Tidak dapat memindahkan kartu: "+forbidden.Error())
 	default:

@@ -14,18 +14,23 @@ var _ domain.NotifikasiRepository = (*Repository)(nil)
 
 // antrekanSQL memasukkan notifikasi untuk pengguna aktif berperan @peran. Kanal dibatasi
 // kanal aturan alert (aturan_ews.kanal) dan kanal outbox; pengguna tanpa preferensi memakai
-// bawaan (aktif, tingkat minimum SIAGA). Urutan enum severity menjadikan >= valid.
+// bawaan (aktif, tingkat minimum SIAGA). Urutan enum severity menjadikan >= valid. Alert KRITIS tidak ditahan
+// preferensi: tingkat minimum dan kanal yang dinonaktifkan pengguna hanya berlaku untuk tingkat di bawahnya.
+// Alert pipeline ML (sumber @sumber_ml) tidak punya aturan; kanalnya @kanal_ml. Alert lain tanpa aturan
+// (mis. ingestion) tetap tidak dinotifikasi, seperti sebelumnya.
 const antrekanSQL = `
 INSERT INTO ews_notifikasi (alert_id, pengguna_id, kanal, tujuan, jadwal_berikut)
 SELECT a.id, u.id, k.kanal, CASE k.kanal WHEN 'EMAIL' THEN u.email ELSE u.id::text END, @now
   FROM ews_alert a
-  JOIN aturan_ews r ON r.id = a.aturan_id
-  CROSS JOIN LATERAL unnest(r.kanal) AS k(kanal)
+  LEFT JOIN aturan_ews r ON r.id = a.aturan_id
+  CROSS JOIN LATERAL unnest(COALESCE(r.kanal,
+                                     CASE WHEN a.aturan_id IS NULL AND a.sumber = @sumber_ml
+                                          THEN CAST(@kanal_ml AS text[]) END)) AS k(kanal)
   JOIN pengguna u ON u.status = 'AKTIF' AND u.peran::text IN @peran
   LEFT JOIN preferensi_notifikasi p ON p.pengguna_id = u.id AND p.kanal = k.kanal
  WHERE a.id = @alert AND k.kanal IN @kanal
-   AND COALESCE(p.aktif, true)
-   AND a.severity >= COALESCE(p.severity_min, CAST(@bawaan AS severity))
+   AND (a.severity = 'KRITIS'
+        OR (COALESCE(p.aktif, true) AND a.severity >= COALESCE(p.severity_min, CAST(@bawaan AS severity))))
 ON CONFLICT (alert_id, pengguna_id, kanal) DO NOTHING
 RETURNING id`
 
@@ -36,11 +41,26 @@ func (r *Repository) Antrekan(ctx context.Context, alertID idx.ID, peran []strin
 	var ids []int64
 	err := r.db.WithContext(ctx).Raw(antrekanSQL, map[string]any{
 		"now": now, "peran": peran, "alert": alertID, "kanal": domain.KanalOutbox, "bawaan": domain.SeverityMinBawaan,
+		"sumber_ml": domain.SumberPipelineML, "kanal_ml": domain.Kanal(domain.KanalPipelineML),
 	}).Scan(&ids).Error
 	if err != nil {
 		return 0, fmt.Errorf("antrekan notifikasi: %w", err)
 	}
 	return len(ids), nil
+}
+
+func (r *Repository) AntrekanUlangKritis(ctx context.Context, alertID idx.ID, now time.Time) (int, error) {
+	// Baris MENUNGGU tidak disentuh: isi pesan dibaca saat diklaim, jadi ia sudah akan terkirim sebagai KRITIS.
+	res := r.db.WithContext(ctx).Exec(`
+		UPDATE ews_notifikasi n
+		   SET status = 'MENUNGGU', percobaan = 0, jadwal_berikut = @now, dikirim_pada = NULL, galat = NULL
+		  FROM ews_alert a
+		 WHERE a.id = n.alert_id AND a.id = @alert AND a.severity = 'KRITIS' AND n.status <> 'MENUNGGU'`,
+		map[string]any{"now": now, "alert": alertID})
+	if res.Error != nil {
+		return 0, fmt.Errorf("antrekan ulang notifikasi kritis: %w", res.Error)
+	}
+	return int(res.RowsAffected), nil
 }
 
 func (r *Repository) Klaim(ctx context.Context, now time.Time, limit int, lease time.Duration) ([]domain.Pesan, error) {
@@ -147,21 +167,27 @@ func (r *Repository) EskalasiOtomatis(ctx context.Context, now time.Time, batas 
 	var ids []idx.ID
 	err := r.db.WithContext(ctx).Raw(`
 		WITH prev AS (
-			SELECT id FROM ews_alert
+			SELECT id, severity FROM ews_alert
 			 WHERE status = 'BARU' AND dibuat_pada <= @batas AND severity >= CAST(@minimum AS severity)
+			   AND (severity <> 'KRITIS' OR dieskalasi_pada IS NULL)
 			   FOR UPDATE
 		), upd AS (
-			UPDATE ews_alert a SET status = 'DIESKALASI', dieskalasi_pada = @now
+			UPDATE ews_alert a
+			   SET status = CASE WHEN prev.severity = 'KRITIS' THEN a.status ELSE CAST('DIESKALASI' AS status_ews) END,
+			       dieskalasi_pada = @now
 			  FROM prev WHERE a.id = prev.id
-			RETURNING a.id
+			RETURNING a.id, a.status
 		), riwayat AS (
 			INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, waktu, catatan)
-			SELECT id, 'BARU', 'DIESKALASI', NULL, @now, @catatan FROM upd
+			SELECT id, CAST('BARU' AS status_ews), status, NULL, @now,
+			       CASE WHEN status = 'BARU' THEN CAST(@catatan_kritis AS text) ELSE CAST(@catatan AS text) END
+			  FROM upd
 		)
 		SELECT id FROM upd ORDER BY id`,
 		map[string]any{
 			"batas": now.Add(-batas), "minimum": minimum, "now": now,
-			"catatan": fmt.Sprintf("Eskalasi otomatis: tidak diakui dalam %d menit", int(batas.Minutes())),
+			"catatan":        fmt.Sprintf("Eskalasi otomatis: tidak diakui dalam %d menit", int(batas.Minutes())),
+			"catatan_kritis": fmt.Sprintf("Eskalasi otomatis: tidak diakui dalam %d menit; tetap menunggu tindak lanjut", int(batas.Minutes())),
 		}).Scan(&ids).Error
 	if err != nil {
 		return nil, fmt.Errorf("eskalasi otomatis: %w", err)

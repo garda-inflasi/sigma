@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -227,11 +228,10 @@ export function TambahIntervensiDialog({
                 <Galat id="int-wilayah-galat" pesan={galat.kabupatenKode} />
               </FormField>
               <FormField id="int-tenggat" label="Tenggat">
-                <Input
+                <DateField
                   id="int-tenggat"
-                  type="date"
                   value={isian.tenggat}
-                  onChange={(e) => set("tenggat", e.target.value)}
+                  onValueChange={(v) => set("tenggat", v)}
                   aria-invalid={!!galat.tenggat}
                   aria-describedby={
                     galat.tenggat ? "int-tenggat-galat" : undefined

@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -125,23 +126,23 @@ export function AuditFilterBar({
       <label className="flex w-[calc(50%-0.25rem)] min-w-0 flex-col gap-0.5 text-xs text-muted-foreground sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
         <span className="sr-only">Dari tanggal</span>
         <span aria-hidden>Dari</span>
-        <Input
-          type="date"
+        <DateField
           value={filter.dari ?? ""}
           max={filter.sampai || undefined}
-          onChange={(e) => set({ dari: e.target.value || undefined })}
-          className="w-full min-w-0 text-foreground sm:w-[8.25rem] md:text-[13px] dark:scheme-dark"
+          onValueChange={(v) => set({ dari: v || undefined })}
+          className="sm:w-[8.5rem]"
+          kelasInput="text-foreground md:text-[13px]"
         />
       </label>
       <label className="flex w-[calc(50%-0.25rem)] min-w-0 flex-col gap-0.5 text-xs text-muted-foreground sm:w-auto sm:flex-row sm:items-center sm:gap-1.5">
         <span className="sr-only">Sampai tanggal</span>
         <span aria-hidden>Sampai</span>
-        <Input
-          type="date"
+        <DateField
           value={filter.sampai ?? ""}
           min={filter.dari || undefined}
-          onChange={(e) => set({ sampai: e.target.value || undefined })}
-          className="w-full min-w-0 text-foreground sm:w-[8.25rem] md:text-[13px] dark:scheme-dark"
+          onValueChange={(v) => set({ sampai: v || undefined })}
+          className="sm:w-[8.5rem]"
+          kelasInput="text-foreground md:text-[13px]"
         />
       </label>
 

@@ -234,6 +234,42 @@ func TestMove(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("administrator sistem wajib lewat alur persetujuan walau memegang semua izin", func(t *testing.T) {
+		tahap := []domain.TahapDef{
+			{Siklus: "TEKANAN", KodeTahap: "t-ews", Urutan: 1, IzinDibutuhkan: domain.IzinBawaan},
+			{Siklus: "TEKANAN", KodeTahap: "t-verif", Urutan: 2, IzinDibutuhkan: domain.IzinBawaan},
+			{Siklus: "TEKANAN", KodeTahap: "t-petakan", Urutan: 3, Label: "Petakan suplai", IzinDibutuhkan: "intervensi.setujui"},
+			{Siklus: "TEKANAN", KodeTahap: "t-akhir", Urutan: 4, IzinDibutuhkan: domain.IzinBawaan},
+		}
+		semua := allow(domain.IzinBawaan, "intervensi.setujui", "intervensi.setujui_fiskal")
+		admin := stubCakupan{peta: map[string]domain.PenggunaCakupan{uid("admin"): {Peran: "ADMIN_SISTEM"}}}
+
+		for _, tujuan := range []string{"t-petakan", "t-akhir"} {
+			repo := new(mockRepository)
+			recorder := &audittest.Recorder{}
+			uc := New(repo, nil, admin, recorder, logger.NewDefault())
+			repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
+			repo.On("ListTahap", mock.Anything).Return(tahap, nil)
+
+			_, err := uc.Move(context.Background(), rujukanID("INT-301"), tujuan, 0, 3, uid("admin"), semua)
+
+			require.ErrorIs(t, err, ErrWajibAlurPersetujuan, tujuan)
+			noMove(repo)
+			entry, _ := recorder.Last()
+			assert.Equal(t, audit.HasilDitolak, entry.Hasil)
+			assert.Equal(t, "pemisahan_tugas", entry.Metadata["sebab"])
+		}
+
+		// Tahap biasa tetap bisa dipindahkan langsung.
+		repo := new(mockRepository)
+		uc := New(repo, nil, admin, &audittest.Recorder{}, logger.NewDefault())
+		repo.On("GetByID", mock.Anything, rujukanID("INT-301")).Return(card, nil)
+		repo.On("ListTahap", mock.Anything).Return(tahap, nil)
+		repo.On("Move", mock.Anything, kid("INT-301"), "t-verif", 0, false, 3, uid("admin")).Return(4, nil)
+		_, err := uc.Move(context.Background(), rujukanID("INT-301"), "t-verif", 0, 3, uid("admin"), semua)
+		assert.NoError(t, err)
+	})
+
 	t.Run("mundur melewati tahap persetujuan tidak dianggap melompat", func(t *testing.T) {
 		repo := new(mockRepository)
 		uc, _ := newTestUseCase(repo)

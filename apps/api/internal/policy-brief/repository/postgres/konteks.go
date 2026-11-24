@@ -148,8 +148,9 @@ func (r *Repository) ews(ctx context.Context, awal time.Time, data *domain.DataP
 	}
 
 	err = r.db.WithContext(ctx).Table("ews_alert AS a").
-		Select("COALESCE(k.nama, '') AS komoditas, kb.nama AS wilayah, a.severity::text AS level").
-		Joins("JOIN kabupaten kb ON kb.kode = a.kabupaten_kode").
+		// Alert tanpa kabupaten (tingkat sistem/provinsi dari pipeline ML, 000131) tetap ikut dan bernama provinsi.
+		Select("COALESCE(k.nama, '') AS komoditas, COALESCE(kb.nama, 'PROVINSI ACEH') AS wilayah, a.severity::text AS level").
+		Joins("LEFT JOIN kabupaten kb ON kb.kode = a.kabupaten_kode").
 		Joins("LEFT JOIN komoditas k ON k.kode = a.komoditas_kode").
 		Where("a.dibuat_pada >= ? AND a.dibuat_pada < ?", awal, akhir).
 		Order("CASE a.severity WHEN 'KRITIS' THEN 4 WHEN 'SIAGA' THEN 3 WHEN 'WASPADA' THEN 2 ELSE 1 END DESC, a.skor_dampak DESC, a.id").

@@ -79,6 +79,15 @@ var katalogIzin = []DefinisiIzin{
 	{"impersonasi.kelola", "Mengatur kebijakan impersonasi dan melihat riwayatnya (eksklusif administrator sistem)", "Pengguna dan audit"},
 }
 
+// semuaIzinKatalog mengembalikan nama seluruh izin di katalog, dalam urutan tampil.
+func semuaIzinKatalog() []string {
+	nama := make([]string, len(katalogIzin))
+	for i, d := range katalogIzin {
+		nama[i] = d.Nama
+	}
+	return nama
+}
+
 // DaftarPeran mengembalikan 14 peran dalam urutan baku.
 func DaftarPeran() []DefinisiPeran {
 	out := make([]DefinisiPeran, len(roleOrder))

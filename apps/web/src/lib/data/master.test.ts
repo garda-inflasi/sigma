@@ -11,6 +11,8 @@ describe("ENTITAS", () => {
       "kecamatan",
       "satuan",
       "pedagang",
+      "pertanian",
+      "perkampungan",
     ]);
     assert.equal("perubahan" in ENTITAS, false);
   });

@@ -112,7 +112,7 @@ func (c *izinCache) Permissions(ctx context.Context, userID string) ([]string, e
 		}
 		return nil, fmt.Errorf("izin efektif: %w", err)
 	}
-	// impersonasi.kelola eksklusif milik ADMIN_SISTEM: selalu ada padanya dan tidak pernah pada peran lain.
+	// ADMIN_SISTEM selalu memegang seluruh katalog; impersonasi.kelola tidak pernah dimiliki peran lain.
 	hasil.Izin = terapkanIzinEksklusif(hasil.Peran, hasil.Izin)
 
 	if c.ttl > 0 {
@@ -241,8 +241,13 @@ func (uc *UseCase) ListRoles(ctx context.Context) ([]RoleInfo, error) {
 
 func roleInfoDari(p domain.PeranDetail) RoleInfo {
 	pembaruan := p.DiperbaruiPada
+	izin := p.Izin
+	// Editor matriks menampilkan izin yang sungguh berlaku: kolom ADMIN_SISTEM selalu penuh walau tabel tertinggal.
+	if p.Kunci == domain.PeranSuperadmin {
+		izin = terapkanIzinEksklusif(p.Kunci, p.Izin)
+	}
 	return RoleInfo{
-		ID: p.Kunci, Label: p.Label, Lapis: p.Lapis, Permissions: p.Izin, Bawaan: IzinBawaan(p.Kunci),
+		ID: p.Kunci, Label: p.Label, Lapis: p.Lapis, Permissions: izin, Bawaan: IzinBawaan(p.Kunci),
 		Versi: p.Versi, DiperbaruiPada: &pembaruan, DiperbaruiOleh: p.DiperbaruiOleh,
 	}
 }
@@ -278,8 +283,9 @@ func (uc *UseCase) ListPermissions(ctx context.Context) ([]PermissionInfo, error
 
 // UpdateRolePermissions mengganti seluruh izin satu peran. versi adalah versi yang dibaca klien (kunci
 // optimistis): bila matriks sudah diubah admin lain hasilnya *KonflikVersiPeran (membungkus ErrVersiPeranBerubah)
-// dan tidak ada yang ditimpa. Menolak izin di luar katalog dan perubahan yang membuat sistem kehilangan pemegang
-// terakhir pengguna.kelola (ErrPemegangTerakhir). Mengganti dengan himpunan yang sama tidak menulis apa pun.
+// dan tidak ada yang ditimpa. Menolak izin di luar katalog, perubahan yang mengurangi izin ADMIN_SISTEM
+// (ErrIzinAdminTerkunci), dan perubahan yang membuat sistem kehilangan pemegang terakhir pengguna.kelola
+// (ErrPemegangTerakhir). Mengganti dengan himpunan yang sama tidak menulis apa pun.
 func (uc *UseCase) UpdateRolePermissions(ctx context.Context, peran string, versi int64, izin []string, actorID string) (*RoleInfo, error) {
 	if uc.izin == nil {
 		return nil, ErrRBACTidakTersedia
@@ -293,6 +299,12 @@ func (uc *UseCase) UpdateRolePermissions(ctx context.Context, peran string, vers
 	// impersonasi.kelola eksklusif milik ADMIN_SISTEM: peran lain tidak boleh memilikinya lewat matriks.
 	if peran != domain.PeranSuperadmin && slices.Contains(izin, domain.IzinImpersonasi) {
 		return nil, ErrIzinEksklusif
+	}
+	// ADMIN_SISTEM selalu memegang seluruh katalog: himpunan yang kurang ditolak, bukan diam-diam dilengkapi.
+	if peran == domain.PeranSuperadmin {
+		if kurang, _ := selisih(izin, semuaIzinKatalog()); len(kurang) > 0 {
+			return nil, fmt.Errorf("%w: %s", ErrIzinAdminTerkunci, strings.Join(kurang, ", "))
+		}
 	}
 
 	hasil, err := uc.izin.SetIzinPeran(ctx, domain.SetIzinPeran{Peran: peran, Versi: versi, Izin: izin, Oleh: actorID})
@@ -413,13 +425,18 @@ func (uc *UseCase) ListUserPermissions(ctx context.Context, userID string) (*Izi
 	}
 	sekarang := uc.sekarang()
 	info := &IzinPenggunaInfo{Peran: hasil.Peran, IzinPeran: hasil.IzinPeran, Langsung: make([]IzinLangsungInfo, len(hasil.Langsung))}
-	efektif := slices.Clone(hasil.IzinPeran)
+	if hasil.Peran == domain.PeranSuperadmin {
+		info.IzinPeran = terapkanIzinEksklusif(hasil.Peran, hasil.IzinPeran)
+	}
+	efektif := slices.Clone(info.IzinPeran)
 	for i, d := range hasil.Langsung {
 		info.Langsung[i] = infoLangsung(d, sekarang)
 		if info.Langsung[i].Aktif && !slices.Contains(efektif, d.PermissionNama) {
 			efektif = append(efektif, d.PermissionNama)
 		}
 	}
+	// Sama dengan yang ditegakkan JWTAuth: impersonasi.kelola tidak pernah berlaku bagi peran selain ADMIN_SISTEM.
+	efektif = terapkanIzinEksklusif(hasil.Peran, efektif)
 	slices.Sort(efektif)
 	if efektif == nil {
 		efektif = []string{}

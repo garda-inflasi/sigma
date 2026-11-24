@@ -9,6 +9,7 @@ import {
   Landmark,
   Map,
   PlugZap,
+  RefreshCw,
   ScrollText,
   Siren,
   Smartphone,
@@ -69,6 +70,21 @@ export const NAV: { grup: string; items: NavItem[] }[] = [
         icon: PlugZap,
         perm: "sumber.lihat",
         keywords: ["bps", "bi", "bmkg", "scraper"],
+      },
+      {
+        href: "/crawler",
+        label: "Pipeline & Crawler",
+        icon: RefreshCw,
+        perm: "sumber.lihat",
+        keywords: [
+          "crawler",
+          "jadwal",
+          "retry",
+          "ml",
+          "training",
+          "datasafe",
+          "dataunseen",
+        ],
       },
       {
         href: "/master/komoditas",
@@ -216,9 +232,10 @@ export const NAV_PINTASAN: NavItem[] = [
   },
 ];
 
-/** Halaman konsol yang tidak punya item sidebar (dibuka dari menu akun) tetapi tetap perlu judul di topbar. */
+/** Halaman konsol yang tidak punya item sidebar (dibuka dari menu akun atau tombol cepat) tetapi tetap perlu judul di topbar. */
 const HALAMAN_TANPA_NAV: readonly { href: string; label: string }[] = [
   { href: "/profil", label: "Profil saya" },
+  { href: "/command-center", label: "Command Center" },
 ];
 
 const JUDUL_BAWAAN = "Garda Inflasi";

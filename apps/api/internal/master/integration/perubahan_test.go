@@ -259,6 +259,28 @@ func TestPerubahan_ValidasiDanIzin(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, s.call(t, http.MethodGet, "/v1/master/perubahan?status=APA", emailLihat, nil).Code)
 }
 
+// ADMIN_SISTEM memegang master.ajukan dan master.setujui, tetapi tidak boleh memutus usulannya sendiri.
+func TestPerubahan_AdminSistemTidakMemutusUsulanSendiri(t *testing.T) {
+	s := sharedSuite(t)
+	const admin = "superadmin@gardainflasi.id"
+
+	w := s.ajukan(t, admin, komoditasBaru("UJI-PRB-ADM"))
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	milikAdmin := satu[usulan](t, w).ID
+	for _, aksi := range []string{"setujui", "tolak"} {
+		w = s.call(t, http.MethodPost, "/v1/master/perubahan/"+milikAdmin+"/"+aksi, admin, map[string]any{"alasan": "uji pemisahan"})
+		assert.Equal(t, http.StatusForbidden, w.Code, aksi)
+		assert.Equal(t, "PEMISAHAN_TUGAS", kodeGalat(t, w), aksi)
+	}
+	require.Equal(t, http.StatusOK, s.call(t, http.MethodPost, "/v1/master/perubahan/"+milikAdmin+"/setujui", emailSetujui, nil).Code,
+		"penyetuju lain tetap bisa memutusnya")
+
+	w = s.ajukan(t, emailManajer, komoditasBaru("UJI-PRB-ADM2"))
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	assert.Equal(t, http.StatusOK, s.call(t, http.MethodPost, "/v1/master/perubahan/"+satu[usulan](t, w).ID+"/setujui", admin, nil).Code,
+		"usulan orang lain boleh ia setujui")
+}
+
 func TestPerubahan_PemisahanTugasDanKedaluwarsa(t *testing.T) {
 	s := sharedSuite(t)
 	const kode = "UJI-PRB-2"

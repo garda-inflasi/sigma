@@ -38,8 +38,9 @@ const (
 var (
 	// ErrKanalTidakValid: kanal di luar daftar yang dapat diatur pengguna.
 	ErrKanalTidakValid = errors.New("kanal notifikasi tidak valid")
-	// ErrSeverityTidakValid: tingkat minimum di luar INFO..KRITIS.
-	ErrSeverityTidakValid = errors.New("tingkat minimum tidak valid")
+	// ErrSeverityTidakValid: tingkat minimum di luar INFO..KRITIS. Nilai seperti "NONE" adalah upaya mengecualikan
+	// KRITIS dan ditolak: peringatan kritis selalu dikirim.
+	ErrSeverityTidakValid = errors.New("tingkat minimum tidak valid: peringatan kritis selalu dikirim")
 )
 
 // Config mengatur pengiriman dan eskalasi otomatis.
@@ -100,12 +101,20 @@ func (s *Service) Tersedia(kanal string) bool {
 }
 
 // AlertDitulis mengantrekan notifikasi untuk alert yang baru dibuat atau naik tingkat
-// (domain.Observer). Pengguna yang sudah dinotifikasi untuk alert ini tidak dinotifikasi lagi.
-func (s *Service) AlertDitulis(ctx context.Context, alert domain.Alert, _ domain.HasilTulis) {
+// (domain.Observer). Pengguna yang sudah dinotifikasi untuk alert ini tidak dinotifikasi lagi, kecuali saat alert naik
+// ke KRITIS: kenaikan itu wajib sampai walau tingkat sebelumnya sudah diberitahukan.
+func (s *Service) AlertDitulis(ctx context.Context, alert domain.Alert, hasil domain.HasilTulis) {
 	n, err := s.repo.Antrekan(ctx, alert.ID, s.peran, s.now())
 	if err != nil {
 		s.log.Error("ews: gagal mengantrekan notifikasi", map[string]interface{}{"alert": alert.ID, "error": err.Error()})
 		return
+	}
+	if hasil == domain.HasilDinaikkan && alert.Severity == domain.SeverityKritis {
+		ulang, err := s.repo.AntrekanUlangKritis(ctx, alert.ID, s.now())
+		if err != nil {
+			s.log.Error("ews: gagal mengantrekan ulang notifikasi kritis", map[string]interface{}{"alert": alert.ID, "error": err.Error()})
+		}
+		n += ulang
 	}
 	if n > 0 {
 		select {
@@ -250,7 +259,8 @@ func (s *Service) DaftarPreferensi(ctx context.Context, penggunaID string) ([]Pr
 	return out, nil
 }
 
-// SimpanPreferensi memvalidasi dan menyimpan preferensi pengguna, lalu mencatatnya di audit.
+// SimpanPreferensi memvalidasi dan menyimpan preferensi pengguna, lalu mencatatnya di audit. Menonaktifkan kanal tetap
+// boleh, tetapi hanya berlaku untuk tingkat di bawah KRITIS (lihat Antrekan).
 func (s *Service) SimpanPreferensi(ctx context.Context, penggunaID string, prefs []Preferensi) error {
 	rows := make([]domain.PreferensiNotifikasi, len(prefs))
 	for i, p := range prefs {

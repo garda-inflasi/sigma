@@ -276,7 +276,7 @@ func TestKatalogDanIzinLangsung_GalatPenyimpananTidakMenyamarSebagaiMasukanSalah
 		"ListRoles":       func() error { _, err := uc.ListRoles(ctx); return err },
 		"ListPermissions": func() error { _, err := uc.ListPermissions(ctx); return err },
 		"UpdateRolePermissions": func() error {
-			_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"harga.lihat"}, uid("admin-1"))
+			_, err := uc.UpdateRolePermissions(ctx, "MANAJER_DATA", 1, []string{"harga.lihat"}, uid("admin-1"))
 			return err
 		},
 		"ListUserPermissions": func() error { _, err := uc.ListUserPermissions(ctx, uid("u-1")); return err },
@@ -301,12 +301,12 @@ func TestUpdateRolePermissions_PeranHilangDanIzinDitolakPenyimpanan(t *testing.T
 	ctx := context.Background()
 	t.Run("peran tidak ada di basis data", func(t *testing.T) {
 		uc := ucIzinBermasalah(fmt.Errorf("baca peran: %w", gorm.ErrRecordNotFound))
-		_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, nil, uid("admin-1"))
+		_, err := uc.UpdateRolePermissions(ctx, "MANAJER_DATA", 1, nil, uid("admin-1"))
 		require.ErrorIs(t, err, ErrRoleNotFound)
 	})
 	t.Run("nama izin ditolak kunci asing", func(t *testing.T) {
 		uc := ucIzinBermasalah(domain.ErrIzinTidakDikenal)
-		_, err := uc.UpdateRolePermissions(ctx, "ADMIN_SISTEM", 1, []string{"harga.lihat"}, uid("admin-1"))
+		_, err := uc.UpdateRolePermissions(ctx, "MANAJER_DATA", 1, []string{"harga.lihat"}, uid("admin-1"))
 		require.ErrorIs(t, err, ErrIzinTidakDikenal)
 	})
 }

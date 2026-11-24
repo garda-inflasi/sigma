@@ -14,7 +14,7 @@ import { PanelPas } from "@/components/garda/halaman-pas";
 import { Shimmer } from "@/components/garda/shimmer";
 import { StatusBadge } from "@/components/garda/status-badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { kelasKontrol } from "@/components/ui/kontrol";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,13 +33,12 @@ import { cn } from "@/lib/utils";
 
 const POLA_WAKTU = "d MMM yyyy, HH:mm";
 const UKURAN_FILTER = "h-11 sm:h-9 md:text-[13px]";
-// `scheme-dark`: daftar opsi dan ikon tanggal bawaan peramban ikut gelap; latar opsi butuh warna solid.
+// `scheme-dark`: daftar opsi bawaan peramban ikut gelap; latar opsi butuh warna solid.
 const KELAS_SELECT = cn(
   kelasKontrol,
   UKURAN_FILTER,
   "w-full min-w-0 px-3 text-base dark:bg-card dark:scheme-dark",
 );
-const KELAS_TANGGAL = `${UKURAN_FILTER} dark:scheme-dark`;
 
 const adalahPonsel = (perangkat: string) =>
   /Android|iOS|iPadOS/.test(perangkat);
@@ -357,25 +356,23 @@ export function AktivitasAkunPanel() {
         </Kolom>
         <Kolom label="Dari tanggal">
           {(id) => (
-            <Input
+            <DateField
               id={id}
-              type="date"
               value={filter.dari ?? ""}
               max={filter.sampai || undefined}
-              onChange={(e) => ubah({ dari: e.target.value || undefined })}
-              className={KELAS_TANGGAL}
+              onValueChange={(v) => ubah({ dari: v || undefined })}
+              kelasInput={UKURAN_FILTER}
             />
           )}
         </Kolom>
         <Kolom label="Sampai tanggal">
           {(id) => (
-            <Input
+            <DateField
               id={id}
-              type="date"
               value={filter.sampai ?? ""}
               min={filter.dari || undefined}
-              onChange={(e) => ubah({ sampai: e.target.value || undefined })}
-              className={KELAS_TANGGAL}
+              onValueChange={(v) => ubah({ sampai: v || undefined })}
+              kelasInput={UKURAN_FILTER}
             />
           )}
         </Kolom>

@@ -49,14 +49,16 @@ describe("BannerImpersonasi", () => {
     assert.ok(screen.getByRole("button", { name: "Kembali ke Peran Asal" }));
   });
 
-  it("tertempel di puncak viewport (sticky top-0) dengan kontras tinggi dan tinggi tetap", () => {
+  it("tertempel di puncak viewport mobile (sticky top-0) dan mengalir statis di desktop dengan kontras tinggi", () => {
     api = pasangFetchPalsu();
     renderHalaman(<BannerImpersonasi />, { sesi: sesiImpersonate() });
     const banner = screen.getByTestId("banner-impersonasi");
     assert.match(banner.className, /\bsticky\b/);
     assert.match(banner.className, /\btop-0\b/);
+    assert.match(banner.className, /\bshrink-0\b/);
+    assert.match(banner.className, /\blg:static\b/);
     assert.match(banner.className, /bg-waspada/);
-    assert.equal(banner.style.height, "2.25rem");
+    assert.equal(banner.style.minHeight, "2.25rem");
   });
 
   it("klik kembali: memanggil stop sekali, lalu memuat penuh ke tujuan dari BFF (tanpa token di mana pun)", async () => {
@@ -98,12 +100,13 @@ describe("TombolKembaliPeran (chip topbar)", () => {
     assert.equal(screen.queryByTestId("chip-kembali-peran"), null);
   });
 
-  it("menampilkan 'Kembali ke [Peran Asal]' dan memanggil stop dengan satu klik", async () => {
+  it("menampilkan label ringkas tanpa terpotong dengan aria-label peran asal dan memanggil stop dengan satu klik", async () => {
     api = pasangFetchPalsu({ [STOP]: HASIL_STOP });
     const { user } = renderHalaman(<TombolKembaliPeran />, { sesi: sesiImpersonate() });
 
     const chip = screen.getByRole("button", { name: "Kembali ke Administrator Sistem" });
-    assert.match(chip.textContent ?? "", /Kembali ke Administrator Sistem/);
+    assert.match(chip.textContent ?? "", /Akhiri Impersonate/);
+    assert.doesNotMatch(chip.textContent ?? "", /Kembali ke Administrator Sist/);
     await user.click(chip);
 
     await waitFor(() => assert.deepEqual(nav.tujuan, ["/pengguna"]));

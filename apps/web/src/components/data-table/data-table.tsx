@@ -115,6 +115,11 @@ interface DataTableProps<T> {
   facets?: Facet[];
   initialFilters?: ColumnFiltersState;
   initialSorting?: SortingState;
+  /**
+   * Urutan yang selalu berlaku di depan urutan pilihan pengguna, mis. menahan baris prioritas di puncak lintas halaman.
+   * Kolomnya tidak bisa diganti lewat header (mode klien saja).
+   */
+  urutanTetap?: SortingState;
   toolbar?: ReactNode;
   pageSize?: number;
   rowTone?: (row: T) => Tone | undefined;
@@ -137,6 +142,12 @@ interface DataTableProps<T> {
   className?: string;
 }
 
+/** Urutan tetap di depan, lalu urutan pilihan pengguna tanpa kolom yang sama. */
+function gabungUrutan(tetap: SortingState | undefined, pilihan: SortingState): SortingState {
+  if (!tetap?.length) return pilihan;
+  return [...tetap, ...pilihan.filter((u) => !tetap.some((t) => t.id === u.id))];
+}
+
 /**
  * Tabel data Garda — seluruh baris dapat dicentang untuk proses massal.
  * - Centang header: pilih semua baris di halaman (indeterminate bila sebagian)
@@ -155,6 +166,7 @@ export function DataTable<T>({
   facets = [],
   initialFilters = [],
   initialSorting = [],
+  urutanTetap,
   toolbar,
   pageSize = 25,
   rowTone,
@@ -266,6 +278,11 @@ export function DataTable<T>({
     [],
   );
 
+  const urutanEfektif = useMemo(
+    () => gabungUrutan(urutanTetap, sorting),
+    [urutanTetap, sorting],
+  );
+
   const table = useReactTable({
     data: data ?? [],
     columns: useMemo(
@@ -275,7 +292,7 @@ export function DataTable<T>({
     getRowId: (r) => getRowId(r),
     state: {
       rowSelection,
-      sorting: server ? server.sorting : sorting,
+      sorting: server ? server.sorting : urutanEfektif,
       columnFilters,
       globalFilter: server ? "" : globalFilter,
       columnVisibility,
@@ -295,7 +312,11 @@ export function DataTable<T>({
     onColumnVisibilityChange: setColumnVisibility,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
-    onSortingChange: setSorting,
+    onSortingChange: (ubah) =>
+      setSorting((lama) => {
+        const baru = typeof ubah === "function" ? ubah(gabungUrutan(urutanTetap, lama)) : ubah;
+        return baru.filter((u) => !urutanTetap?.some((t) => t.id === u.id));
+      }),
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
@@ -407,40 +428,46 @@ export function DataTable<T>({
         className,
       )}
     >
-      {/* Toolbar */}
-      <div className="flex shrink-0 flex-col gap-2.5 border-b border-border p-3 lg:flex-row lg:items-center">
-        <label
-          className={cn(
-            "relative min-w-0 flex-1 lg:max-w-sm",
-            tanpaCari && "hidden",
-          )}
+      {/* Toolbar: kiri = Cari + Facet/Filter + Reset; kanan = Jumlah baris + Aksi sekunder */}
+      <div
+        data-slot="datatable-toolbar"
+        className="flex shrink-0 flex-col gap-2.5 border-b border-border p-3 lg:flex-row lg:items-center lg:justify-between"
+      >
+        <div
+          data-slot="datatable-filters"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
         >
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 z-[1] size-4 -translate-y-1/2 text-muted-foreground"
-            strokeWidth={1.75}
-          />
-          <Input
-            value={server ? draftCari : globalFilter}
-            onChange={(e) =>
-              server
-                ? setDraftCari(e.target.value)
-                : setGlobalFilter(e.target.value)
-            }
-            onKeyDown={(e) => {
-              // Enter mengirim kata kunci tanpa menunggu jeda ketik.
-              if (!server || e.key !== "Enter") return;
-              const kata = draftCari.trim();
-              if (kata !== server.search) {
-                cariDikirim.current = kata;
-                server.onSearchChange(kata);
+          <label
+            className={cn(
+              "relative w-full min-w-0 sm:w-64 lg:w-72 shrink-0",
+              tanpaCari && "hidden",
+            )}
+          >
+            <Search
+              className="pointer-events-none absolute top-1/2 left-2.5 z-[1] size-4 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={1.75}
+            />
+            <Input
+              value={server ? draftCari : globalFilter}
+              onChange={(e) =>
+                server
+                  ? setDraftCari(e.target.value)
+                  : setGlobalFilter(e.target.value)
               }
-            }}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            className="pr-3 pl-8 md:text-[13px]"
-          />
-        </label>
-        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
+              onKeyDown={(e) => {
+                // Enter mengirim kata kunci tanpa menunggu jeda ketik.
+                if (!server || e.key !== "Enter") return;
+                const kata = draftCari.trim();
+                if (kata !== server.search) {
+                  cariDikirim.current = kata;
+                  server.onSearchChange(kata);
+                }
+              }}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+              className="h-9 pr-3 pl-8 md:text-[13px]"
+            />
+          </label>
           {facets.map((f) => {
             const val =
               (table.getColumn(f.columnId)?.getFilterValue() as string) ??
@@ -455,7 +482,7 @@ export function DataTable<T>({
                     ?.setFilterValue(v === "__semua" ? undefined : v)
                 }
               >
-                <SelectTrigger className="w-full min-w-36 sm:w-auto sm:max-w-56 text-[13px] md:text-[13px]">
+                <SelectTrigger className="h-9 w-full min-w-36 sm:w-auto sm:max-w-56 text-[13px] md:text-[13px]">
                   <SelectValue placeholder={f.label} />
                 </SelectTrigger>
                 <SelectContent>
@@ -483,11 +510,23 @@ export function DataTable<T>({
               <X /> Reset filter ({jumlahFilter})
             </Button>
           )}
-          {toolbar}
         </div>
+        {(toolbar || !isLoading) && (
+          <div
+            data-slot="datatable-actions"
+            className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:justify-end"
+          >
+            {toolbar}
+          </div>
+        )}
       </div>
       {filterBar && (
-        <div className="border-b border-border px-3 py-2.5">{filterBar}</div>
+        <div
+          data-slot="datatable-filterbar"
+          className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-3 py-2"
+        >
+          {filterBar}
+        </div>
       )}
 
       {/* Banner pilih-semua lintas halaman */}
@@ -558,6 +597,7 @@ export function DataTable<T>({
       <div className={cn("relative min-w-0", isiPenuh && "lg:flex lg:min-h-0 lg:flex-col")}>
         <div
           ref={gulirRef}
+          data-lenis-prevent
           aria-busy={server?.isFetching || undefined}
           className={cn(
             // Batas tinggi membuat header sticky benar-benar menempel saat daftar panjang digulir.

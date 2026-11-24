@@ -173,30 +173,34 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 			return catatEvent(tx, aktif.ID)
 		}
 
-		var diredam bool
-		err := tx.Raw(`
-			SELECT EXISTS (
-				SELECT 1 FROM ews_alert
-				 WHERE dedup_key = @key AND status = 'SELESAI'
-				   AND COALESCE(selesai_pada, dibuat_pada) > @batas)`,
-			map[string]any{"key": in.DedupKey, "batas": now.Add(-time.Duration(in.CooldownJam) * time.Hour)}).
-			Scan(&diredam).Error
-		if err != nil {
-			return fmt.Errorf("periksa peredaman: %w", err)
-		}
-		if diredam {
-			hasil = domain.HasilDiredam
-			return nil
+		// Kondisi KRITIS tidak pernah diredam (domain.KenaPeredaman).
+		if domain.KenaPeredaman(in.Severity) {
+			var diredam bool
+			err := tx.Raw(`
+				SELECT EXISTS (
+					SELECT 1 FROM ews_alert
+					 WHERE dedup_key = @key AND status = 'SELESAI'
+					   AND COALESCE(selesai_pada, dibuat_pada) > @batas)`,
+				map[string]any{"key": in.DedupKey, "batas": now.Add(-time.Duration(in.CooldownJam) * time.Hour)}).
+				Scan(&diredam).Error
+			if err != nil {
+				return fmt.Errorf("periksa peredaman: %w", err)
+			}
+			if diredam {
+				hasil = domain.HasilDiredam
+				return nil
+			}
 		}
 
 		// ID dibuat basis data (identity); kode tampilan EWS-n berasal dari sequence khusus kode, jadi tidak bisa
 		// bentrok antar-instance walau dua evaluasi berjalan bersamaan.
 		var ids []idx.ID
-		err = tx.Raw(`
+		err := tx.Raw(`
 			INSERT INTO ews_alert (kode, severity, jenis, judul, pesan, komoditas_kode, kabupaten_kode, nilai,
 			                       satuan_nilai, skor_dampak, sumber, dibuat_pada, aturan_id, dedup_key)
 			VALUES ('EWS-' || nextval('ews_alert_kode_seq')::text, CAST(@severity AS severity), CAST(@jenis AS jenis_ews),
-			        @judul, @pesan, @komoditas, @kabupaten, @nilai, @satuan, @skor, @sumber, @waktu, @aturan, @key)
+			        @judul, @pesan, @komoditas, NULLIF(CAST(@kabupaten AS text), ''), @nilai, @satuan, @skor, @sumber, @waktu,
+			        NULLIF(CAST(@aturan AS bigint), 0), @key)
 			ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL AND status <> 'SELESAI' DO NOTHING
 			RETURNING id`, map[string]any{
 			"severity": in.Severity, "jenis": in.Jenis, "judul": in.Judul, "pesan": in.Pesan,
@@ -211,9 +215,13 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 			return nil
 		}
 		hasil, alertID = domain.HasilDibuat, ids[0]
+		catatan := in.CatatanRiwayat
+		if catatan == "" {
+			catatan = "Dibuat oleh rule engine"
+		}
 		err = tx.Exec(`
 			INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, waktu, catatan)
-			VALUES (?, NULL, 'BARU', NULL, ?, 'Dibuat oleh rule engine')`, alertID, now).Error
+			VALUES (?, NULL, 'BARU', NULL, ?, ?)`, alertID, now, catatan).Error
 		if err != nil {
 			return fmt.Errorf("riwayat alert baru: %w", err)
 		}
@@ -232,26 +240,43 @@ func (r *Repository) Terapkan(ctx context.Context, in domain.NewAlert, now time.
 	return hasil, alert, nil
 }
 
-// naikkan memperbarui alert aktif bila tingkatnya lebih tinggi dari yang tersimpan.
+// naikkan memperbarui alert aktif bila tingkatnya lebih tinggi dari yang tersimpan. Alert yang naik ke KRITIS dibuka
+// kembali ke BARU bila sebelumnya sudah diakui atau dieskalasi: tindak lanjut itu untuk tingkat yang lebih rendah,
+// sedangkan kondisi KRITIS belum ditindaklanjuti siapa pun (jejak lamanya tetap ada di riwayat).
 // Waktu riwayat memakai now dari engine, sama dengan riwayat "Dibuat oleh rule engine", supaya urutannya tidak
 // bergantung pada selisih jam aplikasi dan basis data.
 func naikkan(tx *gorm.DB, id idx.ID, status, severityLama string, in domain.NewAlert, now time.Time) (bool, error) {
 	if domain.SeverityRank(in.Severity) <= domain.SeverityRank(severityLama) {
 		return false, nil
 	}
+	statusBaru := status
+	if in.Severity == domain.SeverityKritis {
+		statusBaru = domain.StatusBaru
+	}
+	dibuka := statusBaru != status
 	err := tx.Exec(`
 		UPDATE ews_alert
-		   SET severity = CAST(@severity AS severity), pesan = @pesan, nilai = @nilai, skor_dampak = @skor, aturan_id = @aturan
+		   SET severity = CAST(@severity AS severity), pesan = @pesan, nilai = @nilai, skor_dampak = @skor,
+		       aturan_id = NULLIF(CAST(@aturan AS bigint), 0),
+		       status = CAST(@status AS status_ews),
+		       diakui_oleh_id = CASE WHEN @dibuka THEN NULL ELSE diakui_oleh_id END,
+		       diakui_pada = CASE WHEN @dibuka THEN NULL ELSE diakui_pada END,
+		       dieskalasi_oleh_id = CASE WHEN @dibuka THEN NULL ELSE dieskalasi_oleh_id END,
+		       dieskalasi_pada = CASE WHEN @dibuka THEN NULL ELSE dieskalasi_pada END
 		 WHERE id = @id`, map[string]any{
-		"severity": in.Severity, "pesan": in.Pesan, "nilai": in.Nilai, "skor": in.SkorDampak, "aturan": in.AturanID, "id": id,
+		"severity": in.Severity, "pesan": in.Pesan, "nilai": in.Nilai, "skor": in.SkorDampak, "aturan": in.AturanID,
+		"status": statusBaru, "dibuka": dibuka, "id": id,
 	}).Error
 	if err != nil {
 		return false, fmt.Errorf("naikkan alert: %w", err)
 	}
 	catatan := fmt.Sprintf("Tingkat naik dari %s ke %s", severityLama, in.Severity)
+	if dibuka {
+		catatan += "; dibuka kembali untuk ditindaklanjuti"
+	}
 	err = tx.Exec(`
 		INSERT INTO ews_riwayat (alert_id, dari, ke, oleh, waktu, catatan)
-		VALUES (?, CAST(? AS status_ews), CAST(? AS status_ews), NULL, ?, ?)`, id, status, status, now, catatan).Error
+		VALUES (?, CAST(? AS status_ews), CAST(? AS status_ews), NULL, ?, ?)`, id, status, statusBaru, now, catatan).Error
 	if err != nil {
 		return false, fmt.Errorf("riwayat kenaikan alert: %w", err)
 	}

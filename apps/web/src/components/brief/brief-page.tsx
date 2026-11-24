@@ -30,6 +30,7 @@ import {
   type ItemRingkas,
 } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
+import { KonteksMl, konteksInflasi } from "@/components/ml/konteks-ml";
 import { Shimmer } from "@/components/garda/shimmer";
 import {
   STATUS_BRIEF as STATUS,
@@ -442,6 +443,7 @@ export function BriefPage() {
         }
       />
       <RingkasanKeputusan items={ringkasan} label="Ringkasan status brief" />
+      <KonteksMl path="/v1/policy-brief" ringkas={konteksInflasi} />
       <DataTable
         isiPenuh
         data={isLoading ? undefined : tampil}

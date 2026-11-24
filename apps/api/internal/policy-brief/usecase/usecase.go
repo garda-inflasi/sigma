@@ -321,12 +321,18 @@ var transisiAksi = map[string][2]string{
 }
 
 // BulkAction memajukan status brief. Setiap elemen ids adalah UUID atau kode brief (RujukanBrief). Brief yang
-// tidak ada, bukan di status asal, atau rujukannya tidak sah dihitung gagal; setiap perubahan dicatat di
-// audit dengan UUID brief (juga bila rujukannya kode).
+// tidak ada, bukan di status asal, rujukannya tidak sah, atau (untuk persetujuan) disusun oleh aktor sendiri
+// dihitung gagal; setiap perubahan dicatat di audit dengan UUID brief (juga bila rujukannya kode).
 func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID string) (BulkResult, error) {
 	rute, ok := transisiAksi[aksi]
 	if !ok {
 		return BulkResult{}, ErrAksiTidakValid
+	}
+
+	// Pemisahan tugas: penyusun tidak menyetujui brief-nya sendiri, walau memegang brief.susun dan brief.setujui.
+	bukanPenyusun := ""
+	if aksi == domain.AksiSetujui {
+		bukanPenyusun = aktorID
 	}
 
 	var hasil BulkResult
@@ -336,7 +342,7 @@ func (uc *UseCase) BulkAction(ctx context.Context, ids []string, aksi, aktorID s
 			hasil.Gagal++
 			continue
 		}
-		briefID, berubah, err := uc.repo.Transisi(ctx, ref, rute[0], rute[1])
+		briefID, berubah, err := uc.repo.Transisi(ctx, ref, rute[0], rute[1], bukanPenyusun)
 		if err != nil {
 			return hasil, err
 		}

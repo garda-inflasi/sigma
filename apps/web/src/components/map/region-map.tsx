@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { Shimmer } from "@/components/garda/shimmer";
 import type { GeometriWilayah } from "@/lib/api/spasial";
+import type { GarisUkurPeta } from "./region-map-leaflet";
 import {
   META_STATUS,
   formatDelta,
@@ -34,10 +35,12 @@ export function RegionMap({
   geometri,
   titikLain,
   titikCari,
+  garisUkur,
   isLoading,
   selected,
   onSelect,
   onKlikPeta,
+  onKlikTitik,
   aksiPopup,
   fokusPilihan,
   className,
@@ -46,31 +49,43 @@ export function RegionMap({
   geometri?: GeometriWilayah[];
   titikLain?: TitikPeta[];
   titikCari?: { lat: number; lng: number };
+  garisUkur?: GarisUkurPeta | null;
   isLoading?: boolean;
   selected?: string;
   onSelect?: (kode: string) => void;
   onKlikPeta?: (lat: number, lng: number) => void;
+  onKlikTitik?: (titik: TitikPeta) => void;
   aksiPopup?: { label: string; onClick: (kode: string) => void };
   fokusPilihan?: boolean;
   className?: string;
 }) {
   const [tampilPasar, setTampilPasar] = useState(true);
   const [tampilCold, setTampilCold] = useState(true);
+  const [tampilPertanian, setTampilPertanian] = useState(true);
+  const [tampilPerkampungan, setTampilPerkampungan] = useState(true);
   const jumlahPasar = titikLain?.filter((t) => t.jenis === "pasar").length ?? 0;
   const jumlahCold =
     titikLain?.filter((t) => t.jenis === "cold-storage").length ?? 0;
+  const jumlahPertanian =
+    titikLain?.filter((t) => t.jenis === "pertanian").length ?? 0;
+  const jumlahPerkampungan =
+    titikLain?.filter((t) => t.jenis === "perkampungan").length ?? 0;
   const titikTampil = useMemo(
     () =>
-      titikLain?.filter((t) =>
-        t.jenis === "pasar" ? tampilPasar : tampilCold,
-      ),
-    [titikLain, tampilPasar, tampilCold],
+      titikLain?.filter((t) => {
+        if (t.jenis === "pasar") return tampilPasar;
+        if (t.jenis === "cold-storage") return tampilCold;
+        if (t.jenis === "pertanian") return tampilPertanian;
+        return tampilPerkampungan;
+      }),
+    [titikLain, tampilPasar, tampilCold, tampilPertanian, tampilPerkampungan],
   );
 
   return (
     <div
       role="region"
       aria-label="Peta Provinsi Aceh"
+      data-lenis-prevent
       className={cn(
         "relative isolate overflow-hidden rounded-lg border border-border bg-secondary",
         onKlikPeta && "[&_.leaflet-container]:cursor-crosshair",
@@ -86,9 +101,11 @@ export function RegionMap({
             geometri={geometri}
             titikLain={titikTampil}
             titikCari={titikCari}
+            garisUkur={garisUkur}
             selected={selected}
             onSelect={onSelect}
             onKlikPeta={onKlikPeta}
+            onKlikTitik={onKlikTitik}
             aksiPopup={aksiPopup}
             fokusPilihan={fokusPilihan}
           />
@@ -115,7 +132,10 @@ export function RegionMap({
             </li>
           ))}
         </ul>
-        {(jumlahPasar > 0 || jumlahCold > 0) && (
+        {(jumlahPasar > 0 ||
+          jumlahCold > 0 ||
+          jumlahPertanian > 0 ||
+          jumlahPerkampungan > 0) && (
           <div
             className="pointer-events-auto flex flex-wrap gap-1"
             role="group"
@@ -137,6 +157,24 @@ export function RegionMap({
                 kelasPin="garda-pin-cold"
               >
                 Cold storage <span className="num">{jumlahCold}</span>
+              </TombolLapisan>
+            )}
+            {jumlahPertanian > 0 && (
+              <TombolLapisan
+                aktif={tampilPertanian}
+                onClick={() => setTampilPertanian((v) => !v)}
+                kelasPin="garda-pin-pertanian"
+              >
+                Pertanian <span className="num">{jumlahPertanian}</span>
+              </TombolLapisan>
+            )}
+            {jumlahPerkampungan > 0 && (
+              <TombolLapisan
+                aktif={tampilPerkampungan}
+                onClick={() => setTampilPerkampungan((v) => !v)}
+                kelasPin="garda-pin-perkampungan"
+              >
+                Perkampungan <span className="num">{jumlahPerkampungan}</span>
               </TombolLapisan>
             )}
           </div>

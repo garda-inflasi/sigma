@@ -11,6 +11,7 @@ import (
 	kpiRoutes "github.com/garda-inflasi/api/internal/kpi/routes"
 	lapanganRoutes "github.com/garda-inflasi/api/internal/lapangan/routes"
 	masterRoutes "github.com/garda-inflasi/api/internal/master/routes"
+	mlRoutes "github.com/garda-inflasi/api/internal/ml/routes"
 	policyBriefRoutes "github.com/garda-inflasi/api/internal/policy-brief/routes"
 	prediksiRoutes "github.com/garda-inflasi/api/internal/prediksi/routes"
 	siklusRoutes "github.com/garda-inflasi/api/internal/siklus/routes"
@@ -24,6 +25,9 @@ import (
 
 // RegisterAll registers all module routes under the given router group.
 func RegisterAll(v1 *gin.RouterGroup, db *gorm.DB, log *logger.Logger, tokenMgr *token.Manager) {
+	// ML lebih dulu: pengaya lampiran `ml` (docs/PIPELINE-DATA-ML.md §5) dipasang di grup v1 dan hanya berlaku
+	// untuk rute yang didaftarkan sesudahnya.
+	mlRoutes.Register(v1, &mlRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	eksekutifRoutes.Register(v1, &eksekutifRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	siklusRoutes.Register(v1, &siklusRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})
 	dashboardRoutes.Register(v1, &dashboardRoutes.Dependencies{DB: db, Logger: log, Token: tokenMgr})

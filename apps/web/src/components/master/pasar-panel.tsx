@@ -6,11 +6,12 @@ import { useMemo, useState } from "react";
 import type { BulkAction } from "@/components/data-table/bulk-action-bar";
 import { DataTable, SelTeks } from "@/components/data-table/data-table";
 import { StatusBadge } from "@/components/garda/status-badge";
-import { useCan } from "@/lib/auth/session-context";
+import { useCan, useOptionalSession } from "@/lib/auth/session-context";
 import { exportCsv } from "@/lib/csv";
 import type { MasterPasarRow } from "@/lib/data/types";
 import { formatAngka } from "@/lib/format";
 import { useMasterPasar } from "@/lib/query/hooks";
+import { LangsungDialog } from "./langsung-dialog";
 import { PasarDetailSheet } from "./pasar-detail-sheet";
 import { STATUS_PASAR } from "./status";
 import { UsulanDialog } from "./usulan-dialog";
@@ -19,12 +20,15 @@ type StatusPasar = keyof typeof STATUS_PASAR;
 const statusPasar = (p: MasterPasarRow): StatusPasar =>
   p.aktif ? "AKTIF" : "NONAKTIF";
 
-/** Tabel pasar dengan kolom kecamatan dan versi; klik baris membuka detail, ikon pensil mengajukan perubahan. */
+/** Tabel pasar dengan kolom kecamatan dan versi; klik baris membuka detail, ikon pensil mengajukan perubahan atau ubah langsung (Superadmin). */
 export function PasarPanel() {
   const { data, isLoading } = useMasterPasar();
+  const sesi = useOptionalSession();
+  const isSuperadmin = sesi?.role === "ADMIN_SISTEM";
   const bisaAjukan = useCan("master.ajukan");
   const [detail, setDetail] = useState<string | null>(null);
   const [ubah, setUbah] = useState<MasterPasarRow | null>(null);
+  const [editLangsung, setEditLangsung] = useState<MasterPasarRow | null>(null);
 
   const kolom = useMemo<ColumnDef<MasterPasarRow>[]>(
     () => [
@@ -91,7 +95,7 @@ export function PasarPanel() {
           return <StatusBadge tone={s.tone}>{s.label}</StatusBadge>;
         },
       },
-      ...(bisaAjukan
+      ...(bisaAjukan || isSuperadmin
         ? [
             {
               id: "aksi",
@@ -100,11 +104,12 @@ export function PasarPanel() {
               cell: ({ row: { original: r } }) => (
                 <button
                   type="button"
-                  aria-label={`Ajukan perubahan ${r.kode ?? r.id}`}
-                  title="Ajukan perubahan"
+                  aria-label={`${isSuperadmin ? "Ubah langsung" : "Ajukan perubahan"} ${r.kode ?? r.id}`}
+                  title={isSuperadmin ? "Ubah langsung (Superadmin)" : "Ajukan perubahan"}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setUbah(r);
+                    if (isSuperadmin) setEditLangsung(r);
+                    else setUbah(r);
                   }}
                   className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
                 >
@@ -115,7 +120,7 @@ export function PasarPanel() {
           ]
         : []),
     ],
-    [bisaAjukan],
+    [bisaAjukan, isSuperadmin],
   );
 
   // Pasar tidak punya siklus status massal (hanya usulan per pasar); aksi massalnya cukup ekspor CSV.
@@ -176,6 +181,11 @@ export function PasarPanel() {
         target={ubah ? { entitas: "pasar", awal: ubah } : null}
         open={!!ubah}
         onOpenChange={(o) => !o && setUbah(null)}
+      />
+      <LangsungDialog
+        target={editLangsung ? { entitas: "pasar", awal: editLangsung } : null}
+        open={!!editLangsung}
+        onOpenChange={(o) => !o && setEditLangsung(null)}
       />
     </>
   );

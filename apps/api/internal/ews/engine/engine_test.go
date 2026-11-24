@@ -180,6 +180,13 @@ func TestEvaluasi_CreatesRaisesAndSkips(t *testing.T) {
 	assert.Equal(t, []string{"BUAT_OTOMATIS", "BUAT_OTOMATIS", "NAIK_TINGKAT"}, aksi)
 }
 
+func TestKenaPeredaman_KritisTidakPernahDiredam(t *testing.T) {
+	assert.False(t, domain.KenaPeredaman(domain.SeverityKritis))
+	for _, s := range []string{domain.SeverityInfo, domain.SeverityWaspada, domain.SeveritySiaga} {
+		assert.True(t, domain.KenaPeredaman(s), s)
+	}
+}
+
 func TestEvaluasi_FailuresAreCountedAndDoNotStopOtherRules(t *testing.T) {
 	rusak := domain.AturanEws{ID: 9, Jenis: domain.JenisLonjakanHarga, AmbangWaspada: 1, AmbangSiaga: 2, AmbangKritis: 3}
 	repo := &fakeRepo{

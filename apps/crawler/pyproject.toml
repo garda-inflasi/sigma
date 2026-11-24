@@ -1,0 +1,29 @@
+[project]
+name = "garda-crawler"
+version = "0.1.0"
+description = "Crawler harian Garda Inflasi: menulis data mentah ke MongoDB dataunseen"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "certifi>=2024.7.4",
+    "httpx>=0.27,<1",
+    "psycopg[binary]>=3.2,<4",
+    "pymongo>=4.8,<5",
+    "tenacity>=9.2,<10",
+]
+
+[dependency-groups]
+dev = [
+    "mongomock>=4.2,<5",
+    "pytest>=8,<10",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "integrasi: butuh MongoDB sungguhan lewat GARDA_UJI_MONGO_URI",
+]

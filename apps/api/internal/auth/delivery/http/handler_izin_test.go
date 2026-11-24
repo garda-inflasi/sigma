@@ -40,7 +40,7 @@ func TestUpdateRolePermissions_ValidasiBindingDijawab400(t *testing.T) {
 		"izin berisi angka": `{"permissions":[1],"versi":1}`,
 		"versi pecahan":     `{"permissions":[],"versi":1.5}`,
 	} {
-		h := panggilJSON(t, r, nethttp.MethodPut, "/roles/ADMIN_SISTEM/permissions", badan)
+		h := panggilJSON(t, r, nethttp.MethodPut, "/roles/MANAJER_DATA/permissions", badan)
 		assert.Equal(t, nethttp.StatusBadRequest, h.Code, nama+": "+h.Body.String())
 	}
 }
@@ -56,17 +56,17 @@ func TestUpdateRolePermissions_PemetaanGalat(t *testing.T) {
 		kode   string
 	}{
 		{"peran tidak dikenal", "SUPERADMIN", &repoUji{}, badan, 404, "404"},
-		{"izin di luar katalog", "ADMIN_SISTEM", &repoUji{}, `{"permissions":["sistem.rusak","harga.lihat"],"versi":2}`, 400, "UNKNOWN_PERMISSION"},
-		{"peran hilang di basis data", "ADMIN_SISTEM", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
+		{"izin di luar katalog", "MANAJER_DATA", &repoUji{}, `{"permissions":["sistem.rusak","harga.lihat"],"versi":2}`, 400, "UNKNOWN_PERMISSION"},
+		{"peran hilang di basis data", "MANAJER_DATA", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
 			return nil, fmt.Errorf("baca peran: %w", gorm.ErrRecordNotFound)
 		}}, badan, 404, "404"},
-		{"pemegang terakhir pengguna.kelola", "ADMIN_SISTEM", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
+		{"pemegang terakhir pengguna.kelola", "MANAJER_DATA", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
 			return nil, domain.ErrPemegangTerakhir
 		}}, badan, 409, "LAST_PERMISSION_HOLDER"},
-		{"nama izin ditolak basis data", "ADMIN_SISTEM", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
+		{"nama izin ditolak basis data", "MANAJER_DATA", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
 			return nil, domain.ErrIzinTidakDikenal
 		}}, badan, 400, "UNKNOWN_PERMISSION"},
-		{"galat basis data", "ADMIN_SISTEM", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
+		{"galat basis data", "MANAJER_DATA", &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
 			return nil, galatDB()
 		}}, badan, 500, "500"},
 	}
@@ -86,16 +86,16 @@ func TestUpdateRolePermissions_KonflikVersiMembawaPeranSaatIni(t *testing.T) {
 	r, rec := routerPengguna(t, &repoUji{
 		setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) { return nil, domain.ErrVersiPeranBerubah },
 		listPeran: func() ([]domain.PeranDetail, error) {
-			return []domain.PeranDetail{peranContoh("MANAJER_DATA", 1), peranContoh("ADMIN_SISTEM", 5, "pengguna.kelola", "harga.lihat")}, nil
+			return []domain.PeranDetail{peranContoh("MANAJER_RISIKO", 1), peranContoh("MANAJER_DATA", 5, "pengguna.kelola", "harga.lihat")}, nil
 		},
 	})
 
-	h := panggilJSON(t, r, nethttp.MethodPut, "/roles/ADMIN_SISTEM/permissions", `{"permissions":["harga.lihat"],"versi":2}`)
+	h := panggilJSON(t, r, nethttp.MethodPut, "/roles/MANAJER_DATA/permissions", `{"permissions":["harga.lihat"],"versi":2}`)
 
 	require.Equal(t, nethttp.StatusConflict, h.Code, h.Body.String())
 	assert.Equal(t, "ROLE_VERSION_CONFLICT", h.kode())
 	saat := h.data(t)
-	assert.Equal(t, "ADMIN_SISTEM", saat["id"], "data berisi peran saat ini supaya UI memuat ulang tanpa permintaan lagi")
+	assert.Equal(t, "MANAJER_DATA", saat["id"], "data berisi peran saat ini supaya UI memuat ulang tanpa permintaan lagi")
 	assert.EqualValues(t, 5, saat["versi"])
 	assert.Equal(t, []any{"pengguna.kelola", "harga.lihat"}, saat["permissions"])
 	assert.Empty(t, rec.Entries())
@@ -107,13 +107,13 @@ func TestUpdateRolePermissions_BerhasilDanTanpaPerubahanTidakDiaudit(t *testing.
 		r, rec := routerPengguna(t, &repoUji{setIzinPeran: func(p domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
 			diterima = p
 			return &domain.HasilSetIzinPeran{
-				Peran:   domain.Peran{Kunci: "ADMIN_SISTEM", Label: "Admin", Lapis: "SISTEM", Versi: 3},
+				Peran:   domain.Peran{Kunci: "MANAJER_DATA", Label: "Admin", Lapis: "SISTEM", Versi: 3},
 				Sebelum: []string{"harga.lihat"}, Sesudah: []string{"harga.lihat", "harga.ekspor"}, Berubah: true,
 			}, nil
 		}})
-		h := panggilJSON(t, r, nethttp.MethodPut, "/roles/ADMIN_SISTEM/permissions", `{"permissions":["harga.lihat","harga.ekspor"],"versi":2}`)
+		h := panggilJSON(t, r, nethttp.MethodPut, "/roles/MANAJER_DATA/permissions", `{"permissions":["harga.lihat","harga.ekspor"],"versi":2}`)
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
-		assert.Equal(t, "ADMIN_SISTEM", diterima.Peran)
+		assert.Equal(t, "MANAJER_DATA", diterima.Peran)
 		assert.EqualValues(t, 2, diterima.Versi)
 		assert.Equal(t, uid("admin-1"), diterima.Oleh)
 		assert.Equal(t, []any{"harga.lihat", "harga.ekspor"}, h.data(t)["permissions"])
@@ -127,15 +127,30 @@ func TestUpdateRolePermissions_BerhasilDanTanpaPerubahanTidakDiaudit(t *testing.
 	t.Run("himpunan sama: tidak menulis dan tidak diaudit", func(t *testing.T) {
 		r, rec := routerPengguna(t, &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
 			return &domain.HasilSetIzinPeran{
-				Peran:   domain.Peran{Kunci: "ADMIN_SISTEM", Versi: 2},
+				Peran:   domain.Peran{Kunci: "MANAJER_DATA", Versi: 2},
 				Sebelum: []string{"harga.lihat"}, Sesudah: []string{"harga.lihat"},
 			}, nil
 		}})
-		h := panggilJSON(t, r, nethttp.MethodPut, "/roles/ADMIN_SISTEM/permissions", `{"permissions":["harga.lihat"],"versi":2}`)
+		h := panggilJSON(t, r, nethttp.MethodPut, "/roles/MANAJER_DATA/permissions", `{"permissions":["harga.lihat"],"versi":2}`)
 		require.Equal(t, nethttp.StatusOK, h.Code, h.Body.String())
 		assert.EqualValues(t, 2, h.data(t)["versi"], "versi tidak naik")
 		assert.Empty(t, rec.Entries())
 	})
+}
+
+func TestUpdateRolePermissions_KolomAdminSistemTerkunci(t *testing.T) {
+	dipanggil := false
+	r, rec := routerPengguna(t, &repoUji{setIzinPeran: func(domain.SetIzinPeran) (*domain.HasilSetIzinPeran, error) {
+		dipanggil = true
+		return nil, nil
+	}})
+
+	h := panggilJSON(t, r, nethttp.MethodPut, "/roles/ADMIN_SISTEM/permissions", `{"permissions":["pengguna.kelola","harga.lihat"],"versi":2}`)
+
+	require.Equal(t, nethttp.StatusConflict, h.Code, h.Body.String())
+	assert.Equal(t, "ADMIN_PERMISSIONS_LOCKED", h.kode())
+	assert.False(t, dipanggil, "tidak ada yang ditulis")
+	assert.Empty(t, rec.Entries())
 }
 
 // ── GET /users/:id/permissions ────────────────────────────────────────

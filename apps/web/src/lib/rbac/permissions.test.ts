@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
-import { PERMISSIONS, ROLE_PERMISSIONS } from "./permissions";
+import { PERMISSIONS, ROLE_PERMISSIONS, peranIzinTerkunci } from "./permissions";
 import { ROLE_IDS } from "./roles";
 
 /** Kontrak izin yang dihasilkan dari peta rolePermissions di API Go (lihat rbac_test.go). */
@@ -38,6 +38,17 @@ describe("izin web sama dengan API Go", () => {
       ROLE_IDS.flatMap((role) => ROLE_PERMISSIONS[role]),
     );
     assert.deepEqual(sorted(PERMISSIONS.filter((p) => !dimiliki.has(p))), []);
+  });
+});
+
+describe("ADMIN_SISTEM", () => {
+  it("memegang seluruh katalog izin", () => {
+    assert.deepEqual(sorted(ROLE_PERMISSIONS.ADMIN_SISTEM), sorted(PERMISSIONS));
+    assert.deepEqual(sorted(contract.roles.ADMIN_SISTEM), sorted(contract.permissions));
+  });
+
+  it("satu-satunya peran yang kolom matriksnya terkunci", () => {
+    assert.deepEqual(ROLE_IDS.filter(peranIzinTerkunci), ["ADMIN_SISTEM"]);
   });
 });
 

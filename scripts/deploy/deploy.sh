@@ -11,7 +11,8 @@
 #
 #  Options:
 #      --init                   Bootstrap VM first (docker group, folders, .env)
-#      --only=api,web,ml,worker Sync, build, and update only listed services
+#      --only=api,web,ml,ml-worker,crawler,worker Sync, build, and update only listed services
+#      --with-pipeline          Include crawler & ml-worker in default full deploy
 #      --tag=<tag>              Explicit release tag (default: vYYYYMMDD-HHMMSS)
 #      --skip-sync              Skip source sync to VM
 #      --skip-build             Skip remote docker build (reuse tag on VM)
@@ -43,6 +44,7 @@ SKIP_BUILD=0
 NO_CACHE=0
 KEEP_SRC=0
 ONLY_SERVICES=""
+WITH_PIPELINE="${ENABLE_PIPELINE:-0}"
 TAG_OVERRIDE=""
 SYNC_CADDY=-1   # -1 = auto (yes on full deploy, no on --only unless --sync-caddy)
 SKIP_MIGRATE=0
@@ -52,7 +54,7 @@ DO_BACKUP=0
 AUTO_ROLLBACK=1
 
 usage() {
-  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
@@ -64,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --keep-src)      KEEP_SRC=1 ;;
     --only=*)        ONLY_SERVICES="${1#*=}" ;;
     --only)          shift; ONLY_SERVICES="${1:-}" ;;
+    --with-pipeline) WITH_PIPELINE=1 ;;
     --tag=*)         TAG_OVERRIDE="${1#*=}" ;;
     --tag)           shift; TAG_OVERRIDE="${1:-}" ;;
     --sha=*)         TAG_OVERRIDE="${1#*=}" ;;
@@ -110,6 +113,7 @@ main() {
   print_kv "Gateway mode"  "${GATEWAY_MODE}"
   print_kv "Public host"   "${PUBLIC_HOST}"
   print_kv "Only services" "${ONLY_SERVICES:-<all app services>}"
+  print_kv "Pipeline"      "$([[ "$WITH_PIPELINE" -eq 1 ]] && echo yes || echo no)"
   print_kv "Init VM"       "$([[ "$DO_INIT" -eq 1 ]] && echo yes || echo no)"
   print_kv "Sync source"   "$([[ "$SKIP_SYNC" -eq 1 ]] && echo no || echo yes)"
   print_kv "Build on VM"   "$([[ "$SKIP_BUILD" -eq 1 ]] && echo no || echo yes)"
@@ -125,7 +129,37 @@ main() {
     bash "${SCRIPT_DIR}/init-server.sh" ${init_args[@]+"${init_args[@]}"}
   fi
 
-  # ── Step 3: pre-flight SSH + Docker on VM ──────────────────────────────
+  # ── Step 3: pre-flight Compose config (local) + SSH + Docker on VM ─────
+  local compose_check_files=(-f compose.yaml -f compose.prod.yaml)
+  [[ "${GATEWAY_MODE:-external}" == "external" ]] && compose_check_files+=(-f compose.gateway.yaml)
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo_cmd "docker compose ${compose_check_files[*]} --profile pipeline config --quiet"
+  elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    log_info "Pre-flight lokal: validasi konfigurasi compose produksi (--profile pipeline) ..."
+    POSTGRES_DB="${POSTGRES_DB:-garda_inflasi}" \
+    POSTGRES_USER="${POSTGRES_USER:-garda}" \
+    POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-preflight_dummy_secret_16chars}" \
+    DB_USER="${DB_USER:-garda}" \
+    DB_PASSWORD="${DB_PASSWORD:-preflight_dummy_secret_16chars}" \
+    DB_NAME="${DB_NAME:-garda_inflasi}" \
+    JWT_SECRET="${JWT_SECRET:-preflight_dummy_jwt_secret_32chars_00}" \
+    AES_KEY="${AES_KEY:-preflight_dummy_aes_key_32chars__}" \
+    APP_ALLOWED_ORIGINS="${APP_ALLOWED_ORIGINS:-https://${PUBLIC_HOST}}" \
+      docker compose -f compose.infra.yaml -f compose.prod.yaml config --quiet \
+      && POSTGRES_DB="${POSTGRES_DB:-garda_inflasi}" \
+      POSTGRES_USER="${POSTGRES_USER:-garda}" \
+      POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-preflight_dummy_secret_16chars}" \
+      DB_USER="${DB_USER:-garda}" \
+      DB_PASSWORD="${DB_PASSWORD:-preflight_dummy_secret_16chars}" \
+      DB_NAME="${DB_NAME:-garda_inflasi}" \
+      JWT_SECRET="${JWT_SECRET:-preflight_dummy_jwt_secret_32chars_00}" \
+      AES_KEY="${AES_KEY:-preflight_dummy_aes_key_32chars__}" \
+      APP_ALLOWED_ORIGINS="${APP_ALLOWED_ORIGINS:-https://${PUBLIC_HOST}}" \
+      docker compose "${compose_check_files[@]}" --profile pipeline config --quiet \
+      || die "Konfigurasi Docker Compose produksi tidak valid."
+    log_success "Konfigurasi Docker Compose produksi valid."
+  fi
+
   if [[ "$DRY_RUN" != "1" ]]; then
     vm_preflight
   else
@@ -159,6 +193,7 @@ main() {
   else
     sync_args=()
     [[ -n "$ONLY_SERVICES" ]] && sync_args+=("--only=${ONLY_SERVICES}")
+    [[ "$WITH_PIPELINE" -eq 1 ]] && sync_args+=("--with-pipeline")
     [[ "$DRY_RUN" -eq 1 ]] && sync_args+=("--dry-run")
 
     if ! bash "${SCRIPT_DIR}/sync-source.sh" ${sync_args[@]+"${sync_args[@]}"}; then
@@ -176,6 +211,7 @@ main() {
     "--next-public-app-url=${NEXT_PUBLIC_APP_URL:-https://${PUBLIC_HOST}}"
   )
   [[ -n "$ONLY_SERVICES" ]] && remote_args+=("--only=${ONLY_SERVICES}")
+  [[ "$WITH_PIPELINE" -eq 1 ]] && remote_args+=("--with-pipeline")
   [[ "$NO_CACHE" -eq 1 ]] && remote_args+=("--no-cache")
   [[ "$SKIP_BUILD" -eq 1 ]] && remote_args+=("--skip-build")
   [[ "$KEEP_SRC" -eq 1 ]] && remote_args+=("--keep-src")

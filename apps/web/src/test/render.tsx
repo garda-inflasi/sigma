@@ -21,6 +21,7 @@ import type { Permission } from "@/lib/rbac/permissions";
 
 // Animasi langsung selesai: AnimatePresence melepas elemen yang keluar seketika, tanpa menunggu bingkai animasi.
 MotionGlobalConfig.skipAnimations = true;
+(globalThis as { __GARDA_SKIP_GSAP__?: boolean }).__GARDA_SKIP_GSAP__ = true;
 
 // RTL hanya membersihkan otomatis bila ada `afterEach` global (jest/vitest); di node:test dipasang manual.
 // Toast Sonner hidup di store global dan lolos dari `cleanup`: tanpa dismiss, toast tes sebelumnya ikut tampil

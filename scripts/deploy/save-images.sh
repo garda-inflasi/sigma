@@ -113,8 +113,10 @@ for svc in "${TARGET_SERVICES[@]}"; do
     api|worker) add_image_target "api" ;;
     web)        add_image_target "web" ;;
     ml)         add_image_target "ml" ;;
+    ml-worker)  add_image_target "ml-pipeline" ;;
+    crawler)    add_image_target "crawler" ;;
     caddy)      add_image_target "caddy" ;;
-    *) die "Service tidak dikenal: '$svc'" "Pilih dari: api, worker, web, ml, caddy." ;;
+    *) die "Service tidak dikenal: '$svc'" "Pilih dari: api, worker, web, ml, ml-worker, crawler, caddy." ;;
   esac
 done
 

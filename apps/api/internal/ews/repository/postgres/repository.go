@@ -68,12 +68,16 @@ func (r *Repository) PenggunaCakupan(ctx context.Context, userID string) (string
 }
 
 // kolomAlert dan gabungAlert melengkapi alert dengan nama komoditas, nama kabupaten, dan kode aturan pemicunya.
-const kolomAlert = "a.*, k.nama AS komoditas_nama, w.nama AS kabupaten_nama, t.kode AS aturan_kode"
+// Alert tanpa kabupaten (tingkat sistem/provinsi dari pipeline ML, 000131) bernama wilayah namaTanpaKabupaten.
+const kolomAlert = "a.*, k.nama AS komoditas_nama, COALESCE(w.nama, '" + namaTanpaKabupaten + "') AS kabupaten_nama, t.kode AS aturan_kode"
+
+// namaTanpaKabupaten adalah nama wilayah tampilan alert yang tidak terikat kabupaten.
+const namaTanpaKabupaten = "PROVINSI ACEH"
 
 func gabungAlert(q *gorm.DB) *gorm.DB {
 	return q.
 		Joins("LEFT JOIN komoditas k ON k.kode = a.komoditas_kode").
-		Joins("JOIN kabupaten w ON w.kode = a.kabupaten_kode").
+		Joins("LEFT JOIN kabupaten w ON w.kode = a.kabupaten_kode").
 		Joins("LEFT JOIN aturan_ews t ON t.id = a.aturan_id")
 }
 
@@ -102,10 +106,11 @@ func (r *Repository) List(ctx context.Context, q domain.ListQuery) ([]domain.Ale
 		return nil, 0, fmt.Errorf("hitung alert ews: %w", err)
 	}
 
+	// KRITIS aktif selalu di depan supaya tidak terpotong limit halaman pertama.
 	var items []domain.Alert
 	err := gabungAlert(filtered.Session(&gorm.Session{})).
 		Select(kolomAlert).
-		Order("a.dibuat_pada DESC, a.id").
+		Order("(a.severity = 'KRITIS' AND a.status <> 'SELESAI') DESC, a.dibuat_pada DESC, a.id").
 		Limit(q.Limit).Offset((q.Page - 1) * q.Limit).
 		Scan(&items).Error
 	if err != nil {
@@ -226,12 +231,24 @@ func (r *Repository) BulkAction(ctx context.Context, ids []idx.ID, action domain
 		return nil, fmt.Errorf("aksi massal tidak dikenal: %s", action)
 	}
 	var changed []idx.ID
-	err := r.db.WithContext(ctx).Raw(query, map[string]any{
-		"ids":   ids,
-		"user":  userID,
-		"semua": cakupan.Semua,
-		"kab":   cakupan.KabupatenKode,
-	}).Scan(&changed).Error
+	// Perubahan status ikut masuk aliran SSE supaya tab dan pengguna lain merekonsiliasi peringatan KRITIS.
+	// Urutan kunci sama dengan rule engine: baris alert dahulu, lalu kunci event (catatEvent), sehingga tidak deadlock.
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw(query, map[string]any{
+			"ids":   ids,
+			"user":  userID,
+			"semua": cakupan.Semua,
+			"kab":   cakupan.KabupatenKode,
+		}).Scan(&changed).Error; err != nil {
+			return err
+		}
+		for _, id := range changed {
+			if err := catatEvent(tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("aksi massal %s: %w", action, err)
 	}

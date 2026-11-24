@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import {
   Check,
@@ -15,9 +16,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatTanggal } from "@/lib/format";
 import {
   Tooltip,
   TooltipContent,
@@ -37,7 +41,7 @@ import {
 import { can } from "@/lib/rbac/permissions";
 import { ROLES } from "@/lib/rbac/roles";
 import { useEwsStore } from "@/lib/stores/ews-store";
-import { useUi } from "@/lib/stores/ui-store";
+import { useUi, type LingkunganData } from "@/lib/stores/ui-store";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "./brand-mark";
 
@@ -170,8 +174,8 @@ export function NavList({
 }
 
 /**
- * Pengalih ruang kerja di puncak sidebar: wilayah kerja aktif (Provinsi Aceh) beserta indikator siklus ekonomi.
- * Saat ini hanya satu wilayah, jadi menunya menjelaskan wilayah dan siklus, bukan berpindah.
+ * Pengalih ruang kerja di puncak sidebar: wilayah kerja aktif (Provinsi Aceh), indikator siklus ekonomi,
+ * dan pemilih sumber data (`Staging (Demo)` vs `Prod (Real)`).
  */
 export function WorkspaceSwitcher({
   collapsed = false,
@@ -179,8 +183,19 @@ export function WorkspaceSwitcher({
   collapsed?: boolean;
 }) {
   const sesi = useSession();
+  const qc = useQueryClient();
+  const lingkunganData = useUi((s) => s.lingkunganData);
+  const setLingkunganData = useUi((s) => s.setLingkunganData);
+  const mlInfo = useUi((s) => s.mlInfo);
   const { data } = useSiklusAktif(can(sesi, "dashboard.operasional"));
   const meta = data ? siklusMeta[data.siklus] : null;
+
+  const pilihLingkungan = (next: string) => {
+    const env = (next === "prod" ? "prod" : "staging") as LingkunganData;
+    if (env === lingkunganData) return;
+    setLingkunganData(env);
+    void qc.invalidateQueries();
+  };
 
   return (
     <DropdownMenu>
@@ -195,11 +210,22 @@ export function WorkspaceSwitcher({
         {!collapsed && (
           <>
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="block truncate text-[13px] font-semibold text-foreground">
-                Garda Inflasi
+              <span className="flex items-center gap-1.5 truncate text-[13px] font-semibold text-foreground">
+                <span className="truncate">Garda Inflasi</span>
+                <span
+                  data-testid="badge-lingkungan-sidebar"
+                  className={cn(
+                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none font-semibold tracking-wide uppercase",
+                    lingkunganData === "prod"
+                      ? "bg-normal-soft text-normal-ink dark:bg-normal/20 dark:text-emerald-300"
+                      : "bg-waspada-soft text-waspada-ink dark:bg-waspada/20 dark:text-amber-300",
+                  )}
+                >
+                  {lingkunganData === "prod" ? "Prod" : "Staging"}
+                </span>
               </span>
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <MapPin className="size-3" strokeWidth={1.75} aria-hidden />
+                <MapPin className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
                 <span className="truncate">Provinsi Aceh</span>
                 {meta && (
                   <span
@@ -222,7 +248,7 @@ export function WorkspaceSwitcher({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="tipe-chrome w-64 rounded-lg p-1.5"
+        className="tipe-chrome w-68 rounded-lg p-1.5"
       >
         <DropdownMenuLabel className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
           Wilayah kerja
@@ -253,6 +279,55 @@ export function WorkspaceSwitcher({
           </>
         )}
         <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          Sumber data
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={lingkunganData}
+          onValueChange={pilihLingkungan}
+        >
+          <DropdownMenuRadioItem
+            value="staging"
+            className="items-start rounded-md py-1.5"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[13px] font-medium">
+                <span
+                  aria-hidden
+                  className="size-1.5 shrink-0 rounded-full bg-waspada"
+                />
+                Staging (Demo)
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                PostgreSQL · Data demo & simulasi
+              </p>
+            </div>
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem
+            value="prod"
+            className="items-start rounded-md py-1.5"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[13px] font-medium">
+                <span
+                  aria-hidden
+                  className="size-1.5 shrink-0 rounded-full bg-normal"
+                />
+                Prod (Real)
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                MongoDB datasafe · Hasil training ML
+              </p>
+              {lingkunganData === "prod" && mlInfo?.cycleTimestamp && (
+                <p className="mt-0.5 text-[10px] text-data-600 dark:text-data-300">
+                  Siklus:{" "}
+                  {formatTanggal(mlInfo.cycleTimestamp, "dd MMM yyyy HH:mm")}
+                </p>
+              )}
+            </div>
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="rounded-md">
           <Link href="/alur-sistem">Peta alur sistem & data</Link>
         </DropdownMenuItem>
@@ -271,8 +346,8 @@ export function Sidebar() {
       initial={false}
       animate={{ width: collapsed ? 64 : 248 }}
       transition={spring.layout}
-      // Offset `--bar-atas` (ConsoleShell) menyisihkan ruang bagi banner impersonasi di puncak viewport.
-      className="sticky top-[var(--bar-atas,0px)] z-30 hidden h-[calc(100dvh-var(--bar-atas,0px))] shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar tipe-chrome lg:flex"
+      // Mengisi tinggi baris isi ConsoleShell (`flex-1 min-h-0`) sehingga tetap sejajar di bawah banner impersonasi.
+      className="hidden h-full shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar tipe-chrome lg:static lg:flex"
     >
       <div className={cn("p-2.5 pb-3", collapsed && "px-2")}>
         <WorkspaceSwitcher collapsed={collapsed} />

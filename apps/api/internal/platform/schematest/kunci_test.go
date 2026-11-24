@@ -127,6 +127,8 @@ var kategoriPK = map[string]KategoriPK{
 
 	"impersonasi_kebijakan": PKKode, // satu baris (id = 1): kebijakan impersonasi global (000129)
 
+	"ews_sinyal_ml": PKKode, // keadaan jembatan EWS pipeline ML per sinyal_kunci (000131)
+
 	// HASH: keamanan, kuncinya hash atau token id.
 	"jwt_blacklist":   PKHash,
 	"kunci_login":     PKHash,

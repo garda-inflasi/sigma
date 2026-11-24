@@ -123,28 +123,28 @@ export function KecamatanPanel() {
       bulkActions={actions}
       searchPlaceholder="Cari kecamatan"
       server={tabel(data?.total ?? 0, isPlaceholderData)}
+      filterBar={
+        <FilterSelect
+          label="Kabupaten/kota"
+          value={kabupaten}
+          onChange={(v) => setFilter("kabupaten", v)}
+          options={(wilayah.data ?? []).map((w) => ({
+            value: w.kode,
+            label: w.nama,
+          }))}
+          disabled={wilayah.isLoading}
+        />
+      }
       toolbar={
-        <>
-          <FilterSelect
-            label="Kabupaten/kota"
-            value={kabupaten}
-            onChange={(v) => setFilter("kabupaten", v)}
-            options={(wilayah.data ?? []).map((w) => ({
-              value: w.kode,
-              label: w.nama,
-            }))}
-            disabled={wilayah.isLoading}
-          />
-          <SpringButton
-            variant="soft"
-            size="md"
-            onClick={() => void eksporSemua()}
-            disabled={mengekspor}
-          >
-            {mengekspor ? <Loader2 className="animate-spin" /> : <Download />}{" "}
-            Ekspor semua hasil
-          </SpringButton>
-        </>
+        <SpringButton
+          variant="soft"
+          size="md"
+          onClick={() => void eksporSemua()}
+          disabled={mengekspor}
+        >
+          {mengekspor ? <Loader2 className="animate-spin" /> : <Download />}{" "}
+          Ekspor semua hasil
+        </SpringButton>
       }
     />
   );

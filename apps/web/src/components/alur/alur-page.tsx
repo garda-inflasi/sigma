@@ -22,6 +22,7 @@ import {
   Target,
   Workflow,
 } from "lucide-react";
+import { useRef } from "react";
 import { DiagramAlur, type NodeAlur } from "@/components/flow/flow";
 import { HalamanPas, IsiPas, PanelPas } from "@/components/garda/halaman-pas";
 import { PageHeader } from "@/components/garda/page-header";
@@ -29,6 +30,7 @@ import { ViewTabs } from "@/components/garda/view-tabs";
 import { SIKLUS_TAHAP, SIKLUS_URUTAN } from "@/lib/data/siklus";
 import { siklusMeta, toneClass } from "@/lib/design/tokens";
 import { useTabHalaman } from "@/lib/hooks/use-tab-halaman";
+import { softReveal, useGSAP } from "@/lib/motion/gsap";
 import { cn } from "@/lib/utils";
 
 const ARSITEKTUR: NodeAlur[] = [
@@ -246,6 +248,19 @@ const BAGIAN_ALUR: {
 /** Halaman alur sistem & data — peta mental platform untuk seluruh peran (2 tab: alur terpadu & siklus intervensi). */
 export function AlurPage() {
   const [tab, setTab] = useTabHalaman(TAB, "arsitektur");
+  const daftarAlurRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      if (tab !== "arsitektur" || !daftarAlurRef.current?.children.length) return;
+      softReveal(daftarAlurRef.current.children, {
+        y: 10,
+        duration: 0.42,
+        stagger: 0.06,
+      });
+    },
+    { dependencies: [tab], scope: daftarAlurRef },
+  );
 
   return (
     <HalamanPas>
@@ -267,23 +282,28 @@ export function AlurPage() {
       />
 
       {tab === "arsitektur" ? (
-        <IsiPas className="scrollbar-thin lg:overflow-y-auto lg:pr-1">
-          {BAGIAN_ALUR.map((d) => (
-            <PanelPas
-              key={d.id}
-              judul={d.judul}
-              deskripsi={d.deskripsi}
-              className="shrink-0"
-            >
-              <DiagramAlur
-                nodes={d.nodes}
-                aliran={d.aliran}
-                catatan={d.catatan}
-                mengisi
-                className="w-full"
-              />
-            </PanelPas>
-          ))}
+        <IsiPas
+          data-lenis-prevent
+          className="scrollbar-thin lg:overflow-y-auto lg:pr-1"
+        >
+          <div ref={daftarAlurRef} className="flex min-w-0 flex-col gap-3">
+            {BAGIAN_ALUR.map((d) => (
+              <PanelPas
+                key={d.id}
+                judul={d.judul}
+                deskripsi={d.deskripsi}
+                className="shrink-0"
+              >
+                <DiagramAlur
+                  nodes={d.nodes}
+                  aliran={d.aliran}
+                  catatan={d.catatan}
+                  mengisi
+                  className="w-full"
+                />
+              </PanelPas>
+            ))}
+          </div>
         </IsiPas>
       ) : (
         <IsiPas>

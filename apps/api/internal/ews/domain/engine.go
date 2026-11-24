@@ -14,6 +14,8 @@ const (
 	JenisKelangkaanStok = "KELANGKAAN_STOK"
 	JenisAnomaliCuaca   = "ANOMALI_CUACA"
 	JenisOverSupply     = "OVER_SUPPLY"
+	// JenisAnomaliData: masalah data atau sumber (ingestion, sinyal pipeline ML); tidak diukur rule engine.
+	JenisAnomaliData = "ANOMALI_DATA"
 )
 
 // Tingkat keparahan (enum severity), dari rendah ke tinggi.
@@ -46,6 +48,12 @@ func SeverityRank(severity string) int {
 	return 0
 }
 
+// KenaPeredaman melaporkan apakah masa peredaman (CooldownJam) berlaku. Kondisi KRITIS tidak pernah diredam: selama
+// masih berlangsung, alert baru harus muncul walau alert sebelumnya baru saja ditutup.
+func KenaPeredaman(severity string) bool {
+	return severity != SeverityKritis
+}
+
 // Pengukuran adalah hasil mengukur satu kondisi (komoditas x kabupaten) terhadap
 // satu aturan. Nilai bertanda: penurunan stok bernilai negatif, seperti pada seed.
 type Pengukuran struct {
@@ -60,14 +68,23 @@ type Pengukuran struct {
 	SatuanKomoditas string
 }
 
+// SumberPipelineML adalah nilai ews_alert.sumber untuk alert dari jembatan pipeline ML (sinyal datasafe_ews_signals,
+// job ml_jembatan_ews). Alert ini tidak punya aturan_ews; kanal notifikasinya KanalPipelineML.
+const SumberPipelineML = "Pipeline ML"
+
+// KanalPipelineML adalah kanal notifikasi alert pipeline ML (pengganti aturan_ews.kanal yang tidak ada).
+var KanalPipelineML = []string{KanalEmail, KanalPush}
+
 // NewAlert adalah alert yang hendak ditulis rule engine.
 type NewAlert struct {
+	// AturanID nol berarti alert tanpa aturan ambang (mis. jembatan pipeline ML); disimpan NULL.
 	AturanID      idx.ID
 	Jenis         string
 	Severity      string
 	Judul         string
 	Pesan         string
 	KomoditasKode *string
+	// KabupatenKode kosong berarti tingkat sistem atau provinsi; disimpan NULL.
 	KabupatenKode string
 	Nilai         float64
 	SatuanNilai   string
@@ -75,6 +92,8 @@ type NewAlert struct {
 	Sumber        string
 	DedupKey      string
 	CooldownJam   int
+	// CatatanRiwayat adalah catatan baris riwayat saat alert dibuat; kosong memakai "Dibuat oleh rule engine".
+	CatatanRiwayat string
 }
 
 // HasilTulis menjelaskan apa yang terjadi saat NewAlert diterapkan.

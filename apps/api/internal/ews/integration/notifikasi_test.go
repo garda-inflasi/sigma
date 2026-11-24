@@ -54,36 +54,83 @@ func (s *suite) lonjakanCabai(t *testing.T) {
 	s.entriHarga(t, "H2", "CBM-KRT", "PSR-1171-01", 60000, "DIVALIDASI", now.Add(-2*time.Hour))
 }
 
-func TestNotifikasi_EngineAlertEnqueuesPerRecipientAndPreference(t *testing.T) {
-	s := newSuite(t, "ews_notif_antrean")
-	s.ubahKanalAturan(t, "ATR-LH-CBM-KRT", []string{"DASHBOARD", "PUSH", "EMAIL"})
-
-	// manajer_risiko mematikan push; koordinator_lapangan hanya mau email, dan hanya KRITIS.
+// aturPreferensiUji: manajer_risiko mematikan push; koordinator_lapangan mematikan push dan email hanya KRITIS.
+func (s *suite) aturPreferensiUji(t *testing.T) {
+	t.Helper()
 	put := func(email string, prefs ...map[string]any) {
 		w := s.call(t, http.MethodPut, "/v1/ews/notifikasi/preferensi", email, map[string]any{"preferensi": prefs})
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	}
 	put(emailPenuh, map[string]any{"kanal": "PUSH", "severity_min": "SIAGA", "aktif": false})
 	put(emailAkui, map[string]any{"kanal": "PUSH", "severity_min": "SIAGA", "aktif": false}, map[string]any{"kanal": "EMAIL", "severity_min": "KRITIS", "aktif": true})
+}
 
-	s.lonjakanCabai(t)
+func TestNotifikasi_EngineAlertEnqueuesPerRecipientAndPreference(t *testing.T) {
+	s := newSuite(t, "ews_notif_antrean")
+	s.ubahKanalAturan(t, "ATR-LH-CBM-KRT", []string{"DASHBOARD", "PUSH", "EMAIL"})
+	s.aturPreferensiUji(t)
+
+	now := time.Now()
+	s.entriHarga(t, "H1", "CBM-KRT", "PSR-1171-01", 50000, "DIVALIDASI", now.Add(-72*time.Hour))
+	s.entriHarga(t, "H2", "CBM-KRT", "PSR-1171-01", 56500, "DIVALIDASI", now.Add(-2*time.Hour)) // +13% = SIAGA
 	require.Equal(t, 1, s.evaluasi(t).Dibuat)
-	alert := s.alertMesin(t, "LONJAKAN_HARGA|CBM-KRT|1171")[0].ID
+	alert := s.alertMesin(t, "LONJAKAN_HARGA|CBM-KRT|1171")[0]
+	require.Equal(t, "SIAGA", alert.Severity)
 
 	got := s.outbox(t, "")
 	assert.ElementsMatch(t, []baris{
-		{alert, uid("manajer_data"), "EMAIL", "manajer.data@gardainflasi.id", "MENUNGGU", 0},
-		{alert, uid("manajer_data"), "PUSH", uid("manajer_data"), "MENUNGGU", 0},
-		{alert, uid("manajer_program"), "EMAIL", "manajer.program@gardainflasi.id", "MENUNGGU", 0},
-		{alert, uid("manajer_program"), "PUSH", uid("manajer_program"), "MENUNGGU", 0},
-		{alert, uid("manajer_risiko"), "EMAIL", "manajer.risiko@gardainflasi.id", "MENUNGGU", 0},
-		{alert, uid("koordinator_lapangan"), "EMAIL", "koordinator.lapangan@gardainflasi.id", "MENUNGGU", 0},
-		{alert, uid("user_mfa"), "EMAIL", "mfa@gardainflasi.id", "MENUNGGU", 0},
-		{alert, uid("user_mfa"), "PUSH", uid("user_mfa"), "MENUNGGU", 0},
-	}, got, "risiko tanpa push; koordinator hanya email; peran tanpa ews.akui (strategis, mahasiswa) tidak menerima")
+		{alert.ID, uid("manajer_data"), "EMAIL", "manajer.data@gardainflasi.id", "MENUNGGU", 0},
+		{alert.ID, uid("manajer_data"), "PUSH", uid("manajer_data"), "MENUNGGU", 0},
+		{alert.ID, uid("manajer_program"), "EMAIL", "manajer.program@gardainflasi.id", "MENUNGGU", 0},
+		{alert.ID, uid("manajer_program"), "PUSH", uid("manajer_program"), "MENUNGGU", 0},
+		{alert.ID, uid("manajer_risiko"), "EMAIL", "manajer.risiko@gardainflasi.id", "MENUNGGU", 0},
+		{alert.ID, uid("user_mfa"), "EMAIL", "mfa@gardainflasi.id", "MENUNGGU", 0},
+		{alert.ID, uid("user_mfa"), "PUSH", uid("user_mfa"), "MENUNGGU", 0},
+		{alert.ID, uid("superadmin"), "EMAIL", "superadmin@gardainflasi.id", "MENUNGGU", 0},
+		{alert.ID, uid("superadmin"), "PUSH", uid("superadmin"), "MENUNGGU", 0},
+	}, got, "di bawah KRITIS preferensi berlaku: risiko tanpa push, koordinator tidak menerima; peran tanpa ews.akui tidak menerima")
 
 	assert.Zero(t, s.evaluasi(t).Dibuat)
-	assert.Len(t, s.outbox(t, ""), 8, "evaluasi ulang tidak menggandakan antrean")
+	assert.Len(t, s.outbox(t, ""), 9, "evaluasi ulang tidak menggandakan antrean")
+}
+
+func TestNotifikasi_KritisMengabaikanPreferensiTingkatDanKanalNonaktif(t *testing.T) {
+	s := newSuite(t, "ews_notif_kritis_pref")
+	s.ubahKanalAturan(t, "ATR-LH-CBM-KRT", []string{"DASHBOARD", "PUSH", "EMAIL"})
+	s.aturPreferensiUji(t)
+	// Kanal email juga dimatikan: tidak boleh menahan KRITIS.
+	w := s.call(t, http.MethodPut, "/v1/ews/notifikasi/preferensi", emailPenuh, map[string]any{"preferensi": []map[string]any{
+		{"kanal": "PUSH", "severity_min": "KRITIS", "aktif": false}, {"kanal": "EMAIL", "severity_min": "KRITIS", "aktif": false},
+	}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+
+	s.lonjakanCabai(t) // +20% = KRITIS
+	require.Equal(t, 1, s.evaluasi(t).Dibuat)
+
+	got := s.outbox(t, "")
+	assert.Len(t, got, 12, "enam penerima, dua kanal aturan")
+	for _, penerima := range []string{uid("manajer_risiko"), uid("koordinator_lapangan")} {
+		var kanal []string
+		for _, b := range got {
+			if b.Pengguna == penerima {
+				kanal = append(kanal, b.Kanal)
+			}
+		}
+		assert.ElementsMatch(t, []string{"EMAIL", "PUSH"}, kanal, penerima)
+	}
+}
+
+func TestNotifikasi_PenyimpananYangMengecualikanKritisDitolak(t *testing.T) {
+	s := newSuite(t, "ews_notif_tolak")
+	for _, nilai := range []string{"NONE", "TIDAK_ADA", "DI_ATAS_KRITIS", ""} {
+		w := s.call(t, http.MethodPut, "/v1/ews/notifikasi/preferensi", emailPenuh, map[string]any{"preferensi": []map[string]any{
+			{"kanal": "EMAIL", "severity_min": nilai, "aktif": true},
+		}})
+		assert.Equal(t, http.StatusBadRequest, w.Code, "%q: %s", nilai, w.Body.String())
+	}
+	var n int64
+	require.NoError(t, s.db.Raw(`SELECT count(*) FROM preferensi_notifikasi`).Scan(&n).Error)
+	assert.Zero(t, n)
 }
 
 func TestNotifikasi_SeverityBelowMinimumIsNotQueuedUntilItRises(t *testing.T) {
@@ -97,11 +144,23 @@ func TestNotifikasi_SeverityBelowMinimumIsNotQueuedUntilItRises(t *testing.T) {
 
 	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 56500 WHERE kode = 'H2'`).Error) // +13% = SIAGA
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
-	assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH'"), 5, "lima pengguna berperan penindak menerima begitu alert mencapai SIAGA")
+	assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH'"), 6, "enam pengguna berperan penindak menerima begitu alert mencapai SIAGA")
 
+	// Notifikasi SIAGA sudah terkirim; kenaikan ke KRITIS wajib sampai juga, tanpa baris ganda.
+	require.NoError(t, s.db.Exec(`UPDATE ews_notifikasi SET status = 'TERKIRIM', percobaan = 1, dikirim_pada = now()`).Error)
 	require.NoError(t, s.db.Exec(`UPDATE entri_harga SET harga = 60000 WHERE kode = 'H2'`).Error) // +20% = KRITIS
 	require.Equal(t, 1, s.evaluasi(t).Dinaikkan)
-	assert.Len(t, s.outbox(t, ""), 5, "yang sudah dinotifikasi tidak dinotifikasi ulang")
+	got := s.outbox(t, "")
+	assert.Len(t, got, 6, "tidak ada baris ganda")
+	for _, b := range got {
+		assert.Equal(t, "MENUNGGU", b.Status, "dijadwalkan ulang sebagai KRITIS")
+		assert.Zero(t, b.Percobaan)
+	}
+
+	// Evaluasi berikutnya tidak mengirim ulang lagi.
+	require.NoError(t, s.db.Exec(`UPDATE ews_notifikasi SET status = 'TERKIRIM', percobaan = 1`).Error)
+	assert.Zero(t, s.evaluasi(t).Dinaikkan)
+	assert.Empty(t, s.outbox(t, "WHERE status = 'MENUNGGU'"))
 }
 
 // pengirimUji adalah adaptor palsu yang mencatat dan gagal sesuai program.
@@ -131,7 +190,7 @@ func TestNotifikasi_DispatchDeliversRetriesAndRecordsWithoutAdapter(t *testing.T
 	s.ubahKanalAturan(t, "ATR-LH-CBM-KRT", []string{"DASHBOARD", "PUSH", "EMAIL"})
 	s.lonjakanCabai(t)
 	require.Equal(t, 1, s.evaluasi(t).Dibuat)
-	require.Len(t, s.outbox(t, ""), 10)
+	require.Len(t, s.outbox(t, ""), 12)
 
 	t.Run("hanya kanal terkonfigurasi yang dikirim nyata; sisanya dicatat", func(t *testing.T) {
 		email := &pengirimUji{kanal: domain.KanalEmail}
@@ -140,17 +199,17 @@ func TestNotifikasi_DispatchDeliversRetriesAndRecordsWithoutAdapter(t *testing.T
 		r, err := svc.Kirim(t.Context())
 
 		require.NoError(t, err)
-		assert.Equal(t, notifikasi.RingkasanKirim{Terkirim: 5, Dicatat: 5}, r)
-		require.Len(t, email.got, 5)
+		assert.Equal(t, notifikasi.RingkasanKirim{Terkirim: 6, Dicatat: 6}, r)
+		require.Len(t, email.got, 6)
 		assert.Contains(t, email.got[0].Judul, "Lonjakan harga cabai")
 		assert.Equal(t, "KRITIS", email.got[0].Severity)
 		assert.Equal(t, "/ews?id="+email.got[0].AlertID.String(), email.got[0].TautanPath, "tautan memakai ID desimal alert")
 
-		assert.Len(t, s.outbox(t, "WHERE kanal = 'EMAIL' AND status = 'TERKIRIM'"), 5)
-		assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH' AND status = 'DICATAT'"), 5)
+		assert.Len(t, s.outbox(t, "WHERE kanal = 'EMAIL' AND status = 'TERKIRIM'"), 6)
+		assert.Len(t, s.outbox(t, "WHERE kanal = 'PUSH' AND status = 'DICATAT'"), 6)
 		var sent int
 		require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM ews_notifikasi WHERE status = 'TERKIRIM' AND dikirim_pada IS NOT NULL AND percobaan = 1`).Scan(&sent).Error)
-		assert.Equal(t, 5, sent)
+		assert.Equal(t, 6, sent)
 		var galat string
 		require.NoError(t, s.db.Raw(`SELECT galat FROM ews_notifikasi WHERE status = 'DICATAT' LIMIT 1`).Scan(&galat).Error)
 		assert.Contains(t, galat, "belum dikonfigurasi")
@@ -170,7 +229,7 @@ func TestNotifikasi_FailingAdapterIsRetriedWithBackoffThenMarkedFailed(t *testin
 
 	r, err := svc.Kirim(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, notifikasi.RingkasanKirim{Diulang: 5}, r)
+	assert.Equal(t, notifikasi.RingkasanKirim{Diulang: 6}, r)
 	rows := s.outbox(t, "")
 	for _, b := range rows {
 		assert.Equal(t, "MENUNGGU", b.Status)
@@ -178,7 +237,7 @@ func TestNotifikasi_FailingAdapterIsRetriedWithBackoffThenMarkedFailed(t *testin
 	}
 	var tertunda int
 	require.NoError(t, s.db.Raw(`SELECT COUNT(*) FROM ews_notifikasi WHERE jadwal_berikut > NOW() + INTERVAL '30 seconds'`).Scan(&tertunda).Error)
-	assert.Equal(t, 5, tertunda, "percobaan berikutnya dijadwalkan nanti (backoff)")
+	assert.Equal(t, 6, tertunda, "percobaan berikutnya dijadwalkan nanti (backoff)")
 
 	r, err = svc.Kirim(t.Context())
 	require.NoError(t, err)
@@ -187,7 +246,7 @@ func TestNotifikasi_FailingAdapterIsRetriedWithBackoffThenMarkedFailed(t *testin
 	require.NoError(t, s.db.Exec(`UPDATE ews_notifikasi SET jadwal_berikut = NOW() - INTERVAL '1 second'`).Error)
 	r, err = svc.Kirim(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, notifikasi.RingkasanKirim{Gagal: 5}, r, "percobaan kedua habis")
+	assert.Equal(t, notifikasi.RingkasanKirim{Gagal: 6}, r, "percobaan kedua habis")
 	for _, b := range s.outbox(t, "") {
 		assert.Equal(t, "GAGAL", b.Status)
 		assert.Equal(t, 2, b.Percobaan)
@@ -205,14 +264,14 @@ func TestNotifikasi_ClaimLeasesRowsSoWorkersDoNotDoubleSend(t *testing.T) {
 
 	first, err := repo.Klaim(t.Context(), time.Now(), 10, 5*time.Minute)
 	require.NoError(t, err)
-	require.Len(t, first, 5)
+	require.Len(t, first, 6)
 	second, err := repo.Klaim(t.Context(), time.Now(), 10, 5*time.Minute)
 	require.NoError(t, err)
 	assert.Empty(t, second, "baris yang sedang dikirim tidak diklaim lagi sebelum lease habis")
 
 	crashed, err := repo.Klaim(t.Context(), time.Now().Add(6*time.Minute), 10, 5*time.Minute)
 	require.NoError(t, err)
-	assert.Len(t, crashed, 5, "pekerja yang mati tidak menghilangkan notifikasi: lease kedaluwarsa lalu diklaim ulang")
+	assert.Len(t, crashed, 6, "pekerja yang mati tidak menghilangkan notifikasi: lease kedaluwarsa lalu diklaim ulang")
 }
 
 func TestNotifikasi_AutoEscalationOfUnacknowledgedAlerts(t *testing.T) {
@@ -233,15 +292,23 @@ func TestNotifikasi_AutoEscalationOfUnacknowledgedAlerts(t *testing.T) {
 		Oleh                  *string
 	}
 	require.NoError(t, s.db.Raw(`SELECT a.kode, a.status, r.catatan, a.dieskalasi_oleh_id, r.oleh
-		FROM ews_alert a JOIN ews_riwayat r ON r.alert_id = a.id AND r.ke = 'DIESKALASI'
+		FROM ews_alert a JOIN ews_riwayat r ON r.alert_id = a.id AND r.catatan LIKE 'Eskalasi otomatis%'
 		WHERE a.kode IN ('EWS-1001','EWS-1002','EWS-1003') ORDER BY a.id`).Scan(&rows).Error)
 	require.Len(t, rows, 3)
-	for _, r := range rows {
+	// EWS-1001 KRITIS: ditandai dan tercatat, tetapi tetap BARU sampai ditindaklanjuti manusia.
+	assert.Equal(t, "BARU", rows[0].Status)
+	assert.Equal(t, "Eskalasi otomatis: tidak diakui dalam 10 menit; tetap menunggu tindak lanjut", rows[0].Catatan)
+	for _, r := range rows[1:] {
 		assert.Equal(t, "DIESKALASI", r.Status)
 		assert.Equal(t, "Eskalasi otomatis: tidak diakui dalam 10 menit", r.Catatan)
+	}
+	for _, r := range rows {
 		assert.Nil(t, r.Oleh, "dilakukan sistem")
 		assert.Nil(t, r.DieskalasiOlehID)
 	}
+	var ditandai *time.Time
+	require.NoError(t, s.db.Raw(`SELECT dieskalasi_pada FROM ews_alert WHERE kode = 'EWS-1001'`).Scan(&ditandai).Error)
+	assert.NotNil(t, ditandai, "penanda eskalasi tetap ada")
 	var status string
 	require.NoError(t, s.db.Raw(`SELECT status FROM ews_alert WHERE kode = 'EWS-1000'`).Scan(&status).Error)
 	assert.Equal(t, "BARU", status)
